@@ -64,11 +64,9 @@ functions:
     description: Expose agent-auth functionality over HTTP for use by app bridges and CLIs.
     functions:
       - name: Serve Validate Endpoint
-        description: Handle POST /validate requests from app bridges.
+        description: Handle POST /validate requests from app bridges, including blocking for JIT approval on prompt-tier scopes.
       - name: Serve Refresh Endpoint
         description: Handle POST /token/refresh requests from CLIs.
-      - name: Serve Approval Endpoint
-        description: Handle POST /approval/request requests from app bridges.
       - name: Serve Status Endpoint
         description: Handle GET /token/status requests for token introspection.
   - name: CLI Interface
@@ -88,9 +86,7 @@ functions:
     description: Proxy requests from the CLI to Things3 via AppleScript, delegating authorization to agent-auth.
     functions:
       - name: Delegate Token Validation
-        description: Forward the bearer token to agent-auth for validation and scope checking before executing any operation.
-      - name: Delegate Approval Request
-        description: Forward prompt-tier operations to agent-auth for JIT approval before executing.
+        description: Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation.
       - name: Execute Things AppleScript
         description: Execute AppleScript commands against Things3 and return structured results.
       - name: Serve Things HTTP API

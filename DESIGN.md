@@ -223,12 +223,9 @@ things-cli complete <id>
 
   things-bridge:
     → POST http://localhost:9100/validate
-      {"token": "aa_xxx_yyy", "required_scope": "things:write"}
-    ← {"valid": true, "tier": "prompt"}
-    → POST http://localhost:9100/approval/request
-      {"token": "aa_xxx_yyy", "scope": "things:write", "description": "Complete todo: Buy milk"}
-    ← blocks until user responds to macOS notification
-    ← {"approved": true, "grant": "once"}
+      {"token": "aa_xxx_yyy", "required_scope": "things:write", "description": "Complete todo: Buy milk"}
+    ← blocks — agent-auth triggers macOS notification and waits for user response
+    ← {"valid": true}
     → executes AppleScript
   ← 200 response with results
 ```
@@ -273,20 +270,27 @@ Validate a token and check scope authorization.
 
 Request:
 ```json
-{"token": "aa_xxx_yyy", "required_scope": "things:read"}
+{"token": "aa_xxx_yyy", "required_scope": "things:read", "description": "List inbox todos"}
 ```
 
-Response (200):
+The `description` field is optional. It is used in JIT approval notifications for prompt-tier scopes so the user can see what operation is being requested.
+
+For `allowed`-tier scopes, the response is immediate:
 ```json
-{"valid": true, "tier": "allowed"}
+{"valid": true}
 ```
 
-Response (401):
+For `prompt`-tier scopes, the request blocks while agent-auth shows a macOS notification and waits for the user to approve or deny. The caller (bridge) sees the same response shape — it does not need to know whether approval was involved:
+```json
+{"valid": true}
+```
+
+Response (401 — invalid or expired token):
 ```json
 {"valid": false, "error": "token_expired"}
 ```
 
-Response (403):
+Response (403 — scope denied or JIT approval denied):
 ```json
 {"valid": false, "error": "scope_denied"}
 ```
@@ -313,29 +317,6 @@ Response (200):
 Response (401 — token consumed, family revoked):
 ```json
 {"error": "refresh_token_reuse_detected", "detail": "Token family revoked"}
-```
-
-### POST /approval/request
-
-Request JIT approval for a prompt-tier scope. Blocks until the user responds.
-
-Request:
-```json
-{
-  "token": "aa_xxx_yyy",
-  "scope": "things:write",
-  "description": "Complete todo: Buy milk"
-}
-```
-
-Response (200):
-```json
-{"approved": true, "grant": "session"}
-```
-
-Response (403):
-```json
-{"approved": false}
 ```
 
 ### GET /token/status

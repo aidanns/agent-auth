@@ -58,7 +58,6 @@ components:
             functions:
               - Serve Validate Endpoint
               - Serve Refresh Endpoint
-              - Serve Approval Endpoint
               - Serve Status Endpoint
       - name: CLI
         description: Command-line interface for host-side token management.
@@ -82,7 +81,6 @@ components:
             functions:
               - Serve Things HTTP API
               - Delegate Token Validation
-              - Delegate Approval Request
       - name: Things AppleScript
         description: AppleScript execution layer for Things3.
         configuration_items:
