@@ -84,3 +84,27 @@ functions:
         description: Parse arguments and invoke token family rotation.
       - name: Handle Serve Command
         description: Start the agent-auth HTTP server.
+  - name: Things Bridge
+    description: Proxy requests from the CLI to Things3 via AppleScript, delegating authorization to agent-auth.
+    functions:
+      - name: Delegate Token Validation
+        description: Forward the bearer token to agent-auth for validation and scope checking before executing any operation.
+      - name: Delegate Approval Request
+        description: Forward prompt-tier operations to agent-auth for JIT approval before executing.
+      - name: Execute Things AppleScript
+        description: Execute AppleScript commands against Things3 and return structured results.
+      - name: Serve Things HTTP API
+        description: Expose Things3 operations as HTTP endpoints for the CLI client.
+  - name: Things CLI
+    description: Thin CLI client for interacting with Things3 via the bridge, runnable from host or devcontainer.
+    functions:
+      - name: Send Bridge Request
+        description: Send an authenticated HTTP request to the things-bridge with the bearer token.
+      - name: Auto Refresh Token
+        description: Detect 401 responses, refresh the token pair via agent-auth, and retry the request.
+      - name: Store CLI Credentials
+        description: Persist and load the current access and refresh tokens from local credential storage.
+      - name: Handle Things Commands
+        description: Parse CLI arguments and map subcommands to bridge HTTP requests.
+      - name: Display Results
+        description: Format and print structured results from the bridge to the terminal.
