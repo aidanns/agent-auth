@@ -1,0 +1,86 @@
+name: agent-auth
+description: Token-based authorization system for gating AI agent access to macOS applications via AppleScript.
+functions:
+  - name: Token Management
+    description: Create, store, and manage the lifecycle of access and refresh tokens.
+    functions:
+      - name: Create Token Pair
+        description: Issue a new access token and refresh token with specified scopes and access tiers.
+      - name: Refresh Token Pair
+        description: Exchange a valid refresh token for a new access/refresh token pair, revoking the old refresh token.
+      - name: Revoke Token Family
+        description: Revoke all access and refresh tokens belonging to a token family.
+      - name: Rotate Token Family
+        description: Revoke an existing token family and issue a new one with the same scopes.
+      - name: Introspect Token
+        description: Return metadata about a token including scopes, expiry, and family membership.
+      - name: Detect Refresh Token Reuse
+        description: Detect when a consumed refresh token is reused and revoke the entire token family.
+  - name: Token Validation
+    description: Verify token authenticity and check scope authorization.
+    functions:
+      - name: Verify Token Signature
+        description: Validate the HMAC signature of a token against the signing key.
+      - name: Check Token Expiry
+        description: Verify that a token has not expired.
+      - name: Check Scope Authorization
+        description: Verify that a token carries the required scope for an operation.
+      - name: Resolve Access Tier
+        description: Determine whether a scope is allowed, prompt, or denied for a given token.
+  - name: JIT Approval
+    description: Request and manage human approval for prompt-tier operations.
+    functions:
+      - name: Request Approval
+        description: Hold a request pending and notify the user for approval via macOS notification.
+      - name: Record Approval Grant
+        description: Record an approval decision with its grant type (once, session, or timed).
+      - name: Check Existing Grant
+        description: Check whether a prior approval grant covers the current request.
+      - name: Expire Grants
+        description: Remove approval grants that have expired or whose associated access token has expired.
+  - name: Signing Key Management
+    description: Manage the HMAC signing key used for token signatures.
+    functions:
+      - name: Generate Signing Key
+        description: Generate a new cryptographic signing key on first use.
+      - name: Load Signing Key
+        description: Load the signing key from disk for token signing and verification.
+  - name: Token Store
+    description: Persist token families, tokens, and approval grants in SQLite.
+    functions:
+      - name: Store Token Family
+        description: Write a new token family record with its scopes to the database.
+      - name: Store Token
+        description: Write a new access or refresh token record to the database.
+      - name: Mark Token Consumed
+        description: Mark a refresh token as consumed after use.
+      - name: Mark Family Revoked
+        description: Mark a token family as revoked, invalidating all its tokens.
+      - name: Store Approval Grant
+        description: Write an approval grant record to the database.
+      - name: Query Tokens
+        description: Read token and family records for validation, introspection, and listing.
+  - name: HTTP API
+    description: Expose agent-auth functionality over HTTP for use by app bridges and CLIs.
+    functions:
+      - name: Serve Validate Endpoint
+        description: Handle POST /validate requests from app bridges.
+      - name: Serve Refresh Endpoint
+        description: Handle POST /token/refresh requests from CLIs.
+      - name: Serve Approval Endpoint
+        description: Handle POST /approval/request requests from app bridges.
+      - name: Serve Status Endpoint
+        description: Handle GET /token/status requests for token introspection.
+  - name: CLI Interface
+    description: Provide command-line token management for the host user.
+    functions:
+      - name: Handle Token Create Command
+        description: Parse arguments and invoke token pair creation.
+      - name: Handle Token List Command
+        description: Display all active token families and their scopes.
+      - name: Handle Token Revoke Command
+        description: Parse arguments and invoke token family revocation.
+      - name: Handle Token Rotate Command
+        description: Parse arguments and invoke token family rotation.
+      - name: Handle Serve Command
+        description: Start the agent-auth HTTP server.

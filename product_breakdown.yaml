@@ -1,0 +1,73 @@
+name: agent-auth
+description: Token-based authorization system for gating AI agent access to macOS applications via AppleScript.
+components:
+  - name: agent-auth Server
+    description: HTTP server and token management service running on the host.
+    components:
+      - name: Auth Core
+        description: Token creation, validation, and lifecycle logic.
+        configuration_items:
+          - name: token_manager.py
+            description: Token pair creation, refresh, rotation, and revocation logic.
+            functions:
+              - Create Token Pair
+              - Refresh Token Pair
+              - Revoke Token Family
+              - Rotate Token Family
+              - Introspect Token
+              - Detect Refresh Token Reuse
+          - name: validator.py
+            description: Token signature verification and scope authorization checks.
+            functions:
+              - Verify Token Signature
+              - Check Token Expiry
+              - Check Scope Authorization
+              - Resolve Access Tier
+          - name: signing.py
+            description: HMAC signing key generation and loading.
+            functions:
+              - Generate Signing Key
+              - Load Signing Key
+      - name: Approval System
+        description: JIT human approval for prompt-tier operations.
+        configuration_items:
+          - name: approval.py
+            description: Approval request handling, grant recording, and grant checking.
+            functions:
+              - Request Approval
+              - Record Approval Grant
+              - Check Existing Grant
+              - Expire Grants
+      - name: Persistence
+        description: SQLite-based token and approval grant storage.
+        configuration_items:
+          - name: store.py
+            description: SQLite database access for token families, tokens, and approval grants.
+            functions:
+              - Store Token Family
+              - Store Token
+              - Mark Token Consumed
+              - Mark Family Revoked
+              - Store Approval Grant
+              - Query Tokens
+      - name: HTTP Server
+        description: HTTP API exposing auth functionality to bridges and CLIs.
+        configuration_items:
+          - name: server.py
+            description: HTTP request handlers for validate, refresh, approval, and status endpoints.
+            functions:
+              - Serve Validate Endpoint
+              - Serve Refresh Endpoint
+              - Serve Approval Endpoint
+              - Serve Status Endpoint
+      - name: CLI
+        description: Command-line interface for host-side token management.
+        configuration_items:
+          - name: cli.py
+            description: Argparse-based CLI for token lifecycle commands and server startup.
+            functions:
+              - Handle Token Create Command
+              - Handle Token List Command
+              - Handle Token Revoke Command
+              - Handle Token Rotate Command
+              - Handle Serve Command
