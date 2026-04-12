@@ -72,39 +72,27 @@ components:
               - Handle Serve Command
   - name: things-bridge
     description: HTTP server running on the host that proxies Things3 operations via AppleScript, delegating auth to agent-auth.
-    components:
-      - name: Bridge Server
-        description: HTTP API and authorization delegation logic.
-        configuration_items:
-          - name: things_server.py
-            description: HTTP endpoints for Things3 operations with auth delegation to agent-auth.
-            functions:
-              - Serve Things HTTP API
-              - Delegate Token Validation
-      - name: Things AppleScript
-        description: AppleScript execution layer for Things3.
-        configuration_items:
-          - name: things_applescript.py
-            description: AppleScript command construction and execution for Things3 operations.
-            functions:
-              - Execute Things AppleScript
+    configuration_items:
+      - name: things_server.py
+        description: HTTP endpoints for Things3 operations with auth delegation to agent-auth.
+        functions:
+          - Serve Things HTTP API
+          - Delegate Token Validation
+      - name: things_applescript.py
+        description: AppleScript command construction and execution for Things3 operations.
+        functions:
+          - Execute Things AppleScript
   - name: things-cli
     description: Thin CLI client for Things3 that can run on the host or in a devcontainer.
-    components:
-      - name: CLI Client
-        description: Command-line interface and HTTP client for the things-bridge.
-        configuration_items:
-          - name: things_cli.py
-            description: CLI argument parsing, bridge communication, and result display.
-            functions:
-              - Handle Things Commands
-              - Send Bridge Request
-              - Display Results
-      - name: Credential Management
-        description: Local credential storage and automatic token refresh.
-        configuration_items:
-          - name: things_credentials.py
-            description: Credential persistence and automatic token refresh on 401 responses.
-            functions:
-              - Store CLI Credentials
-              - Auto Refresh Token
+    configuration_items:
+      - name: things_cli.py
+        description: CLI argument parsing, bridge communication, and result display.
+        functions:
+          - Handle Things Commands
+          - Send Bridge Request
+          - Display Results
+      - name: things_credentials.py
+        description: Credential persistence and automatic token refresh on 401 responses.
+        functions:
+          - Store CLI Credentials
+          - Auto Refresh Token
