@@ -92,6 +92,14 @@ POST /token/refresh
 
 The refresh token is single-use. If agent-auth receives a refresh request for an already-consumed token, it revokes the entire token family (all access and refresh tokens descended from the same original creation). This detects stolen refresh tokens: if the attacker and the legitimate client both try to refresh, one will hit a consumed token and trigger revocation.
 
+**Scope modification:**
+```
+agent-auth token modify <family-id> --add-scope outlook:mail:read --remove-scope things:write
+agent-auth token modify <family-id> --set-tier things:write=prompt
+```
+
+Updates the scopes on an existing token family. Takes effect immediately on the next `/validate` call — no new tokens are issued, and no client reconfiguration is needed. The client keeps using the same access and refresh tokens.
+
 **Rotation:**
 ```
 agent-auth token rotate <token-id> --expires 7d
@@ -99,7 +107,7 @@ agent-auth token rotate <token-id> --expires 7d
 ← new access_token + refresh_token with same scopes
 ```
 
-Manual rotation creates a completely new token family. Used when changing scopes or as a periodic security practice.
+Manual rotation creates a completely new token family. Used as a periodic security practice or when a full credential reset is needed.
 
 **Revocation:**
 ```

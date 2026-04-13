@@ -5,10 +5,11 @@ components:
     description: HTTP server and token management service running on the host.
     configuration_items:
       - name: token_manager.py
-        description: Token pair creation, refresh, rotation, and revocation logic.
+        description: Token pair creation, refresh, rotation, revocation, and scope modification logic.
         functions:
           - Create Token Pair
           - Refresh Token Pair
+          - Modify Token Family Scopes
           - Revoke Token Family
           - Rotate Token Family
           - Introspect Token
@@ -52,6 +53,7 @@ components:
         functions:
           - Handle Token Create Command
           - Handle Token List Command
+          - Handle Token Modify Command
           - Handle Token Revoke Command
           - Handle Token Rotate Command
           - Handle Serve Command

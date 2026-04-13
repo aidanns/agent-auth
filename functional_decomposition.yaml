@@ -10,6 +10,8 @@ functions:
         description: Exchange a valid refresh token for a new access/refresh token pair, revoking the old refresh token.
       - name: Revoke Token Family
         description: Revoke all access and refresh tokens belonging to a token family.
+      - name: Modify Token Family Scopes
+        description: Add, remove, or change the access tier of scopes on an existing token family.
       - name: Rotate Token Family
         description: Revoke an existing token family and issue a new one with the same scopes.
       - name: Introspect Token
@@ -76,6 +78,8 @@ functions:
         description: Parse arguments and invoke token pair creation.
       - name: Handle Token List Command
         description: Display all active token families and their scopes.
+      - name: Handle Token Modify Command
+        description: Parse arguments and invoke scope modification on an existing token family.
       - name: Handle Token Revoke Command
         description: Parse arguments and invoke token family revocation.
       - name: Handle Token Rotate Command
