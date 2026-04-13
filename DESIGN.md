@@ -291,7 +291,15 @@ app-cli complete <id>
 
 ## Token Store
 
-SQLite database at `~/.config/agent-auth/tokens.db`. All data in the database is encrypted at rest using a database encryption key stored in the system keyring (macOS Keychain or libsecret/gnome-keyring). agent-auth generates this key on first startup if it does not already exist. This prevents token data from being read if the database file is copied off the host.
+SQLite database at `~/.config/agent-auth/tokens.db`.
+
+### Encryption
+
+Sensitive column values are encrypted at the field level using AES-256-GCM before being written to the database. The encryption key is stored in the system keyring (macOS Keychain or libsecret/gnome-keyring). agent-auth generates this key on first startup if it does not already exist.
+
+Non-sensitive columns (IDs, timestamps, flags, types) are stored in plaintext so they remain queryable and indexable. Sensitive columns (token HMAC signatures, scope definitions, approval scopes) are encrypted. An attacker with the database file but not the keyring can see that tokens exist and when they expire, but cannot forge or use them.
+
+Encrypted columns are marked with (E) in the table definitions below.
 
 ### Tables
 
@@ -299,14 +307,15 @@ SQLite database at `~/.config/agent-auth/tokens.db`. All data in the database is
 | Column | Type | Description |
 |---|---|---|
 | id | TEXT PK | Family ID |
-| scopes | TEXT | JSON object mapping scope name to tier |
+| scopes | BLOB (E) | JSON object mapping scope name to tier |
 | created_at | TEXT | ISO 8601 timestamp |
 | revoked | INTEGER | 0 or 1 |
 
 **tokens:**
 | Column | Type | Description |
 |---|---|---|
-| id | TEXT PK | Token ID |
+| id | TEXT PK | Token ID (family ID portion only, no HMAC signature) |
+| hmac_signature | BLOB (E) | HMAC signature portion of the token |
 | family_id | TEXT FK | References token_families.id |
 | type | TEXT | "access" or "refresh" |
 | expires_at | TEXT | ISO 8601 timestamp |
@@ -317,7 +326,7 @@ SQLite database at `~/.config/agent-auth/tokens.db`. All data in the database is
 |---|---|---|
 | id | TEXT PK | Grant ID |
 | token_id | TEXT | Access token this grant applies to |
-| scope | TEXT | Scope that was approved |
+| scope | BLOB (E) | Scope that was approved |
 | grant_type | TEXT | "once", "session", or "timed" |
 | expires_at | TEXT | NULL for "once" and "session", ISO 8601 for "timed" |
 
@@ -455,7 +464,7 @@ Response (200):
 ## Security Considerations
 
 - The signing key is stored in the system keyring (macOS Keychain or libsecret/gnome-keyring), never as a plaintext file. Only agent-auth reads it.
-- The token store (SQLite) is encrypted at rest with a key stored in the system keyring. Only agent-auth accesses it.
+- The token store (SQLite) uses field-level encryption (AES-256-GCM) for sensitive columns, with the encryption key stored in the system keyring. Only agent-auth accesses it.
 - Bridges never see the signing key or token store — they delegate all auth decisions to agent-auth.
 - CLIs are untrusted. They cannot escalate scopes. A stolen access token is useful for at most 15 minutes. A stolen refresh token is detected on reuse and triggers family revocation.
 - All servers bind to `127.0.0.1`. Devcontainer access is provided via Docker port forwarding, not by binding to `0.0.0.0`.
