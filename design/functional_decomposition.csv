@@ -1,0 +1,60 @@
+Parent,Function,Description
+,agent-auth,Token-based authorization system for gating AI agent access to host applications.
+agent-auth,Token Management,"Create, store, and manage the lifecycle of access and refresh tokens."
+Token Management,Create Token Pair,Issue a new access token and refresh token with specified scopes and access tiers.
+Token Management,Refresh Token Pair,"Exchange a valid refresh token for a new access/refresh token pair, revoking the old refresh token."
+Token Management,Revoke Token Family,Revoke all access and refresh tokens belonging to a token family.
+Token Management,Modify Token Family Scopes,"Add, remove, or change the access tier of scopes on an existing token family."
+Token Management,Rotate Token Family,Revoke an existing token family and issue a new one with the same scopes.
+Token Management,Introspect Token,"Return metadata about a token including scopes, expiry, and family membership."
+Token Management,Detect Refresh Token Reuse,Detect when a consumed refresh token is reused and revoke the entire token family.
+agent-auth,Token Validation,Verify token authenticity and check scope authorization.
+Token Validation,Verify Token Signature,Validate the HMAC signature of a token against the signing key.
+Token Validation,Check Token Expiry,Verify that a token has not expired.
+Token Validation,Check Scope Authorization,Verify that a token carries the required scope for an operation.
+Token Validation,Resolve Access Tier,"Determine whether a scope is allow, prompt, or deny for a given token."
+agent-auth,JIT Approval,Request and manage human approval for prompt-tier operations via a pluggable notification system.
+JIT Approval,Request Approval,Hold a request pending and invoke the configured notification plugin to request user approval. The plugin is configured in agent-auth's configuration file (desktop notification by default).
+JIT Approval,Load Notification Plugin,Load and initialize the configured notification plugin from agent-auth's configuration file.
+JIT Approval,Record Approval Grant,"Record an approval decision with its grant type (once, session, or timed)."
+JIT Approval,Check Existing Grant,Check whether a prior approval grant covers the current request.
+JIT Approval,Expire Grants,Remove approval grants that have expired or are older than 60 minutes (session grants).
+agent-auth,Key Management,Manage cryptographic keys stored in the system keyring.
+Key Management,Generate Signing Key,Generate a new HMAC signing key in the system keyring on first use.
+Key Management,Load Signing Key,Load the HMAC signing key from the system keyring for token signing and verification.
+Key Management,Generate Encryption Key,Generate a new AES-256-GCM encryption key in the system keyring on first use.
+Key Management,Load Encryption Key,Load the encryption key from the system keyring for field-level encryption of sensitive database columns.
+agent-auth,Token Store,"Persist token families, tokens, and approval grants in SQLite with field-level encryption for sensitive columns."
+Token Store,Store Token Family,Write a new token family record with its scopes (encrypted) to the database.
+Token Store,Store Token,"Write a new access or refresh token record to the database, encrypting the HMAC signature."
+Token Store,Mark Token Consumed,Mark a refresh token as consumed after use.
+Token Store,Mark Family Revoked,"Mark a token family as revoked, invalidating all its tokens."
+Token Store,Store Approval Grant,"Write an approval grant record to the database, encrypting the scope."
+Token Store,Query Tokens,"Read token and family records for validation, introspection, and listing, decrypting sensitive fields."
+Token Store,Encrypt Field,Encrypt a column value using AES-256-GCM with the database encryption key.
+Token Store,Decrypt Field,Decrypt a column value using AES-256-GCM with the database encryption key.
+agent-auth,HTTP API,Expose agent-auth functionality over HTTP for use by app bridges and CLIs. All endpoints are prefixed with /agent-auth/.
+HTTP API,Serve Validate Endpoint,"Handle POST /agent-auth/validate requests from app bridges, including blocking for JIT approval on prompt-tier scopes."
+HTTP API,Serve Refresh Endpoint,Handle POST /agent-auth/token/refresh requests from CLIs.
+HTTP API,Serve Reissue Endpoint,Handle POST /agent-auth/token/reissue requests from CLIs when the refresh token has expired. Triggers JIT approval via the configured notification plugin.
+HTTP API,Serve Status Endpoint,Handle GET /agent-auth/token/status requests for token introspection.
+agent-auth,Audit Logging,Record all token operations and authorization decisions for security review.
+Audit Logging,Log Token Operation,"Record token creation, refresh, reissue, revocation, rotation, and scope modification events."
+Audit Logging,Log Authorization Decision,"Record validation results including scope checks, tier resolutions, and JIT approval outcomes."
+agent-auth,CLI Interface,Provide command-line token management for the host user.
+CLI Interface,Handle Token Create Command,Parse arguments and invoke token pair creation.
+CLI Interface,Handle Token List Command,Display all active token families and their scopes.
+CLI Interface,Handle Token Modify Command,Parse arguments and invoke scope modification on an existing token family.
+CLI Interface,Handle Token Revoke Command,Parse arguments and invoke token family revocation.
+CLI Interface,Handle Token Rotate Command,Parse arguments and invoke token family rotation.
+CLI Interface,Handle Serve Command,Start the agent-auth HTTP server.
+agent-auth,Example App Bridge,"Proxy requests from the CLI to an external system, delegating authorization to agent-auth. Each external system gets its own bridge."
+Example App Bridge,Delegate Token Validation,"Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation."
+Example App Bridge,Execute External System Interaction,Interact with the target external system and return structured results.
+Example App Bridge,Serve Bridge HTTP API,"Expose external system operations as HTTP endpoints for the CLI client, prefixed with the bridge name."
+agent-auth,Example App CLI,"Thin CLI client for interacting with an external system via its bridge, runnable from host or devcontainer."
+Example App CLI,Send Bridge Request,Send an authenticated HTTP request to the app bridge with the bearer token.
+Example App CLI,Auto Refresh Token,"Detect 401 responses, refresh the token pair via agent-auth, and retry the request. If the refresh token has expired, attempt re-issuance via JIT approval."
+Example App CLI,Store CLI Credentials,"Persist and load credentials using the system keyring (macOS Keychain or libsecret/gnome-keyring), with plaintext file fallback via --credential-store=file."
+Example App CLI,Handle App Commands,Parse CLI arguments and map subcommands to bridge HTTP requests.
+Example App CLI,Display Results,Format and print structured results from the bridge to the terminal.

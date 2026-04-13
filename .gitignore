@@ -5,8 +5,3 @@ __pycache__/
 dist/
 build/
 .eggs/
-design/*.d2
-design/*.svg
-design/*.png
-design/*.md
-design/*.csv
