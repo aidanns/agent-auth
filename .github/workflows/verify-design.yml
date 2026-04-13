@@ -16,6 +16,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install d2
+        run: curl -fsSL https://d2lang.com/install.sh | sh -s --
+
       - name: Install systems-engineering
         run: |
           curl -fsSL https://raw.githubusercontent.com/aidanns/systems-engineering/main/install.sh -o install.sh
