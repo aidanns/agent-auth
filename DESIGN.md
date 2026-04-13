@@ -7,17 +7,17 @@ agent-auth is a local authorization system for gating AI agent access to host ap
 ## Components
 
 ```
-┌─────────────────────┐            ┌──────────────────────────────┐
-│  Devcontainer        │            │  Host machine                 │
-│                      │            │                               │
-│  app-cli ─────HTTP──────────▶  app-bridge ──────────────────▶ External System
-│                 │    │            │    │                           │
-│                 │    │            │    │ HTTP (validate, approve)  │
-│                 │    │            │    ▼                           │
-│                 └─HTTP──────────▶  agent-auth                     │
-│                      │            │    ├─ tokens.db                │
-│                      │            │    └─ signing key (keyring)    │
-└─────────────────────┘            └──────────────────────────────┘
+┌──────────────────────┐            ┌─────────────────────────────────────────────┐
+│  Devcontainer         │            │  Host machine                                │
+│                       │            │                                              │
+│  app-cli ─────HTTP───────────▶  app-bridge ──────────────────▶ External System │
+│                 │     │            │    │                                         │
+│                 │     │            │    │ HTTP (validate, approve)                │
+│                 │     │            │    ▼                                         │
+│                 └─HTTP───────────▶  agent-auth                                   │
+│                       │            │    ├─ tokens.db                              │
+│                       │            │    └─ signing key (keyring)                  │
+└──────────────────────┘            └─────────────────────────────────────────────┘
 ```
 
 ### agent-auth
