@@ -1,40 +1,46 @@
 name: agent-auth
-description: Token-based authorization system for gating AI agent access to macOS applications via AppleScript.
+description: Token-based authorization system for gating AI agent access to host applications.
 components:
   - name: agent-auth
-    description: HTTP server and token management service running on the host.
+    description: HTTP server and CLI for token lifecycle management, validation, and JIT approval running on the host.
     configuration_items:
-      - name: token_manager.py
-        description: Token pair creation, refresh, rotation, revocation, and scope modification logic.
+      - name: agent-auth
+        type: service
+        description: HTTP server and CLI providing token lifecycle management, scope-based authorization, JIT approval, and audit logging.
         functions:
           - Create Token Pair
           - Refresh Token Pair
-          - Modify Token Family Scopes
           - Revoke Token Family
+          - Modify Token Family Scopes
           - Rotate Token Family
           - Introspect Token
           - Detect Refresh Token Reuse
-      - name: validator.py
-        description: Token signature verification and scope authorization checks.
-        functions:
           - Verify Token Signature
           - Check Token Expiry
           - Check Scope Authorization
           - Resolve Access Tier
-      - name: signing.py
-        description: HMAC signing key generation and loading.
-        functions:
-          - Generate Signing Key
-          - Load Signing Key
-      - name: approval.py
-        description: Approval request handling, grant recording, and grant checking.
-        functions:
           - Request Approval
+          - Load Notification Plugin
           - Record Approval Grant
           - Check Existing Grant
           - Expire Grants
-      - name: store.py
-        description: SQLite database access for token families, tokens, and approval grants.
+          - Encrypt Field
+          - Decrypt Field
+          - Serve Validate Endpoint
+          - Serve Refresh Endpoint
+          - Serve Reissue Endpoint
+          - Serve Status Endpoint
+          - Log Token Operation
+          - Log Authorization Decision
+          - Handle Token Create Command
+          - Handle Token List Command
+          - Handle Token Modify Command
+          - Handle Token Revoke Command
+          - Handle Token Rotate Command
+          - Handle Serve Command
+      - name: SQLite
+        type: third-party library
+        description: Embedded relational database providing persistent storage for token families, tokens, and approval grants.
         functions:
           - Store Token Family
           - Store Token
@@ -42,44 +48,53 @@ components:
           - Mark Family Revoked
           - Store Approval Grant
           - Query Tokens
-      - name: server.py
-        description: HTTP request handlers for validate, refresh, and status endpoints.
+      - name: keyring
+        type: third-party library
+        description: Python library providing a unified API for accessing system keyring backends to store the HMAC signing key and AES-256-GCM encryption key.
         functions:
-          - Serve Validate Endpoint
-          - Serve Refresh Endpoint
-          - Serve Status Endpoint
-      - name: cli.py
-        description: Argparse-based CLI for token lifecycle commands and server startup.
-        functions:
-          - Handle Token Create Command
-          - Handle Token List Command
-          - Handle Token Modify Command
-          - Handle Token Revoke Command
-          - Handle Token Rotate Command
-          - Handle Serve Command
-  - name: things-bridge
-    description: HTTP server running on the host that proxies Things3 operations via AppleScript, delegating auth to agent-auth.
+          - Generate Signing Key
+          - Load Signing Key
+          - Generate Encryption Key
+          - Load Encryption Key
+      - name: macOS Keychain
+        type: OS feature
+        description: macOS system keyring backend used to securely store the HMAC signing key and database encryption key.
+        functions: []
+      - name: gnome-keyring
+        type: OS feature
+        description: Linux system keyring backend (via libsecret/D-Bus Secret Service) used to securely store the HMAC signing key and database encryption key.
+        functions: []
+  - name: example-app-bridge
+    description: HTTP server running on the host that proxies operations to an external system, delegating authorization to agent-auth.
     configuration_items:
-      - name: things_server.py
-        description: HTTP endpoints for Things3 operations with auth delegation to agent-auth.
+      - name: example-app-bridge
+        type: service
+        description: HTTP server that maps endpoints to external system interactions, delegating token validation and JIT approval to agent-auth.
         functions:
-          - Serve Things HTTP API
           - Delegate Token Validation
-      - name: things_applescript.py
-        description: AppleScript command construction and execution for Things3 operations.
-        functions:
-          - Execute Things AppleScript
-  - name: things-cli
-    description: Thin CLI client for Things3 that can run on the host or in a devcontainer.
+          - Execute External System Interaction
+          - Serve Bridge HTTP API
+  - name: example-app-cli
+    description: Thin CLI client for interacting with an external system via its bridge, runnable from host or devcontainer.
     configuration_items:
-      - name: things_cli.py
-        description: CLI argument parsing, bridge communication, and result display.
+      - name: example-app-cli
+        type: service
+        description: CLI client that sends authenticated HTTP requests to the app bridge, with automatic token refresh and re-issuance on 401 responses.
         functions:
-          - Handle Things Commands
           - Send Bridge Request
-          - Display Results
-      - name: things_credentials.py
-        description: Credential persistence and automatic token refresh on 401 responses.
-        functions:
-          - Store CLI Credentials
           - Auto Refresh Token
+          - Store CLI Credentials
+          - Handle App Commands
+          - Display Results
+      - name: keyring
+        type: third-party library
+        description: Python library providing a unified API for accessing system keyring backends to store CLI credentials.
+        functions: []
+      - name: macOS Keychain
+        type: OS feature
+        description: macOS system keyring backend used to securely store CLI credentials.
+        functions: []
+      - name: gnome-keyring
+        type: OS feature
+        description: Linux system keyring backend (via libsecret/D-Bus Secret Service) used to securely store CLI credentials.
+        functions: []
