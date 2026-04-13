@@ -82,6 +82,30 @@ def _create_test_tokens(signing_key, store, scopes=None):
     return family_id, access_token, refresh_token
 
 
+def _create_test_tokens_expired_refresh(signing_key, store, scopes=None):
+    """Create a test token family with an expired refresh token (for reissue tests)."""
+    from datetime import datetime, timezone, timedelta
+
+    scopes = scopes or {"things:read": "allow"}
+    family_id = generate_token_id()
+    store.create_family(family_id, scopes)
+
+    now = datetime.now(timezone.utc)
+    access_id = generate_token_id()
+    access_token = sign_token(access_id, PREFIX_ACCESS, signing_key)
+    _, _, access_sig = access_token.split("_")
+    store.create_token(access_id, access_sig, family_id, "access",
+                       (now - timedelta(hours=1)).isoformat())
+
+    refresh_id = generate_token_id()
+    refresh_token = sign_token(refresh_id, PREFIX_REFRESH, signing_key)
+    _, _, refresh_sig = refresh_token.split("_")
+    store.create_token(refresh_id, refresh_sig, family_id, "refresh",
+                       (now - timedelta(hours=1)).isoformat())
+
+    return family_id, access_token, refresh_token
+
+
 def _post(url, data):
     body = json.dumps(data).encode("utf-8")
     req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
@@ -255,7 +279,7 @@ def test_reissue_approved(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit, AutoApprovePlugin())
     try:
-        family_id, _, _ = _create_test_tokens(signing_key, store)
+        family_id, _, _ = _create_test_tokens_expired_refresh(signing_key, store)
         status, body = _post(f"{base}/agent-auth/token/reissue", {
             "family_id": family_id,
         })
@@ -270,7 +294,7 @@ def test_reissue_denied(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit, AutoDenyPlugin())
     try:
-        family_id, _, _ = _create_test_tokens(signing_key, store)
+        family_id, _, _ = _create_test_tokens_expired_refresh(signing_key, store)
         status, body = _post(f"{base}/agent-auth/token/reissue", {
             "family_id": family_id,
         })

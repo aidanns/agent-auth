@@ -26,12 +26,15 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
     def _server(self):
         return self.server
 
-    def _read_json(self) -> dict:
+    def _read_json(self) -> dict | None:
         length = int(self.headers.get("Content-Length", 0))
         if length == 0:
             return {}
         body = self.rfile.read(length)
-        return json.loads(body)
+        try:
+            return json.loads(body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
 
     def _send_json(self, status: int, data: dict):
         body = json.dumps(data).encode("utf-8")
@@ -62,6 +65,9 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
 
     def _handle_validate(self):
         data = self._read_json()
+        if data is None:
+            self._send_json(400, {"error": "malformed_request"})
+            return
         token_raw = data.get("token", "")
         required_scope = data.get("required_scope", "")
         description = data.get("description")
@@ -165,6 +171,9 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
 
     def _handle_refresh(self):
         data = self._read_json()
+        if data is None:
+            self._send_json(400, {"error": "malformed_request"})
+            return
         refresh_token_raw = data.get("refresh_token", "")
 
         store: TokenStore = self._server.store
@@ -230,6 +239,9 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
 
     def _handle_reissue(self):
         data = self._read_json()
+        if data is None:
+            self._send_json(400, {"error": "malformed_request"})
+            return
         family_id = data.get("family_id", "")
 
         store: TokenStore = self._server.store
@@ -240,6 +252,23 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
 
         family = store.get_family(family_id)
         if family is None or family["revoked"]:
+            self._send_json(401, {"error": "family_revoked"})
+            return
+
+        # Per design: reissue is only available when the refresh token has expired
+        # (not consumed by reuse detection). Verify a refresh token exists and is expired.
+        family_tokens = store.get_tokens_by_family(family_id)
+        refresh_tokens = [t for t in family_tokens if t["type"] == "refresh"]
+        if not refresh_tokens:
+            self._send_json(401, {"error": "family_revoked"})
+            return
+        latest_refresh = max(refresh_tokens, key=lambda t: t["expires_at"])
+        now = datetime.now(timezone.utc)
+        refresh_expires = datetime.fromisoformat(latest_refresh["expires_at"])
+        if now < refresh_expires and not latest_refresh["consumed"]:
+            self._send_json(400, {"error": "refresh_token_still_valid"})
+            return
+        if latest_refresh["consumed"]:
             self._send_json(401, {"error": "family_revoked"})
             return
 

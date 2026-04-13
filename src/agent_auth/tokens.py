@@ -16,16 +16,17 @@ def generate_token_id() -> str:
     return uuid.uuid4().hex
 
 
-def _compute_hmac(token_id: str, signing_key: bytes) -> str:
-    """Compute HMAC-SHA256 over a token ID, returning the hex digest."""
-    return hmac.new(signing_key, token_id.encode("utf-8"), hashlib.sha256).hexdigest()
+def _compute_hmac(prefix: str, token_id: str, signing_key: bytes) -> str:
+    """Compute HMAC-SHA256 over prefix + token_id, returning the hex digest."""
+    message = f"{prefix}_{token_id}".encode("utf-8")
+    return hmac.new(signing_key, message, hashlib.sha256).hexdigest()
 
 
 def sign_token(token_id: str, prefix: str, signing_key: bytes) -> str:
     """Create a signed token string: <prefix>_<token_id>_<hmac>."""
     if prefix not in VALID_PREFIXES:
         raise ValueError(f"Invalid token prefix: {prefix}")
-    signature = _compute_hmac(token_id, signing_key)
+    signature = _compute_hmac(prefix, token_id, signing_key)
     return f"{prefix}_{token_id}_{signature}"
 
 
@@ -71,7 +72,7 @@ def verify_token(raw: str, signing_key: bytes) -> tuple[str, str]:
     Raises TokenInvalidError if signature verification fails.
     """
     prefix, token_id, signature = parse_token(raw)
-    expected = _compute_hmac(token_id, signing_key)
+    expected = _compute_hmac(prefix, token_id, signing_key)
     if not hmac.compare_digest(signature, expected):
         raise TokenInvalidError("Token signature verification failed")
     return prefix, token_id
