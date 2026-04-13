@@ -26,10 +26,14 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
     def _server(self):
         return self.server
 
+    MAX_BODY_SIZE = 1_048_576  # 1 MiB
+
     def _read_json(self) -> dict | None:
         length = int(self.headers.get("Content-Length", 0))
         if length == 0:
             return {}
+        if length > self.MAX_BODY_SIZE:
+            return None
         body = self.rfile.read(length)
         try:
             return json.loads(body)
@@ -332,6 +336,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             "family_id": token_record["family_id"],
             "type": token_record["type"],
             "scopes": family["scopes"],
+            "revoked": family["revoked"],
             "expires_at": token_record["expires_at"],
             "expires_in": expires_in,
         })
