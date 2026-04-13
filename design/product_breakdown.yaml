@@ -4,9 +4,8 @@ components:
   - name: agent-auth
     description: HTTP server and CLI for token lifecycle management, validation, and JIT approval running on the host.
     configuration_items:
-      - name: agent-auth
-        type: service
-        description: HTTP server and CLI providing token lifecycle management, scope-based authorization, JIT approval, and audit logging.
+      - name: agent-auth-server
+        description: HTTP server and CLI service providing token lifecycle management, scope-based authorization, JIT approval, and audit logging.
         functions:
           - Create Token Pair
           - Refresh Token Pair
@@ -39,8 +38,7 @@ components:
           - Handle Token Rotate Command
           - Handle Serve Command
       - name: SQLite
-        type: third-party library
-        description: Embedded relational database providing persistent storage for token families, tokens, and approval grants.
+        description: Third-party embedded relational database providing persistent storage for token families, tokens, and approval grants.
         functions:
           - Store Token Family
           - Store Token
@@ -49,27 +47,23 @@ components:
           - Store Approval Grant
           - Query Tokens
       - name: keyring
-        type: third-party library
-        description: Python library providing a unified API for accessing system keyring backends to store the HMAC signing key and AES-256-GCM encryption key.
+        description: Third-party Python library providing a unified API for accessing system keyring backends to store the HMAC signing key and AES-256-GCM encryption key.
         functions:
           - Generate Signing Key
           - Load Signing Key
           - Generate Encryption Key
           - Load Encryption Key
       - name: macOS Keychain
-        type: OS feature
-        description: macOS system keyring backend used to securely store the HMAC signing key and database encryption key.
+        description: Operating system keyring backend used to securely store the HMAC signing key and database encryption key on macOS.
         functions: []
       - name: gnome-keyring
-        type: OS feature
-        description: Linux system keyring backend (via libsecret/D-Bus Secret Service) used to securely store the HMAC signing key and database encryption key.
+        description: Operating system keyring backend (via libsecret/D-Bus Secret Service) used to securely store the HMAC signing key and database encryption key on Linux.
         functions: []
   - name: example-app-bridge
     description: HTTP server running on the host that proxies operations to an external system, delegating authorization to agent-auth.
     configuration_items:
       - name: example-app-bridge
-        type: service
-        description: HTTP server that maps endpoints to external system interactions, delegating token validation and JIT approval to agent-auth.
+        description: HTTP server service that maps endpoints to external system interactions, delegating token validation and JIT approval to agent-auth.
         functions:
           - Delegate Token Validation
           - Execute External System Interaction
@@ -78,8 +72,7 @@ components:
     description: Thin CLI client for interacting with an external system via its bridge, runnable from host or devcontainer.
     configuration_items:
       - name: example-app-cli
-        type: service
-        description: CLI client that sends authenticated HTTP requests to the app bridge, with automatic token refresh and re-issuance on 401 responses.
+        description: CLI client service that sends authenticated HTTP requests to the app bridge, with automatic token refresh and re-issuance on 401 responses.
         functions:
           - Send Bridge Request
           - Auto Refresh Token
@@ -87,14 +80,11 @@ components:
           - Handle App Commands
           - Display Results
       - name: keyring
-        type: third-party library
-        description: Python library providing a unified API for accessing system keyring backends to store CLI credentials.
+        description: Third-party Python library providing a unified API for accessing system keyring backends to store CLI credentials.
         functions: []
       - name: macOS Keychain
-        type: OS feature
-        description: macOS system keyring backend used to securely store CLI credentials.
+        description: Operating system keyring backend used to securely store CLI credentials on macOS.
         functions: []
       - name: gnome-keyring
-        type: OS feature
-        description: Linux system keyring backend (via libsecret/D-Bus Secret Service) used to securely store CLI credentials.
+        description: Operating system keyring backend (via libsecret/D-Bus Secret Service) used to securely store CLI credentials on Linux.
         functions: []
