@@ -16,7 +16,7 @@ agent-auth is a local authorization system for gating AI agent access to macOS a
 │                 │    │            │    ▼                           │
 │                 └─HTTP──────────▶  agent-auth                     │
 │                      │            │    ├─ tokens.db                │
-│                      │            │    └─ signing.key              │
+│                      │            │    └─ signing key (keyring)    │
 └─────────────────────┘            └──────────────────────────────┘
 ```
 
@@ -61,7 +61,7 @@ aa_<token-id>_<hmac-signature>    # access token
 rt_<token-id>_<hmac-signature>    # refresh token
 ```
 
-The signature is computed over the token ID using a signing key stored at `~/.config/agent-auth/signing.key`. This prevents token forgery without access to the signing key.
+The signature is computed over the token ID using a signing key stored in the system keyring (macOS Keychain or libsecret/gnome-keyring). agent-auth generates the key on first startup if it does not already exist in the keyring. This prevents token forgery without access to the signing key and avoids storing key material as a plaintext file on disk.
 
 ### Token Pair
 
@@ -449,7 +449,7 @@ Response (200):
 
 ## Security Considerations
 
-- The signing key never leaves the host. Only agent-auth reads it.
+- The signing key is stored in the system keyring (macOS Keychain or libsecret/gnome-keyring), never as a plaintext file. Only agent-auth reads it.
 - The token store (SQLite) is only accessed by agent-auth.
 - Bridges never see the signing key or token store — they delegate all auth decisions to agent-auth.
 - CLIs are untrusted. They cannot escalate scopes. A stolen access token is useful for at most 15 minutes. A stolen refresh token is detected on reuse and triggers family revocation.
