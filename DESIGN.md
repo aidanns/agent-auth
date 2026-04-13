@@ -68,15 +68,16 @@ The signature is computed over the token ID using a signing key stored at `~/.co
 Each credential set consists of two tokens:
 
 - **Access token** — short-lived (default 15 minutes). Sent with every request to app bridges via the `Authorization: Bearer` header.
-- **Refresh token** — longer-lived (default 7 days). Used only to obtain a new access/refresh token pair from agent-auth. Single-use: consumed on use and replaced.
+- **Refresh token** — longer-lived (default 8 hours). Used only to obtain a new access/refresh token pair from agent-auth. Single-use: consumed on use and replaced.
 
 ### Token Lifecycle
 
 **Creation:**
 ```
-agent-auth token create --scope things:read --scope outlook:mail:read --expires 7d
+agent-auth token create --scope things:read --scope outlook:mail:read
 → access_token: aa_xxx_yyy
   refresh_token: rt_xxx_yyy
+  family_id: fff
   expires_in: 900
 ```
 
@@ -102,7 +103,7 @@ Updates the scopes on an existing token family. Takes effect immediately on the 
 
 **Rotation:**
 ```
-agent-auth token rotate <token-id> --expires 7d
+agent-auth token rotate <token-id>
 → old token family revoked
 ← new access_token + refresh_token with same scopes
 ```
@@ -115,21 +116,44 @@ agent-auth token revoke <token-id>
 → entire token family revoked (all access + refresh tokens)
 ```
 
+**Re-issuance (expired refresh token):**
+
+When a CLI attempts to refresh and receives a `refresh_token_expired` error, it can request re-issuance of a new token pair for the same token family. This requires JIT approval from the user on the host.
+
+```
+POST /token/reissue
+{"family_id": "fff"}
+← blocks — agent-auth triggers JIT approval interaction on the host
+← {"access_token": "aa_zzz_www", "refresh_token": "rt_zzz_www", "expires_in": 900}
+```
+
+Re-issuance inherits the scopes and tiers from the existing token family. It does not allow scope escalation. The old token family remains intact (it is not revoked) — re-issuance simply creates a new access/refresh token pair within the same family.
+
+Re-issuance is only available for token families that are not revoked and whose refresh token has expired (not been consumed by reuse detection). If the family was revoked due to refresh token reuse, re-issuance is denied — the user must create a new token via the CLI.
+
+The JIT approval interaction is deliberately unspecified: it could be a macOS notification, Touch ID, a YubiKey tap, or any other local authentication mechanism. The requirement is that the user must be physically present at the host and must explicitly approve the re-issuance.
+
 ### CLI Credential Storage
 
-The CLI stores its current credentials locally:
+The CLI uses the system keyring to store credentials (access token, refresh token, family ID, endpoint URLs). The backend is selected automatically:
 
-```
-~/.config/things-cli/credentials.json
-{
-  "access_token": "aa_xxx_yyy",
-  "refresh_token": "rt_xxx_yyy",
-  "bridge_url": "http://host.docker.internal:9200",
-  "auth_url": "http://host.docker.internal:9100"
-}
-```
+1. **macOS Keychain** — used on macOS hosts. Credentials are stored via the Keychain Services API.
+2. **libsecret / gnome-keyring** — used in Linux environments (including devcontainers) where a Secret Service D-Bus backend is available.
+3. **Plaintext file** — `~/.config/<app>-cli/credentials.json` with `0600` permissions. Only used when the `--credential-store=file` flag is explicitly passed. The CLI refuses to store credentials on disk without this flag.
 
-On 401 from the bridge, the CLI automatically attempts a refresh before failing.
+All three backends are abstracted behind the Python `keyring` library. The CLI detects available backends at startup and uses the highest-priority one. If no keyring backend is available and `--credential-store=file` was not passed, the CLI exits with an error explaining the options.
+
+Stored credentials:
+
+| Key | Value |
+|---|---|
+| `access_token` | `aa_xxx_yyy` |
+| `refresh_token` | `rt_xxx_yyy` |
+| `family_id` | `fff` |
+| `bridge_url` | `http://host.docker.internal:9200` |
+| `auth_url` | `http://host.docker.internal:9100` |
+
+On 401 from the bridge, the CLI automatically attempts a refresh. If the refresh token has expired, the CLI attempts re-issuance (which blocks on JIT approval). If re-issuance is denied or the family is revoked, the CLI fails and the user must create a new token.
 
 ## Authorization
 
@@ -214,6 +238,30 @@ things-cli inbox
   things-cli:
     → POST http://host:9100/token/refresh
       {"refresh_token": "rt_xxx_yyy"}
+    ← {"access_token": "aa_zzz_www", "refresh_token": "rt_zzz_www", "expires_in": 900}
+    → saves new credentials to disk
+
+    → GET http://host:9200/inbox
+      Authorization: Bearer aa_zzz_www
+    ← 200 response with results
+```
+
+### Expired refresh token with JIT re-issuance
+
+```
+things-cli inbox
+  → GET http://host:9200/inbox
+    Authorization: Bearer aa_xxx_yyy
+  ← 401 Unauthorized
+
+  things-cli:
+    → POST http://host:9100/token/refresh
+      {"refresh_token": "rt_xxx_yyy"}
+    ← 401 {"error": "refresh_token_expired"}
+
+    → POST http://host:9100/token/reissue
+      {"family_id": "fff"}
+    ← blocks — agent-auth triggers JIT approval on the host
     ← {"access_token": "aa_zzz_www", "refresh_token": "rt_zzz_www", "expires_in": 900}
     → saves new credentials to disk
 
@@ -322,9 +370,45 @@ Response (200):
 }
 ```
 
+Response (401 — token expired):
+```json
+{"error": "refresh_token_expired"}
+```
+
 Response (401 — token consumed, family revoked):
 ```json
 {"error": "refresh_token_reuse_detected", "detail": "Token family revoked"}
+```
+
+### POST /token/reissue
+
+Request a new access/refresh token pair for a token family whose refresh token has expired. Requires JIT approval from the user on the host.
+
+Request:
+```json
+{"family_id": "fff"}
+```
+
+The request blocks while agent-auth triggers a JIT approval interaction on the host. The approval mechanism is implementation-defined (macOS notification, Touch ID, YubiKey, etc.).
+
+Response (200 — approved):
+```json
+{
+  "access_token": "aa_zzz_www",
+  "refresh_token": "rt_zzz_www",
+  "expires_in": 900,
+  "scopes": {"things:read": "allowed", "things:write": "prompt"}
+}
+```
+
+Response (403 — user denied re-issuance):
+```json
+{"error": "reissue_denied"}
+```
+
+Response (401 — family revoked or not found):
+```json
+{"error": "family_revoked"}
 ```
 
 ### GET /token/status
