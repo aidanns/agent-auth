@@ -2,7 +2,7 @@
 
 ## Overview
 
-agent-auth is a local authorization system for gating AI agent access to macOS applications via AppleScript. It provides scoped, short-lived tokens with JIT human approval for sensitive operations.
+agent-auth is a local authorization system for gating AI agent access to host applications. It provides scoped, short-lived tokens with JIT human approval for sensitive operations.
 
 ## Components
 
@@ -10,7 +10,7 @@ agent-auth is a local authorization system for gating AI agent access to macOS a
 ┌─────────────────────┐            ┌──────────────────────────────┐
 │  Devcontainer        │            │  Host machine                 │
 │                      │            │                               │
-│  things-cli ───HTTP──────────▶  things-bridge ──AppleScript──▶ Things3
+│  app-cli ─────HTTP──────────▶  app-bridge ──────────────────▶ External System
 │                 │    │            │    │                           │
 │                 │    │            │    │ HTTP (validate, approve)  │
 │                 │    │            │    ▼                           │
@@ -26,21 +26,23 @@ HTTP server running on the host. Sole owner of the token store and signing key.
 
 Responsibilities:
 - Token lifecycle: create, validate, refresh, revoke, rotate
-- JIT approval: hold requests pending human approval via macOS notifications
-- Scope policy: define which scopes exist and their access tier (allowed/prompt/denied)
+- Scope modification: add, remove, or change tiers on existing token families
+- JIT approval: hold requests pending human approval via a configurable notification plugin
+- Scope policy: define which scopes exist and their access tier (allow/prompt/deny)
+- Audit logging: record all token operations and authorization decisions
 
-### things-bridge (and future app bridges)
+### example-app-bridge (and future app bridges)
 
-HTTP server running on the host. Receives requests from the CLI client, delegates token validation and approval to agent-auth, then executes AppleScript against the target application.
+HTTP server running on the host. Receives requests from the CLI client, delegates token validation and approval to agent-auth, then interacts with the target external system.
 
 Responsibilities:
-- Map HTTP endpoints to AppleScript operations
+- Map HTTP endpoints to external system interactions
 - Call agent-auth to validate tokens and request approval before executing
 - Return structured results to the CLI client
 
-Each macOS application gets its own bridge server. Bridges are independent of each other and only depend on agent-auth for authorization.
+Each external system gets its own bridge server. Bridges are independent of each other and only depend on agent-auth for authorization.
 
-### things-cli (and future app CLIs)
+### example-app-cli (and future app CLIs)
 
 Thin CLI client that can run anywhere (host or devcontainer). Sends HTTP requests to the corresponding bridge with a bearer token. Handles automatic token refresh on 401 responses.
 
@@ -48,7 +50,7 @@ Responsibilities:
 - Provide a CLI interface for the application
 - Pass the bearer token from local credential storage
 - Automatically refresh expired access tokens using the refresh token
-- Store credentials locally
+- Store credentials in the system keyring (see CLI Credential Storage below)
 
 ## Authentication
 
@@ -85,7 +87,7 @@ Both tokens are displayed once. The user configures the CLI client with these cr
 
 **Refresh:**
 ```
-POST /token/refresh
+POST /agent-auth/token/refresh
 {"refresh_token": "rt_xxx_yyy"}
 → old refresh token revoked
 ← {"access_token": "aa_zzz_www", "refresh_token": "rt_zzz_www", "expires_in": 900}
@@ -121,9 +123,9 @@ agent-auth token revoke <token-id>
 When a CLI attempts to refresh and receives a `refresh_token_expired` error, it can request re-issuance of a new token pair for the same token family. This requires JIT approval from the user on the host.
 
 ```
-POST /token/reissue
+POST /agent-auth/token/reissue
 {"family_id": "fff"}
-← blocks — agent-auth triggers JIT approval interaction on the host
+← blocks — agent-auth triggers JIT approval via configured notification plugin
 ← {"access_token": "aa_zzz_www", "refresh_token": "rt_zzz_www", "expires_in": 900}
 ```
 
@@ -131,7 +133,7 @@ Re-issuance inherits the scopes and tiers from the existing token family. It doe
 
 Re-issuance is only available for token families that are not revoked and whose refresh token has expired (not been consumed by reuse detection). If the family was revoked due to refresh token reuse, re-issuance is denied — the user must create a new token via the CLI.
 
-The JIT approval interaction is deliberately unspecified: it could be a macOS notification, Touch ID, a YubiKey tap, or any other local authentication mechanism. The requirement is that the user must be physically present at the host and must explicitly approve the re-issuance.
+The JIT approval interaction uses the same configurable notification plugin as prompt-tier scope approval. The requirement is that the user must be physically present at the host and must explicitly approve the re-issuance.
 
 ### CLI Credential Storage
 
@@ -178,70 +180,71 @@ Each token is issued with a fixed set of scopes. Scopes cannot be escalated via 
 
 Each scope on a token has one of three tiers:
 
-- **allowed** — request executes immediately
-- **prompt** — request is held until the user approves via macOS notification
-- **denied** — request is rejected, tool is not available
+- **allow** — request executes immediately
+- **prompt** — request is held until the user approves via a configured notification plugin
+- **deny** — request is rejected, tool is not available
 
-Tiers are configured per-token at creation time:
+Tiers are configured per-token at creation time and can be adjusted later via `agent-auth token modify`:
 
 ```
 agent-auth token create \
-  --scope things:read=allowed \
+  --scope things:read=allow \
   --scope things:write=prompt \
-  --scope outlook:mail:send=denied \
-  --expires 7d
+  --scope outlook:mail:send=deny
 ```
 
-If no tier is specified, the default is `allowed`.
+If no tier is specified, the default is `allow`.
 
 ### JIT Approval Flow
 
 When a bridge calls agent-auth to validate a token for a `prompt`-tier scope:
 
-1. agent-auth sends a macOS notification: "Claude wants to complete todo: Buy milk — Allow / Deny"
+1. agent-auth requests user approval via the configured notification plugin (desktop notification by default if no other method is configured)
 2. The validation request blocks until the user responds
 3. On approval, agent-auth returns success and the bridge proceeds
 4. On denial, agent-auth returns forbidden and the bridge rejects the request
 
+The notification plugin is configured in agent-auth's configuration file, following a similar model to Claude Code hooks. This allows different notification methods (desktop notifications, Touch ID, YubiKey, custom scripts, etc.) to be swapped in without changing agent-auth itself.
+
 Approval grants can be scoped:
 - **Once** — this specific invocation only
-- **Session** — allow this scope for the lifetime of the current access token
+- **Session** — allow this scope for 60 minutes
 - **Time-boxed** — allow for the next N minutes
 
-Session-level grants are stored in memory on the agent-auth server. They do not modify the token and expire when the access token expires or the server restarts.
+Session-level grants are stored in memory on the agent-auth server. They do not modify the token and expire after 60 minutes or when the server restarts, whichever comes first.
 
 ## Request Flow
 
-### Standard request (allowed tier)
+### Standard request (allow tier)
 
 ```
-things-cli inbox
-  → GET http://host:9200/inbox
+app-cli inbox
+  → GET http://host:9200/app-bridge/inbox
     Authorization: Bearer aa_xxx_yyy
 
-  things-bridge:
-    → POST http://localhost:9100/validate
-      {"token": "aa_xxx_yyy", "required_scope": "things:read"}
-    ← {"valid": true, "tier": "allowed"}
-    → executes AppleScript
+  app-bridge:
+    → POST http://localhost:9100/agent-auth/validate
+      {"token": "aa_xxx_yyy", "required_scope": "app:read"}
+    ← {"valid": true, "tier": "allow"}
+    → interacts with external system
   ← 200 response with results
 ```
 
 ### Expired token with automatic refresh
 
 ```
-things-cli inbox
-  → GET http://host:9200/inbox
+app-cli inbox
+  → GET http://host:9200/app-bridge/inbox
     Authorization: Bearer aa_xxx_yyy
   ← 401 Unauthorized
 
-  things-cli:
-    → POST http://host:9100/token/refresh
+  app-cli:
+    → POST http://host:9100/agent-auth/token/refresh
       {"refresh_token": "rt_xxx_yyy"}
     ← {"access_token": "aa_zzz_www", "refresh_token": "rt_zzz_www", "expires_in": 900}
-    → saves new credentials to disk
+    → saves new credentials
 
-    → GET http://host:9200/inbox
+    → GET http://host:9200/app-bridge/inbox
       Authorization: Bearer aa_zzz_www
     ← 200 response with results
 ```
@@ -249,23 +252,23 @@ things-cli inbox
 ### Expired refresh token with JIT re-issuance
 
 ```
-things-cli inbox
-  → GET http://host:9200/inbox
+app-cli inbox
+  → GET http://host:9200/app-bridge/inbox
     Authorization: Bearer aa_xxx_yyy
   ← 401 Unauthorized
 
-  things-cli:
-    → POST http://host:9100/token/refresh
+  app-cli:
+    → POST http://host:9100/agent-auth/token/refresh
       {"refresh_token": "rt_xxx_yyy"}
     ← 401 {"error": "refresh_token_expired"}
 
-    → POST http://host:9100/token/reissue
+    → POST http://host:9100/agent-auth/token/reissue
       {"family_id": "fff"}
     ← blocks — agent-auth triggers JIT approval on the host
     ← {"access_token": "aa_zzz_www", "refresh_token": "rt_zzz_www", "expires_in": 900}
-    → saves new credentials to disk
+    → saves new credentials
 
-    → GET http://host:9200/inbox
+    → GET http://host:9200/app-bridge/inbox
       Authorization: Bearer aa_zzz_www
     ← 200 response with results
 ```
@@ -273,22 +276,22 @@ things-cli inbox
 ### JIT approval (prompt tier)
 
 ```
-things-cli complete <id>
-  → POST http://host:9200/complete
+app-cli complete <id>
+  → POST http://host:9200/app-bridge/complete
     Authorization: Bearer aa_xxx_yyy
 
-  things-bridge:
-    → POST http://localhost:9100/validate
-      {"token": "aa_xxx_yyy", "required_scope": "things:write", "description": "Complete todo: Buy milk"}
-    ← blocks — agent-auth triggers macOS notification and waits for user response
+  app-bridge:
+    → POST http://localhost:9100/agent-auth/validate
+      {"token": "aa_xxx_yyy", "required_scope": "app:write", "description": "Complete todo: Buy milk"}
+    ← blocks — agent-auth triggers notification via configured plugin and waits for user response
     ← {"valid": true}
-    → executes AppleScript
+    → interacts with external system
   ← 200 response with results
 ```
 
 ## Token Store
 
-SQLite database at `~/.config/agent-auth/tokens.db`.
+SQLite database at `~/.config/agent-auth/tokens.db`. All data in the database is encrypted at rest using a database encryption key stored in the system keyring (macOS Keychain or libsecret/gnome-keyring). agent-auth generates this key on first startup if it does not already exist. This prevents token data from being read if the database file is copied off the host.
 
 ### Tables
 
@@ -320,7 +323,9 @@ SQLite database at `~/.config/agent-auth/tokens.db`.
 
 ## agent-auth HTTP API
 
-### POST /validate
+All endpoints are prefixed with `/agent-auth/` to allow hosting behind a shared reverse proxy alongside bridge servers.
+
+### POST /agent-auth/validate
 
 Validate a token and check scope authorization.
 
@@ -329,14 +334,14 @@ Request:
 {"token": "aa_xxx_yyy", "required_scope": "things:read", "description": "List inbox todos"}
 ```
 
-The `description` field is optional. It is used in JIT approval notifications for prompt-tier scopes so the user can see what operation is being requested.
+The `description` field is optional. It is passed to the notification plugin for prompt-tier scopes so the user can see what operation is being requested.
 
-For `allowed`-tier scopes, the response is immediate:
+For `allow`-tier scopes, the response is immediate:
 ```json
 {"valid": true}
 ```
 
-For `prompt`-tier scopes, the request blocks while agent-auth shows a macOS notification and waits for the user to approve or deny. The caller (bridge) sees the same response shape — it does not need to know whether approval was involved:
+For `prompt`-tier scopes, the request blocks while agent-auth triggers the configured notification plugin and waits for the user to approve or deny. The caller (bridge) sees the same response shape — it does not need to know whether approval was involved:
 ```json
 {"valid": true}
 ```
@@ -351,7 +356,7 @@ Response (403 — scope denied or JIT approval denied):
 {"valid": false, "error": "scope_denied"}
 ```
 
-### POST /token/refresh
+### POST /agent-auth/token/refresh
 
 Exchange a refresh token for a new access/refresh token pair.
 
@@ -366,7 +371,7 @@ Response (200):
   "access_token": "aa_zzz_www",
   "refresh_token": "rt_zzz_www",
   "expires_in": 900,
-  "scopes": {"things:read": "allowed", "things:write": "prompt"}
+  "scopes": {"things:read": "allow", "things:write": "prompt"}
 }
 ```
 
@@ -380,7 +385,7 @@ Response (401 — token consumed, family revoked):
 {"error": "refresh_token_reuse_detected", "detail": "Token family revoked"}
 ```
 
-### POST /token/reissue
+### POST /agent-auth/token/reissue
 
 Request a new access/refresh token pair for a token family whose refresh token has expired. Requires JIT approval from the user on the host.
 
@@ -389,7 +394,7 @@ Request:
 {"family_id": "fff"}
 ```
 
-The request blocks while agent-auth triggers a JIT approval interaction on the host. The approval mechanism is implementation-defined (macOS notification, Touch ID, YubiKey, etc.).
+The request blocks while agent-auth triggers JIT approval via the configured notification plugin.
 
 Response (200 — approved):
 ```json
@@ -397,7 +402,7 @@ Response (200 — approved):
   "access_token": "aa_zzz_www",
   "refresh_token": "rt_zzz_www",
   "expires_in": 900,
-  "scopes": {"things:read": "allowed", "things:write": "prompt"}
+  "scopes": {"things:read": "allow", "things:write": "prompt"}
 }
 ```
 
@@ -411,7 +416,7 @@ Response (401 — family revoked or not found):
 {"error": "family_revoked"}
 ```
 
-### GET /token/status
+### GET /agent-auth/token/status
 
 Introspect a token (read-only, for debugging).
 
@@ -426,7 +431,7 @@ Response (200):
   "token_id": "xxx",
   "family_id": "fff",
   "type": "access",
-  "scopes": {"things:read": "allowed", "things:write": "prompt"},
+  "scopes": {"things:read": "allow", "things:write": "prompt"},
   "expires_at": "2026-04-12T12:15:00Z",
   "expires_in": 732
 }
@@ -437,21 +442,22 @@ Response (200):
 ### Local (host only)
 
 - agent-auth listens on `127.0.0.1:9100`
-- things-bridge listens on `127.0.0.1:9200`
+- App bridges listen on `127.0.0.1:9200` (and subsequent ports for additional bridges)
 - CLIs call localhost directly
 
 ### Devcontainer
 
-- agent-auth listens on `127.0.0.1:9100` (host only — bridges access via localhost)
-- things-bridge listens on `0.0.0.0:9200` (accessible from devcontainer)
-- CLIs use `host.docker.internal:9200` for bridge, `host.docker.internal:9100` for token refresh
-- Docker port forwarding exposes 9200 and 9100 to the devcontainer
+- agent-auth listens on `127.0.0.1:9100`
+- App bridges listen on `127.0.0.1:9200`
+- Docker port forwarding exposes host ports to the devcontainer
+- CLIs use `host.docker.internal:9200` for bridge, `host.docker.internal:9100` for agent-auth
 
 ## Security Considerations
 
 - The signing key is stored in the system keyring (macOS Keychain or libsecret/gnome-keyring), never as a plaintext file. Only agent-auth reads it.
-- The token store (SQLite) is only accessed by agent-auth.
+- The token store (SQLite) is encrypted at rest with a key stored in the system keyring. Only agent-auth accesses it.
 - Bridges never see the signing key or token store — they delegate all auth decisions to agent-auth.
 - CLIs are untrusted. They cannot escalate scopes. A stolen access token is useful for at most 15 minutes. A stolen refresh token is detected on reuse and triggers family revocation.
-- agent-auth and bridge servers bind to localhost by default. Only bridge servers need to bind to 0.0.0.0 for devcontainer access.
+- All servers bind to `127.0.0.1`. Devcontainer access is provided via Docker port forwarding, not by binding to `0.0.0.0`.
 - JIT approval notifications include a human-readable description of the operation so the user can make an informed decision.
+- All token operations and authorization decisions are audit logged.
