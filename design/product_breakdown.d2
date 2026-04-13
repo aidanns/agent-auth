@@ -1,0 +1,94 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    # Terminal theme code
+    theme-id: 300
+  }
+}
+
+direction: down
+
+root: agent-auth
+root.width: 400
+
+p0: agent-auth
+p0.width: 400
+root -> p0
+p0_container: "" {
+  grid-columns: 3
+  grid-rows: 2
+  grid-gap: 5
+  style: {
+    stroke-width: 0
+    fill: transparent
+  }
+  p1: agent\nauth\nserver
+  p1.width: 150
+  p1.height: 150
+  p1.shape: circle
+  p2: SQLite
+  p2.width: 150
+  p2.height: 150
+  p2.shape: circle
+  p3: keyring
+  p3.width: 150
+  p3.height: 150
+  p3.shape: circle
+  p4: macOS\nKeychain
+  p4.width: 150
+  p4.height: 150
+  p4.shape: circle
+  p5: gnome\nkeyring
+  p5.width: 150
+  p5.height: 150
+  p5.shape: circle
+}
+p0 -> p0_container
+
+p6: example-app-bridge
+p6.width: 400
+root -> p6
+p6_container: "" {
+  grid-columns: 3
+  grid-rows: 1
+  grid-gap: 5
+  style: {
+    stroke-width: 0
+    fill: transparent
+  }
+  p7: example\napp\nbridge
+  p7.width: 150
+  p7.height: 150
+  p7.shape: circle
+}
+p6 -> p6_container
+
+p8: example-app-cli
+p8.width: 400
+root -> p8
+p8_container: "" {
+  grid-columns: 3
+  grid-rows: 2
+  grid-gap: 5
+  style: {
+    stroke-width: 0
+    fill: transparent
+  }
+  p9: example\napp\ncli
+  p9.width: 150
+  p9.height: 150
+  p9.shape: circle
+  p10: keyring
+  p10.width: 150
+  p10.height: 150
+  p10.shape: circle
+  p11: macOS\nKeychain
+  p11.width: 150
+  p11.height: 150
+  p11.shape: circle
+  p12: gnome\nkeyring
+  p12.width: 150
+  p12.height: 150
+  p12.shape: circle
+}
+p8 -> p8_container

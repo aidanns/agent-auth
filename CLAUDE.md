@@ -15,7 +15,7 @@ Token-based authorization system for gating AI agent access to macOS application
 - `src/agent_auth/cli.py` — CLI entrypoint using argparse
 - Token store will use SQLite at `~/.config/agent-auth/tokens.db`
 - Tokens are HMAC-signed: `aa_<token-id>_<hmac-signature>`
-- Signing key stored at `~/.config/agent-auth/signing.key`
+- Signing key stored in the system keyring (macOS Keychain or libsecret/gnome-keyring)
 
 ## Conventions
 
