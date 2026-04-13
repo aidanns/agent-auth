@@ -1,5 +1,5 @@
 name: agent-auth
-description: Token-based authorization system for gating AI agent access to macOS applications via AppleScript.
+description: Token-based authorization system for gating AI agent access to host applications.
 functions:
   - name: Token Management
     description: Create, store, and manage the lifecycle of access and refresh tokens.
@@ -28,49 +28,68 @@ functions:
       - name: Check Scope Authorization
         description: Verify that a token carries the required scope for an operation.
       - name: Resolve Access Tier
-        description: Determine whether a scope is allowed, prompt, or denied for a given token.
+        description: Determine whether a scope is allow, prompt, or deny for a given token.
   - name: JIT Approval
-    description: Request and manage human approval for prompt-tier operations.
+    description: Request and manage human approval for prompt-tier operations via a pluggable notification system.
     functions:
       - name: Request Approval
-        description: Hold a request pending and notify the user for approval via macOS notification.
+        description: Hold a request pending and invoke the configured notification plugin to request user approval. The plugin is configured in agent-auth's configuration file (desktop notification by default).
+      - name: Load Notification Plugin
+        description: Load and initialize the configured notification plugin from agent-auth's configuration file.
       - name: Record Approval Grant
         description: Record an approval decision with its grant type (once, session, or timed).
       - name: Check Existing Grant
         description: Check whether a prior approval grant covers the current request.
       - name: Expire Grants
-        description: Remove approval grants that have expired or whose associated access token has expired.
-  - name: Signing Key Management
-    description: Manage the HMAC signing key used for token signatures.
+        description: Remove approval grants that have expired or are older than 60 minutes (session grants).
+  - name: Key Management
+    description: Manage cryptographic keys stored in the system keyring.
     functions:
       - name: Generate Signing Key
-        description: Generate a new cryptographic signing key on first use.
+        description: Generate a new HMAC signing key in the system keyring on first use.
       - name: Load Signing Key
-        description: Load the signing key from disk for token signing and verification.
+        description: Load the HMAC signing key from the system keyring for token signing and verification.
+      - name: Generate Encryption Key
+        description: Generate a new AES-256-GCM encryption key in the system keyring on first use.
+      - name: Load Encryption Key
+        description: Load the encryption key from the system keyring for field-level encryption of sensitive database columns.
   - name: Token Store
-    description: Persist token families, tokens, and approval grants in SQLite.
+    description: Persist token families, tokens, and approval grants in SQLite with field-level encryption for sensitive columns.
     functions:
       - name: Store Token Family
-        description: Write a new token family record with its scopes to the database.
+        description: Write a new token family record with its scopes (encrypted) to the database.
       - name: Store Token
-        description: Write a new access or refresh token record to the database.
+        description: Write a new access or refresh token record to the database, encrypting the HMAC signature.
       - name: Mark Token Consumed
         description: Mark a refresh token as consumed after use.
       - name: Mark Family Revoked
         description: Mark a token family as revoked, invalidating all its tokens.
       - name: Store Approval Grant
-        description: Write an approval grant record to the database.
+        description: Write an approval grant record to the database, encrypting the scope.
       - name: Query Tokens
-        description: Read token and family records for validation, introspection, and listing.
+        description: Read token and family records for validation, introspection, and listing, decrypting sensitive fields.
+      - name: Encrypt Field
+        description: Encrypt a column value using AES-256-GCM with the database encryption key.
+      - name: Decrypt Field
+        description: Decrypt a column value using AES-256-GCM with the database encryption key.
   - name: HTTP API
-    description: Expose agent-auth functionality over HTTP for use by app bridges and CLIs.
+    description: Expose agent-auth functionality over HTTP for use by app bridges and CLIs. All endpoints are prefixed with /agent-auth/.
     functions:
       - name: Serve Validate Endpoint
-        description: Handle POST /validate requests from app bridges, including blocking for JIT approval on prompt-tier scopes.
+        description: Handle POST /agent-auth/validate requests from app bridges, including blocking for JIT approval on prompt-tier scopes.
       - name: Serve Refresh Endpoint
-        description: Handle POST /token/refresh requests from CLIs.
+        description: Handle POST /agent-auth/token/refresh requests from CLIs.
+      - name: Serve Reissue Endpoint
+        description: Handle POST /agent-auth/token/reissue requests from CLIs when the refresh token has expired. Triggers JIT approval via the configured notification plugin.
       - name: Serve Status Endpoint
-        description: Handle GET /token/status requests for token introspection.
+        description: Handle GET /agent-auth/token/status requests for token introspection.
+  - name: Audit Logging
+    description: Record all token operations and authorization decisions for security review.
+    functions:
+      - name: Log Token Operation
+        description: Record token creation, refresh, reissue, revocation, rotation, and scope modification events.
+      - name: Log Authorization Decision
+        description: Record validation results including scope checks, tier resolutions, and JIT approval outcomes.
   - name: CLI Interface
     description: Provide command-line token management for the host user.
     functions:
@@ -86,25 +105,25 @@ functions:
         description: Parse arguments and invoke token family rotation.
       - name: Handle Serve Command
         description: Start the agent-auth HTTP server.
-  - name: Things Bridge
-    description: Proxy requests from the CLI to Things3 via AppleScript, delegating authorization to agent-auth.
+  - name: Example App Bridge
+    description: Proxy requests from the CLI to an external system, delegating authorization to agent-auth. Each external system gets its own bridge.
     functions:
       - name: Delegate Token Validation
         description: Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation.
-      - name: Execute Things AppleScript
-        description: Execute AppleScript commands against Things3 and return structured results.
-      - name: Serve Things HTTP API
-        description: Expose Things3 operations as HTTP endpoints for the CLI client.
-  - name: Things CLI
-    description: Thin CLI client for interacting with Things3 via the bridge, runnable from host or devcontainer.
+      - name: Execute External System Interaction
+        description: Interact with the target external system and return structured results.
+      - name: Serve Bridge HTTP API
+        description: Expose external system operations as HTTP endpoints for the CLI client, prefixed with the bridge name.
+  - name: Example App CLI
+    description: Thin CLI client for interacting with an external system via its bridge, runnable from host or devcontainer.
     functions:
       - name: Send Bridge Request
-        description: Send an authenticated HTTP request to the things-bridge with the bearer token.
+        description: Send an authenticated HTTP request to the app bridge with the bearer token.
       - name: Auto Refresh Token
-        description: Detect 401 responses, refresh the token pair via agent-auth, and retry the request.
+        description: Detect 401 responses, refresh the token pair via agent-auth, and retry the request. If the refresh token has expired, attempt re-issuance via JIT approval.
       - name: Store CLI Credentials
-        description: Persist and load the current access and refresh tokens from local credential storage.
-      - name: Handle Things Commands
+        description: Persist and load credentials using the system keyring (macOS Keychain or libsecret/gnome-keyring), with plaintext file fallback via --credential-store=file.
+      - name: Handle App Commands
         description: Parse CLI arguments and map subcommands to bridge HTTP requests.
       - name: Display Results
         description: Format and print structured results from the bridge to the terminal.
