@@ -27,12 +27,11 @@
 | Key Management | Load Signing Key | Load the HMAC signing key from the system keyring for token signing and verification. |
 | Key Management | Generate Encryption Key | Generate a new AES-256-GCM encryption key in the system keyring on first use. |
 | Key Management | Load Encryption Key | Load the encryption key from the system keyring for field-level encryption of sensitive database columns. |
-| agent-auth | Token Store | Persist token families, tokens, and approval grants in SQLite with field-level encryption for sensitive columns. |
+| agent-auth | Token Store | Persist token families and tokens in SQLite with field-level encryption for sensitive columns. |
 | Token Store | Store Token Family | Write a new token family record with its scopes (encrypted) to the database. |
 | Token Store | Store Token | Write a new access or refresh token record to the database, encrypting the HMAC signature. |
 | Token Store | Mark Token Consumed | Mark a refresh token as consumed after use. |
 | Token Store | Mark Family Revoked | Mark a token family as revoked, invalidating all its tokens. |
-| Token Store | Store Approval Grant | Write an approval grant record to the database, encrypting the scope. |
 | Token Store | Query Tokens | Read token and family records for validation, introspection, and listing, decrypting sensitive fields. |
 | Token Store | Encrypt Field | Encrypt a column value using AES-256-GCM with the database encryption key. |
 | Token Store | Decrypt Field | Decrypt a column value using AES-256-GCM with the database encryption key. |

@@ -76,25 +76,6 @@ def test_get_tokens_by_family(store):
     assert len(tokens) == 2
 
 
-def test_create_and_get_grant(store):
-    store.create_family("fam1", {"a:read": "allow"})
-    store.create_token("tok1", "sig", "fam1", "access", "2099-01-01T00:00:00+00:00")
-    grant = store.create_grant("tok1", "a:read", "session", "2099-01-01T00:00:00+00:00")
-    assert grant["scope"] == "a:read"
-    assert grant["grant_type"] == "session"
-
-    active = store.get_active_grants("tok1", "a:read")
-    assert len(active) == 1
-
-
-def test_expired_grants_not_returned(store):
-    store.create_family("fam1", {"a:read": "allow"})
-    store.create_token("tok1", "sig", "fam1", "access", "2099-01-01T00:00:00+00:00")
-    store.create_grant("tok1", "a:read", "timed", "2000-01-01T00:00:00+00:00")
-    active = store.get_active_grants("tok1", "a:read")
-    assert len(active) == 0
-
-
 def test_scopes_are_encrypted_in_db(store, encryption_key):
     """Verify that scope data is stored encrypted, not as plaintext JSON."""
     store.create_family("fam1", {"secret:scope": "allow"})

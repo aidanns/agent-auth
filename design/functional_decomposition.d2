@@ -112,7 +112,7 @@ f24.width: 400
 root -> f24
 f24_container: "" {
   grid-columns: 1
-  grid-rows: 8
+  grid-rows: 7
   grid-gap: 5
   style: {
     stroke-width: 0
@@ -126,21 +126,19 @@ f24_container: "" {
   f27.width: 400
   f28: Mark Family Revoked
   f28.width: 400
-  f29: Store Approval Grant
+  f29: Query Tokens
   f29.width: 400
-  f30: Query Tokens
+  f30: Encrypt Field
   f30.width: 400
-  f31: Encrypt Field
+  f31: Decrypt Field
   f31.width: 400
-  f32: Decrypt Field
-  f32.width: 400
 }
 f24 -> f24_container
 
-f33: HTTP API
-f33.width: 400
-root -> f33
-f33_container: "" {
+f32: HTTP API
+f32.width: 400
+root -> f32
+f32_container: "" {
   grid-columns: 1
   grid-rows: 4
   grid-gap: 5
@@ -148,21 +146,21 @@ f33_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f34: Serve Validate Endpoint
+  f33: Serve Validate Endpoint
+  f33.width: 400
+  f34: Serve Refresh Endpoint
   f34.width: 400
-  f35: Serve Refresh Endpoint
+  f35: Serve Reissue Endpoint
   f35.width: 400
-  f36: Serve Reissue Endpoint
+  f36: Serve Status Endpoint
   f36.width: 400
-  f37: Serve Status Endpoint
-  f37.width: 400
 }
-f33 -> f33_container
+f32 -> f32_container
 
-f38: Audit Logging
-f38.width: 400
-root -> f38
-f38_container: "" {
+f37: Audit Logging
+f37.width: 400
+root -> f37
+f37_container: "" {
   grid-columns: 1
   grid-rows: 2
   grid-gap: 5
@@ -170,17 +168,17 @@ f38_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f39: Log Token Operation
+  f38: Log Token Operation
+  f38.width: 400
+  f39: Log Authorization Decision
   f39.width: 400
-  f40: Log Authorization Decision
-  f40.width: 400
 }
-f38 -> f38_container
+f37 -> f37_container
 
-f41: CLI Interface
-f41.width: 400
-root -> f41
-f41_container: "" {
+f40: CLI Interface
+f40.width: 400
+root -> f40
+f40_container: "" {
   grid-columns: 1
   grid-rows: 6
   grid-gap: 5
@@ -188,25 +186,25 @@ f41_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f42: Handle Token Create Command
+  f41: Handle Token Create Command
+  f41.width: 400
+  f42: Handle Token List Command
   f42.width: 400
-  f43: Handle Token List Command
+  f43: Handle Token Modify Command
   f43.width: 400
-  f44: Handle Token Modify Command
+  f44: Handle Token Revoke Command
   f44.width: 400
-  f45: Handle Token Revoke Command
+  f45: Handle Token Rotate Command
   f45.width: 400
-  f46: Handle Token Rotate Command
+  f46: Handle Serve Command
   f46.width: 400
-  f47: Handle Serve Command
-  f47.width: 400
 }
-f41 -> f41_container
+f40 -> f40_container
 
-f48: Example App Bridge
-f48.width: 400
-root -> f48
-f48_container: "" {
+f47: Example App Bridge
+f47.width: 400
+root -> f47
+f47_container: "" {
   grid-columns: 1
   grid-rows: 3
   grid-gap: 5
@@ -214,19 +212,19 @@ f48_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f49: Delegate Token Validation
+  f48: Delegate Token Validation
+  f48.width: 400
+  f49: Execute External System Interaction
   f49.width: 400
-  f50: Execute External System Interaction
+  f50: Serve Bridge HTTP API
   f50.width: 400
-  f51: Serve Bridge HTTP API
-  f51.width: 400
 }
-f48 -> f48_container
+f47 -> f47_container
 
-f52: Example App CLI
-f52.width: 400
-root -> f52
-f52_container: "" {
+f51: Example App CLI
+f51.width: 400
+root -> f51
+f51_container: "" {
   grid-columns: 1
   grid-rows: 5
   grid-gap: 5
@@ -234,15 +232,15 @@ f52_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f53: Send Bridge Request
+  f52: Send Bridge Request
+  f52.width: 400
+  f53: Auto Refresh Token
   f53.width: 400
-  f54: Auto Refresh Token
+  f54: Store CLI Credentials
   f54.width: 400
-  f55: Store CLI Credentials
+  f55: Handle App Commands
   f55.width: 400
-  f56: Handle App Commands
+  f56: Display Results
   f56.width: 400
-  f57: Display Results
-  f57.width: 400
 }
-f52 -> f52_container
+f51 -> f51_container

@@ -3,7 +3,6 @@
 import json
 import sqlite3
 import threading
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -52,16 +51,6 @@ class TokenStore:
             );
 
             CREATE INDEX IF NOT EXISTS idx_tokens_family_id ON tokens(family_id);
-
-            CREATE TABLE IF NOT EXISTS approval_grants (
-                id TEXT PRIMARY KEY,
-                token_id TEXT NOT NULL,
-                scope BLOB NOT NULL,
-                grant_type TEXT NOT NULL CHECK (grant_type IN ('once', 'session', 'timed')),
-                expires_at TEXT
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_approval_grants_token_id ON approval_grants(token_id);
         """)
 
     def _encrypt(self, plaintext: str) -> bytes:
@@ -193,55 +182,3 @@ class TokenStore:
         )
         conn.commit()
         return cursor.rowcount > 0
-
-    # -- Approval grants --
-
-    def create_grant(
-        self,
-        token_id: str,
-        scope: str,
-        grant_type: str,
-        expires_at: str | None = None,
-    ) -> dict:
-        """Store an approval grant."""
-        grant_id = uuid.uuid4().hex
-        encrypted_scope = self._encrypt(scope)
-        conn = self._get_conn()
-        conn.execute(
-            "INSERT INTO approval_grants (id, token_id, scope, grant_type, expires_at) VALUES (?, ?, ?, ?, ?)",
-            (grant_id, token_id, encrypted_scope, grant_type, expires_at),
-        )
-        conn.commit()
-        return {
-            "id": grant_id,
-            "token_id": token_id,
-            "scope": scope,
-            "grant_type": grant_type,
-            "expires_at": expires_at,
-        }
-
-    def get_active_grants(self, token_id: str, scope: str) -> list[dict]:
-        """Retrieve active approval grants for a token and scope."""
-        conn = self._get_conn()
-        now = datetime.now(timezone.utc)
-        rows = conn.execute(
-            "SELECT * FROM approval_grants WHERE token_id = ?",
-            (token_id,),
-        ).fetchall()
-        results = []
-        for row in rows:
-            decrypted_scope = self._decrypt(row["scope"])
-            if decrypted_scope != scope:
-                continue
-            if row["expires_at"] and datetime.fromisoformat(row["expires_at"]) < now:
-                continue
-            if row["grant_type"] == "once":
-                continue
-            results.append({
-                "id": row["id"],
-                "token_id": row["token_id"],
-                "scope": decrypted_scope,
-                "grant_type": row["grant_type"],
-                "expires_at": row["expires_at"],
-            })
-        return results

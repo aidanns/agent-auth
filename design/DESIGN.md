@@ -321,14 +321,7 @@ Encrypted columns are marked with (E) in the table definitions below.
 | expires_at | TEXT | ISO 8601 timestamp |
 | consumed | INTEGER | 0 or 1 (for refresh tokens) |
 
-**approval_grants:**
-| Column | Type | Description |
-|---|---|---|
-| id | TEXT PK | Grant ID |
-| token_id | TEXT | Access token this grant applies to |
-| scope | BLOB (E) | Scope that was approved |
-| grant_type | TEXT | "once", "session", or "timed" |
-| expires_at | TEXT | NULL for "once" and "session", ISO 8601 for "timed" |
+Approval grants are held in memory on the agent-auth server (see the approval flow above) and have no persistent table.
 
 ## agent-auth HTTP API
 

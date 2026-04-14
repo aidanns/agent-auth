@@ -38,13 +38,12 @@ components:
           - Handle Token Rotate Command
           - Handle Serve Command
       - name: SQLite
-        description: Third-party embedded relational database providing persistent storage for token families, tokens, and approval grants.
+        description: Third-party embedded relational database providing persistent storage for token families and tokens.
         functions:
           - Store Token Family
           - Store Token
           - Mark Token Consumed
           - Mark Family Revoked
-          - Store Approval Grant
           - Query Tokens
       - name: keyring
         description: Third-party Python library providing a unified API for accessing system keyring backends to store the HMAC signing key and AES-256-GCM encryption key.

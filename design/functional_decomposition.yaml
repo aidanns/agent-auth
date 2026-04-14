@@ -54,7 +54,7 @@ functions:
       - name: Load Encryption Key
         description: Load the encryption key from the system keyring for field-level encryption of sensitive database columns.
   - name: Token Store
-    description: Persist token families, tokens, and approval grants in SQLite with field-level encryption for sensitive columns.
+    description: Persist token families and tokens in SQLite with field-level encryption for sensitive columns.
     functions:
       - name: Store Token Family
         description: Write a new token family record with its scopes (encrypted) to the database.
@@ -64,8 +64,6 @@ functions:
         description: Mark a refresh token as consumed after use.
       - name: Mark Family Revoked
         description: Mark a token family as revoked, invalidating all its tokens.
-      - name: Store Approval Grant
-        description: Write an approval grant record to the database, encrypting the scope.
       - name: Query Tokens
         description: Read token and family records for validation, introspection, and listing, decrypting sensitive fields.
       - name: Encrypt Field
