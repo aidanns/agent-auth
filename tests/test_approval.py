@@ -48,8 +48,8 @@ def test_approval_denied(tmp_dir, encryption_key):
 
 
 @pytest.mark.covers_function("Check Existing Grant", "Record Approval Grant", "Expire Grants")
-def test_session_grant_caches(tmp_dir, encryption_key):
-    result = ApprovalResult(approved=True, grant_type="session", duration_minutes=60)
+def test_timed_grant_caches(tmp_dir, encryption_key):
+    result = ApprovalResult(approved=True, grant_type="timed", duration_minutes=60)
     manager, plugin = _make_manager(tmp_dir, encryption_key, result)
 
     resp1 = manager.request_approval("fam1", "things:write")
@@ -58,7 +58,7 @@ def test_session_grant_caches(tmp_dir, encryption_key):
 
     resp2 = manager.request_approval("fam1", "things:write")
     assert resp2.approved
-    assert len(plugin.calls) == 1  # Plugin not called again due to session grant
+    assert len(plugin.calls) == 1  # Plugin not called again — grant still active
 
 
 @pytest.mark.covers_function("Check Existing Grant")

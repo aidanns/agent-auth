@@ -37,11 +37,11 @@ functions:
       - name: Load Notification Plugin
         description: Load and initialize the configured notification plugin from agent-auth's configuration file.
       - name: Record Approval Grant
-        description: Record an approval decision with its grant type (once, session, or timed).
+        description: Record an approval decision with its grant type (once or timed).
       - name: Check Existing Grant
         description: Check whether a prior approval grant covers the current request.
       - name: Expire Grants
-        description: Remove approval grants that have expired or are older than 60 minutes (session grants).
+        description: Remove approval grants whose time-boxed duration has elapsed.
   - name: Key Management
     description: Manage cryptographic keys stored in the system keyring.
     functions:

@@ -19,9 +19,9 @@
 | agent-auth | JIT Approval | Request and manage human approval for prompt-tier operations via a pluggable notification system. |
 | JIT Approval | Request Approval | Hold a request pending and invoke the configured notification plugin to request user approval. The plugin is configured in agent-auth's configuration file (desktop notification by default). |
 | JIT Approval | Load Notification Plugin | Load and initialize the configured notification plugin from agent-auth's configuration file. |
-| JIT Approval | Record Approval Grant | Record an approval decision with its grant type (once, session, or timed). |
+| JIT Approval | Record Approval Grant | Record an approval decision with its grant type (once or timed). |
 | JIT Approval | Check Existing Grant | Check whether a prior approval grant covers the current request. |
-| JIT Approval | Expire Grants | Remove approval grants that have expired or are older than 60 minutes (session grants). |
+| JIT Approval | Expire Grants | Remove approval grants whose time-boxed duration has elapsed. |
 | agent-auth | Key Management | Manage cryptographic keys stored in the system keyring. |
 | Key Management | Generate Signing Key | Generate a new HMAC signing key in the system keyring on first use. |
 | Key Management | Load Signing Key | Load the HMAC signing key from the system keyring for token signing and verification. |

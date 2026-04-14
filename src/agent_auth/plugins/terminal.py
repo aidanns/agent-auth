@@ -27,7 +27,7 @@ class Plugin(NotificationPlugin):
         print(file=sys.stderr)
         print("Grant options:", file=sys.stderr)
         print("  [y] Approve once", file=sys.stderr)
-        print("  [s] Approve for session (60 minutes)", file=sys.stderr)
+        print("  [s] Approve for this session (60 minutes)", file=sys.stderr)
         print("  [t] Approve for N minutes", file=sys.stderr)
         print("  [n] Deny", file=sys.stderr)
         print(f"{'='*60}", file=sys.stderr)
@@ -40,7 +40,7 @@ class Plugin(NotificationPlugin):
         if choice == "y":
             return ApprovalResult(approved=True, grant_type="once")
         elif choice == "s":
-            return ApprovalResult(approved=True, grant_type="session", duration_minutes=60)
+            return ApprovalResult(approved=True, grant_type="timed", duration_minutes=60)
         elif choice == "t":
             try:
                 minutes = int(input("Minutes: ").strip())

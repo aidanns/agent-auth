@@ -1,4 +1,4 @@
-"""JIT approval manager with in-memory session grants."""
+"""JIT approval manager with in-memory timed grants."""
 
 import threading
 from datetime import datetime, timedelta, timezone
@@ -9,7 +9,7 @@ from agent_auth.store import TokenStore
 
 
 class ApprovalManager:
-    """Manages JIT approval requests and session-level grants."""
+    """Manages JIT approval requests and in-memory timed grants."""
 
     def __init__(
         self,
@@ -20,15 +20,15 @@ class ApprovalManager:
         self._plugin = plugin
         self._store = store
         self._audit = audit
-        self._session_grants: dict[tuple[str, str], datetime] = {}
+        self._grants: dict[tuple[str, str], datetime] = {}
         self._lock = threading.Lock()
 
     def check_grant(self, family_id: str, scope: str) -> bool:
-        """Check if an active session grant covers this scope."""
+        """Check if an active grant covers this scope."""
         with self._lock:
             self._expire_grants()
             key = (family_id, scope)
-            return key in self._session_grants
+            return key in self._grants
 
     def request_approval(
         self,
@@ -38,7 +38,7 @@ class ApprovalManager:
     ) -> ApprovalResult:
         """Request approval from the user via the notification plugin."""
         if self.check_grant(family_id, scope):
-            return ApprovalResult(approved=True, grant_type="session")
+            return ApprovalResult(approved=True, grant_type="timed")
 
         result = self._plugin.request_approval(scope, description, family_id)
 
@@ -62,22 +62,16 @@ class ApprovalManager:
 
     def _record_grant(self, family_id: str, scope: str, result: ApprovalResult):
         """Record an approval grant."""
-        if result.grant_type == "once":
+        if result.grant_type != "timed" or not result.duration_minutes:
             return
 
         with self._lock:
-            if result.grant_type == "session":
-                expires = datetime.now(timezone.utc) + timedelta(minutes=60)
-            elif result.grant_type == "timed" and result.duration_minutes:
-                expires = datetime.now(timezone.utc) + timedelta(minutes=result.duration_minutes)
-            else:
-                return
-
-            self._session_grants[(family_id, scope)] = expires
+            expires = datetime.now(timezone.utc) + timedelta(minutes=result.duration_minutes)
+            self._grants[(family_id, scope)] = expires
 
     def _expire_grants(self):
-        """Remove expired session grants. Must be called with lock held."""
+        """Remove expired grants. Must be called with lock held."""
         now = datetime.now(timezone.utc)
-        expired = [key for key, exp in self._session_grants.items() if exp <= now]
+        expired = [key for key, exp in self._grants.items() if exp <= now]
         for key in expired:
-            del self._session_grants[key]
+            del self._grants[key]

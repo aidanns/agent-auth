@@ -6,7 +6,12 @@ from dataclasses import dataclass
 
 @dataclass
 class ApprovalResult:
-    """Result of a JIT approval request."""
+    """Result of a JIT approval request.
+
+    grant_type is either "once" (no caching) or "timed" (cached for
+    duration_minutes). Plugins surfacing a "for this session" choice
+    should return grant_type="timed" with duration_minutes=60.
+    """
     approved: bool
     grant_type: str = "once"
     duration_minutes: int | None = None

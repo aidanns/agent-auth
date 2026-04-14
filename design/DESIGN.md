@@ -208,10 +208,9 @@ The notification plugin is configured in agent-auth's configuration file, follow
 
 Approval grants can be scoped:
 - **Once** — this specific invocation only
-- **Session** — allow this scope for 60 minutes
 - **Time-boxed** — allow for the next N minutes
 
-Session-level grants are stored in memory on the agent-auth server. They do not modify the token and expire after 60 minutes or when the server restarts, whichever comes first.
+Time-boxed grants are held in memory on the agent-auth server. They do not modify the token and expire after their duration elapses or when the server restarts, whichever comes first. Notification plugins can surface "for this session" as a UX-level shortcut for a 60-minute time-boxed grant.
 
 ## Request Flow
 
