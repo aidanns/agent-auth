@@ -19,3 +19,8 @@ dev = [
 
 [project.scripts]
 agent-auth = "agent_auth.cli:main"
+
+[tool.pytest.ini_options]
+markers = [
+    "covers_function(*names): declare which functional-decomposition leaf functions a test exercises (read by `systems-engineering function verify`)",
+]

@@ -3,9 +3,12 @@
 import json
 import os
 
+import pytest
+
 from agent_auth.audit import AuditLogger
 
 
+@pytest.mark.covers_function("Log Token Operation", "Log Authorization Decision")
 def test_writes_json_lines(tmp_dir):
     log_path = os.path.join(tmp_dir, "audit.log")
     logger = AuditLogger(log_path)

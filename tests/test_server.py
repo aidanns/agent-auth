@@ -127,6 +127,7 @@ def _get(url, headers=None):
 
 # -- Validate endpoint tests --
 
+@pytest.mark.covers_function("Serve Validate Endpoint", "Check Token Expiry")
 def test_validate_allow(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)
@@ -142,6 +143,7 @@ def test_validate_allow(server_env, signing_key):
         server.shutdown()
 
 
+@pytest.mark.covers_function("Serve Validate Endpoint")
 def test_validate_invalid_token(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)
@@ -156,6 +158,7 @@ def test_validate_invalid_token(server_env, signing_key):
         server.shutdown()
 
 
+@pytest.mark.covers_function("Serve Validate Endpoint")
 def test_validate_scope_denied(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)
@@ -171,6 +174,7 @@ def test_validate_scope_denied(server_env, signing_key):
         server.shutdown()
 
 
+@pytest.mark.covers_function("Serve Validate Endpoint", "Request Approval")
 def test_validate_prompt_tier_approved(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit, AutoApprovePlugin())
@@ -188,6 +192,7 @@ def test_validate_prompt_tier_approved(server_env, signing_key):
         server.shutdown()
 
 
+@pytest.mark.covers_function("Serve Validate Endpoint", "Request Approval")
 def test_validate_prompt_tier_denied(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit, AutoDenyPlugin())
@@ -206,6 +211,7 @@ def test_validate_prompt_tier_denied(server_env, signing_key):
 
 # -- Refresh endpoint tests --
 
+@pytest.mark.covers_function("Serve Refresh Endpoint", "Refresh Token Pair")
 def test_refresh_success(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)
@@ -222,6 +228,7 @@ def test_refresh_success(server_env, signing_key):
         server.shutdown()
 
 
+@pytest.mark.covers_function("Serve Refresh Endpoint", "Detect Refresh Token Reuse")
 def test_refresh_reuse_detection(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)
@@ -247,6 +254,7 @@ def test_refresh_reuse_detection(server_env, signing_key):
 
 # -- Status endpoint tests --
 
+@pytest.mark.covers_function("Serve Status Endpoint", "Introspect Token")
 def test_status(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)
@@ -263,6 +271,7 @@ def test_status(server_env, signing_key):
         server.shutdown()
 
 
+@pytest.mark.covers_function("Serve Status Endpoint")
 def test_status_missing_token(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)
@@ -275,6 +284,7 @@ def test_status_missing_token(server_env, signing_key):
 
 # -- Reissue endpoint tests --
 
+@pytest.mark.covers_function("Serve Reissue Endpoint", "Request Approval")
 def test_reissue_approved(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit, AutoApprovePlugin())
@@ -290,6 +300,7 @@ def test_reissue_approved(server_env, signing_key):
         server.shutdown()
 
 
+@pytest.mark.covers_function("Serve Reissue Endpoint", "Request Approval")
 def test_reissue_denied(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit, AutoDenyPlugin())
@@ -304,6 +315,7 @@ def test_reissue_denied(server_env, signing_key):
         server.shutdown()
 
 
+@pytest.mark.covers_function("Serve Reissue Endpoint")
 def test_reissue_revoked_family(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)

@@ -18,6 +18,7 @@ def test_generate_token_id_is_unique():
     assert len(ids) == 100
 
 
+@pytest.mark.covers_function("Verify Token Signature")
 def test_sign_and_verify_access_token(signing_key):
     token_id = generate_token_id()
     token = sign_token(token_id, PREFIX_ACCESS, signing_key)
@@ -27,6 +28,7 @@ def test_sign_and_verify_access_token(signing_key):
     assert verified_id == token_id
 
 
+@pytest.mark.covers_function("Verify Token Signature")
 def test_sign_and_verify_refresh_token(signing_key):
     token_id = generate_token_id()
     token = sign_token(token_id, PREFIX_REFRESH, signing_key)
@@ -36,6 +38,7 @@ def test_sign_and_verify_refresh_token(signing_key):
     assert verified_id == token_id
 
 
+@pytest.mark.covers_function("Verify Token Signature")
 def test_verify_with_wrong_key(signing_key):
     import os
     token_id = generate_token_id()

@@ -35,22 +35,26 @@ def test_parse_scope_invalid_tier():
         parse_scope_arg("things:read=invalid")
 
 
+@pytest.mark.covers_function("Check Scope Authorization", "Resolve Access Tier")
 def test_check_scope_allow():
     scopes = {"things:read": "allow", "things:write": "prompt"}
     assert check_scope("things:read", scopes) == "allow"
 
 
+@pytest.mark.covers_function("Check Scope Authorization", "Resolve Access Tier")
 def test_check_scope_prompt():
     scopes = {"things:read": "allow", "things:write": "prompt"}
     assert check_scope("things:write", scopes) == "prompt"
 
 
+@pytest.mark.covers_function("Check Scope Authorization", "Resolve Access Tier")
 def test_check_scope_deny():
     scopes = {"things:read": "allow", "things:write": "deny"}
     with pytest.raises(ScopeDeniedError, match="denied"):
         check_scope("things:write", scopes)
 
 
+@pytest.mark.covers_function("Check Scope Authorization")
 def test_check_scope_not_granted():
     scopes = {"things:read": "allow"}
     with pytest.raises(ScopeDeniedError, match="not granted"):

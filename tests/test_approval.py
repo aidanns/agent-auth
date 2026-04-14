@@ -2,6 +2,8 @@
 
 import os
 
+import pytest
+
 from agent_auth.approval import ApprovalManager
 from agent_auth.audit import AuditLogger
 from agent_auth.plugins import ApprovalResult, NotificationPlugin
@@ -28,6 +30,7 @@ def _make_manager(tmp_dir, encryption_key, result):
     return ApprovalManager(plugin, store, audit), plugin
 
 
+@pytest.mark.covers_function("Request Approval", "Record Approval Grant")
 def test_approval_granted(tmp_dir, encryption_key):
     result = ApprovalResult(approved=True, grant_type="once")
     manager, plugin = _make_manager(tmp_dir, encryption_key, result)
@@ -36,6 +39,7 @@ def test_approval_granted(tmp_dir, encryption_key):
     assert len(plugin.calls) == 1
 
 
+@pytest.mark.covers_function("Request Approval")
 def test_approval_denied(tmp_dir, encryption_key):
     result = ApprovalResult(approved=False)
     manager, plugin = _make_manager(tmp_dir, encryption_key, result)
@@ -43,6 +47,7 @@ def test_approval_denied(tmp_dir, encryption_key):
     assert not resp.approved
 
 
+@pytest.mark.covers_function("Check Existing Grant", "Record Approval Grant", "Expire Grants")
 def test_session_grant_caches(tmp_dir, encryption_key):
     result = ApprovalResult(approved=True, grant_type="session", duration_minutes=60)
     manager, plugin = _make_manager(tmp_dir, encryption_key, result)
@@ -56,6 +61,7 @@ def test_session_grant_caches(tmp_dir, encryption_key):
     assert len(plugin.calls) == 1  # Plugin not called again due to session grant
 
 
+@pytest.mark.covers_function("Check Existing Grant")
 def test_once_grant_does_not_cache(tmp_dir, encryption_key):
     result = ApprovalResult(approved=True, grant_type="once")
     manager, plugin = _make_manager(tmp_dir, encryption_key, result)
