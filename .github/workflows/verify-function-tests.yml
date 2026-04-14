@@ -1,0 +1,26 @@
+name: Verify Function Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify-function-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install systems-engineering
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/aidanns/systems-engineering/main/install.sh -o install.sh
+          bash install.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify all functions have test coverage
+        run: scripts/verify-function-tests.sh
