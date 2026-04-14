@@ -37,6 +37,15 @@ has since been added, but future plans should include a step to create
 or verify that such a script exists so the test suite can be run with
 one command.
 
+### GitHub Actions for all tests
+
+The plan produced a workflow for `scripts/verify-design.sh` only
+(`.github/workflows/verify-design.yml`). `scripts/test.sh` and
+`scripts/verify-function-tests.sh` have no CI coverage, so unit and
+integration test regressions and function-coverage regressions can
+land on `main` unnoticed. Future plans should include a step to wire
+every repeatable check script into GitHub Actions.
+
 ### Function-to-test allocation
 
 The `systems-engineering function verify` check reports **0 of 48 leaf
