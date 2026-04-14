@@ -39,12 +39,12 @@ one command.
 
 ### Function-to-test allocation
 
-Tests now declare the leaf functions they exercise via
-`@pytest.mark.covers_function("Function Name", ...)` decorators, which
-`systems-engineering function verify` reads. Coverage stands at **37 of
-47** leaf functions; the 10 uncovered functions are all in the deferred
-Example App Bridge / Example App CLI components, plus
-`Handle Serve Command` and `Load Notification Plugin` (both exercised
-indirectly by the server integration tests but not annotated as such).
+The `systems-engineering function verify` check reports **0 of 48 leaf
+functions** from `design/functional_decomposition.yaml` are allocated to
+tests in `tests/`. The implementation has coverage, but neither the
+design nor the plan specified how tests should declare the functions
+they exercise. Decide on an annotation/allocation mechanism, document
+it in the design, and apply it so `scripts/verify-function-tests.sh`
+passes.
 
 Run `scripts/verify-function-tests.sh` to see the current list.
