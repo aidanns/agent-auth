@@ -1,0 +1,33 @@
+name: Verify Function Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify-function-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install d2
+        run: curl -fsSL https://d2lang.com/install.sh | sh -s --
+
+      - name: Install systems-engineering
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/aidanns/systems-engineering/main/install.sh -o install.sh
+          bash install.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # continue-on-error until aidanns/agent-auth#5 is resolved: the
+      # check currently reports 37/47 leaf functions covered, so it
+      # would block every PR. Remove once coverage reaches 100%.
+      - name: Verify all functions have test coverage
+        continue-on-error: true
+        run: scripts/verify-function-tests.sh

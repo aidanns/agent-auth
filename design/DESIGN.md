@@ -208,10 +208,9 @@ The notification plugin is configured in agent-auth's configuration file, follow
 
 Approval grants can be scoped:
 - **Once** — this specific invocation only
-- **Session** — allow this scope for 60 minutes
 - **Time-boxed** — allow for the next N minutes
 
-Session-level grants are stored in memory on the agent-auth server. They do not modify the token and expire after 60 minutes or when the server restarts, whichever comes first.
+Time-boxed grants are held in memory on the agent-auth server. They do not modify the token and expire after their duration elapses or when the server restarts, whichever comes first. Notification plugins can surface "for this session" as a UX-level shortcut for a 60-minute time-boxed grant.
 
 ## Request Flow
 
@@ -321,14 +320,7 @@ Encrypted columns are marked with (E) in the table definitions below.
 | expires_at | TEXT | ISO 8601 timestamp |
 | consumed | INTEGER | 0 or 1 (for refresh tokens) |
 
-**approval_grants:**
-| Column | Type | Description |
-|---|---|---|
-| id | TEXT PK | Grant ID |
-| token_id | TEXT | Access token this grant applies to |
-| scope | BLOB (E) | Scope that was approved |
-| grant_type | TEXT | "once", "session", or "timed" |
-| expires_at | TEXT | NULL for "once" and "session", ISO 8601 for "timed" |
+Approval grants are held in memory on the agent-auth server (see the approval flow above) and have no persistent table.
 
 ## agent-auth HTTP API
 
