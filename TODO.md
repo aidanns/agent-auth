@@ -205,17 +205,26 @@ but are not documented as such in `design/DESIGN.md`. Document
 them and their stability guarantees. Include error-taxonomy
 documentation in future plan templates for HTTP APIs.
 
-### Linter, formatter, and type checker in CI
+### Python tooling (linter, formatter, type checker, venv)
 
-The project has no linter, formatter, or type checker wired into CI.
-Add `ruff` (lint + format) and `mypy` and gate PRs on them. Include
-this in future plan templates for Python projects.
+The project has no linter, formatter, or type checker wired into CI,
+and uses the stock `python3 -m venv` instead of a modern venv
+manager. Adopt:
+
+- `ruff` for linting and formatting
+- `mypy` and `pyright` for type checking (pyright catches different
+  issues and is faster; mypy is the community baseline)
+- `uv` for virtual environments and dependency resolution
+- `pytest-cov` for coverage (see the coverage-threshold item below)
+
+Gate PRs on the lint, format, and type checks. Include these tools
+in future plan templates for Python projects.
 
 ### Line and branch coverage threshold
 
 Test coverage is tracked structurally (function-to-test allocation)
 but not by line or branch coverage, and there is no coverage floor
-enforced in CI. Add `coverage.py` to CI with a starting threshold
+enforced in CI. Add `pytest-cov` to CI with a starting threshold
 that ratchets upward. Include coverage threshold configuration in
 future plan templates.
 
@@ -286,6 +295,17 @@ topics) is unset. Populate it with a one-line description that
 matches the README summary, plus relevant topics. Include a "set
 the GitHub About" step in future plan templates for public
 repositories.
+
+### Bash tooling (linter and formatter)
+
+The project ships bash scripts (`scripts/*.sh`, `bootstrap.sh`-style
+entrypoints) with no lint or format enforcement. Adopt:
+
+- `shellcheck` for linting
+- `shfmt` for formatting
+
+Gate PRs on both. Include these tools in future plan templates for
+any project that ships bash.
 
 ### LICENSE.md and README link
 
