@@ -537,3 +537,36 @@ the schema in `design/DESIGN.md`. Use `taplo`-equivalent tooling
 (e.g. `yamllint` + a formatter) once adopted. Include a
 "human-editable config formats default to YAML" bullet in future
 plan templates for projects with a user-edited config file.
+
+### Apply new lessons codebase-wide in the same PR
+
+When a plan-template lesson gets folded into `TODO.md`, the
+triggering example gets fixed but other instances of the same
+pattern in the codebase tend to stay unpatched. Round 1 of
+[#4](https://github.com/aidanns/agent-auth/pull/4) added
+`Ciphertext = NewType(...)` and a lesson about NewTypes at trust
+boundaries; the signing and encryption keys — same principle, same
+file neighborhood — needed a dedicated round-2 comment before
+getting the same treatment. Plan templates should include a "when
+recording a new plan-template lesson, sweep the whole codebase for
+other instances of the same pattern and fix them in the same PR"
+step, so the lesson is deployed, not just documented.
+
+### Post-change review checklist should include boundary and naming questions
+
+The post-change `/simplify` skill and the independent review
+subagent are tuned to catch local hacky patterns (unused imports,
+duplication, obvious dead code) but repeatedly missed judgement
+calls on
+[#4](https://github.com/aidanns/agent-auth/pull/4) — method-name
+specificity (`check_grant` → `check_timed_grant`), public-API
+boundaries for tests (go through the CLI vs open the DB), and type
+discipline at security boundaries (signing key vs encryption key).
+Those categories need dedicated prompts, not general "any
+improvements?" prompts. Extend the post-change reviewer's checklist
+to ask explicitly: (a) does every method name reflect which variant
+of its concept it handles? (b) for each test file, what is the
+public surface of the unit under test, and does the test stay
+within it? (c) for each `bytes`/`str`/`int` parameter at a trust or
+semantic boundary, is there a `NewType` or branded type? Include
+these prompts in future plan templates' post-change review step.
