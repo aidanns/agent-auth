@@ -100,3 +100,150 @@ implementation meets the activities, documentation, and evidence
 requirements for that level. Record the verification results in
 `design/` and keep them up to date as the code evolves. Future plans
 should include this verification step.
+
+### Threat model
+
+There is no structured threat model (STRIDE or attack-tree) documented
+for the project. The threat model is the root artefact that should
+drive `SECURITY.md`, standards compliance, rate limiting, and key
+recovery design — without it each of those is done in isolation.
+Record the threat model in `design/` and include a "produce or
+refresh the threat model" step in future plan templates.
+
+### Dependency vulnerability scanning
+
+Neither the project nor its CI scans dependencies for known
+vulnerabilities. Add `pip-audit` (or `safety`) to CI and enable
+Dependabot (or Renovate) for lockfile updates. Include the tool
+choice in future plan templates for projects with external
+dependencies.
+
+### Secrets scanning pre-commit hook
+
+There is no pre-commit hook guarding against accidental secret
+commits. Add `gitleaks` or `detect-secrets` as a pre-commit hook so
+tokens, keys, or credentials cannot be committed by mistake. Include
+this in future plan templates.
+
+### Rate limiting and DoS story
+
+The HTTP API has no rate-limit story. Even on localhost a misbehaving
+process can hammer `/validate`. Decide an expected request rate and
+a ceiling, document it in `design/DESIGN.md`, and either implement
+rate limiting or explicitly note why it is not required. Future plans
+should include a "DoS posture" step for network-facing projects.
+
+### Key recovery and loss scenarios
+
+If the user's keychain is wiped, agent-auth silently generates new
+signing and encryption keys on next run, invalidating every
+outstanding token without warning. Design a deliberate
+recovery/backup/warning flow and document it. Future plans should
+include a "what happens when secrets are lost" step for projects
+that manage keys.
+
+### Observability design
+
+The plan did not include an observability design step. Document the
+log schema, log levels, log retention policy, log location (per XDG,
+`$XDG_STATE_HOME`, not `$XDG_CONFIG_HOME`), and what metrics (if
+any) are emitted. Include observability design in future plan
+templates for daemons and long-running services.
+
+### Health-check endpoint
+
+The server has no health-check endpoint. Add `GET /agent-auth/healthz`
+that returns 200 when keys load and the DB is readable. Include a
+health-check endpoint in future plan templates for HTTP services.
+
+### Performance budget
+
+There is no documented performance budget for the HTTP endpoints
+(e.g. `/validate` p95 latency). Pick a target, document it in
+`design/DESIGN.md`, and add at least one integration test that
+asserts the budget. Include a performance-budget step in future plan
+templates for latency-sensitive services.
+
+### Graceful shutdown
+
+There is no design or test for graceful shutdown. When `serve`
+receives SIGTERM today, in-flight JIT approval requests probably
+hang. Design the shutdown behaviour, implement it, and add a test.
+Include graceful shutdown in future plan templates for daemons.
+
+### Architecture Decision Records
+
+The project has several load-bearing decisions (stdlib HTTP vs
+framework, per-thread SQLite + WAL, in-memory JIT grants, HMAC
+prefix inclusion, etc.) whose rationale lives only in commit
+messages and the plan document. Start an `design/decisions/`
+directory of short ADRs so the *why* survives. Include ADR creation
+for significant decisions in future plan templates.
+
+### API versioning strategy
+
+HTTP endpoints are exposed as `/agent-auth/validate` etc. with no
+version segment and no documented compatibility policy. Decide a
+versioning strategy (URL-versioned, header-versioned, or explicit
+"breaking changes bump the binary major version"), document it in
+`design/DESIGN.md`, and apply it. Include an API versioning step
+in future plan templates.
+
+### DB schema migration strategy
+
+The SQLite schema is created in Python code with no version tracking.
+Any future column change will be painful. Add a `schema_version`
+table and a simple idempotent migration mechanism. Include a DB
+migration strategy step in future plan templates for projects with
+persistent storage.
+
+### Stable error taxonomy
+
+The HTTP error strings (`refresh_token_reuse_detected`,
+`family_revoked`, `scope_denied`, etc.) are a de-facto public API
+but are not documented as such in `design/DESIGN.md`. Document
+them and their stability guarantees. Include error-taxonomy
+documentation in future plan templates for HTTP APIs.
+
+### Linter, formatter, and type checker in CI
+
+The project has no linter, formatter, or type checker wired into CI.
+Add `ruff` (lint + format) and `mypy` and gate PRs on them. Include
+this in future plan templates for Python projects.
+
+### Line and branch coverage threshold
+
+Test coverage is tracked structurally (function-to-test allocation)
+but not by line or branch coverage, and there is no coverage floor
+enforced in CI. Add `coverage.py` to CI with a starting threshold
+that ratchets upward. Include coverage threshold configuration in
+future plan templates.
+
+### Mutation testing on security-critical paths
+
+Coverage alone does not guarantee tests would fail when they should.
+Run `mutmut` or `cosmic-ray` against `tokens.py`, `crypto.py`, and
+`scopes.py` to surface weak assertions. Include mutation testing of
+security-critical modules in future plan templates for security-
+critical projects.
+
+### Chaos and fault-injection tests
+
+The test suite exercises happy paths; error paths (keyring throws,
+DB is locked, disk is full, plugin times out) are largely untested.
+Add a fault-injection test layer that forces these conditions.
+Include chaos/fault-injection testing in future plan templates.
+
+### CONTRIBUTING.md and release process
+
+There is no `CONTRIBUTING.md` documenting dev setup, testing,
+release cutting, or signing procedures. Add one — even for a
+personal project, it saves time for future-you and for Claude.
+Include a CONTRIBUTING.md step in future plan templates.
+
+### CHANGELOG.md
+
+There is no `CHANGELOG.md` tracking user-visible changes. Adopt
+Keep-a-Changelog formatting, pair with semantic versioning, and
+require updates on every user-facing PR. Include a CHANGELOG.md
+step in future plan templates.
