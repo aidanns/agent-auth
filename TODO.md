@@ -156,6 +156,19 @@ The server has no health-check endpoint. Add `GET /agent-auth/healthz`
 that returns 200 when keys load and the DB is readable. Include a
 health-check endpoint in future plan templates for HTTP services.
 
+### Metrics endpoint
+
+The server exposes no runtime metrics. Add `GET /agent-auth/metrics`
+emitting Prometheus-compatible text (or another documented format)
+covering at least: request counts and latency per endpoint, token
+operations by type (create/refresh/revoke/rotate/reissue),
+validation decisions by tier (allow/prompt/deny), JIT approval
+outcomes, active token families, and approval-grant cache size.
+Decide the format (Prometheus text exposition vs OpenMetrics vs
+plain JSON) and document it in `design/DESIGN.md` alongside the
+health endpoint. Include a metrics-endpoint step in future plan
+templates for daemons and long-running services.
+
 ### Performance testing
 
 There is no performance-testing layer. The plan covered

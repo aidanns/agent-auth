@@ -19,10 +19,20 @@ class GrantKey(NamedTuple):
 class ApprovalManager:
     """Manages JIT approval requests and in-memory timed grants.
 
-    Grants are "timed" only: an approval that covers subsequent requests
-    for the same (family_id, scope) until its expiry. "Once" approvals
-    are not cached — the plugin is called again on the next request. The
-    design defines no permanent grant.
+    Only prompt-tier scopes reach this manager. Allow-tier scopes are
+    effectively permanent grants configured at token creation and are
+    short-circuited by the server before any approval step; deny-tier
+    scopes are rejected up-front the same way.
+
+    For the prompt-tier scopes that *do* reach this manager, the design
+    defines two grant shapes returned by notification plugins:
+
+    - ``once`` — approval applies to this request only and is not cached
+    - ``timed`` — approval covers subsequent requests for the same
+      (family_id, scope) until its duration elapses
+
+    There is no runtime-issued "permanent" grant — durable allowance
+    belongs in the token's scope configuration as ``allow``, not here.
     """
 
     def __init__(
