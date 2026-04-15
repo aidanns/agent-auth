@@ -121,9 +121,9 @@ dependencies.
 ### Secrets scanning pre-commit hook
 
 There is no pre-commit hook guarding against accidental secret
-commits. Add `gitleaks` or `detect-secrets` as a pre-commit hook so
-tokens, keys, or credentials cannot be committed by mistake. Include
-this in future plan templates.
+commits. Add `ripsecrets` (preferred — fast, Rust-based) as a
+pre-commit hook so tokens, keys, or credentials cannot be committed
+by mistake. Include this in future plan templates.
 
 ### Rate limiting and DoS story
 
@@ -306,6 +306,66 @@ entrypoints) with no lint or format enforcement. Adopt:
 
 Gate PRs on both. Include these tools in future plan templates for
 any project that ships bash.
+
+### go-task task runner
+
+Project operations (build, lint, test, release) are each a separate
+bash script invoked by hand. Adopt [`go-task`](https://taskfile.dev)
+and a `Taskfile.yml` at the repo root so every operation is
+discoverable (`task --list`) and composable (dependencies between
+tasks). Keep the `scripts/*.sh` implementations; have the Taskfile
+dispatch to them. Include a task runner step in future plan
+templates.
+
+### treefmt for formatter/linter multiplexing
+
+As more language-specific formatters and linters are added (ruff,
+shfmt, mdformat, taplo, etc.), invoking each by hand or wiring each
+into CI separately is tedious. Adopt `treefmt` to run them all
+under one command with consistent behaviour, then call `treefmt`
+from lefthook and CI. Include a multiplexer step in future plan
+templates for multi-language projects.
+
+### VS Code project generation
+
+There is no committed `.vscode/` configuration and no generator for
+it, so every contributor re-derives tasks, launch configs, and
+recommended extensions. Generate or commit a `.vscode/` directory
+covering recommended extensions, debug configurations, and workspace
+settings. For monorepos, generate a multi-root `.code-workspace`
+file. Include a VS Code project generation step in future plan
+templates.
+
+### lefthook for git pre-commit hooks
+
+There is no git hook management, so secrets-scanning, formatting,
+and linting rely on CI alone — too late to catch easily. Adopt
+`lefthook` and commit a `lefthook.yml` that runs `ripsecrets`,
+`treefmt` (once adopted), and quick unit tests on pre-commit.
+Include a git-hook manager step in future plan templates.
+
+### keep-sorted for language-agnostic sorting
+
+Sorted blocks of code, imports, and lists drift out of order over
+time without tooling. Adopt `keep-sorted` with annotated blocks so
+sorted regions stay sorted automatically. Include a keep-sorted
+step in future plan templates for projects with sorted lists
+(imports, dependency lists, allow-lists, etc.).
+
+### mdformat for Markdown formatting
+
+Markdown files (README, DESIGN, CLAUDE.md, TODO, PR bodies) are
+hand-formatted, so table alignment, list indentation, and trailing
+whitespace drift. Adopt `mdformat` (with plugins for tables and
+GitHub-flavored Markdown) and call it from `treefmt`/lefthook.
+Include a Markdown formatter step in future plan templates.
+
+### taplo for TOML formatting
+
+`pyproject.toml` and any other TOML files (`Cargo.toml`, configs)
+are hand-formatted. Adopt `taplo` for TOML linting and formatting
+and call it from `treefmt`/lefthook. Include a TOML formatter step
+in future plan templates for projects with TOML config.
 
 ### LICENSE.md and README link
 
