@@ -278,3 +278,18 @@ There is no repeatable release script. Add `scripts/release.sh` that
 automates version bumping, tagging, and posting the GitHub release.
 Include a release script step in future plan templates for projects
 with a public release surface.
+
+### Set the GitHub repo "About"
+
+The GitHub repository's "About" field (description, homepage,
+topics) is unset. Populate it with a one-line description that
+matches the README summary, plus relevant topics. Include a "set
+the GitHub About" step in future plan templates for public
+repositories.
+
+### LICENSE.md and README link
+
+The project has no `LICENSE.md`. Add one (default: MIT) and link to
+it from the "License" section in the README. Include a LICENSE
+step in future plan templates for any project with a public
+repository.
