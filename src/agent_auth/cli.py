@@ -6,13 +6,15 @@ import sys
 
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config, load_config
-from agent_auth.keys import KeyManager
+from agent_auth.keys import KeyManager, SigningKey
 from agent_auth.scopes import parse_scope_arg
 from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair, generate_token_id
 
 
-def _init_services(config_dir: str | None = None) -> tuple[Config, bytes, TokenStore, AuditLogger]:
+def _init_services(
+    config_dir: str | None = None,
+) -> tuple[Config, SigningKey, TokenStore, AuditLogger]:
     config = load_config(config_dir)
     key_manager = KeyManager()
     signing_key = key_manager.get_or_create_signing_key()

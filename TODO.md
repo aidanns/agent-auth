@@ -421,10 +421,15 @@ file class to its XDG variable.
 The initial `encrypt_field` / `decrypt_field` accepted and returned
 raw `bytes`, so a caller could accidentally pass plaintext to a
 store field that expected ciphertext (or vice versa) with no type
-checker complaint. Future plans for projects with security-critical
-type distinctions should require `typing.NewType` (or equivalent) at
-the boundary — and a note in the plan template to look for these
-boundaries up front.
+checker complaint. The same applied to the signing and encryption
+keys themselves: both were 32-byte `bytes`, and nothing at the type
+level stopped a signing key from being handed to AES-GCM or vice
+versa. Future plans for projects with security-critical type
+distinctions should require `typing.NewType` (or equivalent) for
+*every* semantically distinct byte blob at the boundary — ciphertext
+vs plaintext, signing key vs encryption key, token signature vs
+token id — not just the obvious ones. Include a "enumerate the
+distinct byte classes" step in the plan template's security section.
 
 ### Don't persist default configuration on first run
 
@@ -443,14 +448,21 @@ implicit. Prefer `typing.NamedTuple` (or `dataclass`) whenever a
 tuple or raw string carries structure. Include a "name your keys"
 bullet in the plan template's coding-standards section.
 
-### Tests should assert persistent state, not captured stdout
+### Tests exercise public APIs, not internal persistence
 
-Early CLI tests asserted on `stdout` text only (e.g. `"revoked" in
-out.lower()`). These are fragile to formatting changes and do not
-prove the on-disk state matches the user-visible report. Plan
-templates should require that CLI/integration tests verify the
-durable state (DB rows, filesystem effects, keyring entries) in
-addition to or instead of stdout.
+CLI tests went through two failure modes on this project. First,
+they asserted only on `stdout` text (fragile to formatting). The
+fix — opening the SQLite store directly to verify row-level state —
+then overshot: it locked tests to an internal schema the CLI is
+free to change, and would silently pass even if the CLI stopped
+reading the DB at all. The right rule is: a test exercises the
+public API of the unit under test, and only the public API. For
+the CLI that means argv in, stdout (including `--json`) out, and
+subsequent CLI invocations (`token list`) to observe state. The DB
+schema, keyring internals, and audit-log byte layout are not the
+CLI's public API and must not appear in CLI tests. Plan templates
+should include a "name each unit's public surface before writing
+tests; tests may only touch that surface" step.
 
 ### Single source of truth for configuration
 
@@ -499,3 +511,29 @@ races. Tracked in
 for network-facing projects should include an "integration-test
 isolation" step that picks containers, per-test network namespaces,
 or an equivalent approach up-front.
+
+### Method names should reflect what they actually handle
+
+`ApprovalManager.check_grant` / `_expire_grants` read as if they
+covered every kind of approval grant, but the manager only ever
+caches *timed* grants — `once` grants are intentionally not stored,
+and `allow`/`deny` tiers never reach the manager at all. The
+generic names masked the narrow scope and invited future confusion.
+When a type or concept has multiple variants and a given function
+only handles one of them, put the variant in the name
+(`check_timed_grant`, `_expire_timed_grants`). Plan templates should
+include a "names should reflect which variant of a concept is
+handled" bullet in the coding-standards section, and code review
+should flag generic names on single-variant handlers.
+
+### Application configuration should be YAML, not JSON
+
+The initial plan picked JSON for `config.json` to avoid an extra
+parser dependency, but JSON is a poor human-editing format: no
+comments, no trailing commas, brittle quoting, and no natural way
+to group related settings with whitespace. Switch the config file
+to `config.yaml`, parse it with `PyYAML` (safe_load), and document
+the schema in `design/DESIGN.md`. Use `taplo`-equivalent tooling
+(e.g. `yamllint` + a formatter) once adopted. Include a
+"human-editable config formats default to YAML" bullet in future
+plan templates for projects with a user-edited config file.

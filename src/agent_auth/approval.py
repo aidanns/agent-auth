@@ -44,17 +44,17 @@ class ApprovalManager:
         self._plugin = plugin
         self._store = store
         self._audit = audit
-        # Maps (family_id, scope) → absolute expiry. Accessed from handler
-        # threads in the ThreadingHTTPServer, so all reads/writes must be
-        # serialised with _lock.
-        self._grants: dict[GrantKey, datetime] = {}
+        # Maps (family_id, scope) → absolute expiry for timed grants.
+        # Accessed from handler threads in the ThreadingHTTPServer, so all
+        # reads/writes must be serialised with _lock.
+        self._timed_grants: dict[GrantKey, datetime] = {}
         self._lock = threading.Lock()
 
-    def check_grant(self, family_id: str, scope: str) -> bool:
+    def check_timed_grant(self, family_id: str, scope: str) -> bool:
         """Return True iff a non-expired timed grant covers this scope."""
         with self._lock:
-            self._expire_grants()
-            return GrantKey(family_id, scope) in self._grants
+            self._expire_timed_grants()
+            return GrantKey(family_id, scope) in self._timed_grants
 
     def request_approval(
         self,
@@ -63,7 +63,7 @@ class ApprovalManager:
         description: str | None = None,
     ) -> ApprovalResult:
         """Request approval from the user via the notification plugin."""
-        if self.check_grant(family_id, scope):
+        if self.check_timed_grant(family_id, scope):
             return ApprovalResult(approved=True, grant_type="timed")
 
         result = self._plugin.request_approval(scope, description, family_id)
@@ -93,11 +93,11 @@ class ApprovalManager:
             return
         with self._lock:
             expires = datetime.now(timezone.utc) + timedelta(minutes=result.duration_minutes)
-            self._grants[GrantKey(family_id, scope)] = expires
+            self._timed_grants[GrantKey(family_id, scope)] = expires
 
-    def _expire_grants(self):
-        """Remove expired grants. Must be called with lock held."""
+    def _expire_timed_grants(self):
+        """Remove expired timed grants. Must be called with lock held."""
         now = datetime.now(timezone.utc)
-        expired = [key for key, exp in self._grants.items() if exp <= now]
+        expired = [key for key, exp in self._timed_grants.items() if exp <= now]
         for key in expired:
-            del self._grants[key]
+            del self._timed_grants[key]

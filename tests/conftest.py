@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from agent_auth.config import Config
+from agent_auth.keys import EncryptionKey, SigningKey
 from agent_auth.store import TokenStore
 
 
@@ -18,12 +19,12 @@ def tmp_dir():
 
 @pytest.fixture
 def encryption_key():
-    return os.urandom(32)
+    return EncryptionKey(os.urandom(32))
 
 
 @pytest.fixture
 def signing_key():
-    return os.urandom(32)
+    return SigningKey(os.urandom(32))
 
 
 @pytest.fixture

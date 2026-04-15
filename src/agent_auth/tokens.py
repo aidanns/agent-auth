@@ -5,6 +5,7 @@ import hmac
 import uuid
 
 from agent_auth.errors import TokenInvalidError
+from agent_auth.keys import SigningKey
 
 PREFIX_ACCESS = "aa"
 PREFIX_REFRESH = "rt"
@@ -16,13 +17,13 @@ def generate_token_id() -> str:
     return uuid.uuid4().hex
 
 
-def _compute_hmac(prefix: str, token_id: str, signing_key: bytes) -> str:
+def _compute_hmac(prefix: str, token_id: str, signing_key: SigningKey) -> str:
     """Compute HMAC-SHA256 over prefix + token_id, returning the hex digest."""
     message = f"{prefix}_{token_id}".encode("utf-8")
     return hmac.new(signing_key, message, hashlib.sha256).hexdigest()
 
 
-def sign_token(token_id: str, prefix: str, signing_key: bytes) -> str:
+def sign_token(token_id: str, prefix: str, signing_key: SigningKey) -> str:
     """Create a signed token string: <prefix>_<token_id>_<hmac>."""
     if prefix not in VALID_PREFIXES:
         raise ValueError(f"Invalid token prefix: {prefix}")
@@ -44,7 +45,7 @@ def parse_token(raw: str) -> tuple[str, str, str]:
     return prefix, token_id, signature
 
 
-def create_token_pair(signing_key: bytes, store, family_id: str, config) -> tuple[str, str]:
+def create_token_pair(signing_key: SigningKey, store, family_id: str, config) -> tuple[str, str]:
     """Create an access + refresh token pair, persist both, return (access_token, refresh_token)."""
     from datetime import datetime, timezone, timedelta
 
@@ -65,7 +66,7 @@ def create_token_pair(signing_key: bytes, store, family_id: str, config) -> tupl
     return access_token, refresh_token
 
 
-def verify_token(raw: str, signing_key: bytes) -> tuple[str, str]:
+def verify_token(raw: str, signing_key: SigningKey) -> tuple[str, str]:
     """Verify a token's HMAC signature.
 
     Returns (prefix, token_id) if valid.

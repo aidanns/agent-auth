@@ -2,6 +2,7 @@
 
 import base64
 import os
+from typing import NewType
 
 import keyring
 
@@ -13,6 +14,13 @@ SERVICE_NAME = "agent-auth"
 SIGNING_KEY_NAME = "signing-key"
 ENCRYPTION_KEY_NAME = "encryption-key"
 KEY_SIZE_BYTES = 32
+
+# Distinguish the two 32-byte secrets at the type level so a signing key
+# cannot accidentally be handed to AES-GCM (or vice versa). Runtime
+# representation is still ``bytes``; callers obtain instances only via
+# ``KeyManager``.
+SigningKey = NewType("SigningKey", bytes)
+EncryptionKey = NewType("EncryptionKey", bytes)
 
 
 class KeyManager:
@@ -39,10 +47,10 @@ class KeyManager:
 
         return key
 
-    def get_or_create_signing_key(self) -> bytes:
+    def get_or_create_signing_key(self) -> SigningKey:
         """Return the HMAC signing key, generating it on first use."""
-        return self._get_or_create_key(SIGNING_KEY_NAME)
+        return SigningKey(self._get_or_create_key(SIGNING_KEY_NAME))
 
-    def get_or_create_encryption_key(self) -> bytes:
+    def get_or_create_encryption_key(self) -> EncryptionKey:
         """Return the AES-256-GCM encryption key, generating it on first use."""
-        return self._get_or_create_key(ENCRYPTION_KEY_NAME)
+        return EncryptionKey(self._get_or_create_key(ENCRYPTION_KEY_NAME))

@@ -5,6 +5,8 @@ from typing import NewType
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from agent_auth.keys import EncryptionKey
+
 NONCE_SIZE = 12
 
 # Distinguishes encrypted bytes from arbitrary plaintext bytes at the type
@@ -15,7 +17,9 @@ NONCE_SIZE = 12
 Ciphertext = NewType("Ciphertext", bytes)
 
 
-def encrypt_field(plaintext: bytes, key: bytes, aesgcm: AESGCM | None = None) -> Ciphertext:
+def encrypt_field(
+    plaintext: bytes, key: EncryptionKey, aesgcm: AESGCM | None = None
+) -> Ciphertext:
     """Encrypt plaintext using AES-256-GCM.
 
     Returns nonce (12 bytes) || ciphertext || tag (16 bytes).
@@ -28,7 +32,9 @@ def encrypt_field(plaintext: bytes, key: bytes, aesgcm: AESGCM | None = None) ->
     return Ciphertext(nonce + ciphertext)
 
 
-def decrypt_field(ciphertext: Ciphertext, key: bytes, aesgcm: AESGCM | None = None) -> bytes:
+def decrypt_field(
+    ciphertext: Ciphertext, key: EncryptionKey, aesgcm: AESGCM | None = None
+) -> bytes:
     """Decrypt ciphertext produced by encrypt_field.
 
     Pass a pre-constructed AESGCM instance to avoid recreating it per call.

@@ -8,6 +8,7 @@ from agent_auth.approval import ApprovalManager
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
 from agent_auth.errors import ScopeDeniedError, TokenInvalidError
+from agent_auth.keys import SigningKey
 from agent_auth.plugins import load_plugin
 from agent_auth.scopes import check_scope
 from agent_auth.store import TokenStore
@@ -77,7 +78,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         description = data.get("description")
 
         store: TokenStore = self._server.store
-        signing_key: bytes = self._server.signing_key
+        signing_key: SigningKey = self._server.signing_key
         approval_manager: ApprovalManager = self._server.approval_manager
         audit: AuditLogger = self._server.audit
 
@@ -181,7 +182,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         refresh_token_raw = data.get("refresh_token", "")
 
         store: TokenStore = self._server.store
-        signing_key: bytes = self._server.signing_key
+        signing_key: SigningKey = self._server.signing_key
         config: Config = self._server.config
         audit: AuditLogger = self._server.audit
 
@@ -249,7 +250,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         family_id = data.get("family_id", "")
 
         store: TokenStore = self._server.store
-        signing_key: bytes = self._server.signing_key
+        signing_key: SigningKey = self._server.signing_key
         config: Config = self._server.config
         audit: AuditLogger = self._server.audit
         approval_manager: ApprovalManager = self._server.approval_manager
@@ -309,7 +310,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
 
         token_raw = auth_header[7:]
         store: TokenStore = self._server.store
-        signing_key: bytes = self._server.signing_key
+        signing_key: SigningKey = self._server.signing_key
 
         try:
             prefix, token_id = verify_token(token_raw, signing_key)
@@ -348,7 +349,7 @@ class AgentAuthServer(ThreadingHTTPServer):
     def __init__(
         self,
         config: Config,
-        signing_key: bytes,
+        signing_key: SigningKey,
         store: TokenStore,
         audit: AuditLogger,
         approval_manager: ApprovalManager,
@@ -361,7 +362,7 @@ class AgentAuthServer(ThreadingHTTPServer):
         super().__init__((config.host, config.port), AgentAuthHandler)
 
 
-def run_server(config: Config, signing_key: bytes, store: TokenStore, audit: AuditLogger):
+def run_server(config: Config, signing_key: SigningKey, store: TokenStore, audit: AuditLogger):
     """Start the agent-auth HTTP server."""
     plugin = load_plugin(config.notification_plugin, config.notification_plugin_config)
     approval_manager = ApprovalManager(plugin, store, audit)

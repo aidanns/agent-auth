@@ -9,12 +9,13 @@ from pathlib import Path
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from agent_auth.crypto import Ciphertext, decrypt_field, encrypt_field
+from agent_auth.keys import EncryptionKey
 
 
 class TokenStore:
     """Persistent storage for token families, tokens, and approval grants."""
 
-    def __init__(self, db_path: str, encryption_key: bytes):
+    def __init__(self, db_path: str, encryption_key: EncryptionKey):
         self._db_path = db_path
         self._encryption_key = encryption_key
         self._aesgcm = AESGCM(encryption_key)
