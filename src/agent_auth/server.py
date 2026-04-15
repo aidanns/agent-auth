@@ -237,7 +237,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         self._send_json(200, {
             "access_token": access_token,
             "refresh_token": new_refresh_token,
-            "expires_in": config.access_token_ttl,
+            "expires_in": config.access_token_ttl_seconds,
             "scopes": family["scopes"],
         })
 
@@ -297,7 +297,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         self._send_json(200, {
             "access_token": access_token,
             "refresh_token": new_refresh_token,
-            "expires_in": config.access_token_ttl,
+            "expires_in": config.access_token_ttl_seconds,
             "scopes": family["scopes"],
         })
 

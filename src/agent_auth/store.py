@@ -8,7 +8,7 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from agent_auth.crypto import decrypt_field, encrypt_field
+from agent_auth.crypto import Ciphertext, decrypt_field, encrypt_field
 
 
 class TokenStore:
@@ -53,10 +53,10 @@ class TokenStore:
             CREATE INDEX IF NOT EXISTS idx_tokens_family_id ON tokens(family_id);
         """)
 
-    def _encrypt(self, plaintext: str) -> bytes:
+    def _encrypt(self, plaintext: str) -> Ciphertext:
         return encrypt_field(plaintext.encode("utf-8"), self._encryption_key, self._aesgcm)
 
-    def _decrypt(self, ciphertext: bytes) -> str:
+    def _decrypt(self, ciphertext: Ciphertext) -> str:
         return decrypt_field(ciphertext, self._encryption_key, self._aesgcm).decode("utf-8")
 
     # -- Token families --

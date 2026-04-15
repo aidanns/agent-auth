@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68.0"]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-auth"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Token-based authorization for AI agent access to macOS applications"
 requires-python = ">=3.11"
 dependencies = [
@@ -19,6 +19,12 @@ dev = [
 
 [project.scripts]
 agent-auth = "agent_auth.cli:main"
+
+[tool.setuptools_scm]
+# Versions are derived from git tags (e.g. a ``v0.2.0`` tag produces
+# ``0.2.0``). Untagged commits get a development version like
+# ``0.2.1.dev5+g1234abc``.
+fallback_version = "0.0.0+unknown"
 
 [tool.pytest.ini_options]
 markers = [

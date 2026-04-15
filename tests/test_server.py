@@ -36,7 +36,6 @@ class AutoDenyPlugin(NotificationPlugin):
 @pytest.fixture
 def server_env(tmp_dir, signing_key, encryption_key):
     config = Config(
-        config_dir=tmp_dir,
         db_path=os.path.join(tmp_dir, "tokens.db"),
         log_path=os.path.join(tmp_dir, "audit.log"),
         host="127.0.0.1",

@@ -383,3 +383,106 @@ The project has no `LICENSE.md`. Add one (default: MIT) and link to
 it from the "License" section in the README. Include a LICENSE
 step in future plan templates for any project with a public
 repository.
+
+### Include units in names of configuration fields and constants
+
+Initial implementation had `access_token_ttl: int`, `refresh_token_ttl:
+int`, and `KEY_SIZE = 32` — all of which forced readers to guess the
+unit. Adopt a convention that any numeric configuration field or
+constant carrying a unit encodes it in the name
+(`access_token_ttl_seconds`, `KEY_SIZE_BYTES`). Include a "units in
+names" bullet in CLAUDE.md and the plan template's coding-standards
+section.
+
+### XDG Base Directory compliance across all path classes
+
+The initial implementation put everything under `~/.config/agent-auth`
+(config, DB, and logs). Per the XDG Base Directory Spec, data belongs
+in `$XDG_DATA_HOME`, state/logs in `$XDG_STATE_HOME`, and config in
+`$XDG_CONFIG_HOME`. Future plans for any project that persists files
+on disk should include a "path layout" step that maps each
+file class to its XDG variable.
+
+### NewType at security/trust boundaries
+
+The initial `encrypt_field` / `decrypt_field` accepted and returned
+raw `bytes`, so a caller could accidentally pass plaintext to a
+store field that expected ciphertext (or vice versa) with no type
+checker complaint. Future plans for projects with security-critical
+type distinctions should require `typing.NewType` (or equivalent) at
+the boundary — and a note in the plan template to look for these
+boundaries up front.
+
+### Don't persist default configuration on first run
+
+The initial `load_config` created and wrote a default `config.json`
+on first run. A fresh install should rely on in-code defaults until
+the user deliberately customises them — writing a defaults file
+creates a parallel source of truth and forces migration work when
+defaults change. Plan templates for projects with config files
+should include a "defaults live in code, not on disk" step.
+
+### Semantic types instead of raw tuples/strings for structured keys
+
+The initial `ApprovalManager` used `dict[tuple[str, str], datetime]`
+for session grants, leaving the meaning of each tuple element
+implicit. Prefer `typing.NamedTuple` (or `dataclass`) whenever a
+tuple or raw string carries structure. Include a "name your keys"
+bullet in the plan template's coding-standards section.
+
+### Tests should assert persistent state, not captured stdout
+
+Early CLI tests asserted on `stdout` text only (e.g. `"revoked" in
+out.lower()`). These are fragile to formatting changes and do not
+prove the on-disk state matches the user-visible report. Plan
+templates should require that CLI/integration tests verify the
+durable state (DB rows, filesystem effects, keyring entries) in
+addition to or instead of stdout.
+
+### Single source of truth for configuration
+
+Initially `agent-auth serve` duplicated `--host` and `--port` flags
+that already existed in `config.json`. Two sources of truth for the
+same value invites drift (which one wins? is it logged?). Plan
+templates should require: for each configurable value, pick exactly
+one source of truth — flag, config field, or env var — and document
+why.
+
+### Version string derived from git tags
+
+`__version__` was hard-coded to `"0.1.0"` in two places
+(`__init__.py` and `pyproject.toml`), forcing manual bumps on every
+release. Adopt `setuptools-scm` (or language-equivalent) so the
+version is derived from git tags at build time, and read it back via
+`importlib.metadata`. Include a "version from git tags" step in the
+plan template for any project with a release surface.
+
+### Audit-log on-disk format is a public API
+
+The audit log's JSON-lines schema is load-bearing for downstream
+consumers (SIEM ingestion, compliance review, forensics), but the
+initial tests only asserted a couple of fields. Lock the schema with
+tests that pin every field's name and type. Plan templates for
+projects with audit output should treat the log format as a public
+API and require schema tests.
+
+### Plugin systems that run arbitrary code in a secret-holding process
+
+The notification plugin interface uses `importlib.import_module` so
+any Python module on the path can run inside the agent-auth server
+process — which also holds the signing and encryption keys. Tracked
+in [#6](https://github.com/aidanns/agent-auth/issues/6). The lesson
+for plan templates: when a project holds secrets, any plugin or
+extension surface should default to out-of-process (HTTP, IPC) so
+third-party code never crosses the trust boundary.
+
+### Integration-test isolation strategy
+
+The initial HTTP integration tests bound directly to `127.0.0.1` on
+an ephemeral port. On a host with multiple branch-worktrees
+running simultaneously (or a CI runner with parallel jobs) this
+races. Tracked in
+[#7](https://github.com/aidanns/agent-auth/issues/7). Plan templates
+for network-facing projects should include an "integration-test
+isolation" step that picks containers, per-test network namespaces,
+or an equivalent approach up-front.

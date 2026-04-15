@@ -5,14 +5,14 @@ import json
 import sys
 
 from agent_auth.audit import AuditLogger
-from agent_auth.config import load_config
+from agent_auth.config import Config, load_config
 from agent_auth.keys import KeyManager
 from agent_auth.scopes import parse_scope_arg
 from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair, generate_token_id
 
 
-def _init_services(config_dir=None):
+def _init_services(config_dir: str | None = None) -> tuple[Config, bytes, TokenStore, AuditLogger]:
     config = load_config(config_dir)
     key_manager = KeyManager()
     signing_key = key_manager.get_or_create_signing_key()
@@ -49,7 +49,7 @@ def handle_token_create(args, config, signing_key, store, audit):
         "access_token": access_token,
         "refresh_token": refresh_token,
         "scopes": scopes,
-        "expires_in": config.access_token_ttl,
+        "expires_in": config.access_token_ttl_seconds,
     }
 
     if args.json:
@@ -59,7 +59,7 @@ def handle_token_create(args, config, signing_key, store, audit):
         print(f"  Access token:  {access_token}")
         print(f"  Refresh token: {refresh_token}")
         print(f"  Scopes:        {scopes}")
-        print(f"  Expires in:    {config.access_token_ttl}s")
+        print(f"  Expires in:    {config.access_token_ttl_seconds}s")
         print()
         print("WARNING: Tokens are displayed only once. Store them securely.")
 
@@ -169,7 +169,7 @@ def handle_token_rotate(args, config, signing_key, store, audit):
         "access_token": access_token,
         "refresh_token": refresh_token,
         "scopes": scopes,
-        "expires_in": config.access_token_ttl,
+        "expires_in": config.access_token_ttl_seconds,
     }
 
     if args.json:
@@ -180,7 +180,7 @@ def handle_token_rotate(args, config, signing_key, store, audit):
         print(f"  Access token:  {access_token}")
         print(f"  Refresh token: {refresh_token}")
         print(f"  Scopes:        {scopes}")
-        print(f"  Expires in:    {config.access_token_ttl}s")
+        print(f"  Expires in:    {config.access_token_ttl_seconds}s")
         print()
         print("WARNING: Tokens are displayed only once. Store them securely.")
 
@@ -230,10 +230,9 @@ def build_parser() -> argparse.ArgumentParser:
     rotate_parser = token_sub.add_parser("rotate", help="Rotate a token family")
     rotate_parser.add_argument("family_id", help="Token family ID")
 
-    # serve subcommand
-    serve_parser = subparsers.add_parser("serve", help="Start the HTTP server")
-    serve_parser.add_argument("--host", help="Bind address (default: from config)")
-    serve_parser.add_argument("--port", type=int, help="Bind port (default: from config)")
+    # serve subcommand — bind address/port are configured in config.json;
+    # the CLI has no override flags to keep exactly one source of truth.
+    subparsers.add_parser("serve", help="Start the HTTP server")
 
     return parser
 
@@ -258,10 +257,6 @@ def main():
     config, signing_key, store, audit = _init_services(args.config_dir)
 
     if args.command == "serve":
-        if args.host:
-            config.host = args.host
-        if args.port:
-            config.port = args.port
         handle_serve(args, config, signing_key, store, audit)
         return
 

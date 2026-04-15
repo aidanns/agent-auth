@@ -52,13 +52,13 @@ def create_token_pair(signing_key: bytes, store, family_id: str, config) -> tupl
 
     access_id = generate_token_id()
     access_token = sign_token(access_id, PREFIX_ACCESS, signing_key)
-    access_expires = (now + timedelta(seconds=config.access_token_ttl)).isoformat()
+    access_expires = (now + timedelta(seconds=config.access_token_ttl_seconds)).isoformat()
     _, _, access_sig = parse_token(access_token)
     store.create_token(access_id, access_sig, family_id, "access", access_expires)
 
     refresh_id = generate_token_id()
     refresh_token = sign_token(refresh_id, PREFIX_REFRESH, signing_key)
-    refresh_expires = (now + timedelta(seconds=config.refresh_token_ttl)).isoformat()
+    refresh_expires = (now + timedelta(seconds=config.refresh_token_ttl_seconds)).isoformat()
     _, _, refresh_sig = parse_token(refresh_token)
     store.create_token(refresh_id, refresh_sig, family_id, "refresh", refresh_expires)
 

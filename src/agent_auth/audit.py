@@ -1,27 +1,24 @@
 """Structured audit logging for token operations and authorization decisions."""
 
 import json
-import logging
-import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-_logger_counter = 0
-
 
 class AuditLogger:
-    """Writes JSON-lines audit log entries to a file."""
+    """Writes JSON-lines audit log entries to a file.
+
+    The on-disk format is part of the project's public surface: one JSON
+    object per line with at minimum ``timestamp`` (ISO 8601 UTC) and
+    ``event`` keys, plus any event-specific fields. See
+    ``tests/test_audit.py`` for the contract.
+    """
 
     def __init__(self, log_path: str):
-        global _logger_counter
-        Path(os.path.dirname(log_path)).mkdir(parents=True, exist_ok=True)
-        _logger_counter += 1
-        self._logger = logging.getLogger(f"agent_auth.audit.{_logger_counter}")
-        self._logger.setLevel(logging.INFO)
-        self._logger.propagate = False
-        handler = logging.FileHandler(log_path)
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        self._logger.addHandler(handler)
+        self._log_path = log_path
+        self._lock = threading.Lock()
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
 
     def log(self, event: str, **details):
         """Write an audit log entry."""
@@ -30,7 +27,9 @@ class AuditLogger:
             "event": event,
             **details,
         }
-        self._logger.info(json.dumps(entry, default=str))
+        line = json.dumps(entry, default=str) + "\n"
+        with self._lock, open(self._log_path, "a", encoding="utf-8") as f:
+            f.write(line)
 
     def log_token_operation(self, event: str, **details):
         self.log(event, **details)

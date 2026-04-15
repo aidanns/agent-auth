@@ -29,7 +29,6 @@ def signing_key():
 @pytest.fixture
 def test_config(tmp_dir):
     return Config(
-        config_dir=tmp_dir,
         db_path=os.path.join(tmp_dir, "tokens.db"),
         log_path=os.path.join(tmp_dir, "audit.log"),
     )
