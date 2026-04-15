@@ -156,6 +156,16 @@ The server has no health-check endpoint. Add `GET /agent-auth/healthz`
 that returns 200 when keys load and the DB is readable. Include a
 health-check endpoint in future plan templates for HTTP services.
 
+### Performance testing
+
+There is no performance-testing layer. The plan covered
+correctness tests but not load, stress, or benchmark testing. Add a
+benchmark suite (e.g. `pytest-benchmark` for microbenchmarks,
+`locust` or `k6` for HTTP load), run it in CI on a schedule or
+nightly, and track results over time to catch regressions. Include
+performance-testing design in future plan templates for services
+with latency or throughput requirements.
+
 ### Performance budget
 
 There is no documented performance budget for the HTTP endpoints
