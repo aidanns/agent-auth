@@ -247,3 +247,34 @@ There is no `CHANGELOG.md` tracking user-visible changes. Adopt
 Keep-a-Changelog formatting, pair with semantic versioning, and
 require updates on every user-facing PR. Include a CHANGELOG.md
 step in future plan templates.
+
+### install.sh with curl | bash idiom
+
+The project has no one-line install script. Add `install.sh` at the
+repo root that installs agent-auth on Linux and macOS, and document
+the `curl -fsSL <url> | bash` idiom in the README. Include an
+install script step in future plan templates for user-facing
+binaries and daemons.
+
+### Conventional commit instructions in CLAUDE.md
+
+The project's `CLAUDE.md` does not document the conventional-commit
+convention that the repository uses, even though the user's global
+CLAUDE.md does. Project-level CLAUDE.md files should also state the
+commit-message convention so contributors (human or Claude) see it
+without needing the user's global config. Include a "document commit
+conventions in project CLAUDE.md" step in future plan templates.
+
+### Release instructions in README
+
+The README does not document how to cut a release (version bump,
+tag, GitHub release, publish). Add a "Releasing" section. Include a
+release-instructions step in future plan templates for projects with
+a public release surface.
+
+### scripts/release.sh
+
+There is no repeatable release script. Add `scripts/release.sh` that
+automates version bumping, tagging, and posting the GitHub release.
+Include a release script step in future plan templates for projects
+with a public release surface.
