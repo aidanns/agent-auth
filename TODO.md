@@ -3,22 +3,6 @@
 Outstanding items missed from or deferred by the original implementation plan
 (`plans/implement-agent-auth-server.md`).
 
-## In DESIGN.md but not implemented
-
-### Example app bridge (deferred)
-
-The plan's Context section explicitly defers the example app bridge to a
-follow-up. Functions in the decomposition covering this area:
-
-- Handle App Commands
-- Send Bridge Request
-- Serve Bridge HTTP API
-- Execute External System Interaction
-
-### Example app CLI (deferred)
-
-Also explicitly deferred in the plan. Depends on the bridge.
-
 ## Missing from DESIGN.md and the plan (should have been included)
 
 ### Verify implementation matches DESIGN.md

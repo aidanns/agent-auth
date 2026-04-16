@@ -31,7 +31,7 @@ Responsibilities:
 - Scope policy: define which scopes exist and their access tier (allow/prompt/deny)
 - Audit logging: record all token operations and authorization decisions
 
-### example-app-bridge (and future app bridges)
+### things-bridge (and future app bridges)
 
 HTTP server running on the host. Receives requests from the CLI client, delegates token validation and approval to agent-auth, then interacts with the target external system.
 
@@ -42,15 +42,51 @@ Responsibilities:
 
 Each external system gets its own bridge server. Bridges are independent of each other and only depend on agent-auth for authorization.
 
-### example-app-cli (and future app CLIs)
+The first concrete bridge is `things-bridge`, which wraps the Things 3 AppleScript API (see `design/THINGS.md`) via `osascript`. It listens on `127.0.0.1:9200` by default and currently exposes read-only endpoints; write and JIT-gated endpoints are a follow-up.
+
+Read-only endpoints (all require the `things:read` scope on the presented bearer token):
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/things-bridge/todos?list=&project=&area=&tag=&status=` | List todos, optionally filtered |
+| GET | `/things-bridge/todos/{id}` | Fetch one todo by Things id |
+| GET | `/things-bridge/projects?area=` | List projects, optionally filtered by area id |
+| GET | `/things-bridge/projects/{id}` | Fetch one project by Things id |
+| GET | `/things-bridge/areas` | List all areas |
+| GET | `/things-bridge/areas/{id}` | Fetch one area by Things id |
+
+Error responses from the bridge:
+
+| Status | Body | Cause |
+|---|---|---|
+| 401 | `{"error": "unauthorized"}` | Missing, malformed, or invalid bearer token |
+| 401 | `{"error": "token_expired"}` | agent-auth reported the access token has expired (CLI retries with refresh) |
+| 403 | `{"error": "scope_denied"}` | Token does not carry `things:read` |
+| 404 | `{"error": "not_found"}` | Unknown path or unknown Things id |
+| 502 | `{"error": "authz_unavailable"}` | agent-auth is unreachable |
+| 502 | `{"error": "things_unavailable"}` | AppleScript or Things reported an error |
+| 503 | `{"error": "things_permission_denied"}` | macOS Automation permission not granted for Things |
+
+### things-cli (and future app CLIs)
 
 Thin CLI client that can run anywhere (host or devcontainer). Sends HTTP requests to the corresponding bridge with a bearer token. Handles automatic token refresh on 401 responses.
 
 Responsibilities:
 - Provide a CLI interface for the application
 - Pass the bearer token from local credential storage
-- Automatically refresh expired access tokens using the refresh token
+- Automatically refresh expired access tokens using the refresh token; if the refresh token itself has expired, request re-issuance (which blocks on JIT approval)
 - Store credentials in the system keyring (see CLI Credential Storage below)
+
+`things-cli` ships the following read-only commands (paired with `login` / `logout` / `status` for credential management):
+
+- `things-cli todos list [--list ID] [--project ID] [--area ID] [--tag NAME] [--status open|completed|canceled]`
+- `things-cli todos show <id>`
+- `things-cli projects list [--area ID]`
+- `things-cli projects show <id>`
+- `things-cli areas list`
+- `things-cli areas show <id>`
+
+All commands accept `--json` for machine-readable output.
 
 ## Authentication
 

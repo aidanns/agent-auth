@@ -6,10 +6,10 @@ agent-auth,SQLite,Configuration Item,Third-party embedded relational database pr
 agent-auth,keyring,Configuration Item,Third-party Python library providing a unified API for accessing system keyring backends to store the HMAC signing key and AES-256-GCM encryption key.,"Generate Signing Key, Load Signing Key, Generate Encryption Key, Load Encryption Key"
 agent-auth,macOS Keychain,Configuration Item,Operating system keyring backend used to securely store the HMAC signing key and database encryption key on macOS.,
 agent-auth,gnome-keyring,Configuration Item,Operating system keyring backend (via libsecret/D-Bus Secret Service) used to securely store the HMAC signing key and database encryption key on Linux.,
-agent-auth,example-app-bridge,Component,"HTTP server running on the host that proxies operations to an external system, delegating authorization to agent-auth.",
-example-app-bridge,example-app-bridge,Configuration Item,"HTTP server service that maps endpoints to external system interactions, delegating token validation and JIT approval to agent-auth.","Delegate Token Validation, Execute External System Interaction, Serve Bridge HTTP API"
-agent-auth,example-app-cli,Component,"Thin CLI client for interacting with an external system via its bridge, runnable from host or devcontainer.",
-example-app-cli,example-app-cli,Configuration Item,"CLI client service that sends authenticated HTTP requests to the app bridge, with automatic token refresh and re-issuance on 401 responses.","Send Bridge Request, Auto Refresh Token, Store CLI Credentials, Handle App Commands, Display Results"
-example-app-cli,keyring,Configuration Item,Third-party Python library providing a unified API for accessing system keyring backends to store CLI credentials.,
-example-app-cli,macOS Keychain,Configuration Item,Operating system keyring backend used to securely store CLI credentials on macOS.,
-example-app-cli,gnome-keyring,Configuration Item,Operating system keyring backend (via libsecret/D-Bus Secret Service) used to securely store CLI credentials on Linux.,
+agent-auth,things-bridge,Component,"HTTP server running on the host that proxies read operations to the Things 3 application via AppleScript, delegating authorization to agent-auth.",
+things-bridge,things-bridge,Configuration Item,"HTTP server service that maps /things-bridge/ endpoints to Things 3 AppleScript interactions, delegating token validation to agent-auth.","Delegate Token Validation, Execute External System Interaction, Serve Bridge HTTP API"
+agent-auth,things-cli,Component,"Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer.",
+things-cli,things-cli,Configuration Item,"CLI client service that sends authenticated HTTP requests to the things-bridge, with automatic token refresh and re-issuance on 401 responses.","Send Bridge Request, Auto Refresh Token, Store CLI Credentials, Handle App Commands, Display Results"
+things-cli,keyring,Configuration Item,Third-party Python library providing a unified API for accessing system keyring backends to store CLI credentials.,
+things-cli,macOS Keychain,Configuration Item,Operating system keyring backend used to securely store CLI credentials on macOS.,
+things-cli,gnome-keyring,Configuration Item,Operating system keyring backend (via libsecret/D-Bus Secret Service) used to securely store CLI credentials on Linux.,

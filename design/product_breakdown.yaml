@@ -58,20 +58,20 @@ components:
       - name: gnome-keyring
         description: Operating system keyring backend (via libsecret/D-Bus Secret Service) used to securely store the HMAC signing key and database encryption key on Linux.
         functions: []
-  - name: example-app-bridge
-    description: HTTP server running on the host that proxies operations to an external system, delegating authorization to agent-auth.
+  - name: things-bridge
+    description: HTTP server running on the host that proxies read operations to the Things 3 application via AppleScript, delegating authorization to agent-auth.
     configuration_items:
-      - name: example-app-bridge
-        description: HTTP server service that maps endpoints to external system interactions, delegating token validation and JIT approval to agent-auth.
+      - name: things-bridge
+        description: HTTP server service that maps /things-bridge/ endpoints to Things 3 AppleScript interactions, delegating token validation to agent-auth.
         functions:
           - Delegate Token Validation
           - Execute External System Interaction
           - Serve Bridge HTTP API
-  - name: example-app-cli
-    description: Thin CLI client for interacting with an external system via its bridge, runnable from host or devcontainer.
+  - name: things-cli
+    description: Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer.
     configuration_items:
-      - name: example-app-cli
-        description: CLI client service that sends authenticated HTTP requests to the app bridge, with automatic token refresh and re-issuance on 401 responses.
+      - name: things-cli
+        description: CLI client service that sends authenticated HTTP requests to the things-bridge, with automatic token refresh and re-issuance on 401 responses.
         functions:
           - Send Bridge Request
           - Auto Refresh Token

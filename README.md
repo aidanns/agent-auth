@@ -83,6 +83,47 @@ curl -H "Authorization: Bearer aa_<id>_<sig>" \
   http://127.0.0.1:9100/agent-auth/token/status
 ```
 
+### things-bridge (macOS host)
+
+`things-bridge` is an HTTP server that wraps the Things 3 application on macOS via AppleScript. It delegates token validation to `agent-auth` and exposes read-only endpoints under `/things-bridge/`. Run it alongside `agent-auth serve`:
+
+```bash
+# Start the bridge (default: 127.0.0.1:9200)
+things-bridge serve
+
+# Customize bindings and point at a non-default agent-auth URL
+things-bridge serve --host 127.0.0.1 --port 9200 --auth-url http://127.0.0.1:9100
+```
+
+### things-cli
+
+`things-cli` is a thin client for `things-bridge` that auto-refreshes/reissues tokens via `agent-auth`. Credentials are kept in the system keyring by default; pass `--credential-store=file --credentials-file=<path>` to persist them in a 0600 JSON file (useful inside a devcontainer).
+
+```bash
+# Save credentials from an `agent-auth token create` output
+things-cli login \
+  --bridge-url http://127.0.0.1:9200 \
+  --auth-url http://127.0.0.1:9100 \
+  --access-token aa_<id>_<sig> \
+  --refresh-token rt_<id>_<sig> \
+  --family-id <family-id>
+
+# Show redacted credential status
+things-cli status
+
+# Read-only commands (add --json for structured output)
+things-cli todos list
+things-cli todos list --list TMTodayListSource --status open
+things-cli todos show <todo-id>
+things-cli projects list
+things-cli projects show <project-id>
+things-cli areas list
+things-cli areas show <area-id>
+
+# Discard stored credentials
+things-cli logout
+```
+
 ## Security
 
 - The server binds to `127.0.0.1` by default (localhost only, not network-accessible)
