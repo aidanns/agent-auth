@@ -102,3 +102,14 @@ def test_validate_unreachable_raises_unavailable():
 def test_invalid_auth_url_raises_valueerror():
     with pytest.raises(ValueError):
         AuthzClient("not-a-url")
+
+
+def test_https_url_uses_https_connection():
+    # Regression: the client previously used HTTPConnection regardless of
+    # scheme, so any deployment that put agent-auth behind TLS would silently
+    # send plaintext on port 443.
+    from http.client import HTTPSConnection
+
+    client = AuthzClient("https://auth.example.invalid:9443")
+    assert client._conn_cls is HTTPSConnection
+    assert client._port == 9443

@@ -1,7 +1,7 @@
 """HTTP client for delegating token validation to agent-auth."""
 
 import json
-from http.client import HTTPConnection
+from http.client import HTTPConnection, HTTPSConnection
 from urllib.parse import urlparse
 
 from things_bridge.errors import (
@@ -21,6 +21,7 @@ class AuthzClient:
             raise ValueError(f"Invalid auth_url: {auth_url!r}")
         self._host = parsed.hostname
         self._port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        self._conn_cls = HTTPSConnection if parsed.scheme == "https" else HTTPConnection
         self._timeout = timeout
 
     def validate(self, token: str, required_scope: str, *, description: str | None = None) -> None:
@@ -33,7 +34,7 @@ class AuthzClient:
             payload["description"] = description
         body = json.dumps(payload).encode("utf-8")
 
-        conn = HTTPConnection(self._host, self._port, timeout=self._timeout)
+        conn = self._conn_cls(self._host, self._port, timeout=self._timeout)
         try:
             try:
                 conn.request(

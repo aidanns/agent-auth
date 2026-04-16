@@ -301,8 +301,25 @@ def _row_to_area(row: list[str]) -> Area:
     )
 
 
+_FORBIDDEN_ID_CHARS = {
+    "\r", "\n", "\t", "\0",
+    TAB_PLACEHOLDER, NEWLINE_PLACEHOLDER,
+}
+
+
 def _quote(value: str) -> str:
-    """AppleScript string literal quoting."""
+    """AppleScript string-literal quoting for caller-supplied ids, names, and tags.
+
+    Rejects any input containing characters that cannot appear inside a
+    single-line AppleScript string literal, that would corrupt the TSV framing,
+    or that could otherwise alter the surrounding script. This is the primary
+    defence against AppleScript injection via URL-derived ids.
+    """
+    for ch in value:
+        if ch in _FORBIDDEN_ID_CHARS or ord(ch) < 0x20:
+            raise ThingsError(
+                "Invalid character in Things identifier (control or framing character rejected)"
+            )
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
 

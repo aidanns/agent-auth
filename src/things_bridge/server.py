@@ -19,6 +19,26 @@ from things_bridge.things import ThingsClient
 
 READ_SCOPE = "things:read"
 
+# Upper bound on ids accepted from URL paths. Things ids are short; reject
+# anything excessive before it ever reaches AppleScript.
+_MAX_ID_LEN = 128
+
+
+def _safe_id(raw: str | None) -> str | None:
+    """Reject ids that contain path separators, control chars, or are over-length.
+
+    Returns the id unchanged if safe, ``None`` otherwise. Used before building
+    audit/JIT description strings and before passing to ThingsClient.
+    """
+    if raw is None or not raw or len(raw) > _MAX_ID_LEN:
+        return None
+    if "/" in raw:
+        return None
+    for ch in raw:
+        if ord(ch) < 0x20 or ord(ch) == 0x7F:
+            return None
+    return raw
+
 
 class ThingsBridgeHandler(BaseHTTPRequestHandler):
     """HTTP request handler for things-bridge read-only endpoints."""
@@ -35,8 +55,10 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, format, *args):  # noqa: A002 — match BaseHTTPRequestHandler
-        # Never log bearer tokens; suppress the default access log entirely.
+    def log_request(self, code="-", size="-"):  # noqa: ARG002
+        # Suppress the default access log — request paths can reveal
+        # Things ids and our bearer tokens appear in headers. Errors
+        # still surface via the default ``log_error`` implementation.
         pass
 
     def _extract_bearer(self) -> str | None:
@@ -61,22 +83,22 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         except AuthzScopeDeniedError:
             self._send_json(403, {"error": "scope_denied"})
             return False
-        except AuthzUnavailableError as exc:
-            self._send_json(502, {"error": "authz_unavailable", "detail": str(exc)})
+        except AuthzUnavailableError:
+            self._send_json(502, {"error": "authz_unavailable"})
             return False
         return True
 
     def _things_error_response(self, exc: ThingsError) -> None:
+        # Do not include ``str(exc)`` in the response body: AppleScript /
+        # osascript stderr can contain local filesystem paths, usernames, and
+        # excerpts of the executed script — that would be a host-info leak.
         if isinstance(exc, ThingsNotFoundError):
-            self._send_json(404, {"error": "not_found", "detail": str(exc)})
+            self._send_json(404, {"error": "not_found"})
             return
         if isinstance(exc, ThingsPermissionError):
-            self._send_json(
-                503,
-                {"error": "things_permission_denied", "detail": str(exc)},
-            )
+            self._send_json(503, {"error": "things_permission_denied"})
             return
-        self._send_json(502, {"error": "things_unavailable", "detail": str(exc)})
+        self._send_json(502, {"error": "things_unavailable"})
 
     def do_GET(self):  # noqa: N802 — BaseHTTPRequestHandler API
         url = urlsplit(self.path)
@@ -109,8 +131,8 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/things-bridge/todos/"):
-            todo_id = path[len("/things-bridge/todos/"):]
-            if not todo_id or "/" in todo_id:
+            todo_id = _safe_id(path[len("/things-bridge/todos/"):])
+            if todo_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
             if not self._validate(token, f"Read Things todo {todo_id}"):
@@ -135,8 +157,8 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/things-bridge/projects/"):
-            project_id = path[len("/things-bridge/projects/"):]
-            if not project_id or "/" in project_id:
+            project_id = _safe_id(path[len("/things-bridge/projects/"):])
+            if project_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
             if not self._validate(token, f"Read Things project {project_id}"):
@@ -161,8 +183,8 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/things-bridge/areas/"):
-            area_id = path[len("/things-bridge/areas/"):]
-            if not area_id or "/" in area_id:
+            area_id = _safe_id(path[len("/things-bridge/areas/"):])
+            if area_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
             if not self._validate(token, f"Read Things area {area_id}"):
@@ -176,6 +198,20 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         self._send_json(404, {"error": "not_found"})
+
+    def _method_not_allowed(self):
+        self.send_response(405)
+        self.send_header("Allow", "GET")
+        body = json.dumps({"error": "method_not_allowed"}).encode("utf-8")
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    do_POST = _method_not_allowed  # noqa: N815
+    do_PUT = _method_not_allowed  # noqa: N815
+    do_PATCH = _method_not_allowed  # noqa: N815
+    do_DELETE = _method_not_allowed  # noqa: N815
 
 
 def _first(params: dict[str, list[str]], key: str) -> str | None:

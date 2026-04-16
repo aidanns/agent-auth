@@ -63,9 +63,12 @@ Error responses from the bridge:
 | 401 | `{"error": "token_expired"}` | agent-auth reported the access token has expired (CLI retries with refresh) |
 | 403 | `{"error": "scope_denied"}` | Token does not carry `things:read` |
 | 404 | `{"error": "not_found"}` | Unknown path or unknown Things id |
+| 405 | `{"error": "method_not_allowed"}` | Non-GET verb on a read-only endpoint (writes are a follow-up) |
 | 502 | `{"error": "authz_unavailable"}` | agent-auth is unreachable |
 | 502 | `{"error": "things_unavailable"}` | AppleScript or Things reported an error |
 | 503 | `{"error": "things_permission_denied"}` | macOS Automation permission not granted for Things |
+
+Error bodies intentionally omit server-side detail: AppleScript / `osascript` stderr can contain local filesystem paths and usernames, so the bridge returns only a canonical error code.
 
 ### things-cli (and future app CLIs)
 

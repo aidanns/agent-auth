@@ -221,11 +221,17 @@ def test_only_one_retry_on_persistent_401(servers, tmp_path):
         (200, {"access_token": "aa_new", "refresh_token": "rt_new",
                "expires_in": 900, "scopes": {}}),
     ]
-    client, _ = _make_client(servers, tmp_path)
+    client, store = _make_client(servers, tmp_path)
     with pytest.raises(BridgeUnauthorizedError):
         client.get("/things-bridge/todos")
     # Ensure we stopped after the second call (no infinite loop).
     assert len(_BridgeHandler.requests) == 2
+    # Refresh tokens are single-use; the new pair must be persisted even when
+    # the retry fails, otherwise the next run starts with a consumed refresh
+    # token and the whole family gets revoked on next use.
+    loaded = store.load()
+    assert loaded.access_token == "aa_new"
+    assert loaded.refresh_token == "rt_new"
 
 
 def test_query_params_are_sent(servers, tmp_path):

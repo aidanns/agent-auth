@@ -44,10 +44,10 @@ def main():
             config.auth_url = args.auth_url
 
         runner = AppleScriptRunner(
-            osascript_path=config.osascript_path, timeout=config.request_timeout,
+            osascript_path=config.osascript_path, timeout=config.request_timeout_seconds,
         )
         things = ThingsClient(runner)
-        authz = AuthzClient(config.auth_url, timeout=config.request_timeout)
+        authz = AuthzClient(config.auth_url, timeout=config.request_timeout_seconds)
         run_server(config, things, authz)
         return
 

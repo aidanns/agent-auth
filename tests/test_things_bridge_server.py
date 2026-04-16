@@ -259,3 +259,55 @@ def test_get_area_by_id(bridge):
 def test_unknown_path_returns_404(bridge):
     status, data = _get(f"{bridge['url']}/things-bridge/nope")
     assert status == 404
+
+
+def test_todo_id_over_length_returns_404(bridge):
+    # Overly long ids are rejected before authz or AppleScript are involved,
+    # so a caller cannot DoS or spam the JIT approval prompt with giant strings.
+    long_id = "a" * 300
+    status, data = _get(f"{bridge['url']}/things-bridge/todos/{long_id}")
+    assert status == 404
+    assert data == {"error": "not_found"}
+    assert bridge["authz"].last_token is None
+
+
+def test_safe_id_rejects_control_and_path_chars():
+    # Unit test of the defence-in-depth guard that runs before authz/AppleScript.
+    from things_bridge.server import _safe_id
+
+    assert _safe_id("valid-id_123") == "valid-id_123"
+    assert _safe_id(None) is None
+    assert _safe_id("") is None
+    assert _safe_id("a" * 300) is None
+    assert _safe_id("foo/bar") is None
+    assert _safe_id("foo\nbar") is None
+    assert _safe_id("foo\tbar") is None
+    assert _safe_id("foo\x00bar") is None
+    assert _safe_id("foo\x7fbar") is None
+
+
+def test_post_to_readonly_endpoint_returns_405(bridge):
+    req = urllib.request.Request(
+        f"{bridge['url']}/things-bridge/todos",
+        data=b"{}",
+        headers={"Authorization": "Bearer aa_test", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        urllib.request.urlopen(req, timeout=5)
+        assert False, "expected HTTPError"
+    except urllib.error.HTTPError as exc:
+        assert exc.code == 405
+        assert exc.headers.get("Allow") == "GET"
+        body = json.loads(exc.read())
+        assert body == {"error": "method_not_allowed"}
+
+
+def test_things_error_detail_not_leaked_in_response(bridge):
+    # AppleScript stderr can contain filesystem paths and user names; the
+    # bridge must not forward it to the HTTP client.
+    bridge["things"].raise_on_call = ThingsError("/Users/secret/path leaked in stderr")
+    status, data = _get(f"{bridge['url']}/things-bridge/todos")
+    assert status == 502
+    assert data == {"error": "things_unavailable"}
+    assert "secret" not in json.dumps(data)

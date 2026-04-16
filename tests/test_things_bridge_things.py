@@ -186,3 +186,35 @@ def test_malformed_row_raises_things_error():
     client = ThingsClient(runner)
     with pytest.raises(ThingsError):
         client.list_todos()
+
+
+# -- AppleScript injection guards --
+# A list_id / project_id / area_id / tag containing a raw newline could break
+# out of the AppleScript string literal; a raw U+241E / U+241F could smuggle
+# a tab or newline through the TSV framing. These must be rejected before the
+# script is built, not silently quoted.
+
+@pytest.mark.parametrize("bad", [
+    "foo\nbar",
+    "foo\rbar",
+    "foo\tbar",
+    f"foo{TAB_PLACEHOLDER}bar",
+    f"foo{NEWLINE_PLACEHOLDER}bar",
+    "foo\x00bar",
+    "foo\x1bbar",
+])
+def test_list_todos_rejects_injection_via_filter_ids(bad):
+    """Control characters in caller-supplied ids must not reach AppleScript."""
+    runner = FakeRunner(output="")
+    client = ThingsClient(runner)
+    with pytest.raises(ThingsError):
+        client.list_todos(project_id=bad)
+    assert runner.last_script is None
+
+
+def test_get_todo_rejects_injection_in_id():
+    runner = FakeRunner(output="")
+    client = ThingsClient(runner)
+    with pytest.raises(ThingsError):
+        client.get_todo("foo\nbar")
+    assert runner.last_script is None
