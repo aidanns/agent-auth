@@ -19,6 +19,11 @@ dev = [
 
 [project.scripts]
 agent-auth = "agent_auth.cli:main"
+things-bridge = "things_bridge.cli:main"
+things-cli = "things_cli.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools_scm]
 # Versions are derived from git tags (e.g. a ``v0.2.0`` tag produces

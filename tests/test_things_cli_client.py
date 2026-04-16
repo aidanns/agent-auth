@@ -1,0 +1,254 @@
+"""Tests for the things-cli BridgeClient HTTP flow.
+
+Uses a dual-handler test server: one port simulates the bridge, another simulates
+agent-auth's token endpoints. This lets us drive the full refresh/reissue logic
+without mocking internal classes.
+"""
+
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+import pytest
+
+from things_cli.client import BridgeClient
+from things_cli.credentials import Credentials, FileStore
+from things_cli.errors import (
+    BridgeForbiddenError,
+    BridgeNotFoundError,
+    BridgeUnauthorizedError,
+    BridgeUnavailableError,
+)
+
+
+# -- Fake bridge --
+
+class _BridgeHandler(BaseHTTPRequestHandler):
+    """Driven by module-level config dict so tests can set responses per request."""
+
+    responses: list = []   # each entry: (status, body_dict, expect_token)
+    requests: list = []    # each entry: (method, path, token, body)
+
+    def log_message(self, *args, **kwargs):
+        pass
+
+    def do_GET(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length) if length else b""
+        token = self._bearer()
+        _BridgeHandler.requests.append(("GET", self.path, token, body))
+        status, resp_body, expect_token = _BridgeHandler.responses.pop(0)
+        if expect_token is not None:
+            assert token == expect_token, f"Expected token {expect_token!r}, got {token!r}"
+        self._send(status, resp_body)
+
+    def _bearer(self) -> str | None:
+        header = self.headers.get("Authorization", "")
+        if header.startswith("Bearer "):
+            return header[7:]
+        return None
+
+    def _send(self, status, body):
+        body_bytes = json.dumps(body).encode() if body is not None else b""
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body_bytes)))
+        self.end_headers()
+        if body_bytes:
+            self.wfile.write(body_bytes)
+
+
+class _AuthHandler(BaseHTTPRequestHandler):
+    """Simulates agent-auth token endpoints."""
+
+    refresh_responses: list = []   # each entry: (status, body_dict)
+    reissue_responses: list = []
+    requests: list = []
+
+    def log_message(self, *args, **kwargs):
+        pass
+
+    def do_POST(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length) if length else b""
+        body = json.loads(raw) if raw else {}
+        _AuthHandler.requests.append((self.path, body))
+        if self.path == "/agent-auth/token/refresh":
+            status, resp = _AuthHandler.refresh_responses.pop(0)
+        elif self.path == "/agent-auth/token/reissue":
+            status, resp = _AuthHandler.reissue_responses.pop(0)
+        else:
+            status, resp = 404, {"error": "not_found"}
+        out = json.dumps(resp).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+
+@pytest.fixture
+def servers():
+    _BridgeHandler.responses = []
+    _BridgeHandler.requests = []
+    _AuthHandler.refresh_responses = []
+    _AuthHandler.reissue_responses = []
+    _AuthHandler.requests = []
+
+    bridge = HTTPServer(("127.0.0.1", 0), _BridgeHandler)
+    auth = HTTPServer(("127.0.0.1", 0), _AuthHandler)
+    t1 = threading.Thread(target=bridge.serve_forever, daemon=True)
+    t2 = threading.Thread(target=auth.serve_forever, daemon=True)
+    t1.start()
+    t2.start()
+    yield {
+        "bridge_url": f"http://127.0.0.1:{bridge.server_address[1]}",
+        "auth_url": f"http://127.0.0.1:{auth.server_address[1]}",
+    }
+    bridge.shutdown()
+    auth.shutdown()
+
+
+def _make_client(urls, tmp_path) -> tuple[BridgeClient, FileStore]:
+    store = FileStore(str(tmp_path / "c.json"))
+    creds = Credentials(
+        access_token="aa_initial",
+        refresh_token="rt_initial",
+        bridge_url=urls["bridge_url"],
+        auth_url=urls["auth_url"],
+        family_id="fam-1",
+    )
+    store.save(creds)
+    return BridgeClient(creds, store, timeout=2.0), store
+
+
+def test_get_returns_parsed_body(servers, tmp_path):
+    _BridgeHandler.responses = [(200, {"todos": []}, "aa_initial")]
+    client, _ = _make_client(servers, tmp_path)
+    result = client.get("/things-bridge/todos")
+    assert result == {"todos": []}
+
+
+def test_401_token_expired_triggers_refresh_and_retry(servers, tmp_path):
+    _BridgeHandler.responses = [
+        (401, {"error": "token_expired"}, "aa_initial"),
+        (200, {"todos": [{"id": "t1"}]}, "aa_new"),
+    ]
+    _AuthHandler.refresh_responses = [
+        (200, {"access_token": "aa_new", "refresh_token": "rt_new", "expires_in": 900, "scopes": {}}),
+    ]
+    client, store = _make_client(servers, tmp_path)
+    result = client.get("/things-bridge/todos")
+    assert result == {"todos": [{"id": "t1"}]}
+    # Credentials rolled forward and persisted.
+    loaded = store.load()
+    assert loaded.access_token == "aa_new"
+    assert loaded.refresh_token == "rt_new"
+
+
+def test_refresh_expired_triggers_reissue_and_retry(servers, tmp_path):
+    _BridgeHandler.responses = [
+        (401, {"error": "token_expired"}, "aa_initial"),
+        (200, {"todos": []}, "aa_reissued"),
+    ]
+    _AuthHandler.refresh_responses = [
+        (401, {"error": "refresh_token_expired"}),
+    ]
+    _AuthHandler.reissue_responses = [
+        (200, {"access_token": "aa_reissued", "refresh_token": "rt_reissued",
+               "expires_in": 900, "scopes": {}}),
+    ]
+    client, store = _make_client(servers, tmp_path)
+    result = client.get("/things-bridge/todos")
+    assert result == {"todos": []}
+    assert store.load().access_token == "aa_reissued"
+
+
+def test_reissue_denied_raises_unauthorized(servers, tmp_path):
+    _BridgeHandler.responses = [
+        (401, {"error": "token_expired"}, "aa_initial"),
+    ]
+    _AuthHandler.refresh_responses = [
+        (401, {"error": "refresh_token_expired"}),
+    ]
+    _AuthHandler.reissue_responses = [
+        (403, {"error": "reissue_denied"}),
+    ]
+    client, _ = _make_client(servers, tmp_path)
+    with pytest.raises(BridgeUnauthorizedError):
+        client.get("/things-bridge/todos")
+
+
+def test_reuse_detected_raises_unauthorized(servers, tmp_path):
+    _BridgeHandler.responses = [
+        (401, {"error": "token_expired"}, "aa_initial"),
+    ]
+    _AuthHandler.refresh_responses = [
+        (401, {"error": "refresh_token_reuse_detected"}),
+    ]
+    client, _ = _make_client(servers, tmp_path)
+    with pytest.raises(BridgeUnauthorizedError):
+        client.get("/things-bridge/todos")
+
+
+def test_403_surfaces_as_forbidden(servers, tmp_path):
+    _BridgeHandler.responses = [(403, {"error": "scope_denied"}, None)]
+    client, _ = _make_client(servers, tmp_path)
+    with pytest.raises(BridgeForbiddenError):
+        client.get("/things-bridge/todos")
+
+
+def test_404_surfaces_as_not_found(servers, tmp_path):
+    _BridgeHandler.responses = [(404, {"error": "not_found"}, None)]
+    client, _ = _make_client(servers, tmp_path)
+    with pytest.raises(BridgeNotFoundError):
+        client.get("/things-bridge/todos/unknown")
+
+
+def test_502_surfaces_as_unavailable(servers, tmp_path):
+    _BridgeHandler.responses = [(502, {"error": "things_unavailable"}, None)]
+    client, _ = _make_client(servers, tmp_path)
+    with pytest.raises(BridgeUnavailableError):
+        client.get("/things-bridge/todos")
+
+
+def test_only_one_retry_on_persistent_401(servers, tmp_path):
+    _BridgeHandler.responses = [
+        (401, {"error": "token_expired"}, "aa_initial"),
+        (401, {"error": "token_expired"}, "aa_new"),
+    ]
+    _AuthHandler.refresh_responses = [
+        (200, {"access_token": "aa_new", "refresh_token": "rt_new",
+               "expires_in": 900, "scopes": {}}),
+    ]
+    client, _ = _make_client(servers, tmp_path)
+    with pytest.raises(BridgeUnauthorizedError):
+        client.get("/things-bridge/todos")
+    # Ensure we stopped after the second call (no infinite loop).
+    assert len(_BridgeHandler.requests) == 2
+
+
+def test_query_params_are_sent(servers, tmp_path):
+    _BridgeHandler.responses = [(200, {"todos": []}, None)]
+    client, _ = _make_client(servers, tmp_path)
+    client.get("/things-bridge/todos", params={"status": "open", "project": "p1"})
+    [(_, path, _, _)] = _BridgeHandler.requests
+    assert "status=open" in path
+    assert "project=p1" in path
+
+
+def test_no_family_id_blocks_reissue(servers, tmp_path):
+    _BridgeHandler.responses = [(401, {"error": "token_expired"}, "aa_initial")]
+    _AuthHandler.refresh_responses = [(401, {"error": "refresh_token_expired"})]
+    store = FileStore(str(tmp_path / "c.json"))
+    creds = Credentials(
+        access_token="aa_initial",
+        refresh_token="rt_initial",
+        bridge_url=servers["bridge_url"],
+        auth_url=servers["auth_url"],
+        family_id=None,
+    )
+    store.save(creds)
+    client = BridgeClient(creds, store, timeout=2.0)
+    with pytest.raises(BridgeUnauthorizedError):
+        client.get("/things-bridge/todos")
