@@ -243,6 +243,35 @@ def test_query_params_are_sent(servers, tmp_path):
     assert "project=p1" in path
 
 
+def test_empty_2xx_body_raises_unavailable(servers, tmp_path):
+    # The bridge always returns a JSON body. If some proxy ever strips it
+    # and returns an empty 2xx, callers would crash trying to `.get()` on
+    # None — surface it as a typed error instead.
+    _BridgeHandler.responses = [(200, None, None)]
+    client, _ = _make_client(servers, tmp_path)
+    with pytest.raises(BridgeUnavailableError):
+        client.get("/things-bridge/todos")
+
+
+def test_reissue_403_preserves_server_error_code(servers, tmp_path):
+    # A 403 from /reissue should surface the server-provided error code
+    # verbatim (e.g. "reissue_denied", "family_revoked") rather than
+    # silently masking it with a hard-coded label — the user needs the
+    # specific code to know whether to retry or re-login.
+    _BridgeHandler.responses = [
+        (401, {"error": "token_expired"}, "aa_initial"),
+    ]
+    _AuthHandler.refresh_responses = [
+        (401, {"error": "refresh_token_expired"}),
+    ]
+    _AuthHandler.reissue_responses = [
+        (403, {"error": "family_revoked"}),
+    ]
+    client, _ = _make_client(servers, tmp_path)
+    with pytest.raises(BridgeUnauthorizedError, match="family_revoked"):
+        client.get("/things-bridge/todos")
+
+
 def test_no_family_id_blocks_reissue(servers, tmp_path):
     _BridgeHandler.responses = [(401, {"error": "token_expired"}, "aa_initial")]
     _AuthHandler.refresh_responses = [(401, {"error": "refresh_token_expired"})]

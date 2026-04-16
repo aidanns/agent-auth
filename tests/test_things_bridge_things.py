@@ -202,6 +202,10 @@ def test_malformed_row_raises_things_error():
     f"foo{NEWLINE_PLACEHOLDER}bar",
     "foo\x00bar",
     "foo\x1bbar",
+    # DEL — path-segment ids were already rejected here by _safe_id, but
+    # tag/project/area/list query params bypass _safe_id and reach _quote
+    # directly, so _quote must also reject DEL to stay consistent.
+    "foo\x7fbar",
 ])
 def test_list_todos_rejects_injection_via_filter_ids(bad):
     """Control characters in caller-supplied ids must not reach AppleScript."""

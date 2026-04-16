@@ -303,6 +303,24 @@ def test_post_to_readonly_endpoint_returns_405(bridge):
         assert body == {"error": "method_not_allowed"}
 
 
+@pytest.mark.parametrize("method", ["HEAD", "OPTIONS", "PUT", "PATCH", "DELETE"])
+def test_non_get_methods_return_405(bridge, method):
+    # All non-GET methods should return a consistent 405 so probes cannot
+    # distinguish whether a method is merely unimplemented (501) from
+    # the stdlib default vs. explicitly disallowed on a read-only bridge.
+    req = urllib.request.Request(
+        f"{bridge['url']}/things-bridge/todos",
+        headers={"Authorization": "Bearer aa_test"},
+        method=method,
+    )
+    try:
+        urllib.request.urlopen(req, timeout=5)
+        assert False, "expected HTTPError"
+    except urllib.error.HTTPError as exc:
+        assert exc.code == 405
+        assert exc.headers.get("Allow") == "GET"
+
+
 def test_things_error_detail_not_leaked_in_response(bridge):
     # AppleScript stderr can contain filesystem paths and user names; the
     # bridge must not forward it to the HTTP client.

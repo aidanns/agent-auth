@@ -58,6 +58,13 @@ class BridgeClient:
             headers=self._auth_headers(),
         )
         if 200 <= status < 300:
+            if data is None:
+                # A 2xx with no body is never expected from things-bridge; surface
+                # it as a typed error rather than crashing callers that expect
+                # a dict to `.get()` on.
+                raise BridgeUnavailableError(
+                    f"Bridge returned status {status} with empty body"
+                )
             return data
 
         if status == 401 and not _already_retried:
@@ -124,9 +131,7 @@ class BridgeClient:
             return
 
         error_code = (data or {}).get("error") or "reissue_failed"
-        if status == 403:
-            raise BridgeUnauthorizedError("reissue_denied")
-        if status == 401:
+        if status in (401, 403):
             raise BridgeUnauthorizedError(error_code)
         raise BridgeUnavailableError(f"Token reissue failed ({status}): {error_code}")
 

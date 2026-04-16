@@ -212,6 +212,8 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
     do_PUT = _method_not_allowed  # noqa: N815
     do_PATCH = _method_not_allowed  # noqa: N815
     do_DELETE = _method_not_allowed  # noqa: N815
+    do_HEAD = _method_not_allowed  # noqa: N815
+    do_OPTIONS = _method_not_allowed  # noqa: N815
 
 
 def _first(params: dict[str, list[str]], key: str) -> str | None:

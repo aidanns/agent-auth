@@ -313,10 +313,13 @@ def _quote(value: str) -> str:
     Rejects any input containing characters that cannot appear inside a
     single-line AppleScript string literal, that would corrupt the TSV framing,
     or that could otherwise alter the surrounding script. This is the primary
-    defence against AppleScript injection via URL-derived ids.
+    defence against AppleScript injection via URL-derived ids. Query-parameter
+    inputs (``list``, ``project``, ``area``, ``tag``) reach this function
+    without passing through ``_safe_id`` on the server, so the control-char
+    check must be at least as strict as ``_safe_id`` (C0 range plus DEL).
     """
     for ch in value:
-        if ch in _FORBIDDEN_ID_CHARS or ord(ch) < 0x20:
+        if ch in _FORBIDDEN_ID_CHARS or ord(ch) < 0x20 or ord(ch) == 0x7F:
             raise ThingsError(
                 "Invalid character in Things identifier (control or framing character rejected)"
             )

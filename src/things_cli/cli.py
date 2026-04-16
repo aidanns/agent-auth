@@ -3,6 +3,7 @@
 import argparse
 import os
 import sys
+from urllib.parse import quote
 
 from things_cli import output
 from things_cli.client import BridgeClient
@@ -91,7 +92,7 @@ def handle_todos_list(args) -> int:
 
 def handle_todo_show(args) -> int:
     client = _load_client(args)
-    data = client.get(f"/things-bridge/todos/{args.id}")
+    data = client.get(f"/things-bridge/todos/{quote(args.id, safe='')}")
     output.print_todo(data["todo"], as_json=args.json)
     return 0
 
@@ -108,7 +109,7 @@ def handle_projects_list(args) -> int:
 
 def handle_project_show(args) -> int:
     client = _load_client(args)
-    data = client.get(f"/things-bridge/projects/{args.id}")
+    data = client.get(f"/things-bridge/projects/{quote(args.id, safe='')}")
     output.print_project(data["project"], as_json=args.json)
     return 0
 
@@ -122,7 +123,7 @@ def handle_areas_list(args) -> int:
 
 def handle_area_show(args) -> int:
     client = _load_client(args)
-    data = client.get(f"/things-bridge/areas/{args.id}")
+    data = client.get(f"/things-bridge/areas/{quote(args.id, safe='')}")
     output.print_area(data["area"], as_json=args.json)
     return 0
 
