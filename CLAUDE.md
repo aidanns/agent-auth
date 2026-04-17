@@ -4,6 +4,11 @@
 
 Token-based authorization system for gating AI agent access to macOS applications via AppleScript. Provides scoped tokens, JIT approval for sensitive operations, and a CLI for token lifecycle management.
 
+This project is a testbed for production-grade software engineering
+practices with Claude. Apply the full rigour of the instruction files
+(ADRs, threat models, migration systems, QM/SIL, etc.) without
+simplifying for "personal project" scope.
+
 ## Commands
 
 - `source .venv/bin/activate` — activate the virtualenv
