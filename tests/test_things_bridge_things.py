@@ -1,4 +1,4 @@
-"""Tests for AppleScript runner and ThingsClient.
+"""Tests for AppleScript runner and ThingsApplescriptClient.
 
 These tests avoid shelling out to osascript — they substitute a deterministic
 fake runner and assert the script content and TSV parsing behaviour.
@@ -10,7 +10,7 @@ from things_bridge.errors import ThingsError, ThingsNotFoundError
 from things_bridge.things import (
     NEWLINE_PLACEHOLDER,
     TAB_PLACEHOLDER,
-    ThingsClient,
+    ThingsApplescriptClient,
     _TODO_FIELDS,
     _PROJECT_FIELDS,
     _AREA_FIELDS,
@@ -54,7 +54,7 @@ def test_list_todos_parses_tsv_rows():
                      "due_date": "2026-05-01T00:00:00",
                      "completion_date": "2026-04-15T10:00:00"}) + "\n"
     ))
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     todos = client.list_todos()
     assert len(todos) == 2
     assert todos[0].id == "t1"
@@ -69,7 +69,7 @@ def test_list_todos_parses_tsv_rows():
 
 def test_list_todos_filter_builds_expected_source():
     runner = FakeRunner(output="")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
 
     client.list_todos(list_id="TMTodayListSource")
     assert 'to dos of list id "TMTodayListSource"' in runner.last_script
@@ -90,14 +90,14 @@ def test_list_todos_filter_builds_expected_source():
 
 def test_list_todos_status_filter_validates():
     runner = FakeRunner(output="")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     with pytest.raises(ThingsError):
         client.list_todos(status="archived")
 
 
 def test_list_todos_status_filter_appears_in_script():
     runner = FakeRunner(output="")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     client.list_todos(status="open")
     assert '"open"' in runner.last_script
 
@@ -107,7 +107,7 @@ def test_unescape_handles_placeholders():
     payload_notes = f"line1{NEWLINE_PLACEHOLDER}line2{TAB_PLACEHOLDER}tabbed"
     row = _todo_row({"id": "t", "name": "n", "notes": payload_notes, "status": "open"})
     runner = FakeRunner(output=row + "\n")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     [todo] = client.list_todos()
     assert todo.notes == "line1\nline2\ttabbed"
 
@@ -115,7 +115,7 @@ def test_unescape_handles_placeholders():
 def test_missing_value_becomes_none():
     row = _todo_row({"id": "t", "name": "n", "status": "open"})
     runner = FakeRunner(output=row + "\n")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     [todo] = client.list_todos()
     assert todo.project_id is None
     assert todo.area_id is None
@@ -125,7 +125,7 @@ def test_missing_value_becomes_none():
 
 def test_get_todo_raises_not_found_on_empty_output():
     runner = FakeRunner(output="")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     with pytest.raises(ThingsNotFoundError):
         client.get_todo("unknown-id")
 
@@ -133,7 +133,7 @@ def test_get_todo_raises_not_found_on_empty_output():
 def test_get_todo_parses_single_row():
     row = _todo_row({"id": "t1", "name": "Buy milk", "status": "open"})
     runner = FakeRunner(output=row + "\n")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     todo = client.get_todo("t1")
     assert todo.id == "t1"
     assert '"t1"' in runner.last_script
@@ -141,14 +141,14 @@ def test_get_todo_parses_single_row():
 
 def test_list_projects_filter_by_area():
     runner = FakeRunner(output="")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     client.list_projects(area_id="area-1")
     assert 'projects of area id "area-1"' in runner.last_script
 
 
 def test_list_projects_default_source():
     runner = FakeRunner(output="")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     client.list_projects()
     assert "repeat with p in (projects)" in runner.last_script
 
@@ -157,7 +157,7 @@ def test_list_projects_parses_rows():
     row = _project_row({"id": "p1", "name": "Q2", "status": "open", "area_id": "a1",
                         "area_name": "Work", "tag_names": "P1"})
     runner = FakeRunner(output=row + "\n")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     [project] = client.list_projects()
     assert project.id == "p1"
     assert project.area_id == "a1"
@@ -167,7 +167,7 @@ def test_list_projects_parses_rows():
 def test_list_areas_parses_rows():
     row = _area_row({"id": "a1", "name": "Personal", "tag_names": "home, routine"})
     runner = FakeRunner(output=row + "\n")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     [area] = client.list_areas()
     assert area.id == "a1"
     assert area.name == "Personal"
@@ -176,14 +176,14 @@ def test_list_areas_parses_rows():
 
 def test_get_area_not_found():
     runner = FakeRunner(output="")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     with pytest.raises(ThingsNotFoundError):
         client.get_area("none")
 
 
 def test_malformed_row_raises_things_error():
     runner = FakeRunner(output="only\ta\tfew\tcols\n")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     with pytest.raises(ThingsError):
         client.list_todos()
 
@@ -210,7 +210,7 @@ def test_malformed_row_raises_things_error():
 def test_list_todos_rejects_injection_via_filter_ids(bad):
     """Control characters in caller-supplied ids must not reach AppleScript."""
     runner = FakeRunner(output="")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     with pytest.raises(ThingsError):
         client.list_todos(project_id=bad)
     assert runner.last_script is None
@@ -218,7 +218,7 @@ def test_list_todos_rejects_injection_via_filter_ids(bad):
 
 def test_get_todo_rejects_injection_in_id():
     runner = FakeRunner(output="")
-    client = ThingsClient(runner)
+    client = ThingsApplescriptClient(runner)
     with pytest.raises(ThingsError):
         client.get_todo("foo\nbar")
     assert runner.last_script is None

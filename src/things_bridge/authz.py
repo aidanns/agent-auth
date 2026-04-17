@@ -12,17 +12,17 @@ from things_bridge.errors import (
 )
 
 
-class AuthzClient:
+class AgentAuthClient:
     """Validates bearer tokens against agent-auth's ``/agent-auth/validate`` endpoint."""
 
-    def __init__(self, auth_url: str, *, timeout: float = 30.0):
+    def __init__(self, auth_url: str, *, timeout_seconds: float = 30.0):
         parsed = urlparse(auth_url)
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
             raise ValueError(f"Invalid auth_url: {auth_url!r}")
         self._host = parsed.hostname
         self._port = parsed.port or (443 if parsed.scheme == "https" else 80)
         self._conn_cls = HTTPSConnection if parsed.scheme == "https" else HTTPConnection
-        self._timeout = timeout
+        self._timeout = timeout_seconds
 
     def validate(self, token: str, required_scope: str, *, description: str | None = None) -> None:
         """Validate ``token`` carries ``required_scope``.

@@ -90,30 +90,29 @@ curl -H "Authorization: Bearer aa_<id>_<sig>" \
 ```bash
 # Start the bridge (default: 127.0.0.1:9200)
 things-bridge serve
-
-# Customize bindings and point at a non-default agent-auth URL
-things-bridge serve --host 127.0.0.1 --port 9200 --auth-url http://127.0.0.1:9100
 ```
+
+Host, port, and agent-auth URL are configured in `~/.config/things-bridge/config.json`.
 
 ### things-cli
 
-`things-cli` is a thin client for `things-bridge` that auto-refreshes/reissues tokens via `agent-auth`. Credentials are kept in the system keyring by default; pass `--credential-store=file --credentials-file=<path>` to persist them in a 0600 JSON file (useful inside a devcontainer).
+`things-cli` is a thin client for `things-bridge` that auto-refreshes/reissues tokens via `agent-auth`. Credentials are kept in the system keyring by default; when no keyring backend is available (e.g. inside a devcontainer), the CLI automatically falls back to a `0600` JSON file at `~/.config/things-cli/credentials.json`.
 
 ```bash
-# Save credentials from an `agent-auth token create` output
+# Save credentials — the CLI prompts interactively for tokens so they
+# don't appear in shell history. Alternatively, pre-populate the
+# credentials file at ~/.config/things-cli/credentials.json.
 things-cli login \
   --bridge-url http://127.0.0.1:9200 \
   --auth-url http://127.0.0.1:9100 \
-  --access-token aa_<id>_<sig> \
-  --refresh-token rt_<id>_<sig> \
   --family-id <family-id>
 
 # Show redacted credential status
 things-cli status
 
-# Read-only commands (add --json for structured output)
+# Commands (add --json for structured output)
 things-cli todos list
-things-cli todos list --list TMTodayListSource --status open
+things-cli todos list --list TMTodayListSource --status open  # Things built-in list id
 things-cli todos show <todo-id>
 things-cli projects list
 things-cli projects show <project-id>

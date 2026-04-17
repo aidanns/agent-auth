@@ -68,7 +68,7 @@ Error responses from the bridge:
 | 502 | `{"error": "things_unavailable"}` | AppleScript or Things reported an error |
 | 503 | `{"error": "things_permission_denied"}` | macOS Automation permission not granted for Things |
 
-Error bodies intentionally omit server-side detail: AppleScript / `osascript` stderr can contain local filesystem paths and usernames, so the bridge returns only a canonical error code.
+Error bodies intentionally omit server-side detail: AppleScript / `osascript` stderr can contain local filesystem paths and usernames, so the bridge returns only a canonical error code. Full error detail (including stderr) is written to the service log for operator diagnostics.
 
 ### things-cli (and future app CLIs)
 

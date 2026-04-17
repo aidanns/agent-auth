@@ -119,13 +119,13 @@ def _make_client(urls, tmp_path) -> tuple[BridgeClient, FileStore]:
         family_id="fam-1",
     )
     store.save(creds)
-    return BridgeClient(creds, store, timeout=2.0), store
+    return BridgeClient(creds, store, timeout_seconds=2.0), store
 
 
 def test_get_returns_parsed_body(servers, tmp_path):
     _BridgeHandler.responses = [(200, {"todos": []}, "aa_initial")]
     client, _ = _make_client(servers, tmp_path)
-    result = client.get("/things-bridge/todos")
+    result = client.list_todos()
     assert result == {"todos": []}
 
 
@@ -138,7 +138,7 @@ def test_401_token_expired_triggers_refresh_and_retry(servers, tmp_path):
         (200, {"access_token": "aa_new", "refresh_token": "rt_new", "expires_in": 900, "scopes": {}}),
     ]
     client, store = _make_client(servers, tmp_path)
-    result = client.get("/things-bridge/todos")
+    result = client.list_todos()
     assert result == {"todos": [{"id": "t1"}]}
     # Credentials rolled forward and persisted.
     loaded = store.load()
@@ -159,7 +159,7 @@ def test_refresh_expired_triggers_reissue_and_retry(servers, tmp_path):
                "expires_in": 900, "scopes": {}}),
     ]
     client, store = _make_client(servers, tmp_path)
-    result = client.get("/things-bridge/todos")
+    result = client.list_todos()
     assert result == {"todos": []}
     assert store.load().access_token == "aa_reissued"
 
@@ -176,7 +176,7 @@ def test_reissue_denied_raises_unauthorized(servers, tmp_path):
     ]
     client, _ = _make_client(servers, tmp_path)
     with pytest.raises(BridgeUnauthorizedError):
-        client.get("/things-bridge/todos")
+        client.list_todos()
 
 
 def test_reuse_detected_raises_unauthorized(servers, tmp_path):
@@ -188,28 +188,28 @@ def test_reuse_detected_raises_unauthorized(servers, tmp_path):
     ]
     client, _ = _make_client(servers, tmp_path)
     with pytest.raises(BridgeUnauthorizedError):
-        client.get("/things-bridge/todos")
+        client.list_todos()
 
 
 def test_403_surfaces_as_forbidden(servers, tmp_path):
     _BridgeHandler.responses = [(403, {"error": "scope_denied"}, None)]
     client, _ = _make_client(servers, tmp_path)
     with pytest.raises(BridgeForbiddenError):
-        client.get("/things-bridge/todos")
+        client.list_todos()
 
 
 def test_404_surfaces_as_not_found(servers, tmp_path):
     _BridgeHandler.responses = [(404, {"error": "not_found"}, None)]
     client, _ = _make_client(servers, tmp_path)
     with pytest.raises(BridgeNotFoundError):
-        client.get("/things-bridge/todos/unknown")
+        client.get_todo("unknown")
 
 
 def test_502_surfaces_as_unavailable(servers, tmp_path):
     _BridgeHandler.responses = [(502, {"error": "things_unavailable"}, None)]
     client, _ = _make_client(servers, tmp_path)
     with pytest.raises(BridgeUnavailableError):
-        client.get("/things-bridge/todos")
+        client.list_todos()
 
 
 def test_only_one_retry_on_persistent_401(servers, tmp_path):
@@ -223,7 +223,7 @@ def test_only_one_retry_on_persistent_401(servers, tmp_path):
     ]
     client, store = _make_client(servers, tmp_path)
     with pytest.raises(BridgeUnauthorizedError):
-        client.get("/things-bridge/todos")
+        client.list_todos()
     # Ensure we stopped after the second call (no infinite loop).
     assert len(_BridgeHandler.requests) == 2
     # Refresh tokens are single-use; the new pair must be persisted even when
@@ -237,7 +237,7 @@ def test_only_one_retry_on_persistent_401(servers, tmp_path):
 def test_query_params_are_sent(servers, tmp_path):
     _BridgeHandler.responses = [(200, {"todos": []}, None)]
     client, _ = _make_client(servers, tmp_path)
-    client.get("/things-bridge/todos", params={"status": "open", "project": "p1"})
+    client.list_todos(params={"status": "open", "project": "p1"})
     [(_, path, _, _)] = _BridgeHandler.requests
     assert "status=open" in path
     assert "project=p1" in path
@@ -250,7 +250,7 @@ def test_empty_2xx_body_raises_unavailable(servers, tmp_path):
     _BridgeHandler.responses = [(200, None, None)]
     client, _ = _make_client(servers, tmp_path)
     with pytest.raises(BridgeUnavailableError):
-        client.get("/things-bridge/todos")
+        client.list_todos()
 
 
 def test_reissue_403_preserves_server_error_code(servers, tmp_path):
@@ -269,7 +269,7 @@ def test_reissue_403_preserves_server_error_code(servers, tmp_path):
     ]
     client, _ = _make_client(servers, tmp_path)
     with pytest.raises(BridgeUnauthorizedError, match="family_revoked"):
-        client.get("/things-bridge/todos")
+        client.list_todos()
 
 
 def test_no_family_id_blocks_reissue(servers, tmp_path):
@@ -284,6 +284,6 @@ def test_no_family_id_blocks_reissue(servers, tmp_path):
         family_id=None,
     )
     store.save(creds)
-    client = BridgeClient(creds, store, timeout=2.0)
+    client = BridgeClient(creds, store, timeout_seconds=2.0)
     with pytest.raises(BridgeUnauthorizedError):
-        client.get("/things-bridge/todos")
+        client.list_todos()

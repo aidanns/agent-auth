@@ -25,7 +25,6 @@ def _default_state_dir() -> str:
 
 @dataclass
 class Config:
-    config_dir: str = ""
     host: str = "127.0.0.1"
     port: int = 9200
     auth_url: str = "http://127.0.0.1:9100"
@@ -35,30 +34,23 @@ class Config:
 
     def __post_init__(self):
         if not self.log_path:
-            self.log_path = os.path.join(_default_state_dir(), "bridge.log")
+            self.log_path = os.path.join(_default_state_dir(), "things-bridge.log")
 
 
-def load_config(config_dir: str | None = None) -> Config:
+def load_config() -> Config:
     """Load configuration from disk, or return defaults if the file is absent.
 
     Does not create the config directory or write a default config file — a
     freshly-installed things-bridge runs with built-in defaults until the user
     chooses to customise them.
     """
-    base_dir = config_dir or _default_config_dir()
-    config_path = os.path.join(base_dir, "config.json")
+    config_dir = _default_config_dir()
+    config_path = os.path.join(config_dir, "config.json")
     valid_fields = set(Config.__dataclass_fields__)
 
     if os.path.exists(config_path):
         with open(config_path) as f:
             data = json.load(f)
-        data["config_dir"] = base_dir
         return Config(**{k: v for k, v in data.items() if k in valid_fields})
-
-    if config_dir:
-        return Config(
-            config_dir=config_dir,
-            log_path=os.path.join(config_dir, "bridge.log"),
-        )
 
     return Config()

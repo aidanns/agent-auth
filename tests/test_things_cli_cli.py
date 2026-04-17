@@ -84,38 +84,39 @@ def test_bare_subcommand_prints_help(tmp_path, sub):
     assert rc == 1
 
 
-@pytest.mark.parametrize("command,expected_path", [
-    (["todos", "show", "id with spaces"], "/things-bridge/todos/id%20with%20spaces"),
-    (["projects", "show", "p/slash"], "/things-bridge/projects/p%2Fslash"),
-    (["areas", "show", "a#frag"], "/things-bridge/areas/a%23frag"),
+@pytest.mark.parametrize("command,expected_id", [
+    (["todos", "show", "id with spaces"], "id with spaces"),
+    (["projects", "show", "p/slash"], "p/slash"),
+    (["areas", "show", "a#frag"], "a#frag"),
 ])
-def test_show_commands_url_encode_id(tmp_path, command, expected_path, monkeypatch):
-    # Ids supplied on the command line must reach the bridge URL-encoded, so
-    # that spaces, slashes, and fragment markers survive the request line.
-    # Previously the id was interpolated raw and a space would produce a
-    # malformed HTTP request.
+def test_show_commands_pass_raw_id_to_client(tmp_path, command, expected_id, monkeypatch):
+    # The CLI passes the raw user-supplied id to the typed client method
+    # (get_todo, get_project, get_area); URL-encoding is the client's job.
     main(_args(tmp_path,
                "login",
                "--bridge-url", "http://127.0.0.1:9200",
                "--auth-url", "http://127.0.0.1:9100",
                "--access-token", "aa", "--refresh-token", "rt"))
 
-    captured_paths: list[str] = []
+    captured_ids: list[str] = []
 
     class _StubClient:
         def __init__(self, *a, **k):
             pass
 
-        def get(self, path, params=None):
-            captured_paths.append(path)
-            # Return whatever shape the caller expects — keyed by endpoint.
-            if "/todos/" in path:
-                return {"todo": {"id": "x", "name": "n", "status": "open"}}
-            if "/projects/" in path:
-                return {"project": {"id": "x", "name": "n", "status": "open"}}
+        def get_todo(self, todo_id):
+            captured_ids.append(todo_id)
+            return {"todo": {"id": "x", "name": "n", "status": "open"}}
+
+        def get_project(self, project_id):
+            captured_ids.append(project_id)
+            return {"project": {"id": "x", "name": "n", "status": "open"}}
+
+        def get_area(self, area_id):
+            captured_ids.append(area_id)
             return {"area": {"id": "x", "name": "n"}}
 
     monkeypatch.setattr("things_cli.cli.BridgeClient", _StubClient)
     rc = main(_args(tmp_path, *command))
     assert rc == 0
-    assert captured_paths == [expected_path]
+    assert captured_ids == [expected_id]

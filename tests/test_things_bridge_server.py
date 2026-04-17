@@ -84,7 +84,7 @@ class FakeThings:
 
 @pytest.fixture
 def bridge():
-    config = Config(config_dir="/tmp/things-bridge-test", host="127.0.0.1", port=0)
+    config = Config(host="127.0.0.1", port=0)
     authz = FakeAuthz()
     things = FakeThings()
     server = ThingsBridgeServer(config, things, authz)

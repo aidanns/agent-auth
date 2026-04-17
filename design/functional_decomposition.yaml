@@ -104,12 +104,12 @@ functions:
       - name: Handle Serve Command
         description: Start the agent-auth HTTP server.
   - name: Things Bridge
-    description: Proxy requests from the CLI to the Things 3 application via AppleScript, delegating authorization to agent-auth.
+    description: Proxy requests from the CLI to the Things 3 application, delegating authorization to agent-auth.
     functions:
       - name: Delegate Token Validation
         description: Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation.
       - name: Execute External System Interaction
-        description: Interact with the Things 3 application via AppleScript (osascript) and return structured results.
+        description: Interact with the Things 3 application and return structured results.
       - name: Serve Bridge HTTP API
         description: Expose Things 3 read operations as HTTP endpoints for the CLI client under the /things-bridge/ prefix.
   - name: Things CLI

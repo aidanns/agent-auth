@@ -119,7 +119,9 @@ class FileStore(CredentialStore):
     def save(self, creds: Credentials) -> None:
         Path(os.path.dirname(self._path)).mkdir(parents=True, exist_ok=True)
         data = {k: v for k, v in creds.to_dict().items() if v is not None}
-        # Write atomically with 0600 mode.
+        # Write atomically: create temp file with 0600, write, then rename.
+        # The 0600 mode is set on open (before any data is written) so that
+        # credentials are never world-readable, even momentarily.
         tmp_path = self._path + ".tmp"
         fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:
@@ -130,7 +132,12 @@ class FileStore(CredentialStore):
             os.unlink(tmp_path)
             raise
         os.replace(tmp_path, self._path)
-        os.chmod(self._path, 0o600)
+        # Verify the final file has the correct permissions.
+        actual_mode = os.stat(self._path).st_mode & 0o777
+        if actual_mode != 0o600:
+            raise CredentialsBackendError(
+                f"Credentials file {self._path} has mode {oct(actual_mode)}, expected 0o600"
+            )
 
     def load(self) -> Credentials:
         try:
@@ -170,7 +177,8 @@ def select_store(
     ``backend`` values:
     - ``"keyring"`` — always use keyring (raises if unavailable)
     - ``"file"`` — always use the file store; ``file_path`` must be provided
-    - ``"auto"`` — use keyring if a non-fail backend is available, else raise
+    - ``"auto"`` — use keyring if a non-fail backend is available, otherwise
+      fall back to the on-disk file store automatically
 
     The CLI layer is responsible for mapping ``--credential-store=file`` to
     ``"file"`` and defaulting otherwise.
@@ -184,10 +192,9 @@ def select_store(
     if backend == "auto":
         if _keyring_available():
             return KeyringStore(service=service)
-        raise CredentialsBackendError(
-            "No system keyring backend is available. "
-            "Re-run with --credential-store=file to use a plaintext credentials file."
-        )
+        if file_path is None:
+            raise ValueError("file_path is required for file-store fallback")
+        return FileStore(file_path)
     raise ValueError(f"Unknown credential store backend: {backend!r}")
 
 

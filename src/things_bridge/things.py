@@ -353,7 +353,7 @@ def _validate_status(status: str | None) -> str | None:
     return status
 
 
-class ThingsClient:
+class ThingsApplescriptClient:
     """High-level read-only API for Things 3 built on top of :class:`AppleScriptRunner`."""
 
     def __init__(self, runner: AppleScriptRunner):
@@ -502,6 +502,6 @@ end tell
 
 __all__ = [
     "AppleScriptRunner",
-    "ThingsClient",
+    "ThingsApplescriptClient",
     "TodoFilter",
 ]

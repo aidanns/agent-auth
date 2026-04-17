@@ -3,7 +3,6 @@
 import argparse
 import os
 import sys
-from urllib.parse import quote
 
 from things_cli import output
 from things_cli.client import BridgeClient
@@ -85,14 +84,14 @@ def handle_todos_list(args) -> int:
         params["tag"] = args.tag
     if args.status:
         params["status"] = args.status
-    data = client.get("/things-bridge/todos", params=params or None)
+    data = client.list_todos(params=params or None)
     output.print_todos(data.get("todos", []), as_json=args.json)
     return 0
 
 
 def handle_todo_show(args) -> int:
     client = _load_client(args)
-    data = client.get(f"/things-bridge/todos/{quote(args.id, safe='')}")
+    data = client.get_todo(args.id)
     output.print_todo(data["todo"], as_json=args.json)
     return 0
 
@@ -102,28 +101,28 @@ def handle_projects_list(args) -> int:
     params: dict[str, str] = {}
     if args.area:
         params["area"] = args.area
-    data = client.get("/things-bridge/projects", params=params or None)
+    data = client.list_projects(params=params or None)
     output.print_projects(data.get("projects", []), as_json=args.json)
     return 0
 
 
 def handle_project_show(args) -> int:
     client = _load_client(args)
-    data = client.get(f"/things-bridge/projects/{quote(args.id, safe='')}")
+    data = client.get_project(args.id)
     output.print_project(data["project"], as_json=args.json)
     return 0
 
 
 def handle_areas_list(args) -> int:
     client = _load_client(args)
-    data = client.get("/things-bridge/areas")
+    data = client.list_areas()
     output.print_areas(data.get("areas", []), as_json=args.json)
     return 0
 
 
 def handle_area_show(args) -> int:
     client = _load_client(args)
-    data = client.get(f"/things-bridge/areas/{quote(args.id, safe='')}")
+    data = client.get_area(args.id)
     output.print_area(data["area"], as_json=args.json)
     return 0
 

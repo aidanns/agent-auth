@@ -2,7 +2,7 @@
 
 import json
 from http.client import HTTPConnection, HTTPSConnection
-from urllib.parse import urlencode, urlparse
+from urllib.parse import quote, urlencode, urlparse
 
 from things_cli.credentials import CredentialStore, Credentials
 from things_cli.errors import (
@@ -14,7 +14,7 @@ from things_cli.errors import (
 
 
 class BridgeClient:
-    """Makes authenticated GET requests to the things-bridge.
+    """Makes authenticated requests to the things-bridge.
 
     Handles the token lifecycle automatically:
 
@@ -27,18 +27,40 @@ class BridgeClient:
     4. Any further 401 surfaces as :class:`BridgeUnauthorizedError`.
     """
 
-    def __init__(self, credentials: Credentials, store: CredentialStore, *, timeout: float = 30.0):
+    def __init__(self, credentials: Credentials, store: CredentialStore, *, timeout_seconds: float = 30.0):
         self._credentials = credentials
         self._store = store
-        self._timeout = timeout
+        self._timeout = timeout_seconds
 
     @property
     def credentials(self) -> Credentials:
         return self._credentials
 
-    def get(self, path: str, params: dict[str, str] | None = None) -> dict:
-        """GET ``path`` from the bridge, returning the decoded JSON body."""
-        return self._request("GET", path, params=params)
+    # -- public API: one method per bridge endpoint --
+
+    def list_todos(self, params: dict[str, str] | None = None) -> dict:
+        """List todos from the bridge, optionally filtered by query params."""
+        return self._request("GET", "/things-bridge/todos", params=params)
+
+    def get_todo(self, todo_id: str) -> dict:
+        """Get a single todo by id."""
+        return self._request("GET", f"/things-bridge/todos/{quote(todo_id, safe='')}")
+
+    def list_projects(self, params: dict[str, str] | None = None) -> dict:
+        """List projects from the bridge, optionally filtered by query params."""
+        return self._request("GET", "/things-bridge/projects", params=params)
+
+    def get_project(self, project_id: str) -> dict:
+        """Get a single project by id."""
+        return self._request("GET", f"/things-bridge/projects/{quote(project_id, safe='')}")
+
+    def list_areas(self) -> dict:
+        """List areas from the bridge."""
+        return self._request("GET", "/things-bridge/areas")
+
+    def get_area(self, area_id: str) -> dict:
+        """Get a single area by id."""
+        return self._request("GET", f"/things-bridge/areas/{quote(area_id, safe='')}")
 
     # -- internal --
 
@@ -55,7 +77,7 @@ class BridgeClient:
             method,
             path,
             params=params,
-            headers=self._auth_headers(),
+            headers=self._bearer_headers(),
         )
         if 200 <= status < 300:
             if data is None:
@@ -85,7 +107,7 @@ class BridgeClient:
             f"Bridge returned status {status}: {(data or {}).get('error') or '<no body>'}"
         )
 
-    def _auth_headers(self) -> dict[str, str]:
+    def _bearer_headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._credentials.access_token}",
             "Accept": "application/json",

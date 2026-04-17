@@ -4,7 +4,7 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from things_bridge.authz import AuthzClient
+from things_bridge.authz import AgentAuthClient
 from things_bridge.config import Config
 from things_bridge.errors import (
     AuthzScopeDeniedError,
@@ -15,7 +15,7 @@ from things_bridge.errors import (
     ThingsNotFoundError,
     ThingsPermissionError,
 )
-from things_bridge.things import ThingsClient
+from things_bridge.things import ThingsApplescriptClient
 
 READ_SCOPE = "things:read"
 
@@ -25,23 +25,27 @@ _MAX_ID_LEN = 128
 
 
 def _safe_id(raw: str | None) -> str | None:
-    """Reject ids that contain path separators, control chars, or are over-length.
+    """Reject ids that don't match the allow-list of safe characters.
 
     Returns the id unchanged if safe, ``None`` otherwise. Used before building
-    audit/JIT description strings and before passing to ThingsClient.
+    audit/JIT description strings and before passing to ThingsApplescriptClient.
+    Only printable ASCII (excluding ``/``) and non-ASCII characters above U+007F
+    are permitted.
     """
     if raw is None or not raw or len(raw) > _MAX_ID_LEN:
         return None
-    if "/" in raw:
-        return None
     for ch in raw:
-        if ord(ch) < 0x20 or ord(ch) == 0x7F:
+        cp = ord(ch)
+        # Allow printable ASCII (0x20–0x7E) except slash, plus non-ASCII (>0x7F).
+        if cp > 0x7F:
+            continue
+        if cp < 0x20 or cp == 0x7F or ch == "/":
             return None
     return raw
 
 
 class ThingsBridgeHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for things-bridge read-only endpoints."""
+    """HTTP request handler for things-bridge endpoints."""
 
     @property
     def _bridge(self) -> "ThingsBridgeServer":
@@ -68,27 +72,25 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         return header[7:].strip() or None
 
     def _validate(self, token: str, description: str) -> bool:
-        """Delegate token validation to agent-auth; returns True on success.
+        """Delegate token validation to agent-auth.
 
-        On failure writes the HTTP response and returns False.
+        Returns ``True`` when ``authz.validate()`` completes without raising.
+        On failure writes the error HTTP response and returns ``False``.
         """
         try:
             self._bridge.authz.validate(token, READ_SCOPE, description=description)
+            return True
         except AuthzTokenExpiredError:
             self._send_json(401, {"error": "token_expired"})
-            return False
         except AuthzTokenInvalidError:
             self._send_json(401, {"error": "unauthorized"})
-            return False
         except AuthzScopeDeniedError:
             self._send_json(403, {"error": "scope_denied"})
-            return False
         except AuthzUnavailableError:
             self._send_json(502, {"error": "authz_unavailable"})
-            return False
-        return True
+        return False
 
-    def _things_error_response(self, exc: ThingsError) -> None:
+    def _send_things_error_response(self, exc: ThingsError) -> None:
         # Do not include ``str(exc)`` in the response body: AppleScript /
         # osascript stderr can contain local filesystem paths, usernames, and
         # excerpts of the executed script — that would be a host-info leak.
@@ -110,7 +112,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "unauthorized"})
             return
 
-        things: ThingsClient = self._bridge.things
+        things: ThingsApplescriptClient = self._bridge.things
 
         # Routing: longest-prefix specific paths first.
         if path == "/things-bridge/todos":
@@ -125,7 +127,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
                     status=_first(params, "status"),
                 )
             except ThingsError as exc:
-                self._things_error_response(exc)
+                self._send_things_error_response(exc)
                 return
             self._send_json(200, {"todos": [t.to_json() for t in todos]})
             return
@@ -140,7 +142,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             try:
                 todo = things.get_todo(todo_id)
             except ThingsError as exc:
-                self._things_error_response(exc)
+                self._send_things_error_response(exc)
                 return
             self._send_json(200, {"todo": todo.to_json()})
             return
@@ -151,7 +153,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             try:
                 projects = things.list_projects(area_id=_first(params, "area"))
             except ThingsError as exc:
-                self._things_error_response(exc)
+                self._send_things_error_response(exc)
                 return
             self._send_json(200, {"projects": [p.to_json() for p in projects]})
             return
@@ -166,7 +168,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             try:
                 project = things.get_project(project_id)
             except ThingsError as exc:
-                self._things_error_response(exc)
+                self._send_things_error_response(exc)
                 return
             self._send_json(200, {"project": project.to_json()})
             return
@@ -177,7 +179,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             try:
                 areas = things.list_areas()
             except ThingsError as exc:
-                self._things_error_response(exc)
+                self._send_things_error_response(exc)
                 return
             self._send_json(200, {"areas": [a.to_json() for a in areas]})
             return
@@ -192,7 +194,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             try:
                 area = things.get_area(area_id)
             except ThingsError as exc:
-                self._things_error_response(exc)
+                self._send_things_error_response(exc)
                 return
             self._send_json(200, {"area": area.to_json()})
             return
@@ -226,14 +228,14 @@ def _first(params: dict[str, list[str]], key: str) -> str | None:
 class ThingsBridgeServer(ThreadingHTTPServer):
     """Threaded HTTP server with shared state for things-bridge."""
 
-    def __init__(self, config: Config, things: ThingsClient, authz: AuthzClient):
+    def __init__(self, config: Config, things: ThingsApplescriptClient, authz: AgentAuthClient):
         self.config = config
         self.things = things
         self.authz = authz
         super().__init__((config.host, config.port), ThingsBridgeHandler)
 
 
-def run_server(config: Config, things: ThingsClient, authz: AuthzClient) -> None:
+def run_server(config: Config, things: ThingsApplescriptClient, authz: AgentAuthClient) -> None:
     """Start the things-bridge HTTP server."""
     server = ThingsBridgeServer(config, things, authz)
     print(f"things-bridge listening on {config.host}:{config.port}")
