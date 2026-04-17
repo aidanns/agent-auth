@@ -27,6 +27,14 @@ decomposed into progressively finer-grained parts (modules, packages,
 config files, scripts, etc.). The YAML schema must match the format
 expected by the `systems-engineering` CLI.
 
+## Cybersecurity standard
+
+Select a cybersecurity standard appropriate to the project (e.g. ISM,
+NIST SP 800-53) and record the choice in `design/SECURITY.md`. This is a
+project-level decision made once, not a per-plan step. Implementation
+plans should verify compliance against the chosen standard (see
+`plan-template.md`).
+
 ## Keeping design docs current
 
 After implementation, verify that the functional decomposition, product

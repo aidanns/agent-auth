@@ -17,9 +17,9 @@ defaults where nothing is already in place.
 - **Architecture Decision Records** — for each significant design decision,
   write a short ADR in `design/decisions/`. Capture the context, decision,
   and consequences so the rationale survives beyond commit messages.
-- **Cybersecurity standard compliance** — pick a standard appropriate to the
-  project (e.g. ISM, NIST SP 800-53), walk the relevant controls, record
-  results in `design/SECURITY.md`, and raise issues for gaps.
+- **Cybersecurity standard compliance** — verify the implementation against
+  the project's chosen cybersecurity standard (see `design.md`), walk the
+  relevant controls, and raise issues for gaps.
 - **Declare and verify QM / SIL level** — declare a quality-management level
   (ISO 9000) or safety-integrity level (IEC 61508) in `design/ASSURANCE.md`,
   then verify the implementation meets the required activities,
