@@ -42,3 +42,19 @@ configured.
 - **Metrics endpoint** — every HTTP service should expose a metrics endpoint
   with Prometheus-compatible output covering request counts, latency, and
   domain-specific counters.
+- **Rate limiting / DoS posture** — decide an expected request rate and
+  ceiling, document it, and implement or explicitly note why it is not
+  required.
+
+## Security
+
+- **Key recovery and loss scenarios** — design a deliberate recovery / backup
+  / warning flow for when secrets are lost.
+
+## Resilience
+
+- **Graceful shutdown** — design and test shutdown behaviour so in-flight
+  requests complete cleanly on SIGTERM.
+- **Observability design** — document log schema, log levels, retention
+  policy, log location (per XDG: `$XDG_STATE_HOME`), and any emitted
+  metrics.

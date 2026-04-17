@@ -35,28 +35,6 @@ defaults where nothing is already in place.
   Flyway, goose) to manage schema changes. Every schema change must be an
   explicit, versioned, reversible migration — never modify tables directly
   in application code.
-- **Schema pinning for structured output** — audit logs, application logs,
-  and metrics schemas are public APIs consumed by downstream systems. Pin
-  every field's name and type with tests. Treat changes to field names or
-  types as breaking changes.
-
-## Security
-
-- **SECURITY.md** — create one covering trust boundaries, threat model, key
-  handling, revocation flow, audit surface, and vulnerability reporting.
-  Reference from README.
-- **Rate limiting / DoS posture** — decide an expected request rate and
-  ceiling, document it, and implement or explicitly note why it is not
-  required.
-- **Key recovery and loss scenarios** — design a deliberate recovery / backup
-  / warning flow for when secrets are lost.
-- **Plugin / extension trust boundary** — when the process holds secrets, any
-  plugin surface should default to out-of-process (HTTP, IPC) so third-party
-  code never crosses the trust boundary.
-- **Enumerate distinct byte/type classes** — before writing code that handles
-  security-critical values, list every semantically distinct type at the
-  boundary (e.g. ciphertext vs plaintext, signing key vs encryption key) and
-  ensure each has a newtype or equivalent.
 
 ## Testing
 
@@ -84,8 +62,9 @@ defaults where nothing is already in place.
   for structured keys, and missing newtype wrappers.
 - **Apply service design standards from `service-design.md`** — review the
   changes against the service design standards (config, file paths, plugin
-  surfaces). This catches issues like config defaults written to disk,
-  duplicate config sources, and wrong XDG paths.
+  surfaces, HTTP services, security, resilience). This catches issues like
+  config defaults written to disk, duplicate config sources, wrong XDG
+  paths, missing health endpoints, and missing graceful shutdown.
 - **Apply release and hygiene standards from `release-and-hygiene.md`** —
   verify required project files exist, structured output schemas are pinned,
   and versioning is derived from VCS tags.
@@ -93,14 +72,3 @@ defaults where nothing is already in place.
   against the testing standards. Verify tests exercise public APIs only
   (not internal persistence), name each unit's public surface, and that
   integration tests are properly isolated.
-
-## Operations
-
-- **Observability design** — document log schema, log levels, retention
-  policy, log location (per XDG: `$XDG_STATE_HOME`), and any emitted metrics.
-- **Health-check endpoint** — add a health endpoint that returns 200 when
-  critical subsystems (keys, DB, etc.) are healthy.
-- **Metrics endpoint** — add a metrics endpoint with Prometheus-compatible
-  output covering request counts, latency, and domain-specific counters.
-- **Graceful shutdown** — design and test shutdown behaviour so in-flight
-  requests complete cleanly on SIGTERM.

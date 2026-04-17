@@ -51,8 +51,8 @@ topic is relevant:
 - `plan-template.md` — checklist of steps every implementation plan must
   include (design verification, security, testing, operations).
 - `coding-standards.md` — naming, types, and safety rules.
-- `service-design.md` — configuration, file paths, plugin surfaces, and
-  HTTP service standards.
+- `service-design.md` — configuration, file paths, plugin surfaces, HTTP
+  services, security, and resilience standards.
 - `design.md` — how to document functional decomposition and product
   breakdown.
 - `testing-standards.md` — test design, coverage thresholds, mutation
