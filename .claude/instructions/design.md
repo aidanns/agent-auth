@@ -27,6 +27,14 @@ decomposed into progressively finer-grained parts (modules, packages,
 config files, scripts, etc.). The YAML schema must match the format
 expected by the `systems-engineering` CLI.
 
+## Quality management / safety integrity level
+
+Declare a quality-management level (ISO 9000) or safety-integrity level
+(IEC 61508) in `design/ASSURANCE.md`. This is a project-level decision
+made once. Implementation plans should verify the implementation meets
+the required activities, documentation, and evidence for the declared
+level (see `plan-template.md`).
+
 ## Cybersecurity standard
 
 Select a cybersecurity standard appropriate to the project (e.g. ISM,

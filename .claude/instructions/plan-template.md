@@ -20,10 +20,9 @@ defaults where nothing is already in place.
 - **Cybersecurity standard compliance** — verify the implementation against
   the project's chosen cybersecurity standard (see `design.md`), walk the
   relevant controls, and raise issues for gaps.
-- **Declare and verify QM / SIL level** — declare a quality-management level
-  (ISO 9000) or safety-integrity level (IEC 61508) in `design/ASSURANCE.md`,
-  then verify the implementation meets the required activities,
-  documentation, and evidence.
+- **Verify QM / SIL compliance** — verify the implementation meets the
+  activities, documentation, and evidence required by the project's declared
+  QM / SIL level (see `design.md`).
 
 ## API and schema
 
