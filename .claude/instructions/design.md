@@ -15,7 +15,8 @@ Document the system's functional decomposition in
 of the system's functions — what the system does, decomposed into
 progressively finer-grained capabilities. Each leaf function should be
 traceable to tests (see `testing-standards.md` function-to-test
-allocation).
+allocation). The YAML schema must match the format expected by the
+`systems-engineering` CLI (`systems-engineering function verify`).
 
 ## Product breakdown
 
@@ -23,7 +24,8 @@ Document the system's product breakdown in
 `design/product_breakdown.yaml`. This is a hierarchical breakdown of the
 system's components and deliverables — what the system is made of,
 decomposed into progressively finer-grained parts (modules, packages,
-config files, scripts, etc.).
+config files, scripts, etc.). The YAML schema must match the format
+expected by the `systems-engineering` CLI.
 
 ## Keeping design docs current
 
