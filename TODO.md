@@ -679,3 +679,26 @@ login` prompts) or pre-populated config file as alternatives. This
 is a UX and security design decision that should be addressed in
 `DESIGN.md` and the implementation plan. Plans should include a
 "credential input method" step that considers shell history exposure.
+
+### Safe logging with typed argument wrappers
+
+Introduce a safe-logging convention similar to Palantir's
+[safe-logging](https://github.com/palantir/safe-logging) library.
+Log arguments would be wrapped in `Safe(value)` or `Unsafe(value)`
+(or `UnsafeArg` / `SafeArg`) to distinguish values that are safe to
+include in log output from values that may contain sensitive data
+(tokens, user ids, filesystem paths, AppleScript stderr). The
+logging layer would then automatically redact or omit `Unsafe`
+arguments when writing to logs that may be exposed (e.g. HTTP
+responses, metrics), while including them in operator-only logs.
+
+This is particularly relevant for things-bridge, which already
+strips AppleScript stderr from HTTP error responses to avoid leaking
+host info — safe-logging would formalise that distinction and make
+it harder to accidentally log sensitive data. It also aligns with
+the audit-logging TODO: structured audit log entries should tag each
+field as safe or unsafe so log aggregation tools can apply
+appropriate redaction policies.
+
+Plans should include a "define safe-logging wrappers and apply to
+all log call sites" step.
