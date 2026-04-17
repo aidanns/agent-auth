@@ -79,10 +79,13 @@ defaults where nothing is already in place.
 ## Post-implementation standards review
 
 - **Apply coding standards from `coding-standards.md`** — review the changes
-  against the coding standards (naming, types, config, file paths, plugin
-  surfaces). This catches issues like implicit units in names, raw tuples
-  for structured keys, missing newtype wrappers, config defaults written
-  to disk, and duplicate config sources.
+  against the coding standards (naming, types). This catches issues like
+  missing verb names on procedures, implicit units in names, raw tuples
+  for structured keys, and missing newtype wrappers.
+- **Apply service design standards from `service-design.md`** — review the
+  changes against the service design standards (config, file paths, plugin
+  surfaces, logging). This catches issues like config defaults written to
+  disk, duplicate config sources, and wrong XDG paths.
 - **Apply testing standards from `testing-standards.md`** — review tests
   against the testing standards. Verify tests exercise public APIs only
   (not internal persistence), name each unit's public surface, and that
