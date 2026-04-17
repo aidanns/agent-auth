@@ -4,15 +4,10 @@ Standard tools to adopt and wire into CI and git hooks. When adding a new
 tool, integrate it into `treefmt` (if it's a formatter) and `lefthook`
 (if it should run on pre-commit).
 
-## Python
+## Language-specific
 
-- **`ruff`** — linting and formatting. Gate PRs on both.
-- **`mypy` and `pyright`** — type checking. Run both in CI; `pyright` catches
-  different issues and is faster, `mypy` is the community baseline.
-- **`uv`** — virtual environment and dependency resolution. Still creates
-  `.venv/` in the project directory per the global convention.
-- **`pytest-cov`** — line and branch coverage with a ratcheting threshold.
-- **`pip-audit`** (or `safety`) — dependency vulnerability scanning in CI.
+See `python.md` for Python-specific tooling (ruff, mypy, pyright, uv,
+pytest-cov, pip-audit).
 
 ## Bash
 

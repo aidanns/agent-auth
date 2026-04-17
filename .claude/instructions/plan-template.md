@@ -2,7 +2,9 @@
 
 Every implementation plan must include the following steps where applicable.
 Skip a step only when the project clearly does not need it (e.g. no DB means
-no migration strategy), and note the skip in the plan.
+no migration strategy), and note the skip in the plan. Where the project
+already has established standards or conventions, follow those; use these
+defaults where nothing is already in place.
 
 ## Design and verification
 
@@ -10,29 +12,33 @@ no migration strategy), and note the skip in the plan.
   behaviour and schema against the design doc, reconcile any drift, and
   either fix the code or update the design.
 - **Threat model** — produce or refresh a STRIDE / attack-tree threat model
-  before making security-relevant changes. The threat model drives
-  SECURITY.md, standards compliance, rate limiting, and key recovery design.
+  in `SECURITY.md` before making security-relevant changes. The threat model
+  drives standards compliance, rate limiting, and key recovery design.
 - **Architecture Decision Records** — for each significant design decision,
-  write a short ADR. Capture the context, decision, and consequences so the
-  rationale survives beyond commit messages.
+  write a short ADR in `design/decisions/`. Capture the context, decision,
+  and consequences so the rationale survives beyond commit messages.
 - **Cybersecurity standard compliance** — pick a standard appropriate to the
   project (e.g. ISM, NIST SP 800-53), walk the relevant controls, record
-  results, and raise issues for gaps.
+  results in `design/SECURITY.md`, and raise issues for gaps.
 - **Declare and verify QM / SIL level** — declare a quality-management level
-  (ISO 9000) or safety-integrity level (IEC 61508) in the README and/or
-  design docs, then verify the implementation meets the required activities,
+  (ISO 9000) or safety-integrity level (IEC 61508) in `design/ASSURANCE.md`,
+  then verify the implementation meets the required activities,
   documentation, and evidence.
 
 ## API and schema
 
-- **API versioning strategy** — decide on URL-versioned, header-versioned, or
-  major-version-bump, document it, and apply it.
+- **API versioning strategy** — use URL-versioned APIs (e.g. `/v1/resource`).
+  Document the versioning policy and apply it.
 - **Stable error taxonomy** — document all error codes/strings and their
   stability guarantees. These are a public API.
-- **DB schema migration strategy** — add schema version tracking and a simple
-  idempotent migration mechanism for any project with persistent storage.
-- **Audit-log schema** — treat the on-disk log format as a public API. Pin
-  every field's name and type with tests.
+- **DB schema migration strategy** — use a migration system (e.g. Alembic,
+  Flyway, goose) to manage schema changes. Every schema change must be an
+  explicit, versioned, reversible migration — never modify tables directly
+  in application code.
+- **Schema pinning for structured output** — audit logs, application logs,
+  and metrics schemas are public APIs consumed by downstream systems. Pin
+  every field's name and type with tests. Treat changes to field names or
+  types as breaking changes.
 
 ## Security
 

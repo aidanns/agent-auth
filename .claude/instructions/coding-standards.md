@@ -16,10 +16,15 @@ conventions (conventional commits, bash script style, etc.).
 ## Types and safety
 
 - **Newtypes at security/trust boundaries** — use the language's newtype
-  mechanism (`typing.NewType` in Python, newtype wrappers in Rust/Go, branded
-  types in TypeScript) for every semantically distinct value at a security
-  boundary. Don't accept or return raw bytes/strings where a more specific
-  type is possible.
+  mechanism for every semantically distinct value at a security boundary.
+  Don't accept or return raw bytes/strings where a more specific type is
+  possible.
+- **Prefer explicit typing to prevent misuse** — whenever a value has been
+  validated, sanitised, or transformed, wrap it in a distinct type so that
+  callers cannot accidentally pass the raw form. For example, a sanitise
+  function should return `SanitizedString` rather than `str`, and a function
+  that expects sanitised text should accept `SanitizedString` as a parameter.
+  This applies broadly: validated IDs, parsed configs, normalised paths, etc.
 - **Semantic types for structured keys** — prefer named types (named tuples,
   dataclasses, structs) over raw tuples or strings whenever a composite value
   carries structure.
@@ -34,11 +39,12 @@ conventions (conventional commits, bash script style, etc.).
   the user deliberately customises. Writing a defaults file creates a
   parallel source of truth and forces migration work when defaults change.
 - **Single source of truth per config value** — for each configurable value,
-  pick exactly one source (CLI flag, config field, or env var) and document
-  why. Do not duplicate the same setting across multiple sources.
+  pick exactly one source and document why. Do not duplicate the same setting
+  across multiple sources. Prefer configuration files for servers. For CLIs,
+  prefer command-line switches, with secrets held in the system keychain (if
+  available) or in files on disk with 600 permissions.
 - **Version string from VCS tags** — derive the version from git tags at
-  build time (e.g. `setuptools-scm` for Python, `git describe` for others)
-  and read it back at runtime. Never hard-code version strings.
+  build time and read it back at runtime. Never hard-code version strings.
 
 ## File paths
 
@@ -57,9 +63,10 @@ conventions (conventional commits, bash script style, etc.).
   (HTTP, IPC). Never load third-party code into a secret-holding process
   without explicit design review.
 
-## Audit and logging
+## Logging
 
-- **Audit-log schema is a public API** — structured log schemas consumed by
-  downstream systems (SIEM, compliance, forensics) are load-bearing. Treat
-  changes to field names or types as breaking changes and pin the schema
-  with tests.
+- **Log and audit schemas are public APIs** — structured log schemas and
+  audit-log schemas consumed by downstream systems (SIEM, compliance,
+  forensics, monitoring) are load-bearing. Treat changes to field names or
+  types as breaking changes and pin schemas with tests. This applies to
+  application logs, audit logs, and metrics output alike.
