@@ -73,14 +73,17 @@ no migration strategy), and note the skip in the plan.
 - **Performance budget** — pick a latency target (e.g. `/validate` p95),
   document in `design/DESIGN.md`, and add a test that asserts it.
 
-## Coding standards check
+## Post-implementation standards review
 
-- **Apply coding standards from `coding-standards.md`** — after
-  implementation, review the changes against the coding standards
-  (naming, types, config, XDG paths, plugin surfaces). This catches
-  issues like implicit units in names, raw tuples for structured keys,
-  missing `NewType` wrappers, config defaults written to disk, and
-  duplicate config sources.
+- **Apply coding standards from `coding-standards.md`** — review the changes
+  against the coding standards (naming, types, config, XDG paths, plugin
+  surfaces). This catches issues like implicit units in names, raw tuples
+  for structured keys, missing `NewType` wrappers, config defaults written
+  to disk, and duplicate config sources.
+- **Apply testing standards from `testing-standards.md`** — review tests
+  against the testing standards. Verify tests exercise public APIs only
+  (not internal persistence), name each unit's public surface, and that
+  integration tests are properly isolated.
 
 ## Operations
 
