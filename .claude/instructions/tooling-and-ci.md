@@ -38,6 +38,13 @@ language: `python.md`, `bash.md`.
 - **`keep-sorted`** — annotate sorted blocks (imports, dependency lists,
   allow-lists) so they stay sorted automatically.
 
+## CI
+
+- **Test runner script** — ensure a single-command test runner exists (e.g.
+  `scripts/test.sh`) so the full test suite runs with one command.
+- **Wire all check scripts into CI** — every repeatable check script must
+  have a CI workflow.
+
 ## IDE
 
 - **VS Code project** — generate or commit a `.vscode/` directory covering

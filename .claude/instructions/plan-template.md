@@ -24,24 +24,6 @@ defaults where nothing is already in place.
   activities, documentation, and evidence required by the project's declared
   QM / SIL level (see `design.md`).
 
-## Testing
-
-- **Create or verify test runner script** — ensure a single-command test
-  runner exists (e.g. `scripts/test.sh`) so the full test suite runs with
-  one command.
-- **Wire all check scripts into CI** — every repeatable check script must
-  have a CI workflow.
-- **Function-to-test allocation** — decide on an annotation mechanism for
-  tests to declare which design functions they exercise, and apply it.
-- **End-to-end tests** — add a test layer that drives the full user-facing
-  lifecycle of the system.
-- **Integration-test isolation** — pick containers, per-test network
-  namespaces, or equivalent so tests don't race on shared ports.
-- **Performance testing** — add a benchmark suite and run it in CI on a
-  schedule to catch regressions.
-- **Performance budget** — pick a latency target for critical endpoints,
-  document it, and add a test that asserts the budget.
-
 ## Post-implementation standards review
 
 - **Apply coding standards from `coding-standards.md`** — review the changes
@@ -60,3 +42,5 @@ defaults where nothing is already in place.
   against the testing standards. Verify tests exercise public APIs only
   (not internal persistence), name each unit's public surface, and that
   integration tests are properly isolated.
+- **Apply tooling and CI standards from `tooling-and-ci.md`** — verify a
+  single-command test runner exists and all check scripts are wired into CI.

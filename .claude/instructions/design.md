@@ -14,8 +14,10 @@ Document the system's functional decomposition in
 `design/functional_decomposition.yaml`. This is a hierarchical breakdown
 of the system's functions — what the system does, decomposed into
 progressively finer-grained capabilities. Each leaf function should be
-traceable to tests (see `testing-standards.md` function-to-test
-allocation). The YAML schema must match the format expected by the
+traceable to tests via a function-to-test allocation mechanism — decide
+on an annotation format for tests to declare which design functions they
+exercise, and apply it (see `testing-standards.md`). The YAML schema
+must match the format expected by the
 `systems-engineering` CLI (`systems-engineering function verify`).
 
 ## Product breakdown
