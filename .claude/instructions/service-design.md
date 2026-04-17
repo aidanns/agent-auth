@@ -35,6 +35,20 @@ configured.
   (HTTP, IPC). Never load third-party code into a secret-holding process
   without explicit design review.
 
+## API
+
+- **API versioning strategy** — use URL-versioned APIs (e.g. `/v1/resource`).
+  Document the versioning policy and apply it.
+- **Stable error taxonomy** — document all error codes/strings and their
+  stability guarantees. These are a public API.
+
+## Data
+
+- **DB schema migration strategy** — use a migration system (e.g. Alembic,
+  Flyway, goose) to manage schema changes. Every schema change must be an
+  explicit, versioned, reversible migration — never modify tables directly
+  in application code.
+
 ## HTTP services
 
 - **Health-check endpoint** — every HTTP service should expose a health

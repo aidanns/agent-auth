@@ -24,17 +24,6 @@ defaults where nothing is already in place.
   activities, documentation, and evidence required by the project's declared
   QM / SIL level (see `design.md`).
 
-## API and schema
-
-- **API versioning strategy** — use URL-versioned APIs (e.g. `/v1/resource`).
-  Document the versioning policy and apply it.
-- **Stable error taxonomy** — document all error codes/strings and their
-  stability guarantees. These are a public API.
-- **DB schema migration strategy** — use a migration system (e.g. Alembic,
-  Flyway, goose) to manage schema changes. Every schema change must be an
-  explicit, versioned, reversible migration — never modify tables directly
-  in application code.
-
 ## Testing
 
 - **Create or verify test runner script** — ensure a single-command test
