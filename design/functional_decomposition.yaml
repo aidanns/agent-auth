@@ -103,17 +103,17 @@ functions:
         description: Parse arguments and invoke token family rotation.
       - name: Handle Serve Command
         description: Start the agent-auth HTTP server.
-  - name: Example App Bridge
-    description: Proxy requests from the CLI to an external system, delegating authorization to agent-auth. Each external system gets its own bridge.
+  - name: Things Bridge
+    description: Proxy requests from the CLI to the Things 3 application, delegating authorization to agent-auth.
     functions:
       - name: Delegate Token Validation
         description: Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation.
       - name: Execute External System Interaction
-        description: Interact with the target external system and return structured results.
+        description: Interact with the Things 3 application and return structured results.
       - name: Serve Bridge HTTP API
-        description: Expose external system operations as HTTP endpoints for the CLI client, prefixed with the bridge name.
-  - name: Example App CLI
-    description: Thin CLI client for interacting with an external system via its bridge, runnable from host or devcontainer.
+        description: Expose Things 3 read operations as HTTP endpoints for the CLI client under the /things-bridge/ prefix.
+  - name: Things CLI
+    description: Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer.
     functions:
       - name: Send Bridge Request
         description: Send an authenticated HTTP request to the app bridge with the bearer token.
