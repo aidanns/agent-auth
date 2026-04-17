@@ -11,12 +11,12 @@ simplifying for "personal project" scope.
 
 ## Commands
 
-- `source .venv/bin/activate` — activate the virtualenv
+- `source ".venv-$(uname -s)-$(uname -m)/bin/activate"` — activate the virtualenv (per-OS/arch so Darwin and Linux venvs can coexist on a shared filesystem)
 - `pip install -e .` — install in development mode
 - `agent-auth --help` — show CLI usage
-- `scripts/agent-auth.sh <args...>` — run the agent-auth CLI (bootstraps `.venv` if missing); e.g. `scripts/agent-auth.sh serve`
-- `scripts/things-bridge.sh <args...>` — run the things-bridge CLI (bootstraps `.venv` if missing); e.g. `scripts/things-bridge.sh serve`
-- `scripts/things-cli.sh <args...>` — run the things-cli client (bootstraps `.venv` if missing); e.g. `scripts/things-cli.sh todos list`
+- `scripts/agent-auth.sh <args...>` — run the agent-auth CLI (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/agent-auth.sh serve`
+- `scripts/things-bridge.sh <args...>` — run the things-bridge CLI (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/things-bridge.sh serve`
+- `scripts/things-cli.sh <args...>` — run the things-cli client (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/things-cli.sh todos list`
 
 ## Architecture
 

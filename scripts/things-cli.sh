@@ -9,9 +9,11 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${REPO_ROOT}"
 
-if [[ ! -d .venv ]]; then
-  python3 -m venv .venv
-  .venv/bin/pip install -e ".[dev]"
+VENV_DIR=".venv-$(uname -s)-$(uname -m)"
+
+if [[ ! -d "${VENV_DIR}" ]]; then
+  python3 -m venv "${VENV_DIR}"
+  "${VENV_DIR}/bin/pip" install -e ".[dev]"
 fi
 
-exec .venv/bin/things-cli "$@"
+exec "${VENV_DIR}/bin/things-cli" "$@"

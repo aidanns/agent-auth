@@ -20,8 +20,8 @@ Requires Python 3.11+.
 
 ```bash
 cd ~/Projects/agent-auth
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv ".venv-$(uname -s)-$(uname -m)"
+source ".venv-$(uname -s)-$(uname -m)/bin/activate"
 pip install -e .
 ```
 

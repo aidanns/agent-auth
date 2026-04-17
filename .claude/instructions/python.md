@@ -20,7 +20,9 @@ general coding standards in `coding-standards.md`.
 
 - **`ruff`** — linting and formatting.
 - **`mypy` and `pyright`** — type checking. Run both in CI.
-- **`uv`** — virtual environment and dependency resolution. Creates `.venv/`
-  in the project directory per the global convention.
+- **`uv`** — virtual environment and dependency resolution. Point it at
+  `.venv-$(uname -s)-$(uname -m)/` in the project directory (e.g. by
+  exporting `UV_PROJECT_ENVIRONMENT`) so macOS and Linux venvs can coexist
+  on a shared filesystem.
 - **`pytest-cov`** — line and branch coverage with a ratcheting threshold.
 - **`pip-audit`** (or `safety`) — dependency vulnerability scanning in CI.
