@@ -56,7 +56,7 @@ level (see `plan-template.md`).
 ## Cybersecurity standard
 
 Select a cybersecurity standard appropriate to the project (e.g. ISM,
-NIST SP 800-53) and record the choice in `design/SECURITY.md`. This is a
+NIST SP 800-53) and record the choice in `SECURITY.md`. This is a
 project-level decision made once, not a per-plan step. Implementation
 plans should verify compliance against the chosen standard (see
 `plan-template.md`).

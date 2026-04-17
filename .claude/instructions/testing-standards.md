@@ -12,6 +12,11 @@ Rules for how tests should be written and what coverage to maintain.
   unit's public surface before writing tests.
 - **End-to-end test layer** — maintain at least one end-to-end test that
   drives the full user-facing lifecycle of the system.
+- **Function-to-test allocation** — each leaf function in the functional
+  decomposition (see `design.md`) should be traceable to at least one test.
+  Decide on an annotation format for tests to declare which design functions
+  they exercise (e.g. a comment tag, marker, or mapping file) and apply it
+  consistently.
 - **Integration-test isolation** — integration tests must not bind to shared
   ports or assume exclusive access to host resources. Use containers,
   per-test network namespaces, or equivalent so tests don't race when run in
