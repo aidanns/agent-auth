@@ -25,6 +25,19 @@ Token-based authorization system for gating AI agent access to macOS application
 - Use conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`,
   `refactor:`, `test:`, `ci:`, `style:`, `perf:`, `build:`)
 
+## Project-specific notes
+
+- Design docs live in `design/DESIGN.md`, ADRs in `design/decisions/`
+- Health endpoint: `GET /agent-auth/healthz`
+- Metrics endpoint: `GET /agent-auth/metrics`
+- End-to-end test lifecycle: create token -> validate for allow-tier scope ->
+  refresh/rotate pair -> JIT approval for prompt-tier scope -> revoke ->
+  verify invalidation
+- Function-to-test allocation tracked via `scripts/verify-function-tests.sh`
+- Plugin trust boundary: the notification plugin currently uses
+  `importlib.import_module` inside the server process which holds signing
+  and encryption keys — tracked in #6 for migration to out-of-process
+
 ## Detailed instructions
 
 The following files in `.claude/instructions/` contain detailed standards

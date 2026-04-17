@@ -12,6 +12,7 @@ tool, integrate it into `treefmt` (if it's a formatter) and `lefthook`
 - **`uv`** — virtual environment and dependency resolution. Still creates
   `.venv/` in the project directory per the global convention.
 - **`pytest-cov`** — line and branch coverage with a ratcheting threshold.
+- **`pip-audit`** (or `safety`) — dependency vulnerability scanning in CI.
 
 ## Bash
 
@@ -25,16 +26,14 @@ tool, integrate it into `treefmt` (if it's a formatter) and `lefthook`
 
 ## TOML
 
-- **`taplo`** — linting and formatting for `pyproject.toml` and other TOML
-  files.
+- **`taplo`** — linting and formatting for TOML config files.
 
 ## Security
 
 - **`ripsecrets`** — pre-commit hook to prevent accidental secret commits.
   Preferred over alternatives for speed (Rust-based).
-- **`pip-audit`** (or `safety`) — dependency vulnerability scanning in CI.
-- **Dependabot** (or Renovate) — automated lockfile updates for dependency
-  vulnerabilities.
+- **Dependabot** (or Renovate) — automated dependency updates for
+  vulnerability fixes.
 
 ## Orchestration
 
