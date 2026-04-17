@@ -15,22 +15,6 @@ Standard files, processes, and metadata every project should maintain.
 - **`SECURITY.md`** — document trust boundaries, threat model, key handling,
   revocation flow, audit surface, and vulnerability reporting.
 
-## Design directory
-
-Every project should maintain a `design/` directory containing:
-
-- **`DESIGN.md`** — system design document describing the architecture,
-  interfaces, and behaviour.
-- **`SECURITY.md`** — cybersecurity standard compliance results and threat
-  model details.
-- **`ASSURANCE.md`** — QM / SIL level declaration and verification results.
-- **`decisions/`** — Architecture Decision Records capturing the context,
-  decision, and consequences of significant design choices.
-- **`functional_decomposition.yaml`** — hierarchical breakdown of system
-  functions.
-- **`product_breakdown.yaml`** — hierarchical breakdown of system components
-  and deliverables.
-
 ## Versioning
 
 - **Version string from VCS tags** — derive the version from git tags at

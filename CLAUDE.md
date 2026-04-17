@@ -49,12 +49,12 @@ derived from lessons learned during development. Consult them when the
 topic is relevant:
 
 - `plan-template.md` — checklist of steps every implementation plan must
-  include (design verification, security, testing, operations).
+  include (design verification and post-implementation standards review).
 - `coding-standards.md` — naming, types, and safety rules.
 - `service-design.md` — configuration, file paths, plugin surfaces, HTTP
   services, security, and resilience standards.
-- `design.md` — how to document functional decomposition and product
-  breakdown.
+- `design.md` — design directory structure, ADRs, functional decomposition,
+  product breakdown, QM/SIL, and cybersecurity standard selection.
 - `testing-standards.md` — test design, coverage thresholds, mutation
   testing, fault injection, and performance benchmarks.
 - `tooling-and-ci.md` — standard tools (treefmt, lefthook, etc.) and CI

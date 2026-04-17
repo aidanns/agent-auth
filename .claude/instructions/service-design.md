@@ -70,5 +70,4 @@ configured.
 - **Graceful shutdown** — design and test shutdown behaviour so in-flight
   requests complete cleanly on SIGTERM.
 - **Observability design** — document log schema, log levels, retention
-  policy, log location (per XDG: `$XDG_STATE_HOME`), and any emitted
-  metrics.
+  policy, log location, and any emitted metrics.

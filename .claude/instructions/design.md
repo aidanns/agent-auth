@@ -5,8 +5,24 @@ be documented.
 
 ## Design directory structure
 
-Every project should maintain a `design/` directory (see
-`release-and-hygiene.md` for the full list of expected contents).
+Every project should maintain a `design/` directory containing:
+
+- **`DESIGN.md`** — system design document describing the architecture,
+  interfaces, and behaviour.
+- **`ASSURANCE.md`** — QM / SIL level declaration and verification results.
+- **`decisions/`** — Architecture Decision Records (see below).
+- **`functional_decomposition.yaml`** — hierarchical breakdown of system
+  functions (see below).
+- **`product_breakdown.yaml`** — hierarchical breakdown of system components
+  and deliverables (see below).
+
+## Architecture Decision Records
+
+For each significant design decision, write a short ADR in
+`design/decisions/`. Capture the context (what prompted the decision),
+the decision itself, and the consequences (trade-offs accepted,
+alternatives rejected). ADRs survive beyond commit messages and make
+the rationale discoverable for future contributors.
 
 ## Functional decomposition
 
