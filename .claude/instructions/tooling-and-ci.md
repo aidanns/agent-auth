@@ -6,13 +6,8 @@ tool, integrate it into `treefmt` (if it's a formatter) and `lefthook`
 
 ## Language-specific
 
-See `python.md` for Python-specific tooling (ruff, mypy, pyright, uv,
-pytest-cov, pip-audit).
-
-## Bash
-
-- **`shellcheck`** — linting for all `*.sh` files. Gate PRs.
-- **`shfmt`** — formatting for all `*.sh` files. Gate PRs.
+See language-specific instruction files for tooling tied to a particular
+language: `python.md`, `bash.md`.
 
 ## Markdown
 

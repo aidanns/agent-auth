@@ -55,8 +55,9 @@ topic is relevant:
   design, and audit logging rules.
 - `testing-standards.md` — test design, coverage thresholds, mutation
   testing, fault injection, and performance benchmarks.
-- `tooling-and-ci.md` — standard tools (shellcheck, treefmt, lefthook,
-  etc.) and CI configuration.
+- `tooling-and-ci.md` — standard tools (treefmt, lefthook, etc.) and CI
+  configuration.
 - `python.md` — Python-specific tooling and type conventions.
+- `bash.md` — Bash-specific linting and formatting.
 - `release-and-hygiene.md` — required project files (CONTRIBUTING, CHANGELOG,
   LICENSE, SECURITY), release process, and repo metadata.
