@@ -14,8 +14,8 @@ simplifying for "personal project" scope.
 - `source .venv/bin/activate` — activate the virtualenv
 - `pip install -e .` — install in development mode
 - `agent-auth --help` — show CLI usage
-- `scripts/serve-agent-auth.sh` — run the agent-auth HTTP server (bootstraps `.venv` if missing)
-- `scripts/serve-things-bridge.sh` — run the things-bridge HTTP server (bootstraps `.venv` if missing)
+- `scripts/agent-auth.sh <args...>` — run the agent-auth CLI (bootstraps `.venv` if missing); e.g. `scripts/agent-auth.sh serve`
+- `scripts/things-bridge.sh <args...>` — run the things-bridge CLI (bootstraps `.venv` if missing); e.g. `scripts/things-bridge.sh serve`
 
 ## Architecture
 

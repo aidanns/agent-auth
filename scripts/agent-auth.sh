@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Run the things-bridge HTTP server inside the project virtualenv.
+# Run the agent-auth CLI inside the project virtualenv.
 
 set -euo pipefail
 
@@ -14,4 +14,4 @@ if [[ ! -d .venv ]]; then
   .venv/bin/pip install -e ".[dev]"
 fi
 
-exec .venv/bin/things-bridge serve "$@"
+exec .venv/bin/agent-auth "$@"
