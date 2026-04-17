@@ -50,13 +50,13 @@
 | CLI Interface | Handle Token Revoke Command | Parse arguments and invoke token family revocation. |
 | CLI Interface | Handle Token Rotate Command | Parse arguments and invoke token family rotation. |
 | CLI Interface | Handle Serve Command | Start the agent-auth HTTP server. |
-| agent-auth | Example App Bridge | Proxy requests from the CLI to an external system, delegating authorization to agent-auth. Each external system gets its own bridge. |
-| Example App Bridge | Delegate Token Validation | Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation. |
-| Example App Bridge | Execute External System Interaction | Interact with the target external system and return structured results. |
-| Example App Bridge | Serve Bridge HTTP API | Expose external system operations as HTTP endpoints for the CLI client, prefixed with the bridge name. |
-| agent-auth | Example App CLI | Thin CLI client for interacting with an external system via its bridge, runnable from host or devcontainer. |
-| Example App CLI | Send Bridge Request | Send an authenticated HTTP request to the app bridge with the bearer token. |
-| Example App CLI | Auto Refresh Token | Detect 401 responses, refresh the token pair via agent-auth, and retry the request. If the refresh token has expired, attempt re-issuance via JIT approval. |
-| Example App CLI | Store CLI Credentials | Persist and load credentials using the system keyring (macOS Keychain or libsecret/gnome-keyring), with plaintext file fallback via --credential-store=file. |
-| Example App CLI | Handle App Commands | Parse CLI arguments and map subcommands to bridge HTTP requests. |
-| Example App CLI | Display Results | Format and print structured results from the bridge to the terminal. |
+| agent-auth | Things Bridge | Proxy requests from the CLI to the Things 3 application via AppleScript, delegating authorization to agent-auth. |
+| Things Bridge | Delegate Token Validation | Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation. |
+| Things Bridge | Execute External System Interaction | Interact with the Things 3 application via AppleScript (osascript) and return structured results. |
+| Things Bridge | Serve Bridge HTTP API | Expose Things 3 read operations as HTTP endpoints for the CLI client under the /things-bridge/ prefix. |
+| agent-auth | Things CLI | Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer. |
+| Things CLI | Send Bridge Request | Send an authenticated HTTP request to the app bridge with the bearer token. |
+| Things CLI | Auto Refresh Token | Detect 401 responses, refresh the token pair via agent-auth, and retry the request. If the refresh token has expired, attempt re-issuance via JIT approval. |
+| Things CLI | Store CLI Credentials | Persist and load credentials using the system keyring (macOS Keychain or libsecret/gnome-keyring), with plaintext file fallback via --credential-store=file. |
+| Things CLI | Handle App Commands | Parse CLI arguments and map subcommands to bridge HTTP requests. |
+| Things CLI | Display Results | Format and print structured results from the bridge to the terminal. |
