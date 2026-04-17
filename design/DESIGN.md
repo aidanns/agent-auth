@@ -180,7 +180,7 @@ The CLI uses the system keyring to store credentials (access token, refresh toke
 
 1. **macOS Keychain** — used on macOS hosts. Credentials are stored via the Keychain Services API.
 2. **libsecret / gnome-keyring** — used in Linux environments (including devcontainers) where a Secret Service D-Bus backend is available.
-3. **Plaintext file** — `~/.config/<app>-cli/credentials.json` with `0600` permissions. Only used when the `--credential-store=file` flag is explicitly passed. The CLI refuses to store credentials on disk without this flag.
+3. **Plaintext file** — `~/.config/<app>-cli/credentials.yaml` with `0600` permissions. Only used when the `--credential-store=file` flag is explicitly passed. The CLI refuses to store credentials on disk without this flag.
 
 All three backends are abstracted behind the Python `keyring` library. The CLI detects available backends at startup and uses the highest-priority one. If no keyring backend is available and `--credential-store=file` was not passed, the CLI exits with an error explaining the options.
 

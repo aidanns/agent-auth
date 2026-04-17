@@ -92,11 +92,11 @@ curl -H "Authorization: Bearer aa_<id>_<sig>" \
 things-bridge serve
 ```
 
-Host, port, and agent-auth URL are configured in `~/.config/things-bridge/config.json`.
+Host, port, and agent-auth URL are configured in `~/.config/things-bridge/config.yaml`.
 
 ### things-cli
 
-`things-cli` is a thin client for `things-bridge` that auto-refreshes/reissues tokens via `agent-auth`. Credentials are kept in the system keyring by default; when no keyring backend is available (e.g. inside a devcontainer), the CLI automatically falls back to a `0600` JSON file at `~/.config/things-cli/credentials.json`.
+`things-cli` is a thin client for `things-bridge` that auto-refreshes/reissues tokens via `agent-auth`. Credentials are kept in the system keyring by default; when no keyring backend is available (e.g. inside a devcontainer), the CLI automatically falls back to a `0600` YAML file at `~/.config/things-cli/credentials.yaml`.
 
 ```bash
 # Save credentials — the CLI prompts interactively for tokens so they

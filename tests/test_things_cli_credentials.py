@@ -1,11 +1,11 @@
 """Tests for things-cli credential storage."""
 
-import json
 import os
 import stat
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from things_cli.credentials import (
     Credentials,
@@ -83,7 +83,8 @@ def test_file_store_save_uses_0600_mode(tmp_path):
     assert os.path.exists(path)
     mode = stat.S_IMODE(os.stat(path).st_mode)
     assert mode == 0o600
-    data = json.loads(open(path).read())
+    with open(path) as f:
+        data = yaml.safe_load(f)
     assert data["access_token"] == "aa"
     assert data["family_id"] == "fam-1"
 
@@ -106,9 +107,9 @@ def test_file_store_missing_file_raises_not_found(tmp_path):
         store.load()
 
 
-def test_file_store_corrupt_json_raises_backend_error(tmp_path):
-    path = tmp_path / "creds.json"
-    path.write_text("{ not json")
+def test_file_store_corrupt_yaml_raises_backend_error(tmp_path):
+    path = tmp_path / "creds.yaml"
+    path.write_text(":\n  - :\n  bad: [unterminated")
     path.chmod(0o600)
     store = FileStore(str(path))
     with pytest.raises(CredentialsBackendError):
@@ -116,8 +117,8 @@ def test_file_store_corrupt_json_raises_backend_error(tmp_path):
 
 
 def test_file_store_missing_required_field_raises_not_found(tmp_path):
-    path = tmp_path / "creds.json"
-    path.write_text(json.dumps({"access_token": "aa"}))
+    path = tmp_path / "creds.yaml"
+    path.write_text(yaml.safe_dump({"access_token": "aa"}))
     path.chmod(0o600)
     store = FileStore(str(path))
     with pytest.raises(CredentialsNotFoundError):
@@ -127,8 +128,8 @@ def test_file_store_missing_required_field_raises_not_found(tmp_path):
 def test_file_store_load_rejects_world_readable_file(tmp_path):
     # Credentials files with permissions looser than 0600 must be rejected
     # before reading, similar to how SSH refuses overly-permissive key files.
-    path = tmp_path / "creds.json"
-    path.write_text(json.dumps({
+    path = tmp_path / "creds.yaml"
+    path.write_text(yaml.safe_dump({
         "access_token": "aa", "refresh_token": "rt",
         "bridge_url": "http://x", "auth_url": "http://y",
     }))

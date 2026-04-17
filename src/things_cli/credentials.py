@@ -5,18 +5,18 @@ Two backends:
 - :class:`KeyringStore` — default; uses the ``keyring`` library to store each
   credential field as a separate entry under the ``things-cli`` service.
 - :class:`FileStore` — opt-in via ``--credential-store=file``; writes a single
-  JSON file at ``~/.config/things-cli/credentials.json`` with mode ``0600``.
+  YAML file at ``~/.config/things-cli/credentials.yaml`` with mode ``0600``.
 
 Stored fields match the table in ``design/DESIGN.md``:
 ``access_token``, ``refresh_token``, ``family_id``, ``bridge_url``, ``auth_url``.
 """
 
-import json
 import os
 from dataclasses import dataclass, asdict, fields
 from pathlib import Path
 
 import keyring
+import yaml
 from keyring.errors import KeyringError as _KeyringBackendError
 
 from things_cli.errors import CredentialsBackendError, CredentialsNotFoundError
@@ -111,7 +111,7 @@ def _delete_quietly(service: str, name: str) -> None:
 
 
 class FileStore(CredentialStore):
-    """Persist credentials to ``~/.config/things-cli/credentials.json`` with 0600 mode."""
+    """Persist credentials to ``~/.config/things-cli/credentials.yaml`` with 0600 mode."""
 
     def __init__(self, path: str):
         self._path = path
@@ -126,8 +126,7 @@ class FileStore(CredentialStore):
         fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:
             with os.fdopen(fd, "w") as f:
-                json.dump(data, f, indent=2)
-                f.write("\n")
+                yaml.safe_dump(data, f, default_flow_style=False)
         except Exception:
             os.unlink(tmp_path)
             raise
@@ -154,8 +153,8 @@ class FileStore(CredentialStore):
             )
         try:
             with open(self._path) as f:
-                data = json.load(f)
-        except json.JSONDecodeError as exc:
+                data = yaml.safe_load(f) or {}
+        except yaml.YAMLError as exc:
             raise CredentialsBackendError(
                 f"Credentials file at {self._path} is corrupt: {exc}"
             ) from exc

@@ -19,7 +19,7 @@ from things_cli.errors import (
 
 
 def _default_file_path() -> str:
-    return os.path.join(os.path.expanduser("~"), ".config", "things-cli", "credentials.json")
+    return os.path.join(os.path.expanduser("~"), ".config", "things-cli", "credentials.yaml")
 
 
 def _resolve_store(args) -> CredentialStore:
@@ -141,7 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--credentials-file",
-        help="Path for --credential-store=file (default: ~/.config/things-cli/credentials.json)",
+        help="Path for --credential-store=file (default: ~/.config/things-cli/credentials.yaml)",
     )
 
     subparsers = parser.add_subparsers(dest="command")

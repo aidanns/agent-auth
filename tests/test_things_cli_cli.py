@@ -1,9 +1,9 @@
 """Smoke tests for the things-cli argparse entrypoint."""
 
-import json
 import os
 
 import pytest
+import yaml
 
 from things_cli.cli import main
 
@@ -29,7 +29,8 @@ def test_login_saves_credentials(tmp_path, capsys):
         "--family-id", "fam-1",
     ])
     assert rc == 0
-    data = json.loads(open(creds_path).read())
+    with open(creds_path) as f:
+        data = yaml.safe_load(f)
     assert data["access_token"] == "aa_abc"
     assert data["family_id"] == "fam-1"
 
