@@ -22,3 +22,22 @@ Token-based authorization system for gating AI agent access to macOS application
 - Python 3.11+, no external dependencies for core functionality
 - Use `src/` layout with `pyproject.toml`
 - Follow user global instructions for shell scripts, commits, TODOs, etc.
+- Use conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`,
+  `refactor:`, `test:`, `ci:`, `style:`, `perf:`, `build:`)
+
+## Detailed instructions
+
+The following files in `.claude/instructions/` contain detailed standards
+derived from lessons learned during development. Consult them when the
+topic is relevant:
+
+- `plan-template.md` — checklist of steps every implementation plan must
+  include (design verification, security, testing, operations).
+- `coding-standards.md` — naming, types, configuration, file paths, plugin
+  design, and audit logging rules.
+- `testing-standards.md` — test design, coverage thresholds, mutation
+  testing, fault injection, and performance benchmarks.
+- `tooling-and-ci.md` — standard tools (ruff, shellcheck, treefmt, lefthook,
+  etc.) and CI configuration.
+- `release-and-hygiene.md` — required project files (CONTRIBUTING, CHANGELOG,
+  LICENSE, SECURITY), release process, and repo metadata.
