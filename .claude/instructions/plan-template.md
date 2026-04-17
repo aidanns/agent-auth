@@ -84,8 +84,11 @@ defaults where nothing is already in place.
   for structured keys, and missing newtype wrappers.
 - **Apply service design standards from `service-design.md`** — review the
   changes against the service design standards (config, file paths, plugin
-  surfaces, logging). This catches issues like config defaults written to
-  disk, duplicate config sources, and wrong XDG paths.
+  surfaces). This catches issues like config defaults written to disk,
+  duplicate config sources, and wrong XDG paths.
+- **Apply release and hygiene standards from `release-and-hygiene.md`** —
+  verify required project files exist, structured output schemas are pinned,
+  and versioning is derived from VCS tags.
 - **Apply testing standards from `testing-standards.md`** — review tests
   against the testing standards. Verify tests exercise public APIs only
   (not internal persistence), name each unit's public surface, and that

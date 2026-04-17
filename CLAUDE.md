@@ -32,7 +32,6 @@ simplifying for "personal project" scope.
 
 ## Project-specific notes
 
-- Design docs live in `design/DESIGN.md`, ADRs in `design/decisions/`
 - Health endpoint: `GET /agent-auth/healthz`
 - Metrics endpoint: `GET /agent-auth/metrics`
 - End-to-end test lifecycle: create token -> validate for allow-tier scope ->
@@ -52,8 +51,10 @@ topic is relevant:
 - `plan-template.md` — checklist of steps every implementation plan must
   include (design verification, security, testing, operations).
 - `coding-standards.md` — naming, types, and safety rules.
-- `service-design.md` — configuration, file paths, plugin surfaces,
-  versioning, and logging standards.
+- `service-design.md` — configuration, file paths, plugin surfaces, and
+  HTTP service standards.
+- `design.md` — how to document functional decomposition and product
+  breakdown.
 - `testing-standards.md` — test design, coverage thresholds, mutation
   testing, fault injection, and performance benchmarks.
 - `tooling-and-ci.md` — standard tools (treefmt, lefthook, etc.) and CI

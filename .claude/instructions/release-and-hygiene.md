@@ -12,16 +12,37 @@ Standard files, processes, and metadata every project should maintain.
   user-facing PR.
 - **`LICENSE.md`** — add a license file (default: MIT) and link to it from
   the README's "License" section.
-- **`SECURITY.md`** — for network-facing or credential-handling projects,
-  document trust boundaries, threat model, key handling, revocation flow,
-  audit surface, and vulnerability reporting.
+- **`SECURITY.md`** — document trust boundaries, threat model, key handling,
+  revocation flow, audit surface, and vulnerability reporting.
+
+## Design directory
+
+Every project should maintain a `design/` directory containing:
+
+- **`DESIGN.md`** — system design document describing the architecture,
+  interfaces, and behaviour.
+- **`SECURITY.md`** — cybersecurity standard compliance results and threat
+  model details.
+- **`ASSURANCE.md`** — QM / SIL level declaration and verification results.
+- **`decisions/`** — Architecture Decision Records capturing the context,
+  decision, and consequences of significant design choices.
+- **`functional_decomposition.yaml`** — hierarchical breakdown of system
+  functions.
+- **`product_breakdown.yaml`** — hierarchical breakdown of system components
+  and deliverables.
+
+## Versioning
+
+- **Version string from VCS tags** — derive the version from git tags at
+  build time and read it back at runtime. Never hard-code version strings.
 
 ## Release process
 
-- **Release instructions in README** — add a "Releasing" section documenting
-  how to cut a release (version bump, tag, GitHub release, publish).
-- **`scripts/release.sh`** — automate version bumping, tagging, and posting
-  the GitHub release in a repeatable script.
+- **Release instructions in `CONTRIBUTING.md`** — document how to cut a
+  release (version bump, tag, GitHub release, publish) in the contributing
+  guide.
+- **Release task** — automate version bumping, tagging, and posting the
+  GitHub release as a task in the project's task runner.
 - **`install.sh`** — for user-facing binaries/daemons, add an install script
   at the repo root and document the `curl -fsSL <url> | bash` idiom in the
   README.
@@ -36,3 +57,11 @@ Standard files, processes, and metadata every project should maintain.
 
 - **GitHub repo "About"** — populate the repository description, homepage,
   and topics with a one-line description matching the README summary.
+
+## Structured output schemas
+
+- **Log and audit schemas are public APIs** — structured log schemas and
+  audit-log schemas consumed by downstream systems (SIEM, compliance,
+  forensics, monitoring) are load-bearing. Treat changes to field names or
+  types as breaking changes and pin schemas with tests. This applies to
+  application logs, audit logs, and metrics output alike.

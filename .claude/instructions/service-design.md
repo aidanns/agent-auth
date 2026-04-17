@@ -18,11 +18,6 @@ configured.
   prefer command-line switches, with secrets held in the system keychain (if
   available) or in files on disk with 600 permissions.
 
-## Versioning
-
-- **Version string from VCS tags** — derive the version from git tags at
-  build time and read it back at runtime. Never hard-code version strings.
-
 ## File paths
 
 - **XDG Base Directory compliance** — map each file class to the correct XDG
@@ -40,10 +35,10 @@ configured.
   (HTTP, IPC). Never load third-party code into a secret-holding process
   without explicit design review.
 
-## Logging
+## HTTP services
 
-- **Log and audit schemas are public APIs** — structured log schemas and
-  audit-log schemas consumed by downstream systems (SIEM, compliance,
-  forensics, monitoring) are load-bearing. Treat changes to field names or
-  types as breaking changes and pin schemas with tests. This applies to
-  application logs, audit logs, and metrics output alike.
+- **Health-check endpoint** — every HTTP service should expose a health
+  endpoint that returns 200 when critical subsystems are healthy.
+- **Metrics endpoint** — every HTTP service should expose a metrics endpoint
+  with Prometheus-compatible output covering request counts, latency, and
+  domain-specific counters.
