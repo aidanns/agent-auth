@@ -141,12 +141,20 @@ class FileStore(CredentialStore):
 
     def load(self) -> Credentials:
         try:
-            with open(self._path) as f:
-                data = json.load(f)
+            actual_mode = os.stat(self._path).st_mode & 0o777
         except FileNotFoundError as exc:
             raise CredentialsNotFoundError(
                 f"No credentials file at {self._path}. Run `things-cli login`."
             ) from exc
+        if actual_mode != 0o600:
+            raise CredentialsBackendError(
+                f"Permissions {oct(actual_mode)} for '{self._path}' are too open. "
+                f"Credentials file must not be accessible by others. "
+                f"Run: chmod 600 '{self._path}'"
+            )
+        try:
+            with open(self._path) as f:
+                data = json.load(f)
         except json.JSONDecodeError as exc:
             raise CredentialsBackendError(
                 f"Credentials file at {self._path} is corrupt: {exc}"
