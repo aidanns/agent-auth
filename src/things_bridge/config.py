@@ -34,7 +34,7 @@ class Config:
 
     def __post_init__(self):
         if not self.log_path:
-            self.log_path = os.path.join(_default_state_dir(), "things-bridge.log")
+            self.log_path = os.path.join(_default_state_dir(), "server.log")
 
 
 def load_config() -> Config:
