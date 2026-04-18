@@ -1,0 +1,63 @@
+# Sample fixture file for `things-bridge serve --fake-things=<path>`.
+#
+# Used to stand up the full agent-auth + things-bridge + things-cli stack in
+# a Linux devcontainer without osascript or a real Things 3 installation.
+# The schema is documented in src/things_bridge/fake.py::load_fake_store.
+
+areas:
+  - id: a1
+    name: Personal
+    tag_names: []
+  - id: a2
+    name: Work
+    tag_names: []
+
+projects:
+  - id: p1
+    name: Q2 Planning
+    notes: Top-level goals for the quarter.
+    status: open
+    area_id: a2
+    area_name: Work
+    tag_names: [planning]
+  - id: p2
+    name: Home Maintenance
+    status: open
+    area_id: a1
+    area_name: Personal
+    tag_names: []
+
+todos:
+  - id: t1
+    name: Buy milk
+    status: open
+    area_id: a1
+    area_name: Personal
+    tag_names: [Errand]
+  - id: t2
+    name: Draft Q2 roadmap
+    notes: "Include:\n\t- milestones\n\t- owners"
+    status: open
+    project_id: p1
+    project_name: Q2 Planning
+    area_id: a2
+    area_name: Work
+    tag_names: [planning, deep-work]
+  - id: t3
+    name: Fix leaky tap
+    status: completed
+    project_id: p2
+    project_name: Home Maintenance
+    area_id: a1
+    area_name: Personal
+    tag_names: []
+  - id: t4
+    name: Schedule dentist appointment
+    status: open
+    area_id: a1
+    area_name: Personal
+    tag_names: [Errand]
+
+list_memberships:
+  TMTodayListSource: [t1, t2]
+  TMInboxListSource: [t4]

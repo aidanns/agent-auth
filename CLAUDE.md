@@ -44,6 +44,10 @@ simplifying for "personal project" scope.
 - Plugin trust boundary: the notification plugin currently uses
   `importlib.import_module` inside the server process which holds signing
   and encryption keys — tracked in #6 for migration to out-of-process
+- Linux devcontainer e2e: `things-bridge serve --fake-things[=PATH]`
+  swaps `ThingsApplescriptClient` for an in-memory `FakeThingsClient`
+  so the stack runs without `osascript`. Developer-only — not a config
+  file option. See `design/decisions/0001-things-client-fake.md`.
 
 ## Detailed instructions
 
