@@ -20,13 +20,14 @@ Requires Python 3.11+ and [go-task](https://taskfile.dev) (`brew install go-task
 
 ```bash
 cd ~/Projects/agent-auth
-task build       # bootstraps .venv-$(uname -s)-$(uname -m) and builds dist/
+task test        # bootstraps .venv-$(uname -s)-$(uname -m) and runs the suite
 ```
 
 Every repeatable operation is exposed through the task runner — run `task --list` to see the catalogue. Common commands:
 
 ```bash
 task test                   # run the pytest suite
+task build                  # build sdist and wheel into dist/
 task verify-design          # verify functional decomposition allocation
 task verify-function-tests  # verify functional decomposition test coverage
 task verify-standards       # verify the Taskfile matches the tooling standard

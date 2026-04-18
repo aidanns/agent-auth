@@ -9,9 +9,11 @@
 2. Clone the repo and `cd` into it.
 3. Run `task --list` to see every repeatable operation.
 
-The first task you run bootstraps a per-OS/arch virtualenv at
-`.venv-$(uname -s)-$(uname -m)/` and installs the project in editable
-mode with dev extras.
+The first time you run `task test` or `task build`, the script
+bootstraps a per-OS/arch virtualenv at `.venv-$(uname -s)-$(uname -m)/`
+and installs the project in editable mode with dev extras. Other tasks
+(e.g. `task verify-standards`) do not require the venv and skip that
+setup.
 
 ## Running tasks
 
