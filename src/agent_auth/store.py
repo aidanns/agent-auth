@@ -178,7 +178,7 @@ class TokenStore:
     def mark_consumed(self, token_id: str) -> bool:
         """Atomically mark a refresh token as consumed.
 
-        Returns True if the token was not already consumed.
+        Returns True if successful (was not already consumed).
         """
         conn = self._get_conn()
         cursor = conn.execute(

@@ -207,6 +207,11 @@ if ! grep -qE "^\\[formatter\\.ruff\\]" <<<"${treefmt_stripped}"; then
     "Add a [formatter.ruff] entry to treefmt.toml."
 fi
 
+if ! grep -qE "\\bruff\\b" <<<"${lefthook_stripped}"; then
+  fail_ruff_check "lefthook.yml" \
+    "Add pre-commit commands that invoke 'ruff check' and 'ruff format --check' to lefthook.yml."
+fi
+
 # A single `task check` invocation satisfies both the lint and format
 # gate (it dispatches through scripts/lint.sh and scripts/format.sh
 # --check, each of which invokes ruff). Accept direct `ruff check` +
@@ -222,4 +227,4 @@ if [[ ${ruff_missing} -ne 0 ]]; then
   exit 1
 fi
 
-echo "verify-standards: ruff is configured in pyproject.toml, wired into treefmt, and gated in CI."
+echo "verify-standards: ruff is configured in pyproject.toml, wired into treefmt and lefthook, and gated in CI."
