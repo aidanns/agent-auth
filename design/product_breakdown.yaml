@@ -65,7 +65,7 @@ components:
         description: HTTP server service that maps /things-bridge/ endpoints to a configured things-client-cli subprocess, delegating token validation to agent-auth.
         functions:
           - Delegate Token Validation
-          - Spawn Things Client Subprocess
+          - Fetch Things Data
           - Serve Bridge HTTP API
   - name: things-client-cli-applescript
     description: Production Things 3 client CLI that shells to osascript. Shipped with the distribution as the bridge's default things_client_command.

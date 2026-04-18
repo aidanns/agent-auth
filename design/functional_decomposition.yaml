@@ -104,12 +104,12 @@ functions:
       - name: Handle Serve Command
         description: Start the agent-auth HTTP server.
   - name: Things Bridge
-    description: Proxy requests from the CLI to a Things-client subprocess, delegating authorization to agent-auth.
+    description: Expose authenticated Things 3 read operations over HTTP to the CLI client, delegating authorization to agent-auth.
     functions:
       - name: Delegate Token Validation
         description: Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation.
-      - name: Spawn Things Client Subprocess
-        description: Run the configured things-client-cli command per request, parse the JSON envelope on stdout, rehydrate dataclasses, and map error bodies to the ThingsError hierarchy. Forwards subprocess stderr to the bridge's own stderr for operator diagnostics.
+      - name: Fetch Things Data
+        description: Retrieve the todos, projects, or areas requested by the client, translating typed errors into the ThingsError hierarchy.
       - name: Serve Bridge HTTP API
         description: Expose Things 3 read operations as HTTP endpoints for the CLI client under the /things-bridge/ prefix.
   - name: Things Client (AppleScript)

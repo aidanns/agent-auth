@@ -47,9 +47,9 @@ CLI Interface,Handle Token Modify Command,Parse arguments and invoke scope modif
 CLI Interface,Handle Token Revoke Command,Parse arguments and invoke token family revocation.
 CLI Interface,Handle Token Rotate Command,Parse arguments and invoke token family rotation.
 CLI Interface,Handle Serve Command,Start the agent-auth HTTP server.
-agent-auth,Things Bridge,"Proxy requests from the CLI to a Things-client subprocess, delegating authorization to agent-auth."
+agent-auth,Things Bridge,"Expose authenticated Things 3 read operations over HTTP to the CLI client, delegating authorization to agent-auth."
 Things Bridge,Delegate Token Validation,"Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation."
-Things Bridge,Spawn Things Client Subprocess,"Run the configured things-client-cli command per request, parse the JSON envelope on stdout, rehydrate dataclasses, and map error bodies to the ThingsError hierarchy. Forwards subprocess stderr to the bridge's own stderr for operator diagnostics."
+Things Bridge,Fetch Things Data,"Retrieve the todos, projects, or areas requested by the client, translating typed errors into the ThingsError hierarchy."
 Things Bridge,Serve Bridge HTTP API,Expose Things 3 read operations as HTTP endpoints for the CLI client under the /things-bridge/ prefix.
 agent-auth,Things Client (AppleScript),Read-only Things 3 client CLI that shells to osascript. Ships with the distribution and is the bridge's default things_client_command.
 Things Client (AppleScript),Execute External System Interaction,"Interact with the Things 3 application via AppleScript / osascript and return structured results. Owns AppleScript generation, TSV parsing, and the 30s per-call osascript timeout."

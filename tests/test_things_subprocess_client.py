@@ -44,13 +44,13 @@ def _patch_run(monkeypatch, completed: _FakeCompleted) -> list[list[str]]:
     return recorded
 
 
-@pytest.mark.covers_function("Spawn Things Client Subprocess")
+@pytest.mark.covers_function("Fetch Things Data")
 def test_empty_command_rejected():
     with pytest.raises(ValueError):
         ThingsSubprocessClient(command=[], timeout_seconds=1.0)
 
 
-@pytest.mark.covers_function("Spawn Things Client Subprocess")
+@pytest.mark.covers_function("Fetch Things Data")
 def test_list_todos_sends_full_argv(monkeypatch, client):
     recorded = _patch_run(monkeypatch, _FakeCompleted(stdout='{"todos": []}\n'))
     client.list_todos(
@@ -129,7 +129,7 @@ def test_areas_commands(monkeypatch, client):
     assert area.id == "a1"
 
 
-@pytest.mark.covers_function("Spawn Things Client Subprocess")
+@pytest.mark.covers_function("Fetch Things Data")
 def test_not_found_error_mapped(monkeypatch, client):
     _patch_run(
         monkeypatch,
@@ -210,7 +210,7 @@ def test_missing_binary_raises_things_error(monkeypatch, client):
         client.list_todos()
 
 
-@pytest.mark.covers_function("Spawn Things Client Subprocess")
+@pytest.mark.covers_function("Fetch Things Data")
 def test_timeout_surfaces_as_things_error_and_logs_partial_stderr(monkeypatch, capfd, client):
     # Operators troubleshoot stuck subprocesses from the bridge's stderr;
     # the HTTP response stays generic. Both paths are exercised here.
