@@ -16,18 +16,30 @@ agent-auth provides a local authorization layer between AI agents (e.g. Claude C
 
 ## Installation
 
-Requires Python 3.11+.
+Requires Python 3.11+ and [go-task](https://taskfile.dev) (`brew install go-task` on macOS).
 
 ```bash
 cd ~/Projects/agent-auth
-python3 -m venv ".venv-$(uname -s)-$(uname -m)"
-source ".venv-$(uname -s)-$(uname -m)/bin/activate"
-pip install -e .
+task test        # bootstraps .venv-$(uname -s)-$(uname -m) and runs the suite
 ```
 
-For development (includes pytest):
+Every repeatable operation is exposed through the task runner — run `task --list` to see the catalogue. Common commands:
 
 ```bash
+task test                   # run the pytest suite
+task build                  # build sdist and wheel into dist/
+task verify-design          # verify functional decomposition allocation
+task verify-function-tests  # verify functional decomposition test coverage
+task verify-standards       # verify the Taskfile matches the tooling standard
+```
+
+If you don't have `go-task` installed, every task dispatches to a script under `scripts/*.sh` that you can invoke directly (e.g. `scripts/test.sh`).
+
+For a bare Python install without the task runner:
+
+```bash
+python3 -m venv ".venv-$(uname -s)-$(uname -m)"
+source ".venv-$(uname -s)-$(uname -m)/bin/activate"
 pip install -e ".[dev]"
 ```
 
