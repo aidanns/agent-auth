@@ -206,7 +206,7 @@ pip_install_offenders=()
 while IFS= read -r script; do
   [[ -f "${script}" ]] || continue
   [[ "${script}" == "scripts/verify-standards.sh" ]] && continue
-  if sed ':a;N;$!ba;s/\\\n/ /g' "${script}" | strip_comments | grep -qE '\bpip\b[^\n]*\binstall\b'; then
+  if sed ':a;N;$!ba;s/\\\n/ /g' "${script}" | strip_comments | grep -qE '\bpip[0-9]*\b[^\n]*\binstall\b'; then
     pip_install_offenders+=("${script}")
   fi
 done < <(find scripts -type f -name '*.sh' -print)

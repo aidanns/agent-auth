@@ -42,9 +42,10 @@ convention (and the python.md standard).
    configuration (e.g. `required-version`) only if needed.
 4. `scripts/verify-dependencies.sh` — require `uv` on PATH.
 5. `scripts/verify-standards.sh` — add two new checks:
-   - `uv lock --check` (fails if `uv.lock` is stale relative to
-     `pyproject.toml`).
-   - Fail if any file under `scripts/` invokes `pip install`.
+   - `uv lock --check` (fails if `uv.lock` is missing or stale
+     relative to `pyproject.toml` — a single call covers both cases).
+   - Fail if any file under `scripts/` invokes `pip install` (or
+     `pip3 install`, including backslash-newline continuations).
 6. CI workflows (`test.yml`, `check.yml`, `verify-standards.yml`,
    `verify-design.yml`, `verify-function-tests.yml`) — install uv via
    `astral-sh/setup-uv@v5` (pinned), drop `actions/setup-python@v5`
@@ -101,19 +102,24 @@ intentionally skipped:
 4. **`verify-dependencies.sh`** — add `uv` to `REQUIRED_TOOLS`.
 5. **`verify-standards.sh`** — add:
    - a `uv lock --check` step that runs only when `pyproject.toml`
-     exists. The check fails if `uv.lock` is stale.
+     exists. A single call covers both missing and stale lockfiles
+     (both exit non-zero).
    - a grep that fails if any `scripts/*.sh` file (excluding the
-     check itself) invokes `pip install`. Use the same
-     comment-stripping approach the existing bash-tooling block uses
-     so a docstring-style `# pip install` reference doesn't trip the
-     check.
+     check itself) invokes `pip install` or `pip3 install`. Collapse
+     backslash-newline continuations before stripping comments so
+     line-wrapped invocations are still caught, and reuse the
+     existing `strip_comments` helper to avoid false positives from
+     heredoc references.
 6. **CI workflows** — replace `actions/setup-python@v5` with
-   `astral-sh/setup-uv@v5` in all five workflows. Pin the uv version
-   via the action's `version` input. Remove the python-version
-   setup — uv reads `requires-python` from `pyproject.toml` and
-   installs a matching CPython on demand. Add `enable-cache: true` so
-   the runner caches `~/.cache/uv` across runs. No Taskfile changes
-   are needed because `task test` already dispatches to `scripts/test.sh`.
+   `astral-sh/setup-uv@v5` in all five workflows. Let the action track
+   its bundled latest uv (no `version` input) — Dependabot tracks the
+   `@v5` action ref but does not touch `with:` inputs, so pinning the
+   uv version there would freeze it indefinitely. Remove the
+   python-version setup — uv reads `requires-python` from
+   `pyproject.toml` and installs a matching CPython on demand. Add
+   `enable-cache: true` so the runner caches `~/.cache/uv` across
+   runs. No Taskfile changes are needed because `task test` already
+   dispatches to `scripts/test.sh`.
 7. **Docs** — README gains a prerequisites line for uv
    (`brew install uv` on macOS, `curl -LsSf https://astral.sh/uv/install.sh | sh`
    elsewhere). The "bare install" block becomes
