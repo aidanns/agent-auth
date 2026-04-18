@@ -43,6 +43,8 @@ project [CLAUDE.md](CLAUDE.md) for the full working agreement.
 
 ## Release process
 
-Releases are cut via `task release`, which handles version bumping,
-tagging, GitHub release creation, and publishing in one step. Do not
-cut releases by hand — the task enforces the standard checks.
+`task release` is the release entrypoint. The underlying automation
+(version bump, tag, GitHub release, publish) is tracked in
+[#18](https://github.com/aidanns/agent-auth/issues/18) and is not yet
+implemented — running the task today exits non-zero to prevent manual
+releases that would skip the standard checks.

@@ -9,12 +9,12 @@ tasks:
       - scripts/test.sh {{.CLI_ARGS}}
 
   lint:
-    desc: Run all configured linters (ruff, shellcheck, taplo, mdformat).
+    desc: Run all configured linters (placeholder — no linters wired yet).
     cmds:
       - scripts/lint.sh
 
   format:
-    desc: Run all configured formatters (ruff format, shfmt, taplo, mdformat).
+    desc: Run all configured formatters (placeholder — no formatters wired yet).
     cmds:
       - scripts/format.sh
 
