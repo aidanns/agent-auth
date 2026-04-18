@@ -1,0 +1,49 @@
+# Run `task --list` to see every repeatable operation. See CONTRIBUTING.md.
+
+version: "3"
+
+tasks:
+  test:
+    desc: Run the pytest suite inside the project virtualenv.
+    cmds:
+      - scripts/test.sh {{.CLI_ARGS}}
+
+  lint:
+    desc: Run all configured linters (ruff, shellcheck, taplo, mdformat).
+    cmds:
+      - scripts/lint.sh
+
+  format:
+    desc: Run all configured formatters (ruff format, shfmt, taplo, mdformat).
+    cmds:
+      - scripts/format.sh
+
+  verify-design:
+    desc: Verify every leaf function in the functional decomposition is allocated in the product breakdown.
+    cmds:
+      - scripts/verify-design.sh
+
+  verify-function-tests:
+    desc: Verify every leaf function in the functional decomposition has test coverage.
+    cmds:
+      - scripts/verify-function-tests.sh
+
+  verify-standards:
+    desc: Verify the Taskfile exposes every task required by the tooling-and-ci standard.
+    cmds:
+      - scripts/verify-standards.sh
+
+  build:
+    desc: Build sdist and wheel distributions into dist/.
+    cmds:
+      - scripts/build.sh
+
+  install-hooks:
+    desc: Install project git hooks (lefthook).
+    cmds:
+      - scripts/install-hooks.sh
+
+  release:
+    desc: Cut a release (version bump, tag, GitHub release, publish).
+    cmds:
+      - scripts/release.sh
