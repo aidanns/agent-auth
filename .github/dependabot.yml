@@ -1,0 +1,27 @@
+version: 2
+
+# Weekly cadence is sufficient for a personal project: it keeps exposure
+# to known vulnerabilities bounded to a week while avoiding daily PR
+# churn. Minor and patch updates are grouped per ecosystem so routine
+# bumps land in a single PR; majors still come through individually so
+# they can be reviewed on their own merits.
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      pip-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"

@@ -1,0 +1,13 @@
+# treefmt formatter/linter multiplexer.
+# shfmt formatting options live in .editorconfig.
+# The authoritative bash gate is scripts/lint.sh + scripts/format.sh,
+# invoked directly by .github/workflows/bash.yml and lefthook.yml.
+
+[formatter.shellcheck]
+command = "shellcheck"
+includes = ["*.sh"]
+
+[formatter.shfmt]
+command = "shfmt"
+options = ["-w"]
+includes = ["*.sh"]
