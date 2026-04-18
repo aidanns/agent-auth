@@ -134,21 +134,30 @@ strip_comments() {
   sed -E 's/(^|[[:space:]])#.*$//' "$@"
 }
 
+# Collect comment-stripped content into variables so the match step
+# doesn't early-exit its upstream pipeline — `grep -q` exiting on first
+# match would otherwise SIGPIPE `sed`/`cat`, and `pipefail` turns that
+# into a whole-pipeline failure when the input is large enough to race.
+workflows_stripped="$(find .github/workflows -name '*.yml' -print0 2>/dev/null \
+  | xargs -0 -r cat 2>/dev/null \
+  | strip_comments)"
+treefmt_stripped=""
+[[ -f treefmt.toml ]] && treefmt_stripped="$(strip_comments treefmt.toml)"
+lefthook_stripped=""
+[[ -f lefthook.yml ]] && lefthook_stripped="$(strip_comments lefthook.yml)"
+
 for tool in shellcheck shfmt; do
-  if ! find .github/workflows -name '*.yml' -print0 2>/dev/null \
-    | xargs -0 -r cat 2>/dev/null \
-    | strip_comments \
-    | grep -qE "\\b${tool}\\b"; then
+  if ! grep -qE "\\b${tool}\\b" <<<"${workflows_stripped}"; then
     fail_bash_check "${tool}" ".github/workflows/*.yml" \
       "Add a workflow step that invokes '${tool}' (see .github/workflows/bash.yml)."
   fi
 
-  if ! { [[ -f treefmt.toml ]] && strip_comments treefmt.toml | grep -qE "^\\[formatter\\.${tool}\\]"; }; then
+  if ! grep -qE "^\\[formatter\\.${tool}\\]" <<<"${treefmt_stripped}"; then
     fail_bash_check "${tool}" "treefmt.toml" \
       "Add a [formatter.${tool}] entry to treefmt.toml."
   fi
 
-  if ! { [[ -f lefthook.yml ]] && strip_comments lefthook.yml | grep -qE "\\b${tool}\\b"; }; then
+  if ! grep -qE "\\b${tool}\\b" <<<"${lefthook_stripped}"; then
     fail_bash_check "${tool}" "lefthook.yml" \
       "Add a pre-commit command that invokes '${tool}' to lefthook.yml."
   fi
