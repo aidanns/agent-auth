@@ -7,6 +7,10 @@ pre-commit:
   parallel: true
   commands:
     keep-sorted:
+      # Narrow to file types that currently carry keep-sorted annotations plus
+      # common text formats. CI (scripts/lint.sh) scans every tracked file, so
+      # new annotations in uncovered types are still caught there.
+      glob: "{*.toml,*.sh,*.yml,*.yaml,*.md,*.py,.gitignore}"
       run: keep-sorted --mode=lint {staged_files}
     mdformat:
       glob: "*.md"

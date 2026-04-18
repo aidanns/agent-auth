@@ -66,6 +66,7 @@ format_group() {
     echo "task format: no ${label} files tracked; skipping."
     return 0
   fi
+  local files
   mapfile -t files <<<"${files_raw}"
   "$@" "${files[@]}"
 }

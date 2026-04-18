@@ -161,6 +161,9 @@ treefmt_stripped=""
 [[ -f treefmt.toml ]] && treefmt_stripped="$(strip_comments treefmt.toml)"
 lefthook_stripped=""
 [[ -f lefthook.yml ]] && lefthook_stripped="$(strip_comments lefthook.yml)"
+scripts_stripped="$(find scripts -name '*.sh' -print0 2>/dev/null \
+  | xargs -0 -r cat 2>/dev/null \
+  | strip_comments)"
 
 for tool in shellcheck shfmt; do
   if ! grep -qE "\\b${tool}\\b" <<<"${workflows_stripped}"; then
@@ -207,10 +210,13 @@ done
 # Match the invocation pattern `keep-sorted --mode=...` rather than the bare
 # tool name — a CI workflow's install step mentions `keep-sorted` without
 # actually running it, which would otherwise defeat the regression check.
+# Covers lefthook.yml pre-commit, workflow YAML, and scripts/*.sh (since CI
+# runs scripts/lint.sh transitively via `task check`).
 if ! grep -qE "keep-sorted --mode=" <<<"${lefthook_stripped}" \
-  && ! grep -qE "keep-sorted --mode=" <<<"${workflows_stripped}"; then
-  fail_doc_check "'keep-sorted' is not invoked in lefthook.yml pre-commit or any .github/workflows/*.yml." \
-    "Add a 'keep-sorted --mode=lint' invocation to lefthook.yml, or run it from a workflow."
+  && ! grep -qE "keep-sorted --mode=" <<<"${workflows_stripped}" \
+  && ! grep -qE "keep-sorted --mode=" <<<"${scripts_stripped}"; then
+  fail_doc_check "'keep-sorted' is not invoked in lefthook.yml, any .github/workflows/*.yml, or scripts/*.sh." \
+    "Add a 'keep-sorted --mode=lint' invocation to one of those locations."
 fi
 
 if [[ ${doc_tool_missing} -ne 0 ]]; then
