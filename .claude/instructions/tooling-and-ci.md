@@ -30,7 +30,12 @@ language: `python.md`, `bash.md`.
 - **`go-task`** — task runner with `Taskfile.yml` at the repo root. Every
   operation (build, lint, test, release) should be discoverable via
   `task --list`. Keep `scripts/*.sh` implementations; have the Taskfile
-  dispatch to them.
+  dispatch to them. Project-specific tasks (running a local service
+  CLI, a one-off domain command) are fine to add to `Taskfile.yml`, but
+  must **not** be added to the `REQUIRED_TASKS` list in
+  `scripts/verify-standards.sh`: that list is reserved for task names
+  mandated by this cross-project tooling standard so the check stays
+  portable to other repositories adopting it.
 - **`treefmt`** — formatter/linter multiplexer. Run all formatters under one
   command with consistent behaviour.
 - **`lefthook`** — git hook manager. Commit a `lefthook.yml` that runs

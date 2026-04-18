@@ -58,3 +58,23 @@ tasks:
     desc: Cut a release (version bump, tag, GitHub release, publish).
     cmds:
       - scripts/release.sh
+
+  agent-auth:
+    desc: Run the agent-auth CLI (e.g. `task agent-auth -- serve`).
+    cmds:
+      - scripts/agent-auth.sh {{.CLI_ARGS}}
+
+  things-bridge:
+    desc: Run the things-bridge CLI (e.g. `task things-bridge -- serve`).
+    cmds:
+      - scripts/things-bridge.sh {{.CLI_ARGS}}
+
+  things-cli:
+    desc: Run the things-cli client (e.g. `task things-cli -- todos list`).
+    cmds:
+      - scripts/things-cli.sh {{.CLI_ARGS}}
+
+  things-client-applescript:
+    desc: Run the things-client-cli-applescript CLI (macOS-only; e.g. `task things-client-applescript -- todos list`).
+    cmds:
+      - scripts/things-client-applescript.sh {{.CLI_ARGS}}

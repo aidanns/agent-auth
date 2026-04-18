@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 
-# Verify generic project standards mandated by .claude/instructions/.
+# Verify generic, portable project standards mandated by
+# .claude/instructions/. This script intentionally does NOT assert on
+# anything project-specific (service names, repo-specific CLI entry
+# points, domain tasks) — those belong in project documentation, not in
+# the standards gate. REQUIRED_TASKS only lists the task names the
+# cross-project tooling standard mandates (build, lint, format, test,
+# ...); project-specific tasks like running a local service CLI are
+# added to Taskfile.yml without being required here.
+#
 # Checks grow over time as new cross-cutting standards are added. Today:
 #
-#   1. Taskfile.yml exposes every task named in REQUIRED_TASKS (see
-#      tooling-and-ci.md Orchestration).
+#   1. Taskfile.yml exposes every generic task named in REQUIRED_TASKS
+#      (see tooling-and-ci.md Orchestration).
 #   2. .github/dependabot.yml covers every dependency ecosystem actually
 #      in use by this repository with minor/patch grouping (see
 #      tooling-and-ci.md Security). An ecosystem is "in use" when its
@@ -36,6 +44,9 @@ if ! command -v yq >/dev/null 2>&1; then
   exit 1
 fi
 
+# Only list task names that are required by the cross-project tooling
+# standard, not project-specific service/CLI entry points. See the
+# header comment for the rationale.
 # keep-sorted start
 REQUIRED_TASKS=(
   build
