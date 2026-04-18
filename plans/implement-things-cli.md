@@ -87,12 +87,14 @@ HTTP + existing `keyring`).
 ### things_bridge
 
 **Config (`config.py`)**
+
 - Config dir: `~/.config/things-bridge/` (override via `--config-dir`).
 - Fields: `host` (`127.0.0.1`), `port` (`9200`), `auth_url` (`http://127.0.0.1:9100`),
   `osascript_path` (`/usr/bin/osascript`), `log_path`.
 - Same load/write pattern as `agent_auth.config`.
 
 **AppleScript runner (`things.py`)**
+
 - `class AppleScriptRunner`: single method `run(script: str) -> str` — shells out to
   `osascript -s s -l AppleScript -` reading the script from stdin, returns stdout. `-s s`
   forces "script-style" output (strings quoted, `missing value` as literal) so results are
@@ -113,16 +115,19 @@ HTTP + existing `keyring`).
   for a given script.
 
 **Models (`models.py`)**
+
 - `Todo`, `Project`, `Area` dataclasses. JSON-serializable. ISO 8601 for dates (converted
   from AppleScript date literals inside `things.py`). `missing value` becomes `None`.
 
 **Authz client (`authz.py`)**
+
 - `validate_token(token, scope, *, description=None) -> None` using `http.client` against
   the configured `auth_url`. Raises `TokenInvalidError` / `ScopeDeniedError` / `TokenExpiredError`
   mapped from the auth-server response codes (401/403/404) so the handler can translate them
   into the right HTTP status for the CLI.
 
 **Server (`server.py`)**
+
 - `ThingsBridgeHandler` subclasses `BaseHTTPRequestHandler` (mirrors `agent_auth.server`).
 - `do_GET` dispatches to handlers by path. Each handler:
   1. Reads `Authorization: Bearer <token>` header.
@@ -139,6 +144,7 @@ HTTP + existing `keyring`).
 - `ThreadingHTTPServer` carries `config`, `things_client`, `authz`.
 
 **CLI (`cli.py`)**
+
 - `things-bridge serve [--host H] [--port P] [--auth-url URL]`.
 - Wires up `AppleScriptRunner` (real one when serving) → `ThingsClient`, authz client, and
   the HTTP server; then calls `serve_forever`.
@@ -146,6 +152,7 @@ HTTP + existing `keyring`).
 ### things_cli
 
 **Credential store (`credentials.py`)**
+
 - Backends: `KeyringStore` (default) and `FileStore` (enabled via `--credential-store=file`).
 - `KeyringStore` uses `keyring` with service `things-cli` and usernames
   `access_token`/`refresh_token`/`family_id`/`bridge_url`/`auth_url` (values stored as
@@ -156,6 +163,7 @@ HTTP + existing `keyring`).
 - `Credentials` dataclass with `save(store)` / `load(store)` / `clear(store)`.
 
 **Bridge client (`client.py`)**
+
 - `BridgeClient(credentials, store)`:
   - `get(path, params=None)` / `request(method, path, body=None)` — attaches
     `Authorization: Bearer <access_token>` and sends via `http.client`.
@@ -169,10 +177,12 @@ HTTP + existing `keyring`).
   `BridgeUnavailable`) consumed by the CLI to produce clean exits.
 
 **Config (`config.py`)**
+
 - Minimal; mostly just paths. Most runtime config lives in the credential store (bridge
   URL, auth URL). `--config-dir` override for tests.
 
 **CLI (`cli.py`)**
+
 - argparse with subcommands described above. Each command calls `BridgeClient.get(...)` and
   passes the JSON payload through `output.py` to render either a human-readable table or
   raw JSON.
@@ -184,6 +194,7 @@ HTTP + existing `keyring`).
   prints a `<set>` indicator instead).
 
 **Output (`output.py`)**
+
 - `print_todos(todos, json_flag)` / `print_projects(...)` / `print_areas(...)`.
 - Text format: compact tabular output to match `agent-auth token list`.
 
@@ -231,8 +242,7 @@ functions — deferred where the existing code has no markers either, but at min
   `Example App CLI` branches to read `Things Bridge` / `Things CLI` (keeping the same
   leaf-function names so product allocation stays valid). Do NOT add new leaf functions —
   the existing ones (`Delegate Token Validation`, `Execute External System Interaction`,
-  `Serve Bridge HTTP API`, `Send Bridge Request`, `Auto Refresh Token`, `Store CLI
-  Credentials`, `Handle App Commands`, `Display Results`) already describe this work.
+  `Serve Bridge HTTP API`, `Send Bridge Request`, `Auto Refresh Token`, `Store CLI Credentials`, `Handle App Commands`, `Display Results`) already describe this work.
 - `design/product_breakdown.yaml`: replace the `example-app-bridge` and `example-app-cli`
   component entries with `things-bridge` and `things-cli` respectively, keeping the same
   function allocation.
@@ -259,15 +269,15 @@ functions — deferred where the existing code has no markers either, but at min
 
 ## Implementation order
 
-1. Plan committed (this document).
-2. Fetch `main` (already up to date).
-3. `things_bridge` models + things client + authz + server (test per module as we go).
-4. `things_bridge` CLI entrypoint.
-5. `things_cli` credentials + client (test per module).
-6. `things_cli` CLI entrypoint + output formatters.
-7. `pyproject.toml` script entries.
-8. Full test run.
-9. Documentation + design updates.
+01. Plan committed (this document).
+02. Fetch `main` (already up to date).
+03. `things_bridge` models + things client + authz + server (test per module as we go).
+04. `things_bridge` CLI entrypoint.
+05. `things_cli` credentials + client (test per module).
+06. `things_cli` CLI entrypoint + output formatters.
+07. `pyproject.toml` script entries.
+08. Full test run.
+09. Documentation + design updates.
 10. Wire `scripts/test.sh` into GitHub Actions so the new tests run in CI.
 11. Post-implementation verification: diff shipped bridge/CLI behaviour against
     `design/DESIGN.md`, reconcile any drift.

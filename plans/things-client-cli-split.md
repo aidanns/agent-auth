@@ -3,8 +3,7 @@
 ## Context
 
 PR #53 introduced an in-process fake (`FakeThingsClient` in
-`src/things_bridge/fake.py`) selected at startup via `things-bridge serve
---fake-things[=PATH]`. The bridge process now ships both the production
+`src/things_bridge/fake.py`) selected at startup via `things-bridge serve --fake-things[=PATH]`. The bridge process now ships both the production
 AppleScript client and the test fake, plus a YAML fixture loader and a
 stderr banner whose only job is to flag that the fake is live. The trust
 story weakens: the same process that holds authz delegation can, if
@@ -80,6 +79,7 @@ config field used today is reused for the subprocess timeout.
 ### New packages
 
 - `src/things_client_applescript/`
+
   - `cli.py` — argparse entrypoint with `todos` / `projects` / `areas`
     subcommands.
   - `things.py` — the existing AppleScript runner, helpers, and
@@ -95,13 +95,13 @@ config field used today is reused for the subprocess timeout.
     The timeout is not set here — it is enforced by the parent (bridge).
 
 - `tests/things_client_fake/` — test-only package (not under `src/`).
+
   - `cli.py` — argparse entrypoint with the same surface.
   - `store.py` — `FakeThingsStore`, `FakeThingsClient`,
     `load_fake_store` moved here.
   - Reads the fixture path from `--fixtures` or `THINGS_CLIENT_FIXTURES`
     env var. `--fixtures` omitted → empty store.
-  - Invoked in tests as `[sys.executable, "-m",
-    "tests.things_client_fake", ...]`.
+  - Invoked in tests as `[sys.executable, "-m", "tests.things_client_fake", ...]`.
 
 ### Model / error placement
 
@@ -148,8 +148,7 @@ nothing Things-specific beyond the subprocess runner.
 
 `pyproject.toml`:
 
-- New console script `things-client-cli-applescript =
-  "things_client_applescript.cli:main"`.
+- New console script `things-client-cli-applescript = "things_client_applescript.cli:main"`.
 - Fake CLI is NOT registered as a console script (lives under
   `tests/`, invoked via `python -m tests.things_client_fake`).
 - `things_models` package added to find.
@@ -165,6 +164,7 @@ nothing Things-specific beyond the subprocess runner.
 ### Error taxonomy (HTTP-facing)
 
 Unchanged from today:
+
 - `not_found` → 404
 - `things_permission_denied` → 503
 - `things_unavailable` → 502

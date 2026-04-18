@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 
-# Run shfmt over every tracked *.sh file. Pass --check to diff-only mode
-# (CI uses this); default rewrites files in place. shfmt reads formatting
-# options from .editorconfig at the repo root.
+# Run every configured formatter over its tracked files: shfmt for
+# *.sh, mdformat for *.md, taplo for *.toml. shfmt reads formatting
+# options from .editorconfig; mdformat reads .mdformat.toml; taplo
+# reads taplo.toml.
+#
+# Pass --check to diff-only mode (CI uses this); default rewrites files
+# in place.
 
 set -euo pipefail
 
@@ -23,28 +27,55 @@ for arg in "$@"; do
   esac
 done
 
-if ! command -v shfmt >/dev/null 2>&1; then
-  echo "task format: 'shfmt' is not on PATH." >&2
-  echo "Install from https://github.com/mvdan/sh/releases or" >&2
-  echo "'brew install shfmt' (macOS), then re-run." >&2
-  exit 1
-fi
+require_tool() {
+  local tool="$1"
+  local install_hint="$2"
+  if ! command -v "${tool}" >/dev/null 2>&1; then
+    echo "task format: '${tool}' is not on PATH." >&2
+    echo "${install_hint}" >&2
+    exit 1
+  fi
+}
 
-# Capture into a variable (not process substitution) so `set -e` catches a
-# git failure — mapfile always succeeds regardless of the inner command's
-# exit status, which would otherwise silently pass the gate with zero
-# files outside a valid checkout.
-shell_files_raw="$(git ls-files '*.sh')"
+# Capture each tracked-file listing into a variable (not process
+# substitution) so `set -e` catches a git failure — mapfile always
+# succeeds regardless of the inner command's exit status, which would
+# otherwise silently pass the gate with zero files outside a valid
+# checkout.
+list_tracked() {
+  local pattern="$1"
+  git ls-files "${pattern}"
+}
 
-if [[ -z "${shell_files_raw}" ]]; then
-  echo "task format: no *.sh files tracked; nothing to format."
-  exit 0
-fi
+require_tool shfmt \
+  "Install from https://github.com/mvdan/sh/releases or 'brew install shfmt' (macOS), then re-run."
+require_tool mdformat \
+  "Install via 'pip install mdformat mdformat-gfm mdformat-tables' in the project venv, then re-run."
+require_tool taplo \
+  "Install from https://github.com/tamasfe/taplo/releases or 'brew install taplo' (macOS), then re-run."
 
-mapfile -t shell_files <<<"${shell_files_raw}"
+shell_files_raw="$(list_tracked '*.sh')"
+markdown_files_raw="$(list_tracked '*.md')"
+toml_files_raw="$(list_tracked '*.toml')"
+
+format_group() {
+  local label="$1"
+  local files_raw="$2"
+  shift 2
+  if [[ -z "${files_raw}" ]]; then
+    echo "task format: no ${label} files tracked; skipping."
+    return 0
+  fi
+  mapfile -t files <<<"${files_raw}"
+  "$@" "${files[@]}"
+}
 
 if [[ "${mode}" == "check" ]]; then
-  shfmt -d "${shell_files[@]}"
+  format_group "*.sh" "${shell_files_raw}" shfmt -d
+  format_group "*.md" "${markdown_files_raw}" mdformat --check
+  format_group "*.toml" "${toml_files_raw}" taplo format --check
 else
-  shfmt -w "${shell_files[@]}"
+  format_group "*.sh" "${shell_files_raw}" shfmt -w
+  format_group "*.md" "${markdown_files_raw}" mdformat
+  format_group "*.toml" "${toml_files_raw}" taplo format
 fi

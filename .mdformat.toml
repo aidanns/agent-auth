@@ -1,0 +1,6 @@
+# mdformat Markdown formatter configuration.
+# Plugins (mdformat-gfm, mdformat-tables) auto-activate when installed.
+
+wrap = "keep"
+number = true
+end_of_line = "lf"

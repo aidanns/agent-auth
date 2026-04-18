@@ -35,11 +35,13 @@ start a service or run the client.
    against `pyproject.toml` using a hash marker (`pyproject.sha256`)
    stored inside the venv. Fast path (hash match) is a no-op; slow
    path runs `pip install -e ".[dev]"` and refreshes the marker.
+
 2. `scripts/agent-auth.sh`, `scripts/things-bridge.sh`,
    `scripts/things-cli.sh`, `scripts/things-client-applescript.sh` —
    refactored to source the helper. No behavioural change except that
    a changed `pyproject.toml` now triggers a reinstall on the next
    invocation.
+
 3. `scripts/test.sh` and `scripts/build.sh` — refactored to source the
    same helper, so all wrappers share one bootstrap implementation.
    The helper's rebuild-on-hash-change semantics are strictly safer
@@ -48,8 +50,10 @@ start a service or run the client.
    reinstalls), so the migration does not regress correctness and
    removes the duplication these two scripts call out in their own
    comments.
+
 4. `Taskfile.yml` — four new tasks that dispatch to the existing
    wrapper scripts:
+
    - `agent-auth` → `scripts/agent-auth.sh {{.CLI_ARGS}}`
    - `things-bridge` → `scripts/things-bridge.sh {{.CLI_ARGS}}`
    - `things-cli` → `scripts/things-cli.sh {{.CLI_ARGS}}`
@@ -60,15 +64,18 @@ start a service or run the client.
    is a general-purpose entrypoint, not a server-only shortcut. The
    same task serves all subcommands — e.g.
    `task agent-auth -- token create --scope things:read=allow`.
+
 5. `scripts/verify-standards.sh` — **does not** list these
    project-specific task names in `REQUIRED_TASKS`. That list is
    reserved for generic, portable tasks mandated by
    `.claude/instructions/tooling-and-ci.md` so the script stays
    applicable across projects. The header comment, `CLAUDE.md`, and
    `tooling-and-ci.md` are updated to make this boundary explicit.
+
 6. `scripts/verify-dependencies.sh` — add `shasum` to the list of
    required CLI tools so a missing `shasum` surfaces as a dependency
    error rather than a cryptic failure inside the bootstrap helper.
+
 7. `README.md` and `CONTRIBUTING.md` — document the new task entries
    and note that the wrapper scripts now self-heal when
    `pyproject.toml` changes.
@@ -176,8 +183,8 @@ Review*):
 - [ ] `/simplify` on the changes.
 - [ ] Independent code-review subagent; address findings.
 - [ ] One parallel subagent per file in `.claude/instructions/` — each
-      reviews the diff against its instruction file and reports
-      violations. Address findings.
+  reviews the diff against its instruction file and reports
+  violations. Address findings.
 
 Specifically verify:
 

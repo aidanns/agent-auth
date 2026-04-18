@@ -20,6 +20,10 @@
 #      skipped rather than required.
 #   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
 #      lefthook per .claude/instructions/bash.md.
+#   4. Markdown (mdformat) and TOML (taplo) formatters are wired into
+#      treefmt.toml, and keep-sorted is wired into either lefthook.yml
+#      pre-commit or a CI workflow, per
+#      .claude/instructions/tooling-and-ci.md.
 
 set -euo pipefail
 
@@ -47,8 +51,8 @@ fi
 # Only list task names that are required by the cross-project tooling
 # standard, not project-specific service/CLI entry points. See the
 # header comment for the rationale.
-# keep-sorted start
 REQUIRED_TASKS=(
+  # keep-sorted start
   build
   check
   format
@@ -60,8 +64,8 @@ REQUIRED_TASKS=(
   verify-design
   verify-function-tests
   verify-standards
+  # keep-sorted end
 )
-# keep-sorted end
 
 catalogue="$(task --list-all --json)"
 
@@ -180,3 +184,37 @@ if [[ ${bash_tool_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: shellcheck and shfmt are wired into CI, treefmt, and lefthook."
+
+# mdformat, taplo, and keep-sorted gating per
+# .claude/instructions/tooling-and-ci.md. keep-sorted may be wired via
+# either lefthook.yml or a CI workflow.
+
+doc_tool_missing=0
+
+fail_doc_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  doc_tool_missing=1
+}
+
+for tool in mdformat taplo; do
+  if ! grep -qE "^\\[formatter\\.${tool}\\]" <<<"${treefmt_stripped}"; then
+    fail_doc_check "'${tool}' is not registered as a treefmt formatter in treefmt.toml." \
+      "Add a [formatter.${tool}] section to treefmt.toml."
+  fi
+done
+
+# Match the invocation pattern `keep-sorted --mode=...` rather than the bare
+# tool name — a CI workflow's install step mentions `keep-sorted` without
+# actually running it, which would otherwise defeat the regression check.
+if ! grep -qE "keep-sorted --mode=" <<<"${lefthook_stripped}" \
+  && ! grep -qE "keep-sorted --mode=" <<<"${workflows_stripped}"; then
+  fail_doc_check "'keep-sorted' is not invoked in lefthook.yml pre-commit or any .github/workflows/*.yml." \
+    "Add a 'keep-sorted --mode=lint' invocation to lefthook.yml, or run it from a workflow."
+fi
+
+if [[ ${doc_tool_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: mdformat + taplo are wired into treefmt, and keep-sorted is configured."
