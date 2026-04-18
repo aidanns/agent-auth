@@ -27,6 +27,11 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v yq >/dev/null 2>&1; then
+  echo "verify-standards: 'yq' (https://github.com/mikefarah/yq) is required to parse the dependabot config." >&2
+  exit 1
+fi
+
 # keep-sorted start
 REQUIRED_TASKS=(
   build
@@ -75,22 +80,16 @@ if [[ ! -f "${DEPENDABOT_CONFIG}" ]]; then
 fi
 
 for ecosystem in pip github-actions; do
-  block=$(awk -v eco="${ecosystem}" '
-    /^[[:space:]]*-[[:space:]]+package-ecosystem:/ {
-      if (capture) exit
-      if ($0 ~ "\"?" eco "\"?[[:space:]]*$") capture = 1
-    }
-    capture { print }
-  ' "${DEPENDABOT_CONFIG}")
-
-  if [[ -z "${block}" ]]; then
+  matched=$(yq ".updates[] | select(.[\"package-ecosystem\"] == \"${ecosystem}\") | .[\"package-ecosystem\"]" "${DEPENDABOT_CONFIG}")
+  if [[ "${matched}" != "${ecosystem}" ]]; then
     echo "verify-standards: dependabot.yml does not declare the '${ecosystem}' ecosystem" >&2
     exit 1
   fi
 
-  for required in "groups:" '"minor"' '"patch"'; do
-    if ! printf '%s\n' "${block}" | grep -qF "${required}"; then
-      echo "verify-standards: ecosystem '${ecosystem}' is missing '${required}' in its grouping config" >&2
+  update_types=$(yq ".updates[] | select(.[\"package-ecosystem\"] == \"${ecosystem}\") | .groups.[].update-types[]" "${DEPENDABOT_CONFIG}")
+  for update_type in minor patch; do
+    if ! printf '%s\n' "${update_types}" | grep -qFx "${update_type}"; then
+      echo "verify-standards: ecosystem '${ecosystem}' does not group '${update_type}' updates" >&2
       exit 1
     fi
   done
