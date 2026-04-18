@@ -10,6 +10,7 @@ un-escaped by the parser so free-form text survives the framing.
 """
 
 import subprocess
+import sys
 from dataclasses import dataclass
 
 from things_bridge.errors import ThingsError, ThingsNotFoundError, ThingsPermissionError
@@ -23,17 +24,24 @@ MISSING = "missing value"
 # Escapes tabs/newlines/carriage returns into unicode placeholders and
 # coerces missing value to the literal "missing value" so the parser
 # can treat it uniformly.
+#
+# ``character id N`` is the AppleScript way to produce a Unicode codepoint
+# inside a string. AppleScript string literals do NOT support ``\uXXXX``
+# escapes — attempting to use them produces a ``-2741`` syntax error at
+# compile time.
 _HELPERS = r"""
 on _esc(v)
     if v is missing value then return "missing value"
     set s to v as text
     set out to ""
+    set tabPlaceholder to (character id 9246)
+    set linefeedPlaceholder to (character id 9247)
     repeat with i from 1 to count of characters of s
         set c to character i of s
         if c is tab then
-            set out to out & "\u241e"
+            set out to out & tabPlaceholder
         else if c is return or c is linefeed then
-            set out to out & "\u241f"
+            set out to out & linefeedPlaceholder
         else
             set out to out & c
         end if
@@ -91,11 +99,16 @@ on _areaName(t)
 end _areaName
 
 on _statusText(s)
-    if s is open then
+    -- Handlers run outside the enclosing ``tell application "Things3"``
+    -- block, so bare Things3 keywords like ``open``/``completed``/``canceled``
+    -- are not in scope here. Coerce the status enum to its text name at
+    -- the handler boundary and compare as strings instead.
+    set stxt to (s as text)
+    if stxt is "open" then
         return "open"
-    else if s is completed then
+    else if stxt is "completed" then
         return "completed"
-    else if s is canceled then
+    else if stxt is "canceled" then
         return "canceled"
     else
         return "open"
@@ -210,6 +223,16 @@ class AppleScriptRunner:
 
         if result.returncode != 0:
             stderr = (result.stderr or "").strip()
+            # Surface the raw osascript message to the bridge's own stderr
+            # so operators can diagnose failures. The HTTP response body is
+            # intentionally sparse to avoid leaking host paths or script
+            # fragments to clients, which makes stderr the only channel.
+            print(
+                f"things-bridge: osascript failed (rc={result.returncode}): "
+                f"{stderr or '<empty stderr>'}",
+                file=sys.stderr,
+                flush=True,
+            )
             if "-1743" in stderr:
                 raise ThingsPermissionError(
                     "macOS Automation permission has not been granted for Things3. "

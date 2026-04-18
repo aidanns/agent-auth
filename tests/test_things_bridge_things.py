@@ -1,8 +1,16 @@
 """Tests for AppleScript runner and ThingsApplescriptClient.
 
-These tests avoid shelling out to osascript — they substitute a deterministic
-fake runner and assert the script content and TSV parsing behaviour.
+Most tests avoid shelling out to osascript — they substitute a deterministic
+fake runner and assert the script content and TSV parsing behaviour. A small
+number of tests exercise the real AppleScriptRunner on macOS to guard against
+regressions where the emitted script is rejected by osascript itself.
 """
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -10,10 +18,35 @@ from things_bridge.errors import ThingsError, ThingsNotFoundError
 from things_bridge.things import (
     NEWLINE_PLACEHOLDER,
     TAB_PLACEHOLDER,
+    AppleScriptRunner,
     ThingsApplescriptClient,
+    _HELPERS,
     _TODO_FIELDS,
     _PROJECT_FIELDS,
     _AREA_FIELDS,
+)
+
+_darwin_only = pytest.mark.skipif(
+    sys.platform != "darwin" or shutil.which("osascript") is None,
+    reason="osascript is only available on macOS",
+)
+
+
+def _things3_installed() -> bool:
+    for candidate in (
+        "/Applications/Things3.app",
+        os.path.expanduser("~/Applications/Things3.app"),
+    ):
+        if Path(candidate).is_dir():
+            return True
+    return False
+
+
+_requires_things3 = pytest.mark.skipif(
+    sys.platform != "darwin"
+    or shutil.which("osascript") is None
+    or not _things3_installed(),
+    reason="requires macOS with Things 3 installed",
 )
 
 
@@ -222,3 +255,69 @@ def test_get_todo_rejects_injection_in_id():
     with pytest.raises(ThingsError):
         client.get_todo("foo\nbar")
     assert runner.last_script is None
+
+
+@_darwin_only
+def test_helper_applescript_is_valid_syntax(tmp_path):
+    """The AppleScript prelude shared by every bridge request must compile.
+
+    If this script is invalid, every ``list`` and ``show`` endpoint fails
+    with an opaque ``502 things_unavailable`` — clients can't tell the
+    bridge is broken from the error taxonomy alone. FakeRunner-based tests
+    don't catch this because they never hand the script to osascript.
+    """
+    # osacompile parses the script without executing any ``tell application``
+    # block, so we can validate syntax without requiring Things 3 or
+    # Automation permissions.
+    out_path = tmp_path / "helpers.scpt"
+    source_path = tmp_path / "helpers.applescript"
+    # Append a no-op reference so the compiler accepts a helpers-only file.
+    source_path.write_text(_HELPERS + "\nreturn\n")
+
+    result = subprocess.run(
+        ["osacompile", "-o", str(out_path), str(source_path)],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, (
+        f"osacompile rejected _HELPERS: {result.stderr.strip()}"
+    )
+
+
+@pytest.mark.covers_function("Execute External System Interaction")
+@_requires_things3
+def test_list_projects_executes_against_things():
+    """End-to-end smoke test against real Things 3.
+
+    Guards the full osascript compile-and-execute path: if the emitted
+    script is invalid or its handlers raise at runtime, clients see an
+    opaque ``502 things_unavailable`` rather than useful data. FakeRunner
+    short-circuits that path, so every other test in this file would pass
+    while production breaks.
+
+    Uses ``list_projects`` rather than ``list_todos`` because project counts
+    are typically small enough to complete well under the 30s default
+    timeout on any Mac. Requires Things 3 and Automation permissions.
+    """
+    client = ThingsApplescriptClient(AppleScriptRunner())
+    client.list_projects()
+
+
+@_darwin_only
+def test_osascript_failure_writes_diagnostic_to_stderr(capfd):
+    """Clients receive a deliberately-sparse ``502 things_unavailable`` on
+    AppleScript failures so response bodies never leak host filesystem paths
+    or script fragments. Operators need the same detail on the server's own
+    stderr to diagnose why requests are failing.
+    """
+    runner = AppleScriptRunner()
+    with pytest.raises(ThingsError):
+        # Deliberately invalid AppleScript so osascript exits non-zero.
+        runner.run('this is not valid applescript "')
+
+    captured = capfd.readouterr()
+    # Should name the subsystem so mixed stderr streams stay greppable,
+    # and include enough of osascript's message to be useful.
+    assert "things-bridge" in captured.err
+    assert "osascript" in captured.err.lower()
