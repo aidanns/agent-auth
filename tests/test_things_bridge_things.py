@@ -104,21 +104,29 @@ def test_list_todos_filter_builds_expected_source():
     runner = FakeRunner(output="")
     client = ThingsApplescriptClient(runner)
 
+    # Each filter must scope the batched "every to do of <scope>" reads to
+    # the caller-requested collection. The fallback per-element loop that
+    # walks project/area handlers must also share the scope so results stay
+    # consistent across fields.
     client.list_todos(list_id="TMTodayListSource")
+    assert 'every to do of list id "TMTodayListSource"' in runner.last_script
     assert 'to dos of list id "TMTodayListSource"' in runner.last_script
 
     client.list_todos(project_id="proj-123")
+    assert 'every to do of project id "proj-123"' in runner.last_script
     assert 'to dos of project id "proj-123"' in runner.last_script
 
     client.list_todos(area_id="area-9")
+    assert 'every to do of area id "area-9"' in runner.last_script
     assert 'to dos of area id "area-9"' in runner.last_script
 
     client.list_todos(tag="Urgent")
+    assert 'every to do of tag "Urgent"' in runner.last_script
     assert 'to dos of tag "Urgent"' in runner.last_script
 
     client.list_todos()
-    # No filter → default source
-    assert "repeat with t in (to dos)" in runner.last_script
+    # No filter -> unscoped batched read.
+    assert "id of every to do\n" in runner.last_script
 
 
 def test_list_todos_status_filter_validates():
@@ -133,6 +141,119 @@ def test_list_todos_status_filter_appears_in_script():
     client = ThingsApplescriptClient(runner)
     client.list_todos(status="open")
     assert '"open"' in runner.last_script
+
+
+# -- Performance regression: batched AppleScript shape --
+# An unfiltered `todos list` against a real Things 3 database (several
+# hundred todos) must stay well under the AppleScriptRunner default
+# timeout. The client therefore reads each property from the todo
+# *collection* in one Apple Event, not per-todo. These tests assert the
+# structural shape of the emitted AppleScript so a refactor can't silently
+# reintroduce per-todo round-trips that timeout at 30s on large databases.
+
+
+def test_list_todos_reads_properties_from_collection_in_one_apple_event():
+    """Unfiltered listing must not issue a per-todo round-trip per property.
+
+    Failure mode this guards: each property read inside a ``repeat with t
+    in (to dos) … property of t`` body is its own Apple Event, so an
+    N-todo database pays roughly ``properties * N`` round-trips and blows
+    past the osascript timeout on real data. The batched form reads each
+    property from the collection in a single Apple Event, making the cost
+    of the unfiltered path roughly constant in the number of properties
+    plus one pass for the optional project/area relationships.
+    """
+    runner = FakeRunner(output="")
+    client = ThingsApplescriptClient(runner)
+    client.list_todos()
+    script = runner.last_script
+    assert script is not None
+
+    # Every property that can be batched must be read via the collection
+    # form. If any of these regress to per-element reads the timeout
+    # symptom returns.
+    for prop in (
+        "id", "name", "notes", "status", "tag names",
+        "due date", "activation date", "completion date",
+        "cancellation date", "creation date", "modification date",
+    ):
+        assert f"{prop} of every to do" in script, (
+            f"expected batched collection read for {prop!r} in emitted script"
+        )
+
+    # The unfiltered body must not contain a per-element property read of
+    # the form ``id of t`` / ``name of t`` / ``notes of t``. The only
+    # ``repeat`` that remains legitimately iterates todos to call the
+    # try-wrapped project/area handlers — it does not touch ids, names,
+    # notes, statuses, tag names, or dates.
+    forbidden_per_element_reads = (
+        "id of t)", "name of t)", "notes of t)", "status of t)",
+        "tag names of t)", "due date of t)",
+    )
+    for bad in forbidden_per_element_reads:
+        assert bad not in script, (
+            f"unfiltered todos list reintroduced per-element read {bad!r}"
+        )
+
+
+def test_list_todos_empty_database_returns_no_todos():
+    """Edge case that AppleScript's collection form handles differently
+    from a ``repeat`` loop: an empty ``id of every to do`` returns ``{}``
+    and the zip loop must short-circuit to an empty output without error.
+    """
+    runner = FakeRunner(output="")
+    client = ThingsApplescriptClient(runner)
+    assert client.list_todos() == []
+
+
+def test_list_todos_filtered_scope_uses_batched_reads():
+    """Each filter variant must route the batched reads through the same
+    caller-supplied scope. Otherwise a filtered query would silently read
+    the entire database and then discard rows client-side.
+    """
+    runner = FakeRunner(output="")
+    client = ThingsApplescriptClient(runner)
+
+    for kwargs, expected in [
+        ({"list_id": "TMTodayListSource"}, 'every to do of list id "TMTodayListSource"'),
+        ({"project_id": "p1"}, 'every to do of project id "p1"'),
+        ({"area_id": "a1"}, 'every to do of area id "a1"'),
+        ({"tag": "P1"}, 'every to do of tag "P1"'),
+    ]:
+        client.list_todos(**kwargs)
+        script = runner.last_script
+        assert script is not None
+        assert f"id of {expected}" in script
+        assert f"name of {expected}" in script
+        assert f"due date of {expected}" in script
+
+
+def test_list_projects_reads_properties_from_collection_in_one_apple_event():
+    """Mirrors the todos regression for projects, so the same performance
+    cliff cannot reappear on ``projects list`` as the project count grows.
+    """
+    runner = FakeRunner(output="")
+    client = ThingsApplescriptClient(runner)
+    client.list_projects()
+    script = runner.last_script
+    assert script is not None
+    for prop in ("id", "name", "notes", "status", "tag names", "due date"):
+        assert f"{prop} of every project" in script, (
+            f"expected batched collection read for {prop!r} in projects script"
+        )
+
+
+def test_list_areas_reads_properties_from_collection_in_one_apple_event():
+    """Mirrors the todos regression for areas."""
+    runner = FakeRunner(output="")
+    client = ThingsApplescriptClient(runner)
+    client.list_areas()
+    script = runner.last_script
+    assert script is not None
+    for prop in ("id", "name", "tag names"):
+        assert f"{prop} of every area" in script, (
+            f"expected batched collection read for {prop!r} in areas script"
+        )
 
 
 def test_unescape_handles_placeholders():
@@ -183,7 +304,9 @@ def test_list_projects_default_source():
     runner = FakeRunner(output="")
     client = ThingsApplescriptClient(runner)
     client.list_projects()
-    assert "repeat with p in (projects)" in runner.last_script
+    # Batched read reads each property from the whole collection in a
+    # single Apple Event.
+    assert "id of every project\n" in runner.last_script
 
 
 def test_list_projects_parses_rows():
