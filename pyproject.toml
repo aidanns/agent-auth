@@ -17,6 +17,7 @@ dependencies = [
 dev = [
     "build>=1.0",
     "pytest>=8.0",
+    "testcontainers[compose]>=4",
 ]
 tests-support = []
 

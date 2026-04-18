@@ -1,10 +1,14 @@
 """Docker-backed fixtures for agent-auth integration tests.
 
 Each test that requests the fixture gets a fresh Compose project (named
-by a per-test UUID), which gives it an isolated container, ephemeral
-host port, and filesystem. The test talks to the mapped loopback port
-and drives state through the agent-auth HTTP API + the ``agent-auth``
-CLI running inside the container.
+by a per-test UUID), giving it an isolated container, ephemeral host
+port, and filesystem. The test talks to the mapped loopback port and
+drives state through the agent-auth HTTP API + the ``agent-auth`` CLI
+running inside the container.
+
+The Compose lifecycle is managed by ``testcontainers-python``; the
+session-scoped image build remains a direct ``docker build`` call so the
+test image is rebuilt once per pytest run off the working tree.
 """
 
 from __future__ import annotations
@@ -13,25 +17,31 @@ import json
 import os
 import shutil
 import subprocess
-import time
-import urllib.error
-import urllib.request
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 import pytest
+from testcontainers.compose import DockerCompose
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-COMPOSE_FILE = REPO_ROOT / "docker" / "compose.test.yaml"
-DOCKERFILE = REPO_ROOT / "docker" / "Dockerfile.test"
+DOCKER_DIR = REPO_ROOT / "docker"
+COMPOSE_FILE_NAME = "compose.test.yaml"
+DOCKERFILE = DOCKER_DIR / "Dockerfile.test"
+BASELINE_CONFIG = DOCKER_DIR / "config.test.json"
 
-HEALTH_POLL_TIMEOUT_SECONDS = 30.0
-HEALTH_POLL_INTERVAL_SECONDS = 0.2
-DOCKER_COMPOSE_TIMEOUT_SECONDS = 120.0
 DOCKER_BUILD_TIMEOUT_SECONDS = 600.0
+
+# Maps the integration-test factory's human-readable ``approval`` knob
+# onto the fully-qualified notification-plugin module the container
+# should load. Tests pass ``approve`` / ``deny``; the plugin name is
+# written into the per-test config.json.
+APPROVAL_PLUGINS = {
+    "approve": "tests_support.always_approve",
+    "deny": "tests_support.always_deny",
+}
 
 
 def _docker_compose_available() -> bool:
@@ -54,41 +64,30 @@ class AgentAuthContainer:
     """Handle for a running agent-auth integration-test container."""
 
     base_url: str
-    project_name: str
+    compose: DockerCompose
     service: str = "agent-auth"
 
     def url(self, path: str) -> str:
         """Return ``{base_url}/agent-auth/{path}``."""
         return f"{self.base_url}/agent-auth/{path.lstrip('/')}"
 
-    def exec_cli(self, *args: str) -> subprocess.CompletedProcess:
-        """Run ``agent-auth <args>`` inside the container and return the result.
+    def exec_cli(self, *args: str) -> str:
+        """Run ``agent-auth <args>`` inside the container and return stdout.
 
         Raises ``RuntimeError`` with stdout/stderr interpolated on non-zero
         exit so pytest tracebacks show *why* the CLI failed rather than an
         opaque ``CalledProcessError``.
         """
-        cmd = [
-            "docker", "compose",
-            "-f", str(COMPOSE_FILE),
-            "-p", self.project_name,
-            "exec", "-T", self.service,
-            "agent-auth", *args,
-        ]
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=DOCKER_COMPOSE_TIMEOUT_SECONDS,
+        stdout, stderr, exit_code = self.compose.exec_in_container(
+            ["agent-auth", *args],
+            service_name=self.service,
         )
-        if result.returncode != 0:
+        if exit_code != 0:
             raise RuntimeError(
-                f"`agent-auth {' '.join(args)}` failed in {self.project_name}: "
-                f"returncode={result.returncode} "
-                f"stdout={result.stdout!r} stderr={result.stderr!r}"
+                f"`agent-auth {' '.join(args)}` failed: "
+                f"exit={exit_code} stdout={stdout!r} stderr={stderr!r}"
             )
-        return result
+        return stdout
 
     def create_token(self, *scopes: str) -> dict:
         """Create a token family inside the container and return the parsed JSON."""
@@ -97,13 +96,11 @@ class AgentAuthContainer:
         scope_args = []
         for scope in scopes:
             scope_args.extend(["--scope", scope])
-        result = self.exec_cli("--json", "token", "create", *scope_args)
-        return json.loads(result.stdout)
+        return json.loads(self.exec_cli("--json", "token", "create", *scope_args))
 
     def list_families(self) -> list[dict]:
         """Return all token families via ``agent-auth token list --json``."""
-        result = self.exec_cli("--json", "token", "list")
-        return json.loads(result.stdout)
+        return json.loads(self.exec_cli("--json", "token", "list"))
 
     def get_family(self, family_id: str) -> dict | None:
         """Return a single family by id, or None if not present."""
@@ -111,52 +108,6 @@ class AgentAuthContainer:
             (f for f in self.list_families() if f["id"] == family_id),
             None,
         )
-
-
-def _compose(
-    project_name: str,
-    *args: str,
-    env: dict[str, str] | None = None,
-    timeout: float = DOCKER_COMPOSE_TIMEOUT_SECONDS,
-) -> subprocess.CompletedProcess:
-    full_env = os.environ.copy()
-    if env:
-        full_env.update(env)
-    return subprocess.run(
-        ["docker", "compose", "-f", str(COMPOSE_FILE), "-p", project_name, *args],
-        capture_output=True,
-        text=True,
-        env=full_env,
-        check=False,
-        timeout=timeout,
-    )
-
-
-def _mapped_port(project_name: str) -> int:
-    result = _compose(project_name, "port", "agent-auth", "9100")
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"`docker compose port` failed: stdout={result.stdout!r} stderr={result.stderr!r}"
-        )
-    line = result.stdout.strip().splitlines()[-1]
-    return int(line.rsplit(":", 1)[-1])
-
-
-def _wait_for_health(base_url: str) -> None:
-    deadline = time.monotonic() + HEALTH_POLL_TIMEOUT_SECONDS
-    last_error: Exception | None = None
-    while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen(f"{base_url}/agent-auth/health", timeout=2) as resp:
-                if resp.status == 200:
-                    return
-        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
-            last_error = e
-        time.sleep(HEALTH_POLL_INTERVAL_SECONDS)
-    raise RuntimeError(
-        f"agent-auth container never reported healthy at {base_url}/agent-auth/health "
-        f"within {HEALTH_POLL_TIMEOUT_SECONDS}s (last error: {last_error!r})"
-    )
 
 
 @pytest.fixture(scope="session")
@@ -196,10 +147,6 @@ def _test_image_tag(_docker_required):
             f"`docker build` failed for {tag}: "
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
-    # Export for all `docker compose` subcommands — the compose file
-    # interpolates ``${AGENT_AUTH_TEST_IMAGE}`` as the service image, so
-    # `port`, `exec`, `down`, etc. all need it in the environment, not
-    # just `up`.
     previous = os.environ.get("AGENT_AUTH_TEST_IMAGE")
     os.environ["AGENT_AUTH_TEST_IMAGE"] = tag
     try:
@@ -213,20 +160,30 @@ def _test_image_tag(_docker_required):
             ["docker", "rmi", "-f", tag],
             capture_output=True,
             check=False,
-            timeout=DOCKER_COMPOSE_TIMEOUT_SECONDS,
+            timeout=60,
         )
+
+
+def _write_test_config(config_dir: Path, **overrides: object) -> None:
+    """Copy the baseline ``config.test.json`` into ``config_dir/config.json``
+    with ``overrides`` applied on top."""
+    with BASELINE_CONFIG.open() as f:
+        config = json.load(f)
+    config.update(overrides)
+    (config_dir / "config.json").write_text(json.dumps(config, indent=2))
 
 
 @pytest.fixture
 def agent_auth_container_factory(
     _test_image_tag,
+    tmp_path_factory,
 ) -> Callable[..., AgentAuthContainer]:
-    """Factory fixture — spin up an agent-auth container with custom env.
+    """Factory fixture — spin up an agent-auth container with custom config.
 
     Each invocation starts a fresh Compose project. Teardown is registered
     on the fixture so every container is removed at the end of the test.
     """
-    started: list[str] = []
+    started: list[DockerCompose] = []
 
     def _factory(
         *,
@@ -234,36 +191,52 @@ def agent_auth_container_factory(
         access_token_ttl_seconds: int = 900,
         refresh_token_ttl_seconds: int = 28800,
     ) -> AgentAuthContainer:
-        project_name = f"agent-auth-it-{uuid.uuid4().hex[:12]}"
-        env = {
-            "AGENT_AUTH_TEST_APPROVAL": approval,
-            "AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS": str(access_token_ttl_seconds),
-            "AGENT_AUTH_REFRESH_TOKEN_TTL_SECONDS": str(refresh_token_ttl_seconds),
-        }
-        # Register the project before `up` so a partial failure still tears
-        # resources down (ports/volumes/networks can be created before `up`
-        # exits non-zero).
-        started.append(project_name)
-        up = _compose(project_name, "up", "-d", env=env)
-        if up.returncode != 0:
-            raise RuntimeError(
-                f"`docker compose up` failed for {project_name}: "
-                f"stdout={up.stdout!r} stderr={up.stderr!r}"
+        if approval not in APPROVAL_PLUGINS:
+            raise ValueError(
+                f"unknown approval mode {approval!r}; expected one of "
+                f"{sorted(APPROVAL_PLUGINS)}"
             )
-        port = _mapped_port(project_name)
-        base_url = f"http://127.0.0.1:{port}"
-        _wait_for_health(base_url)
-        return AgentAuthContainer(base_url=base_url, project_name=project_name)
+
+        project_name = f"agent-auth-it-{uuid.uuid4().hex[:12]}"
+        config_dir = tmp_path_factory.mktemp(f"cfg-{project_name}")
+        _write_test_config(
+            config_dir,
+            access_token_ttl_seconds=access_token_ttl_seconds,
+            refresh_token_ttl_seconds=refresh_token_ttl_seconds,
+            notification_plugin=APPROVAL_PLUGINS[approval],
+        )
+
+        # The compose subprocess inherits this process's environment, so
+        # setting the variables here is enough for Compose's
+        # interpolation (``${AGENT_AUTH_TEST_IMAGE}``,
+        # ``${AGENT_AUTH_TEST_CONFIG_DIR}``) and for per-test project
+        # isolation via ``COMPOSE_PROJECT_NAME``.
+        os.environ["AGENT_AUTH_TEST_CONFIG_DIR"] = str(config_dir)
+        os.environ["COMPOSE_PROJECT_NAME"] = project_name
+
+        compose = DockerCompose(
+            context=str(DOCKER_DIR),
+            compose_file_name=COMPOSE_FILE_NAME,
+        )
+        # Register before start so a partial failure still tears resources
+        # down (ports/volumes/networks can be created before up exits
+        # non-zero).
+        started.append(compose)
+        compose.start()
+
+        host = compose.get_service_host("agent-auth", 9100)
+        port = compose.get_service_port("agent-auth", 9100)
+        base_url = f"http://{host}:{port}"
+        compose.wait_for(f"{base_url}/agent-auth/health")
+        return AgentAuthContainer(base_url=base_url, compose=compose)
 
     yield _factory
 
-    for project_name in started:
-        down = _compose(project_name, "down", "-v", "--remove-orphans")
-        if down.returncode != 0:
-            print(
-                f"warning: teardown of {project_name} failed: "
-                f"stdout={down.stdout!r} stderr={down.stderr!r}"
-            )
+    for compose in started:
+        try:
+            compose.stop()
+        except Exception as e:
+            print(f"warning: compose teardown failed: {e!r}")
 
 
 @pytest.fixture

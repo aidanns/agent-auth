@@ -5,9 +5,9 @@ services:
     # rest of the network.
     ports:
       - "127.0.0.1::9100"
-    environment:
-      AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS:
-      AGENT_AUTH_REFRESH_TOKEN_TTL_SECONDS:
-      AGENT_AUTH_NOTIFICATION_PLUGIN:
-      AGENT_AUTH_TEST_APPROVAL:
+    volumes:
+      # Per-test tmpdir holding config.json. The fixture copies
+      # docker/config.test.json here and applies any per-test overrides
+      # (TTLs, notification plugin) before starting the container.
+      - ${AGENT_AUTH_TEST_CONFIG_DIR:?set by tests/integration/conftest.py}:/home/agent-auth/.config/agent-auth:ro
     stop_grace_period: 5s

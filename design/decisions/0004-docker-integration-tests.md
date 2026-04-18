@@ -1,4 +1,4 @@
-# ADR 0002 — Docker-based HTTP integration tests
+# ADR 0004 — Docker-based HTTP integration tests
 
 ## Status
 
@@ -58,27 +58,41 @@ HTTP API and `agent-auth` CLI.
 
 ## Decision
 
-Adopt the Docker-per-test approach.
+Adopt the Docker-per-test approach, using
+[`testcontainers-python`](https://testcontainers-python.readthedocs.io/)
+to drive the Compose lifecycle instead of hand-rolled subprocess calls.
 
 - `docker/Dockerfile.test` installs `agent-auth[tests-support]` plus
   `keyrings.alt` so the server can start without an interactive keyring
-  backend.
+  backend. Its `ENTRYPOINT` is just `agent-auth serve` — configuration
+  is read from a bind-mounted `config.json`, not rendered from env vars
+  by a shell entrypoint.
+- `docker/config.test.json` is the committed baseline test config
+  (deny-by-default plugin, stock TTLs). The pytest fixture copies it
+  into a per-test tmpdir, applies overrides (plugin choice, TTLs), and
+  bind-mounts the tmpdir read-only at
+  `/home/agent-auth/.config/agent-auth`.
 - `docker/compose.test.yaml` defines a single `agent-auth` service that
-  binds `127.0.0.1::9100` (ephemeral).
-- `tests/integration/conftest.py` exposes
+  binds `127.0.0.1::9100` (ephemeral) and mounts
+  `${AGENT_AUTH_TEST_CONFIG_DIR}`.
+- `tests/integration/conftest.py` uses
+  `testcontainers.compose.DockerCompose` under the hood, and exposes
   `agent_auth_container` (default) and `agent_auth_container_factory`
-  (for custom TTLs / approval env) fixtures. Each test gets its own
-  Compose project name, so containers do not share state or ports.
+  (for custom TTLs / approval plugin) fixtures. Each test gets its own
+  Compose project name via `COMPOSE_PROJECT_NAME`, so containers do not
+  share state or ports.
 - Tests call the HTTP API directly and use
   `container.exec_cli(...)` to invoke `agent-auth` inside the container
   when they need to create / revoke tokens or inspect family state.
-- A new `tests_support.env_plugin` notification plugin (env-var
-  driven, defaults to deny) gives the integration layer control over
-  prompt-tier approvals without a stdin.
+- Two explicit notification plugins —
+  `tests_support.always_approve` and `tests_support.always_deny` — are
+  written into the per-test `config.json`. They replace the earlier
+  env-var-driven plugin: tests now opt in to an approval outcome by
+  name rather than by threading an env var through the container.
 - `scripts/verify-integration-isolation.sh` enforces that
   `tests/integration/` never references `127.0.0.1` / `0.0.0.0`
   directly and that the pytest fixture still builds
-  `docker/Dockerfile.test`.
+  `docker/Dockerfile.test`. It runs as part of `task check`.
 
 ## Consequences
 
@@ -96,6 +110,8 @@ Adopt the Docker-per-test approach.
   not in production.
 - `/agent-auth/health` is added as a readiness probe (satisfying the
   `service-design.md` health-endpoint standard).
+- `testcontainers` + `docker` are added to the `dev` optional-dependency
+  group. They are not pulled into runtime installs.
 
 ## Follow-ups
 
@@ -104,3 +120,6 @@ Adopt the Docker-per-test approach.
 - Revisit container scope if integration-test wall-clock time becomes a
   problem — module- or session-scope containers are a straightforward
   knob on the factory fixture.
+- Extend the Docker-based e2e pattern to the other services
+  (`things-bridge`, `things-cli`, `things-client-cli-applescript`) —
+  tracked separately.
