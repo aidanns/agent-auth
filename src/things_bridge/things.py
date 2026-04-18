@@ -219,6 +219,15 @@ class AppleScriptRunner:
         except FileNotFoundError as exc:
             raise ThingsError(f"osascript not found at {self._osascript_path}") from exc
         except subprocess.TimeoutExpired as exc:
+            # Mirror the non-zero exit diagnostic: keep the HTTP response body
+            # sparse while giving operators enough detail on the bridge's own
+            # stderr to distinguish timeouts from other ``502 things_unavailable``
+            # causes.
+            print(
+                f"things-bridge: osascript timed out after {self._timeout}s",
+                file=sys.stderr,
+                flush=True,
+            )
             raise ThingsError(f"osascript timed out after {self._timeout}s") from exc
 
         if result.returncode != 0:
