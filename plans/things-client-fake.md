@@ -104,30 +104,57 @@ list_memberships:
   store).
 - Flag present, value -> `load_fake_store(path)` → `FakeThingsClient(...)`.
 
-Also accept env var `THINGS_BRIDGE_FAKE_THINGS` as a fallback (convenient
-for devcontainer `ENV` directives). CLI flag wins if both are set.
+CLI flag only — no env var fallback and no config-file entry. The fake
+is a developer tool, per `service-design.md` "defaults live in code".
 
 On startup, emit a prominent stderr warning banner when the fake is
 active so nobody accidentally runs the server against real traffic with
-it on. No config-file entry — the fake is a developer tool, per
-`service-design.md` "defaults live in code".
+it on.
 
 Flag name is `--fake-things` (not `--fake-applescript`) because the fake
 is at the Things-client layer; the AppleScript layer is bypassed entirely.
 
 ### End-to-end test
 
+The point of the e2e test is to exercise the **full** stack, including
+the agent-auth / things-bridge interaction. A stubbed-out `FakeAuthz`
+would make the bridge's token-validation path untested in e2e and is
+exactly the regression surface this test needs to cover. The e2e test
+therefore stands up a real `agent-auth` server in-process and points
+things-bridge at it via the real `AgentAuthClient`.
+
+Reuses the existing agent-auth test fixtures (`tmp_dir`, `signing_key`,
+`encryption_key` — see `tests/test_server.py`) and the helpers
+`_start_server` / `_create_test_tokens` / `_post` / `_get`. Extract
+those into `tests/conftest.py` (or a shared module) so both the
+existing agent-auth integration tests and the new things-bridge e2e
+can share them without duplication.
+
 New file `tests/test_things_bridge_e2e.py`:
 
-- Pytest fixture starts `ThingsBridgeServer(config, client, authz)` where
-  `client = FakeThingsClient(store_from_fixture)` and `authz` is a
-  `FakeAuthz` that accepts any token.
-- Drives real HTTP via `urllib` against the endpoints and asserts the
-  JSON bodies line up with the fixture.
-- Coverage: list/get for todos/projects/areas,
-  `project`/`area`/`tag`/`status` filters, `list_id` filter against
-  `list_memberships`, 404 for missing ids, free-form `\t` / `\n` in a
-  todo's `notes` round-trips cleanly through the JSON response.
+- Pytest fixture spins up the full stack in-process:
+  1. Start `AgentAuthServer` on port 0 with an isolated `tmp_dir` data
+     dir, test signing/encryption keys, and the existing
+     `AutoApprovePlugin` stub (prompt-tier scopes not exercised here;
+     everything is allow-tier).
+  2. Create a real `things:read=allow` token family directly against
+     the in-memory store via `_create_test_tokens`.
+  3. Start `ThingsBridgeServer` on port 0 with a real
+     `AgentAuthClient(auth_url=<agent-auth URL>)` and a
+     `FakeThingsClient(store_from_fixture)`.
+- Drives real HTTP via `urllib` against the things-bridge endpoints
+  with the real access token in the `Authorization: Bearer …` header.
+  This proves the full validation path (signature verify, expiry
+  check, scope check, agent-auth round-trip) executes end-to-end.
+- Coverage:
+  - Happy path: list/get for todos/projects/areas,
+    `project`/`area`/`tag`/`status` filters, `list_id` filter against
+    `list_memberships`, free-form `\t` / `\n` in `notes` round-trips
+    through the JSON response, 404 for missing Things ids.
+  - Authz path: missing token -> 401, wrong-scope token
+    (`outlook:read=allow`) -> 403, expired access token -> 401,
+    revoked family -> 401, agent-auth server unreachable ->
+    502 (`authz_unavailable`).
 
 Also `tests/test_things_bridge_fake.py` — unit tests on
 `FakeThingsClient` in isolation: filter semantics, status validation,
@@ -135,11 +162,16 @@ not-found behaviour.
 
 The existing `FakeThings` in `tests/test_things_bridge_server.py` is
 replaced by the production `FakeThingsClient` (via an import change in
-that test file — no behaviour change expected).
+that test file — no behaviour change expected). The existing `FakeAuthz`
+in that same file stays — it's still the right tool for the bridge's
+*unit* tests, which shouldn't depend on agent-auth internals. Only the
+e2e test uses the real authz stack.
 
-### Follow-up: real-Things end-to-end on macOS
+### Follow-up GitHub issues
 
-A GitHub issue will be opened immediately after this change lands:
+Two issues will be opened immediately after this change lands.
+
+**Issue 1 — e2e tests with real Things 3 via a macOS runner**
 
 > **Title:** e2e tests with real Things 3 via GitHub Actions macOS runner
 >
@@ -162,6 +194,35 @@ A GitHub issue will be opened immediately after this change lands:
 > - Automation permission: TCC DB pre-seeding vs interactive prompt.
 > - Dataset seeding: `make new to do` before the test runs; tear down
 >   via `empty trash` + `log completed now` after.
+
+**Issue 2 — move logic out of AppleScript into Python**
+
+> **Title:** minimise AppleScript logic in things-bridge, push filtering
+> and shaping into Python
+>
+> **Body:** `ThingsApplescriptClient` currently pushes filtering
+> (`whose status is open`, `to dos of tag "X"`, status-text branching)
+> and row-shaping (TSV framing, escape sequences, ISO-date
+> conversion) into the AppleScript it emits. AppleScript is hard to
+> unit-test, can't be run on the CI Linux workers, and has a very
+> limited standard library.
+>
+> Refactor the client so the AppleScript side is as close to a dumb
+> data dump as possible: return every field of every requested object
+> as raw AppleScript values (or JSON via `_private_experimental_
+> json` where available), and do filtering, tag-splitting, date
+> parsing, and missing-value handling in Python on the parsed result.
+>
+> Benefits:
+> - Shrinks the attack/injection surface (fewer caller-supplied
+>   strings end up inside AppleScript).
+> - Makes unit tests of the filter and shape logic trivial — they
+>   run on whatever data-shape the fake/real AppleScript returns.
+> - Reduces the lock-step coupling between the AppleScript emitter
+>   and any future fake runner (should we ever revisit that).
+>
+> Out of scope for the fake-ThingsClient change; tracked so it doesn't
+> get lost.
 
 ### ADR
 
@@ -191,8 +252,8 @@ A GitHub issue will be opened immediately after this change lands:
   `ThingsApplescriptClient` behaviour.
 - `src/things_bridge/server.py` — annotate `things: ThingsClient`
   (Protocol), no behaviour change.
-- `src/things_bridge/cli.py` — add `--fake-things[=<path>]`, env var
-  fallback, startup banner.
+- `src/things_bridge/cli.py` — add `--fake-things[=<path>]` and the
+  startup banner.
 - `tests/test_things_bridge_server.py` — replace local `FakeThings` with
   `from things_bridge.fake import FakeThingsClient, FakeThingsStore`.
 - `README.md` — new subsection under `things-bridge` documenting the
@@ -203,12 +264,19 @@ A GitHub issue will be opened immediately after this change lands:
 - `design/functional_decomposition.yaml` / `.md` / `.d2` — add a leaf
   under `things-bridge` for `Fake Things Client` so function-to-test
   traceability holds.
-- `tests/conftest.py` — shared `FakeAuthz` fixture if not already shared.
+- `tests/conftest.py` — promote agent-auth's existing `tmp_dir` /
+  `signing_key` / `encryption_key` fixtures and the `_start_server`
+  / `_create_test_tokens` helpers here so the new e2e test can reuse
+  them without depending on `tests/test_server.py` as a sibling
+  import. The existing `FakeAuthz` stays in
+  `tests/test_things_bridge_server.py` (it's for unit tests, not e2e).
 
-**GitHub issue to open (separately from the PR):**
+**GitHub issues to open (separately from the PR):**
 
-- "e2e tests with real Things 3 via GitHub Actions macOS runner" — body
-  as drafted above.
+1. "e2e tests with real Things 3 via GitHub Actions macOS runner" —
+   body as drafted above.
+2. "minimise AppleScript logic in things-bridge, push filtering and
+   shaping into Python" — body as drafted above.
 
 ## Post-implementation review (per plan-template.md)
 
