@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Run the agent-auth test suite inside the project virtualenv.
+# Build sdist and wheel distributions into dist/ using the project virtualenv.
 
 set -euo pipefail
 
@@ -16,7 +16,7 @@ if [[ ! -d "${VENV_DIR}" ]]; then
 fi
 
 # Re-run the editable install unconditionally so that a venv created before
-# a new `[dev]` dependency was added picks it up on the next `task test`.
+# `build` was added to [dev] extras picks it up on the next `task build`.
 "${VENV_DIR}/bin/pip" install --quiet -e ".[dev]"
 
-"${VENV_DIR}/bin/python" -m pytest tests/ "$@"
+"${VENV_DIR}/bin/python" -m build --outdir "${REPO_ROOT}/dist"

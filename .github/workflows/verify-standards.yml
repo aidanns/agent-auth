@@ -12,5 +12,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify repository-level standards
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.50.0
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify tooling-and-ci standards
         run: scripts/verify-standards.sh

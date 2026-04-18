@@ -41,7 +41,7 @@ simplifying for "personal project" scope.
   refresh/rotate pair -> JIT approval for prompt-tier scope -> revoke ->
   verify invalidation
 - Function-to-test allocation tracked via `scripts/verify-function-tests.sh`
-- Repository-level standards (e.g. Dependabot ecosystems) verified via `scripts/verify-standards.sh`
+- Repository-level standards (Taskfile task coverage, Dependabot config) verified via `scripts/verify-standards.sh`
 - Plugin trust boundary: the notification plugin currently uses
   `importlib.import_module` inside the server process which holds signing
   and encryption keys — tracked in #6 for migration to out-of-process
