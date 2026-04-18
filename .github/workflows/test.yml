@@ -16,5 +16,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.50.0
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Required Tooling
+        run: task verify-dependencies
+
       - name: Run tests
-        run: scripts/test.sh
+        run: task test

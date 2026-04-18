@@ -22,5 +22,8 @@ jobs:
           version: 3.50.0
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Verify Required Tooling
+        run: task verify-dependencies
+
       - name: Verify Project Standards
-        run: scripts/verify-standards.sh
+        run: task verify-standards

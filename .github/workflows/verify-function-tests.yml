@@ -25,9 +25,18 @@ jobs:
           bash install.sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.50.0
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Required Tooling
+        run: task verify-dependencies
+
       # continue-on-error until aidanns/agent-auth#5 is resolved: the
       # check currently reports 37/47 leaf functions covered, so it
       # would block every PR. Remove once coverage reaches 100%.
       - name: Verify all functions have test coverage
         continue-on-error: true
-        run: scripts/verify-function-tests.sh
+        run: task verify-function-tests
