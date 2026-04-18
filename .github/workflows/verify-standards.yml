@@ -22,5 +22,5 @@ jobs:
           version: 3.50.0
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify tooling-and-ci standards
+      - name: Verify Project Standards
         run: scripts/verify-standards.sh
