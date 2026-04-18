@@ -17,6 +17,9 @@ import json
 import os
 import shutil
 import subprocess
+import time
+import urllib.error
+import urllib.request
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +36,8 @@ DOCKERFILE = DOCKER_DIR / "Dockerfile.test"
 BASELINE_CONFIG = DOCKER_DIR / "config.test.json"
 
 DOCKER_BUILD_TIMEOUT_SECONDS = 600.0
+READY_POLL_TIMEOUT_SECONDS = 30.0
+READY_POLL_INTERVAL_SECONDS = 0.2
 
 # Maps the integration-test factory's human-readable ``approval`` knob
 # onto the fully-qualified notification-plugin module the container
@@ -164,6 +169,35 @@ def _test_image_tag(_docker_required):
         )
 
 
+def _wait_until_server_ready(health_url: str) -> None:
+    """Block until the server binds its port and answers ``health_url``.
+
+    The endpoint requires an ``agent-auth:health`` token, so an
+    unauthenticated probe returns ``401``. Treat that — along with
+    ``403`` (valid shape, scope missing) — as a positive "server is up"
+    signal; the per-test token creation that follows exercises the full
+    auth path.
+    """
+    deadline = time.monotonic() + READY_POLL_TIMEOUT_SECONDS
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(health_url, timeout=2) as resp:
+                if resp.status < 500:
+                    return
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                return
+            last_error = e
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            last_error = e
+        time.sleep(READY_POLL_INTERVAL_SECONDS)
+    raise RuntimeError(
+        f"agent-auth container never became reachable at {health_url} "
+        f"within {READY_POLL_TIMEOUT_SECONDS}s (last error: {last_error!r})"
+    )
+
+
 def _write_test_config(config_dir: Path, **overrides: object) -> None:
     """Copy the baseline ``config.test.json`` into ``config_dir/config.json``
     with ``overrides`` applied on top."""
@@ -227,7 +261,7 @@ def agent_auth_container_factory(
         host = compose.get_service_host("agent-auth", 9100)
         port = compose.get_service_port("agent-auth", 9100)
         base_url = f"http://{host}:{port}"
-        compose.wait_for(f"{base_url}/agent-auth/health")
+        _wait_until_server_ready(f"{base_url}/agent-auth/health")
         return AgentAuthContainer(base_url=base_url, compose=compose)
 
     yield _factory

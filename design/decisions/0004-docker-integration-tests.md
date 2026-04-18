@@ -109,7 +109,11 @@ to drive the Compose lifecycle instead of hand-rolled subprocess calls.
   here because the package is installed *only* when the image is built,
   not in production.
 - `/agent-auth/health` is added as a readiness probe (satisfying the
-  `service-design.md` health-endpoint standard).
+  `service-design.md` health-endpoint standard). It requires an access
+  token carrying the `agent-auth:health` scope; the fixture polls for
+  *any* HTTP response (401 is a positive "server is up" signal) as its
+  container-readiness check, then issues a scoped token for the actual
+  health assertion.
 - `testcontainers` + `docker` are added to the `dev` optional-dependency
   group. They are not pulled into runtime installs.
 

@@ -11,7 +11,19 @@ from agent_auth.config import Config
 from agent_auth.plugins import ApprovalResult, NotificationPlugin
 from agent_auth.server import AgentAuthHandler, AgentAuthServer
 from agent_auth.store import TokenStore
+from agent_auth.tokens import create_token_pair
 from tests._http import get, post
+
+
+def _issue_health_token(server, store, scopes):
+    family_id = "fam-health-test"
+    store.create_family(family_id, scopes)
+    access_token, _ = create_token_pair(server.signing_key, store, family_id, server.config)
+    return access_token
+
+
+def _health_headers(token):
+    return {"Authorization": f"Bearer {token}"}
 
 
 class _DenyPlugin(NotificationPlugin):
@@ -42,23 +54,42 @@ def in_process_server(tmp_dir, signing_key, encryption_key):
 
 @pytest.mark.covers_function("Serve Health Endpoint")
 def test_health_returns_ok_when_store_reachable(in_process_server):
-    _, base, _ = in_process_server
-    status, body = get(f"{base}/agent-auth/health")
+    server, base, store = in_process_server
+    token = _issue_health_token(server, store, {"agent-auth:health": "allow"})
+    status, body = get(f"{base}/agent-auth/health", _health_headers(token))
     assert status == 200
     assert body == {"status": "ok"}
 
 
 @pytest.mark.covers_function("Serve Health Endpoint")
 def test_health_returns_unhealthy_when_store_ping_fails(in_process_server, monkeypatch):
-    _, base, store = in_process_server
+    server, base, store = in_process_server
+    token = _issue_health_token(server, store, {"agent-auth:health": "allow"})
 
     def boom():
         raise RuntimeError("store offline")
 
     monkeypatch.setattr(store, "ping", boom)
-    status, body = get(f"{base}/agent-auth/health")
+    status, body = get(f"{base}/agent-auth/health", _health_headers(token))
     assert status == 503
     assert body == {"status": "unhealthy"}
+
+
+@pytest.mark.covers_function("Serve Health Endpoint")
+def test_health_requires_a_bearer_token(in_process_server):
+    _, base, _ = in_process_server
+    status, body = get(f"{base}/agent-auth/health")
+    assert status == 401
+    assert body["error"] == "missing_token"
+
+
+@pytest.mark.covers_function("Serve Health Endpoint")
+def test_health_rejects_tokens_without_the_health_scope(in_process_server):
+    server, base, store = in_process_server
+    token = _issue_health_token(server, store, {"things:read": "allow"})
+    status, body = get(f"{base}/agent-auth/health", _health_headers(token))
+    assert status == 403
+    assert body["error"] == "scope_denied"
 
 
 def test_unknown_get_route_returns_404(in_process_server):

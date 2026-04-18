@@ -476,23 +476,40 @@ Response (401 — family revoked or not found):
 
 ### GET /agent-auth/health
 
-Liveness / readiness probe. Returns 200 when the token store is
-reachable, 503 otherwise. Unauthenticated — the response carries no
-token or scope metadata.
+Liveness / readiness probe. Requires an access token carrying the
+`agent-auth:health` scope (tier `allow` or `prompt`). Returns 200 when
+the token store is reachable, 503 when `store.ping()` fails.
+
+Request:
+```
+Authorization: Bearer aa_xxx_yyy
+```
 
 Response (200):
 ```json
 {"status": "ok"}
 ```
 
-Response (503):
+Response (401 — no / invalid / expired token):
+```json
+{"error": "missing_token"}
+```
+
+Response (403 — token lacks the `agent-auth:health` scope):
+```json
+{"error": "scope_denied"}
+```
+
+Response (503 — store unreachable):
 ```json
 {"status": "unhealthy"}
 ```
 
-Used by the integration-test harness to wait for the container to be
-ready before driving requests; also suitable for production readiness
-probes.
+Callers (integration-test harness, production probes) must provision a
+token with the `agent-auth:health` scope and present it on every call.
+The integration-test fixture polls for *any* HTTP response (including
+401) as its container-readiness signal, then issues a properly-scoped
+token for the actual health assertion.
 
 ### GET /agent-auth/token/status
 
