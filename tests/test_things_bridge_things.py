@@ -345,3 +345,28 @@ def test_osascript_timeout_writes_diagnostic_to_stderr(capfd, monkeypatch):
     # distinguish the failure mode at a glance.
     assert "things-bridge" in captured.err
     assert "timed out" in captured.err
+
+
+def test_osascript_timeout_surfaces_partial_stderr(capfd, monkeypatch):
+    """When osascript prints something before being killed (e.g. a pending
+    permissions prompt that never resolved), operators need to see that hint
+    on the bridge's stderr — otherwise they are left with only a bare timeout
+    line and no way to tell the two failure shapes apart.
+    """
+    def _raise_timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(
+            cmd=args[0],
+            timeout=kwargs.get("timeout"),
+            stderr="waiting on user to grant automation access\n",
+        )
+
+    monkeypatch.setattr(subprocess, "run", _raise_timeout)
+
+    runner = AppleScriptRunner(timeout=0.5)
+    with pytest.raises(ThingsError):
+        runner.run("tell application \"Things3\" to return \"\"")
+
+    captured = capfd.readouterr()
+    assert "things-bridge" in captured.err
+    assert "timed out" in captured.err
+    assert "waiting on user to grant automation access" in captured.err
