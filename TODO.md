@@ -157,8 +157,7 @@ the decision and trade-offs in `DESIGN.md`.
 
 The `things-cli login` command currently accepts `--access-token`
 and `--refresh-token` as CLI flags, which exposes them in shell
-history. The reviewer asked for interactive input (like `gh auth
-login` prompts) or pre-populated config file as alternatives. This
+history. The reviewer asked for interactive input (like `gh auth login` prompts) or pre-populated config file as alternatives. This
 is a UX and security design decision that should be addressed in
 `DESIGN.md` and the implementation plan. Plans should include a
 "credential input method" step that considers shell history exposure.

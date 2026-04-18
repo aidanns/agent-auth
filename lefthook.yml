@@ -1,13 +1,26 @@
 # lefthook git hook manager configuration.
 # Install with `task install-hooks` (wraps `lefthook install`).
-# shfmt formatting options live in .editorconfig.
+# shfmt formatting options live in .editorconfig;
+# mdformat reads .mdformat.toml; taplo reads taplo.toml.
 
 pre-commit:
   parallel: true
   commands:
+    keep-sorted:
+      # Narrow to file types that currently carry keep-sorted annotations plus
+      # common text formats. CI (scripts/lint.sh) scans every tracked file, so
+      # new annotations in uncovered types are still caught there.
+      glob: "{*.toml,*.sh,*.yml,*.yaml,*.md,*.py,.gitignore}"
+      run: keep-sorted --mode=lint {staged_files}
+    mdformat:
+      glob: "*.md"
+      run: mdformat --check {staged_files}
     shellcheck:
       glob: "*.sh"
       run: shellcheck {staged_files}
     shfmt:
       glob: "*.sh"
       run: shfmt -d {staged_files}
+    taplo:
+      glob: "*.toml"
+      run: taplo format --check {staged_files}

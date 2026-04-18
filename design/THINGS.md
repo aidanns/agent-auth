@@ -6,15 +6,15 @@ The information below was extracted directly from the `Things.sdef` scripting de
 
 ## Table of contents
 
-1. [Executing AppleScript against Things](#executing-applescript-against-things)
-2. [Object model overview](#object-model-overview)
-3. [Application root object](#application-root-object)
-4. [The `list` class and built-in lists](#the-list-class-and-built-in-lists)
-5. [The `area` class](#the-area-class)
-6. [The `project` class](#the-project-class)
-7. [The `to do` class](#the-to-do-class)
-8. [The `selected to do` class](#the-selected-to-do-class)
-9. [The `tag` class](#the-tag-class)
+01. [Executing AppleScript against Things](#executing-applescript-against-things)
+02. [Object model overview](#object-model-overview)
+03. [Application root object](#application-root-object)
+04. [The `list` class and built-in lists](#the-list-class-and-built-in-lists)
+05. [The `area` class](#the-area-class)
+06. [The `project` class](#the-project-class)
+07. [The `to do` class](#the-to-do-class)
+08. [The `selected to do` class](#the-selected-to-do-class)
+09. [The `tag` class](#the-tag-class)
 10. [The `contact` class](#the-contact-class)
 11. [The `item details` record type](#the-item-details-record-type)
 12. [Enumerations](#enumerations)
@@ -31,7 +31,7 @@ The information below was extracted directly from the `Things.sdef` scripting de
 23. [End-to-end recipes](#end-to-end-recipes)
 24. [Gotchas and caveats](#gotchas-and-caveats)
 
----
+______________________________________________________________________
 
 ## Executing AppleScript against Things
 
@@ -66,7 +66,7 @@ Things must be running (or launchable) on the target machine. Sending an Apple E
 
 On modern macOS, sending Apple Events to another app requires the user to have granted the calling process Automation permission for Things (System Settings → Privacy & Security → Automation). The first call will prompt if the process is not yet authorized; in non-interactive contexts it will fail silently with error `-1743` (`errAEEventNotPermitted`).
 
----
+______________________________________________________________________
 
 ## Object model overview
 
@@ -94,12 +94,12 @@ Inheritance (important — it controls which properties and commands are availab
 
 - `area` inherits from `list`
 - `contact` inherits from `list`
-- `project` inherits from `to do`  ← note: projects are to dos, not lists
+- `project` inherits from `to do` ← note: projects are to dos, not lists
 - `selected to do` inherits from `to do`
 
 So any property defined on `to do` is also valid on `project`, and any property on `list` is valid on `area` and `contact`. Conversely, the `move` command (which takes a `list` target) accepts areas and contacts, but **not** projects (see [Deleting / archiving items](#deleting--archiving-items) and the `move` command).
 
----
+______________________________________________________________________
 
 ## Application root object
 
@@ -107,32 +107,32 @@ Target: `application "Things3"`
 
 ### Properties
 
-| Property | Type | Access | Description |
-|----------|------|--------|-------------|
-| `name` | text | r | The name of the application (always `"Things"`). |
-| `frontmost` | boolean | r | `true` if Things is the active/frontmost app. |
-| `version` | text | r | Version string (e.g. `"3.21.4"`). |
+| Property    | Type    | Access | Description                                      |
+| ----------- | ------- | ------ | ------------------------------------------------ |
+| `name`      | text    | r      | The name of the application (always `"Things"`). |
+| `frontmost` | boolean | r      | `true` if Things is the active/frontmost app.    |
+| `version`   | text    | r      | Version string (e.g. `"3.21.4"`).                |
 
 ### Element collections
 
 These are the ordered collections you can query from the app root. Most are read-only at the app level, meaning you cannot `make new … at application "Things3"` against these collections directly (exception: `to do`, `project`, `area`, `tag`, `contact`, which you create without an `at` clause and they default to their natural home — see [Creating objects](#creating-objects-make)).
 
-| Element | Class | Notes |
-|---------|-------|-------|
-| `windows` | window | Standard Suite windows. |
-| `lists` | list | **Built-in lists AND all user areas**. Does NOT include projects. |
-| `to dos` | to do | Every to do in the database that is neither trashed nor logged (empirical). Use `to dos of list "Logbook"` / `to dos of list "Trash"` to reach those. |
-| `projects` | project | All user-defined projects (across all areas). |
-| `areas` | area | All user-defined areas of responsibility. |
-| `contacts` | contact | All Things contacts. |
-| `tags` | tag | All tags, **flat** (children and parents are all present). Use `parent tag` to reconstruct hierarchy. |
-| `selected to dos` | selected to do | To dos currently selected in the Things UI. Empty if no window is open or no selection. |
+| Element           | Class          | Notes                                                                                                                                                 |
+| ----------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `windows`         | window         | Standard Suite windows.                                                                                                                               |
+| `lists`           | list           | **Built-in lists AND all user areas**. Does NOT include projects.                                                                                     |
+| `to dos`          | to do          | Every to do in the database that is neither trashed nor logged (empirical). Use `to dos of list "Logbook"` / `to dos of list "Trash"` to reach those. |
+| `projects`        | project        | All user-defined projects (across all areas).                                                                                                         |
+| `areas`           | area           | All user-defined areas of responsibility.                                                                                                             |
+| `contacts`        | contact        | All Things contacts.                                                                                                                                  |
+| `tags`            | tag            | All tags, **flat** (children and parents are all present). Use `parent tag` to reconstruct hierarchy.                                                 |
+| `selected to dos` | selected to do | To dos currently selected in the Things UI. Empty if no window is open or no selection.                                                               |
 
 ### Notes on `lists`
 
 `lists` mixes two very different kinds of things: built-in smart lists (`Inbox`, `Today`, …) and user-defined areas (because `area` inherits from `list`). To tell them apart, check the `class` of each element — built-in ones are class `list`, user areas are class `area`. Their `id` format also differs (see below).
 
----
+______________________________________________________________________
 
 ## The `list` class and built-in lists
 
@@ -140,15 +140,15 @@ Code: `tsls`. Represents a Things list (a named collection of to dos).
 
 ### Properties
 
-| Property | Type | Access | Description |
-|----------|------|--------|-------------|
-| `id` | text | r | Stable unique identifier. Built-in lists use stable string IDs (table below); user areas use random-looking Base58-ish IDs. |
-| `name` | text | rw | Localized display name. |
+| Property | Type | Access | Description                                                                                                                 |
+| -------- | ---- | ------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `id`     | text | r      | Stable unique identifier. Built-in lists use stable string IDs (table below); user areas use random-looking Base58-ish IDs. |
+| `name`   | text | rw     | Localized display name.                                                                                                     |
 
 ### Element collections
 
-| Element | Class | Notes |
-|---------|-------|-------|
+| Element  | Class | Notes                            |
+| -------- | ----- | -------------------------------- |
 | `to dos` | to do | The to dos visible in this list. |
 
 ### Commands
@@ -159,17 +159,17 @@ Code: `tsls`. Represents a Things list (a named collection of to dos).
 
 These are always present. Use the stable IDs below rather than names when you want to be robust against localization or renaming. However the **English names also work** as references (e.g. `list "Today"`) on a non-localized system.
 
-| Name (en) | Stable `id` | What's in it |
-|-----------|-------------|--------------|
-| Inbox | `TMInboxListSource` | To dos with no project, area, or schedule. |
-| Today | `TMTodayListSource` | To dos whose activation date is today (or earlier). |
-| Tomorrow | `tomorrow` | "This Evening" partition conceptually — in practice, used as part of the Today view in newer versions. (Non-canonical; don't rely on contents.) |
-| Anytime | `TMNextListSource` | Active, unscheduled to dos from projects/areas (Things' "Next" semantics). |
-| Upcoming | `TMCalendarListSource` | To dos scheduled for future dates. |
-| Someday | `TMSomedayListSource` | To dos scheduled as "Someday". |
-| Later Projects | `later-projects` | Projects marked "Someday" (newer Things versions). |
-| Logbook | `TMLogbookListSource` | Completed / canceled to dos after they have been logged. |
-| Trash | `TMTrashListSource` | Deleted items (soft-delete bucket). |
+| Name (en)      | Stable `id`            | What's in it                                                                                                                                    |
+| -------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Inbox          | `TMInboxListSource`    | To dos with no project, area, or schedule.                                                                                                      |
+| Today          | `TMTodayListSource`    | To dos whose activation date is today (or earlier).                                                                                             |
+| Tomorrow       | `tomorrow`             | "This Evening" partition conceptually — in practice, used as part of the Today view in newer versions. (Non-canonical; don't rely on contents.) |
+| Anytime        | `TMNextListSource`     | Active, unscheduled to dos from projects/areas (Things' "Next" semantics).                                                                      |
+| Upcoming       | `TMCalendarListSource` | To dos scheduled for future dates.                                                                                                              |
+| Someday        | `TMSomedayListSource`  | To dos scheduled as "Someday".                                                                                                                  |
+| Later Projects | `later-projects`       | Projects marked "Someday" (newer Things versions).                                                                                              |
+| Logbook        | `TMLogbookListSource`  | Completed / canceled to dos after they have been logged.                                                                                        |
+| Trash          | `TMTrashListSource`    | Deleted items (soft-delete bucket).                                                                                                             |
 
 The list names on a localized Things install will be the user's locale (e.g. `Heute` in German). Prefer `list id "TMTodayListSource"` if you don't know the locale.
 
@@ -194,7 +194,7 @@ end tell
 
 This returns the same result as `to dos of area "Personal"`.
 
----
+______________________________________________________________________
 
 ## The `area` class
 
@@ -202,16 +202,16 @@ Code: `tsaa`. Inherits from `list`.
 
 ### Properties (in addition to those inherited from `list`)
 
-| Property | Type | Access | Description |
-|----------|------|--------|-------------|
-| `tag names` | text | rw | Comma-separated tag names for this area (areas can carry tags). |
-| `collapsed` | boolean | rw | Whether this area is collapsed in the sidebar. |
+| Property    | Type    | Access | Description                                                     |
+| ----------- | ------- | ------ | --------------------------------------------------------------- |
+| `tag names` | text    | rw     | Comma-separated tag names for this area (areas can carry tags). |
+| `collapsed` | boolean | rw     | Whether this area is collapsed in the sidebar.                  |
 
 ### Element collections (in addition to `list.to dos`)
 
-| Element | Class | Notes |
-|---------|-------|-------|
-| `tags` | tag | Tags attached to this area. |
+| Element | Class | Notes                       |
+| ------- | ----- | --------------------------- |
+| `tags`  | tag   | Tags attached to this area. |
 
 ### Creating areas
 
@@ -227,7 +227,7 @@ end tell
 
 `delete anArea` works for user-created areas (verified).
 
----
+______________________________________________________________________
 
 ## The `project` class
 
@@ -235,8 +235,8 @@ Code: `tspt`. **Inherits from `to do`** (projects are a specialization of to do,
 
 ### Element collections beyond those inherited from `to do`
 
-| Element | Class | Notes |
-|---------|-------|-------|
+| Element  | Class | Notes                                   |
+| -------- | ----- | --------------------------------------- |
 | `to dos` | to do | The to dos that belong to this project. |
 
 ### Properties a project has (via `to do`)
@@ -262,7 +262,7 @@ end tell
 1. Create it in place: `make new to do at projectRef`, or
 2. Set the property: `set project of todoRef to projectRef`.
 
----
+______________________________________________________________________
 
 ## The `to do` class
 
@@ -270,28 +270,28 @@ Code: `tstk`. The primary data object. Cocoa class is `ASTask`.
 
 ### Properties
 
-| Property | Type | Access | Description |
-|----------|------|--------|-------------|
-| `id` | text | r | Stable unique identifier (Base58-ish string, ~22 chars). |
-| `name` | text | rw | Title of the to do. |
-| `notes` | text | rw | Freeform notes body. Supports plain text including URLs. |
-| `creation date` | date | rw | When the to do was created. Writable (rare). |
-| `modification date` | date | rw | Last-modified timestamp. |
-| `due date` | date | rw | **Deadline** date (the red flag in the UI). Set to `missing value` to clear. |
-| `activation date` | date | **r** | When the to do becomes active (i.e. the scheduled start date). **Read-only.** Change it via the `schedule` command or by moving into `Today` / `Someday` / etc. |
-| `completion date` | date | rw | Date the to do was marked complete. Setting `status` to `completed` sets this; clearing completion via `status` = `open` zeroes it. |
-| `cancellation date` | date | rw | Date the to do was canceled. Symmetric with `completion date`. |
-| `status` | status enum | rw | One of `open`, `completed`, `canceled`. See [Enumerations](#enumerations). |
-| `tag names` | text | rw | **Comma-separated** tag names (e.g. `"P1, Errand"`). See [Tags](#tags-working-with-the-tag-names-property). |
-| `project` | project | rw | The parent project, or `missing value`. |
-| `area` | area | rw | The parent area, or `missing value`. A to do has at most one of `project`/`area`. |
-| `contact` | contact | rw | Assigned contact, or `missing value`. |
+| Property            | Type        | Access | Description                                                                                                                                                     |
+| ------------------- | ----------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                | text        | r      | Stable unique identifier (Base58-ish string, ~22 chars).                                                                                                        |
+| `name`              | text        | rw     | Title of the to do.                                                                                                                                             |
+| `notes`             | text        | rw     | Freeform notes body. Supports plain text including URLs.                                                                                                        |
+| `creation date`     | date        | rw     | When the to do was created. Writable (rare).                                                                                                                    |
+| `modification date` | date        | rw     | Last-modified timestamp.                                                                                                                                        |
+| `due date`          | date        | rw     | **Deadline** date (the red flag in the UI). Set to `missing value` to clear.                                                                                    |
+| `activation date`   | date        | **r**  | When the to do becomes active (i.e. the scheduled start date). **Read-only.** Change it via the `schedule` command or by moving into `Today` / `Someday` / etc. |
+| `completion date`   | date        | rw     | Date the to do was marked complete. Setting `status` to `completed` sets this; clearing completion via `status` = `open` zeroes it.                             |
+| `cancellation date` | date        | rw     | Date the to do was canceled. Symmetric with `completion date`.                                                                                                  |
+| `status`            | status enum | rw     | One of `open`, `completed`, `canceled`. See [Enumerations](#enumerations).                                                                                      |
+| `tag names`         | text        | rw     | **Comma-separated** tag names (e.g. `"P1, Errand"`). See [Tags](#tags-working-with-the-tag-names-property).                                                     |
+| `project`           | project     | rw     | The parent project, or `missing value`.                                                                                                                         |
+| `area`              | area        | rw     | The parent area, or `missing value`. A to do has at most one of `project`/`area`.                                                                               |
+| `contact`           | contact     | rw     | Assigned contact, or `missing value`.                                                                                                                           |
 
 ### Element collections
 
-| Element | Class | Notes |
-|---------|-------|-------|
-| `tags` | tag | The tag objects attached to this to do. Read/write via `tag names` is generally easier. |
+| Element | Class | Notes                                                                                   |
+| ------- | ----- | --------------------------------------------------------------------------------------- |
+| `tags`  | tag   | The tag objects attached to this to do. Read/write via `tag names` is generally easier. |
 
 ### Commands supported by `to do`
 
@@ -310,7 +310,7 @@ When you access `application.to dos` you get active (non-logged, non-trashed) to
 - `set status to canceled` → same behavior but stamps `cancellation date`.
 - `set status to open` → reopens; clears `completion date` / `cancellation date` back to `missing value`.
 
----
+______________________________________________________________________
 
 ## The `selected to do` class
 
@@ -318,7 +318,7 @@ Code: `tslt`. Inherits from `to do`. Returned from `application.selected to dos`
 
 Empirical note: reading `class of aToDo` sometimes returns `selected to do` even when you fetched the object from a list (not the selection). Because `selected to do` inherits from `to do`, treat them interchangeably for property access. If you need to type-check, accept both `to do` and `selected to do` as "a to do".
 
----
+______________________________________________________________________
 
 ## The `tag` class
 
@@ -326,18 +326,18 @@ Code: `tstg`.
 
 ### Properties
 
-| Property | Type | Access | Description |
-|----------|------|--------|-------------|
-| `id` | text | r | Stable unique identifier (Base58-ish). |
-| `name` | text | rw | Tag name. Unique-ish but Things does not strictly enforce uniqueness. |
-| `keyboard shortcut` | text | rw | The single-letter (or chord) keyboard shortcut for this tag, or empty string. |
-| `parent tag` | tag | rw | Parent tag for hierarchical tags. `missing value` for root tags — but because the property is typed as `tag`, reading it on a root tag raises an error rather than returning `missing value`. Always wrap in `try` or test via `exists`. |
+| Property            | Type | Access | Description                                                                                                                                                                                                                              |
+| ------------------- | ---- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                | text | r      | Stable unique identifier (Base58-ish).                                                                                                                                                                                                   |
+| `name`              | text | rw     | Tag name. Unique-ish but Things does not strictly enforce uniqueness.                                                                                                                                                                    |
+| `keyboard shortcut` | text | rw     | The single-letter (or chord) keyboard shortcut for this tag, or empty string.                                                                                                                                                            |
+| `parent tag`        | tag  | rw     | Parent tag for hierarchical tags. `missing value` for root tags — but because the property is typed as `tag`, reading it on a root tag raises an error rather than returning `missing value`. Always wrap in `try` or test via `exists`. |
 
 ### Element collections
 
-| Element | Class | Notes |
-|---------|-------|-------|
-| `tags` | tag | Child tags. |
+| Element  | Class | Notes                                      |
+| -------- | ----- | ------------------------------------------ |
+| `tags`   | tag   | Child tags.                                |
 | `to dos` | to do | **Read-only.** To dos that carry this tag. |
 
 ### Creating tags
@@ -375,7 +375,7 @@ tell application "Things3"
 end tell
 ```
 
----
+______________________________________________________________________
 
 ## The `contact` class
 
@@ -403,7 +403,7 @@ tell application "Things3"
 end tell
 ```
 
----
+______________________________________________________________________
 
 ## The `item details` record type
 
@@ -411,12 +411,12 @@ Code: `idts`. A *record* (AppleScript dictionary) used only as the `with propert
 
 Fields:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | text | Title for the new to do. |
-| `notes` | text | Notes. |
-| `due date` | date | Deadline. |
-| `tag names` | text | Comma-separated tags. |
+| Field       | Type | Description              |
+| ----------- | ---- | ------------------------ |
+| `name`      | text | Title for the new to do. |
+| `notes`     | text | Notes.                   |
+| `due date`  | date | Deadline.                |
+| `tag names` | text | Comma-separated tags.    |
 
 Example:
 
@@ -426,7 +426,7 @@ tell application "Things3"
 end tell
 ```
 
----
+______________________________________________________________________
 
 ## Enumerations
 
@@ -434,11 +434,11 @@ end tell
 
 The value of a to do's `status` property.
 
-| Enumerator | Code | Meaning |
-|-----------|------|---------|
-| `open` | `tdio` | Active / not yet done. |
-| `completed` | `tdcm` | Marked done. |
-| `canceled` | `tdcl` | Marked canceled (Things distinguishes "canceled" from "completed"). |
+| Enumerator  | Code   | Meaning                                                             |
+| ----------- | ------ | ------------------------------------------------------------------- |
+| `open`      | `tdio` | Active / not yet done.                                              |
+| `completed` | `tdcm` | Marked done.                                                        |
+| `canceled`  | `tdcl` | Marked canceled (Things distinguishes "canceled" from "completed"). |
 
 In AppleScript you just use the bare word: `set status of t to completed`.
 
@@ -446,7 +446,7 @@ In AppleScript you just use the bare word: `set status of t to completed`.
 
 Inherited from the Standard Suite — only relevant if you use the `print` command. Values: `standard`, `detailed`. Generally not needed for Things automation.
 
----
+______________________________________________________________________
 
 ## Commands (verbs)
 
@@ -619,7 +619,7 @@ Standard Suite. Act on windows / application lifecycle. `quit` exits Things.
 
 Several hidden commands exist in the sdef (they are marked `hidden="yes"` and have names prefixed `_private_experimental_`); see [Hidden members](#hidden--experimental--undocumented-members). Do not rely on these.
 
----
+______________________________________________________________________
 
 ## Reference patterns (how to identify objects)
 
@@ -681,7 +681,7 @@ tell application "Things3"
 end tell
 ```
 
----
+______________________________________________________________________
 
 ## Filtering with `whose` clauses
 
@@ -717,7 +717,7 @@ repeat with t in (every tag)
 end repeat
 ```
 
----
+______________________________________________________________________
 
 ## Creating objects (`make`)
 
@@ -779,23 +779,23 @@ make new tag with properties {name:"Urgent", keyboard shortcut:"u"}
 set c to add contact named "Alex Example"
 ```
 
----
+______________________________________________________________________
 
 ## Deleting / archiving items
 
-| Target | `delete` | `move to Trash` | `empty trash` | Notes |
-|--------|----------|-----------------|---------------|-------|
-| Active to do | ✅ | ✅ | — | `delete` hard-deletes (bypasses Trash). `move to list "Trash"` is the graceful path. |
-| Logged to do | ❌ (unreliable — call returns but item persists) | ❓ untested | Cleared along with everything in Trash | Generally avoid touching logbook items programmatically. |
-| Trashed to do | ❌ | — | ✅ (all-at-once) | `empty trash` is the only way to permanently clear Trash without user action. |
-| Project | ✅ | ✅ | — | |
-| Area | ✅ | — | — | Deleting an area does NOT delete the to dos/projects inside; they become orphaned (Inbox). |
-| Tag | ✅ | — | — | Deleting a tag removes it from all items that carried it. |
-| Contact | ✅ (untested here, but sdef permits it) | — | — | |
+| Target        | `delete`                                         | `move to Trash` | `empty trash`                          | Notes                                                                                      |
+| ------------- | ------------------------------------------------ | --------------- | -------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Active to do  | ✅                                               | ✅              | —                                      | `delete` hard-deletes (bypasses Trash). `move to list "Trash"` is the graceful path.       |
+| Logged to do  | ❌ (unreliable — call returns but item persists) | ❓ untested     | Cleared along with everything in Trash | Generally avoid touching logbook items programmatically.                                   |
+| Trashed to do | ❌                                               | —               | ✅ (all-at-once)                       | `empty trash` is the only way to permanently clear Trash without user action.              |
+| Project       | ✅                                               | ✅              | —                                      |                                                                                            |
+| Area          | ✅                                               | —               | —                                      | Deleting an area does NOT delete the to dos/projects inside; they become orphaned (Inbox). |
+| Tag           | ✅                                               | —               | —                                      | Deleting a tag removes it from all items that carried it.                                  |
+| Contact       | ✅ (untested here, but sdef permits it)          | —               | —                                      |                                                                                            |
 
 To batch-empty the Trash: `empty trash`.
 
----
+______________________________________________________________________
 
 ## Scheduling and dates
 
@@ -828,7 +828,7 @@ set time of d to 9 * hours
 
 Things stores activation dates as day-granularity (empirically always midnight local). Due dates are also day-granularity.
 
----
+______________________________________________________________________
 
 ## Tags: working with the `tag names` property
 
@@ -855,11 +855,12 @@ To remove a tag, rewrite the string without it.
 
 Alternatively, you can manipulate the `tags` element collection directly (make/remove `tag` associations), but `tag names` is almost always simpler.
 
----
+______________________________________________________________________
 
 ## Null / missing values
 
 - Optional date properties (`due date`, `activation date`, `completion date`, `cancellation date`) return `missing value` when unset. Assigning `missing value` clears them (where writable).
+
 - Optional object references (`project`, `area`, `contact`) return `missing value` when unset. Attempting `name of (project of t)` when there is no project raises `Can't make name of missing value into type Unicode text` (error `-1700`). Always test first:
 
   ```applescript
@@ -874,19 +875,20 @@ Alternatively, you can manipulate the `tags` element collection directly (make/r
   ```
 
 - `parent tag` on a root tag raises a type-coercion error rather than returning `missing value` cleanly. Always wrap access in `try`.
+
 - `coerce` `missing value` to text with `as text` yields the literal string `"missing value"` — useful for diagnostic logging.
 
----
+______________________________________________________________________
 
 ## Error codes you will encounter
 
-| Code | Meaning / cause |
-|------|-----------------|
-| `-1700` | Type coercion failed. Usually `Can't make <thing> of missing value into …` when you dereference a null. |
-| `-1719` | Invalid index / object not found when resolving a specifier with a `whose` clause. (E.g. `first to do whose name is "x"` returned nothing.) |
-| `-1728` | Can't get <object> — reference became invalid (commonly after you deleted or soft-deleted the item; subsequent access errors). |
-| `-1743` | `errAEEventNotPermitted` — macOS Automation privacy has not granted your process permission to control Things. |
-| `301` (Things-specific) | `Cannot move to-do` — typically raised by `move` when the target is a `project` (not allowed) or otherwise invalid. |
+| Code                    | Meaning / cause                                                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-1700`                 | Type coercion failed. Usually `Can't make <thing> of missing value into …` when you dereference a null.                                     |
+| `-1719`                 | Invalid index / object not found when resolving a specifier with a `whose` clause. (E.g. `first to do whose name is "x"` returned nothing.) |
+| `-1728`                 | Can't get <object> — reference became invalid (commonly after you deleted or soft-deleted the item; subsequent access errors).              |
+| `-1743`                 | `errAEEventNotPermitted` — macOS Automation privacy has not granted your process permission to control Things.                              |
+| `301` (Things-specific) | `Cannot move to-do` — typically raised by `move` when the target is a `project` (not allowed) or otherwise invalid.                         |
 
 Your code should:
 
@@ -894,7 +896,7 @@ Your code should:
 - Cache IDs rather than references; re-resolve by `id` if an operation fails with `-1728`.
 - Be defensive about `missing value`.
 
----
+______________________________________________________________________
 
 ## Hidden / experimental / undocumented members
 
@@ -911,7 +913,7 @@ The following appear in `Things.sdef` but are marked `hidden="yes"`. They are **
   - `get localized string (from <table>)` — internal localization helper.
   - `_private_experimental_ reorder to dos in <list> with ids <text>` — reorder to dos in a list by passing a list of IDs.
 
----
+______________________________________________________________________
 
 ## End-to-end recipes
 
@@ -1089,27 +1091,27 @@ tell application "Things3"
 end tell
 ```
 
----
+______________________________________________________________________
 
 ## Gotchas and caveats
 
-1. **Bundle identifier / app name.** Target is `Things3`, not `Things`. In AppleScript `tell application "Things3"`. Bundle ID is `com.culturedcode.ThingsMac`.
+01. **Bundle identifier / app name.** Target is `Things3`, not `Things`. In AppleScript `tell application "Things3"`. Bundle ID is `com.culturedcode.ThingsMac`.
 
-2. **Localization.** `list "Today"` only works on an English Things install. On a localized install, the names are translated. Use `list id "TMTodayListSource"` etc. for robustness.
+02. **Localization.** `list "Today"` only works on an English Things install. On a localized install, the names are translated. Use `list id "TMTodayListSource"` etc. for robustness.
 
-3. **`project` is a `to do`, not a `list`.** So `to dos of project "X"` works (projects have a `to dos` element), but `move t to project "X"` does **not** (move's `to` parameter is a list, and project is not a list). Use `set project of t` or create `at project`.
+03. **`project` is a `to do`, not a `list`.** So `to dos of project "X"` works (projects have a `to dos` element), but `move t to project "X"` does **not** (move's `to` parameter is a list, and project is not a list). Use `set project of t` or create `at project`.
 
-4. **`lists` collection is heterogeneous.** It contains built-in lists AND areas. Check `class` to tell them apart if needed.
+04. **`lists` collection is heterogeneous.** It contains built-in lists AND areas. Check `class` to tell them apart if needed.
 
-5. **`to dos` at the application level excludes Logbook and Trash.** If you want every to do ever, you must also iterate `to dos of list "Logbook"` and `to dos of list "Trash"`.
+05. **`to dos` at the application level excludes Logbook and Trash.** If you want every to do ever, you must also iterate `to dos of list "Logbook"` and `to dos of list "Trash"`.
 
-6. **`activation date` is read-only.** Must be set via `schedule for …` or by moving into Today/Someday/Anytime.
+06. **`activation date` is read-only.** Must be set via `schedule for …` or by moving into Today/Someday/Anytime.
 
-7. **`tag names` is a single string, not a list.** Commas separate. Tags are auto-created on assignment; they're never auto-deleted.
+07. **`tag names` is a single string, not a list.** Commas separate. Tags are auto-created on assignment; they're never auto-deleted.
 
-8. **`missing value` coercion errors.** Dereferencing `name of project of t` on a to do with no project raises `-1700`. Always guard.
+08. **`missing value` coercion errors.** Dereferencing `name of project of t` on a to do with no project raises `-1700`. Always guard.
 
-9. **`parent tag is missing value` doesn't work in `whose`.** Iterate with `try` instead.
+09. **`parent tag is missing value` doesn't work in `whose`.** Iterate with `try` instead.
 
 10. **`delete` on logbook items silently fails.** Use `empty trash` or leave them.
 

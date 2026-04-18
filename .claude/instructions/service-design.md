@@ -22,6 +22,7 @@ configured.
 
 - **XDG Base Directory compliance** — map each file class to the correct XDG
   variable:
+
   - Config files -> `$XDG_CONFIG_HOME` (`~/.config/`)
   - Data files (DB, persistent state) -> `$XDG_DATA_HOME` (`~/.local/share/`)
   - Runtime state/logs -> `$XDG_STATE_HOME` (`~/.local/state/`)

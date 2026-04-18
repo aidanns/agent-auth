@@ -25,6 +25,7 @@ agent-auth is a local authorization system for gating AI agent access to host ap
 HTTP server running on the host. Sole owner of the token store and signing key.
 
 Responsibilities:
+
 - Token lifecycle: create, validate, refresh, revoke, rotate
 - Scope modification: add, remove, or change tiers on existing token families
 - JIT approval: hold requests pending human approval via a configurable notification plugin
@@ -36,6 +37,7 @@ Responsibilities:
 HTTP server running on the host. Receives requests from the CLI client, delegates token validation and approval to agent-auth, then interacts with the target external system.
 
 Responsibilities:
+
 - Map HTTP endpoints to external system interactions
 - Call agent-auth to validate tokens and request approval before executing
 - Return structured results to the CLI client
@@ -53,27 +55,27 @@ The subprocess contract is stable and publicly documented so the bridge can adop
 
 Read-only endpoints (all require the `things:read` scope on the presented bearer token):
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/things-bridge/todos?list=&project=&area=&tag=&status=` | List todos, optionally filtered |
-| GET | `/things-bridge/todos/{id}` | Fetch one todo by Things id |
-| GET | `/things-bridge/projects?area=` | List projects, optionally filtered by area id |
-| GET | `/things-bridge/projects/{id}` | Fetch one project by Things id |
-| GET | `/things-bridge/areas` | List all areas |
-| GET | `/things-bridge/areas/{id}` | Fetch one area by Things id |
+| Method | Path                                                     | Description                                   |
+| ------ | -------------------------------------------------------- | --------------------------------------------- |
+| GET    | `/things-bridge/todos?list=&project=&area=&tag=&status=` | List todos, optionally filtered               |
+| GET    | `/things-bridge/todos/{id}`                              | Fetch one todo by Things id                   |
+| GET    | `/things-bridge/projects?area=`                          | List projects, optionally filtered by area id |
+| GET    | `/things-bridge/projects/{id}`                           | Fetch one project by Things id                |
+| GET    | `/things-bridge/areas`                                   | List all areas                                |
+| GET    | `/things-bridge/areas/{id}`                              | Fetch one area by Things id                   |
 
 Error responses from the bridge:
 
-| Status | Body | Cause |
-|---|---|---|
-| 401 | `{"error": "unauthorized"}` | Missing, malformed, or invalid bearer token |
-| 401 | `{"error": "token_expired"}` | agent-auth reported the access token has expired (CLI retries with refresh) |
-| 403 | `{"error": "scope_denied"}` | Token does not carry `things:read` |
-| 404 | `{"error": "not_found"}` | Unknown path or unknown Things id |
-| 405 | `{"error": "method_not_allowed"}` | Non-GET verb on a read-only endpoint (writes are a follow-up) |
-| 502 | `{"error": "authz_unavailable"}` | agent-auth is unreachable |
-| 502 | `{"error": "things_unavailable"}` | Client subprocess failed, timed out, exited non-zero, or emitted malformed output |
-| 503 | `{"error": "things_permission_denied"}` | macOS Automation permission not granted for Things |
+| Status | Body                                    | Cause                                                                             |
+| ------ | --------------------------------------- | --------------------------------------------------------------------------------- |
+| 401    | `{"error": "unauthorized"}`             | Missing, malformed, or invalid bearer token                                       |
+| 401    | `{"error": "token_expired"}`            | agent-auth reported the access token has expired (CLI retries with refresh)       |
+| 403    | `{"error": "scope_denied"}`             | Token does not carry `things:read`                                                |
+| 404    | `{"error": "not_found"}`                | Unknown path or unknown Things id                                                 |
+| 405    | `{"error": "method_not_allowed"}`       | Non-GET verb on a read-only endpoint (writes are a follow-up)                     |
+| 502    | `{"error": "authz_unavailable"}`        | agent-auth is unreachable                                                         |
+| 502    | `{"error": "things_unavailable"}`       | Client subprocess failed, timed out, exited non-zero, or emitted malformed output |
+| 503    | `{"error": "things_permission_denied"}` | macOS Automation permission not granted for Things                                |
 
 Error bodies intentionally omit server-side detail: the client subprocess's stderr can contain local filesystem paths, usernames, or script fragments, so the bridge returns only a canonical error code. Full error detail (including subprocess stderr) is forwarded verbatim to the bridge's own stderr for operator diagnostics.
 
@@ -93,6 +95,7 @@ See `src/things_client_common/cli.py` for the shared argparse / dispatcher that 
 Thin CLI client that can run anywhere (host or devcontainer). Sends HTTP requests to the corresponding bridge with a bearer token. Handles automatic token refresh on 401 responses.
 
 Responsibilities:
+
 - Provide a CLI interface for the application
 - Pass the bearer token from local credential storage
 - Automatically refresh expired access tokens using the refresh token; if the refresh token itself has expired, request re-issuance (which blocks on JIT approval)
@@ -132,6 +135,7 @@ Each credential set consists of two tokens:
 ### Token Lifecycle
 
 **Creation:**
+
 ```
 agent-auth token create --scope things:read --scope outlook:mail:read
 → access_token: aa_xxx_yyy
@@ -143,6 +147,7 @@ agent-auth token create --scope things:read --scope outlook:mail:read
 Both tokens are displayed once. The user configures the CLI client with these credentials.
 
 **Refresh:**
+
 ```
 POST /agent-auth/token/refresh
 {"refresh_token": "rt_xxx_yyy"}
@@ -153,6 +158,7 @@ POST /agent-auth/token/refresh
 The refresh token is single-use. If agent-auth receives a refresh request for an already-consumed token, it revokes the entire token family (all access and refresh tokens descended from the same original creation). This detects stolen refresh tokens: if the attacker and the legitimate client both try to refresh, one will hit a consumed token and trigger revocation.
 
 **Scope modification:**
+
 ```
 agent-auth token modify <family-id> --add-scope outlook:mail:read --remove-scope things:write
 agent-auth token modify <family-id> --set-tier things:write=prompt
@@ -161,6 +167,7 @@ agent-auth token modify <family-id> --set-tier things:write=prompt
 Updates the scopes on an existing token family. Takes effect immediately on the next `/validate` call — no new tokens are issued, and no client reconfiguration is needed. The client keeps using the same access and refresh tokens.
 
 **Rotation:**
+
 ```
 agent-auth token rotate <token-id>
 → old token family revoked
@@ -170,6 +177,7 @@ agent-auth token rotate <token-id>
 Manual rotation creates a completely new token family. Used as a periodic security practice or when a full credential reset is needed.
 
 **Revocation:**
+
 ```
 agent-auth token revoke <token-id>
 → entire token family revoked (all access + refresh tokens)
@@ -204,13 +212,13 @@ All three backends are abstracted behind the Python `keyring` library. The CLI d
 
 Stored credentials:
 
-| Key | Value |
-|---|---|
-| `access_token` | `aa_xxx_yyy` |
-| `refresh_token` | `rt_xxx_yyy` |
-| `family_id` | `fff` |
-| `bridge_url` | `http://host.docker.internal:9200` |
-| `auth_url` | `http://host.docker.internal:9100` |
+| Key             | Value                              |
+| --------------- | ---------------------------------- |
+| `access_token`  | `aa_xxx_yyy`                       |
+| `refresh_token` | `rt_xxx_yyy`                       |
+| `family_id`     | `fff`                              |
+| `bridge_url`    | `http://host.docker.internal:9200` |
+| `auth_url`      | `http://host.docker.internal:9100` |
 
 On 401 from the bridge, the CLI automatically attempts a refresh. If the refresh token has expired, the CLI attempts re-issuance (which blocks on JIT approval). If re-issuance is denied or the family is revoked, the CLI fails and the user must create a new token.
 
@@ -264,6 +272,7 @@ When a bridge calls agent-auth to validate a token for a `prompt`-tier scope:
 The notification plugin is configured in agent-auth's configuration file, following a similar model to Claude Code hooks. This allows different notification methods (desktop notifications, Touch ID, YubiKey, custom scripts, etc.) to be swapped in without changing agent-auth itself.
 
 Approval grants can be scoped:
+
 - **Once** — this specific invocation only
 - **Time-boxed** — allow for the next N minutes
 
@@ -360,22 +369,24 @@ Encrypted columns are marked with (E) in the table definitions below.
 ### Tables
 
 **token_families:**
-| Column | Type | Description |
-|---|---|---|
-| id | TEXT PK | Family ID |
-| scopes | BLOB (E) | JSON object mapping scope name to tier |
-| created_at | TEXT | ISO 8601 timestamp |
-| revoked | INTEGER | 0 or 1 |
+
+| Column     | Type     | Description                            |
+| ---------- | -------- | -------------------------------------- |
+| id         | TEXT PK  | Family ID                              |
+| scopes     | BLOB (E) | JSON object mapping scope name to tier |
+| created_at | TEXT     | ISO 8601 timestamp                     |
+| revoked    | INTEGER  | 0 or 1                                 |
 
 **tokens:**
-| Column | Type | Description |
-|---|---|---|
-| id | TEXT PK | Token ID (family ID portion only, no HMAC signature) |
-| hmac_signature | BLOB (E) | HMAC signature portion of the token |
-| family_id | TEXT FK | References token_families.id |
-| type | TEXT | "access" or "refresh" |
-| expires_at | TEXT | ISO 8601 timestamp |
-| consumed | INTEGER | 0 or 1 (for refresh tokens) |
+
+| Column         | Type     | Description                                          |
+| -------------- | -------- | ---------------------------------------------------- |
+| id             | TEXT PK  | Token ID (family ID portion only, no HMAC signature) |
+| hmac_signature | BLOB (E) | HMAC signature portion of the token                  |
+| family_id      | TEXT FK  | References token_families.id                         |
+| type           | TEXT     | "access" or "refresh"                                |
+| expires_at     | TEXT     | ISO 8601 timestamp                                   |
+| consumed       | INTEGER  | 0 or 1 (for refresh tokens)                          |
 
 Approval grants are held in memory on the agent-auth server (see the approval flow above) and have no persistent table.
 
@@ -388,6 +399,7 @@ All endpoints are prefixed with `/agent-auth/` to allow hosting behind a shared 
 Validate a token and check scope authorization.
 
 Request:
+
 ```json
 {"token": "aa_xxx_yyy", "required_scope": "things:read", "description": "List inbox todos"}
 ```
@@ -395,21 +407,25 @@ Request:
 The `description` field is optional. It is passed to the notification plugin for prompt-tier scopes so the user can see what operation is being requested.
 
 For `allow`-tier scopes, the response is immediate:
+
 ```json
 {"valid": true}
 ```
 
 For `prompt`-tier scopes, the request blocks while agent-auth triggers the configured notification plugin and waits for the user to approve or deny. The caller (bridge) sees the same response shape — it does not need to know whether approval was involved:
+
 ```json
 {"valid": true}
 ```
 
 Response (401 — invalid or expired token):
+
 ```json
 {"valid": false, "error": "token_expired"}
 ```
 
 Response (403 — scope denied or JIT approval denied):
+
 ```json
 {"valid": false, "error": "scope_denied"}
 ```
@@ -419,11 +435,13 @@ Response (403 — scope denied or JIT approval denied):
 Exchange a refresh token for a new access/refresh token pair.
 
 Request:
+
 ```json
 {"refresh_token": "rt_xxx_yyy"}
 ```
 
 Response (200):
+
 ```json
 {
   "access_token": "aa_zzz_www",
@@ -434,11 +452,13 @@ Response (200):
 ```
 
 Response (401 — token expired):
+
 ```json
 {"error": "refresh_token_expired"}
 ```
 
 Response (401 — token consumed, family revoked):
+
 ```json
 {"error": "refresh_token_reuse_detected", "detail": "Token family revoked"}
 ```
@@ -448,6 +468,7 @@ Response (401 — token consumed, family revoked):
 Request a new access/refresh token pair for a token family whose refresh token has expired. Requires JIT approval from the user on the host.
 
 Request:
+
 ```json
 {"family_id": "fff"}
 ```
@@ -455,6 +476,7 @@ Request:
 The request blocks while agent-auth triggers JIT approval via the configured notification plugin.
 
 Response (200 — approved):
+
 ```json
 {
   "access_token": "aa_zzz_www",
@@ -465,11 +487,13 @@ Response (200 — approved):
 ```
 
 Response (403 — user denied re-issuance):
+
 ```json
 {"error": "reissue_denied"}
 ```
 
 Response (401 — family revoked or not found):
+
 ```json
 {"error": "family_revoked"}
 ```
@@ -479,11 +503,13 @@ Response (401 — family revoked or not found):
 Introspect a token (read-only, for debugging).
 
 Request:
+
 ```
 Authorization: Bearer aa_xxx_yyy
 ```
 
 Response (200):
+
 ```json
 {
   "token_id": "xxx",

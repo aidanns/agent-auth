@@ -123,7 +123,7 @@ tell application "Things3"
 end tell
 ```
 
-(*) For filtered variants the `every to do of <scope>` becomes e.g.
+(\*) For filtered variants the `every to do of <scope>` becomes e.g.
 `every to do of project id "p1"` — straightforward substitution.
 
 This trades 15 Apple Events per todo for ~11 Apple Events total plus one
@@ -168,8 +168,7 @@ untouched. The server's JSON serialisation reads from `Todo`, `Project`,
 
 ### Status filter
 
-The existing server-side status filter appends an `if my _statusText(status
-of t) is "..." then ... end if` guard around the per-row body. In the new
+The existing server-side status filter appends an `if my _statusText(status of t) is "..." then ... end if` guard around the per-row body. In the new
 shape we instead compare `item _i of _statuses` (already coerced to text
 by a batched map call) against the filter value and skip the row append
 accordingly.

@@ -129,8 +129,7 @@ wired into `treefmt.toml` / `lefthook.yml`. Concrete checks:
 - `treefmt.toml` contains `shellcheck` and `shfmt`.
 - `lefthook.yml` contains `shellcheck` and `shfmt` under `pre-commit`.
 
-A future regression that removes any of these wirings fails `task
-verify-standards` immediately.
+A future regression that removes any of these wirings fails `task verify-standards` immediately.
 
 ## Post-implementation standards review
 
@@ -140,8 +139,8 @@ Review*):
 - [ ] `/simplify` on the changes.
 - [ ] Independent code-review subagent; address findings.
 - [ ] One parallel subagent per file in `.claude/instructions/` — each
-      reviews the diff against its instruction file and reports
-      violations. Address findings.
+  reviews the diff against its instruction file and reports
+  violations. Address findings.
 
 Specifically verify:
 
