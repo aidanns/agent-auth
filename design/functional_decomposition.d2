@@ -221,28 +221,10 @@ f47_container: "" {
 }
 f47 -> f47_container
 
-f51: Things Client (AppleScript)
+f51: Things CLI
 f51.width: 400
 root -> f51
 f51_container: "" {
-  grid-columns: 1
-  grid-rows: 2
-  grid-gap: 5
-  style: {
-    stroke-width: 0
-    fill: transparent
-  }
-  f52: Execute External System Interaction
-  f52.width: 400
-  f53: Serve Things Client CLI Contract
-  f53.width: 400
-}
-f51 -> f51_container
-
-f54: Things CLI
-f54.width: 400
-root -> f54
-f54_container: "" {
   grid-columns: 1
   grid-rows: 5
   grid-gap: 5
@@ -250,15 +232,15 @@ f54_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f55: Send Bridge Request
+  f52: Send Bridge Request
+  f52.width: 400
+  f53: Auto Refresh Token
+  f53.width: 400
+  f54: Store CLI Credentials
+  f54.width: 400
+  f55: Handle App Commands
   f55.width: 400
-  f56: Auto Refresh Token
+  f56: Display Results
   f56.width: 400
-  f57: Store CLI Credentials
-  f57.width: 400
-  f58: Handle App Commands
-  f58.width: 400
-  f59: Display Results
-  f59.width: 400
 }
-f54 -> f54_container
+f51 -> f51_container

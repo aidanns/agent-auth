@@ -68,7 +68,6 @@ def _json(result: subprocess.CompletedProcess) -> dict:
     return json.loads(result.stdout)
 
 
-@pytest.mark.covers_function("Serve Things Client CLI Contract")
 def test_todos_list_emits_todos_envelope(fixture_path):
     result = _run("todos", "list", fixtures=fixture_path)
     assert result.returncode == 0
@@ -97,7 +96,6 @@ def test_todos_show_emits_todo_envelope(fixture_path):
     assert payload["todo"]["id"] == "t1"
 
 
-@pytest.mark.covers_function("Serve Things Client CLI Contract")
 def test_not_found_exits_with_structured_error(fixture_path):
     result = _run("todos", "show", "does-not-exist", fixtures=fixture_path)
     # Exit code is non-zero; structured body on stdout carries the kind.

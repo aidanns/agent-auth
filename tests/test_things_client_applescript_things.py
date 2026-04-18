@@ -408,7 +408,6 @@ def test_helper_applescript_is_valid_syntax(tmp_path):
     )
 
 
-@pytest.mark.covers_function("Execute External System Interaction")
 @_requires_things3
 def test_list_projects_executes_against_things():
     """End-to-end smoke test against real Things 3.
