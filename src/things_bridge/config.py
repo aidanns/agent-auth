@@ -6,7 +6,7 @@ Paths follow the XDG Base Directory Specification:
 """
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import yaml
 
@@ -24,13 +24,22 @@ def _default_state_dir() -> str:
     return _xdg_dir("XDG_STATE_HOME", (".local", "state"))
 
 
+def _default_things_client_command() -> list[str]:
+    return ["things-client-cli-applescript"]
+
+
 @dataclass
 class Config:
     host: str = "127.0.0.1"
     port: int = 9200
     auth_url: str = "http://127.0.0.1:9100"
-    osascript_path: str = "/usr/bin/osascript"
-    request_timeout_seconds: float = 30.0
+    # Argv prefix for the Things client subprocess. The bridge appends the
+    # request-specific sub-command (``todos list --status open``, etc.)
+    # before invoking. Tests override this to point at the in-tree fake.
+    things_client_command: list[str] = field(default_factory=_default_things_client_command)
+    # Kept above the shipped CLI's own 30s osascript timeout so the child can
+    # surface a structured timeout envelope before the bridge kills it.
+    request_timeout_seconds: float = 35.0
     log_path: str = ""
 
     def __post_init__(self):
@@ -49,9 +58,10 @@ def load_config() -> Config:
     config_path = os.path.join(config_dir, "config.yaml")
     valid_fields = set(Config.__dataclass_fields__)
 
-    if os.path.exists(config_path):
-        with open(config_path) as f:
-            data = yaml.safe_load(f) or {}
-        return Config(**{k: v for k, v in data.items() if k in valid_fields})
+    if not os.path.exists(config_path):
+        return Config()
 
-    return Config()
+    with open(config_path) as f:
+        data = yaml.safe_load(f) or {}
+    kwargs = {k: v for k, v in data.items() if k in valid_fields}
+    return Config(**kwargs)

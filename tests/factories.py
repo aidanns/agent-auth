@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from things_bridge.models import Area, Project, Todo
+from things_models.models import Area, Project, Todo
 
 
 def make_todo(**overrides: Any) -> Todo:

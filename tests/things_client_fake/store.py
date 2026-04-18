@@ -1,12 +1,10 @@
-"""In-memory fake of :class:`things_bridge.things.ThingsClient`.
+"""In-memory ``ThingsClient`` implementation backed by YAML fixtures.
 
-Selected at runtime via ``things-bridge serve --fake-things[=PATH]`` so the
-full HTTP stack can be exercised without ``osascript`` or Things 3.
-
-``list_id`` is resolved against the store's ``list_memberships`` mapping;
-all other filters match dataclass fields directly. Status values are
-validated via :func:`things_bridge.things.validate_status`. See
-``design/decisions/0001-things-client-fake.md``.
+Kept under ``tests/`` (not ``src/``) so it is never shipped in the
+production artefact. ``list_id`` is resolved against the store's
+``list_memberships`` mapping; all other filters match dataclass fields
+directly. Status values are validated against
+:data:`things_models.status.VALID_STATUSES`.
 """
 
 import os
@@ -15,9 +13,9 @@ from typing import Any
 
 import yaml
 
-from things_bridge.errors import ThingsError, ThingsNotFoundError
-from things_bridge.models import Area, Project, Todo
-from things_bridge.things import VALID_STATUSES, validate_status
+from things_models.errors import ThingsError, ThingsNotFoundError
+from things_models.models import Area, Project, Todo
+from things_models.status import VALID_STATUSES, validate_status
 
 _ALLOWED_TOP_LEVEL_KEYS = {"areas", "projects", "todos", "list_memberships"}
 
@@ -39,7 +37,7 @@ class FakeThingsStore:
 
 
 class FakeThingsClient:
-    """In-memory implementation of :class:`things_bridge.things.ThingsClient`."""
+    """In-memory implementation of :class:`things_models.client.ThingsClient`."""
 
     def __init__(self, store: FakeThingsStore):
         self._store = store
@@ -211,10 +209,3 @@ def load_fake_store(path: str | os.PathLike[str]) -> FakeThingsStore:
         areas=areas,
         list_memberships=list_memberships,
     )
-
-
-__all__ = [
-    "FakeThingsClient",
-    "FakeThingsStore",
-    "load_fake_store",
-]

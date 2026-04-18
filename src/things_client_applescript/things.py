@@ -12,39 +12,14 @@ un-escaped by the parser so free-form text survives the framing.
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import Protocol
 
-from things_bridge.errors import ThingsError, ThingsNotFoundError, ThingsPermissionError
-from things_bridge.models import Area, Project, Todo
-
-
-class ThingsClient(Protocol):
-    """Read-only Things 3 client surface consumed by :mod:`things_bridge.server`.
-
-    Two implementations exist: :class:`ThingsApplescriptClient` (production,
-    shells to ``osascript``) and :class:`things_bridge.fake.FakeThingsClient`
-    (test / Linux-devcontainer use, backed by an in-memory store).
-    """
-
-    def list_todos(
-        self,
-        *,
-        list_id: str | None = None,
-        project_id: str | None = None,
-        area_id: str | None = None,
-        tag: str | None = None,
-        status: str | None = None,
-    ) -> list[Todo]: ...
-
-    def get_todo(self, todo_id: str) -> Todo: ...
-
-    def list_projects(self, *, area_id: str | None = None) -> list[Project]: ...
-
-    def get_project(self, project_id: str) -> Project: ...
-
-    def list_areas(self) -> list[Area]: ...
-
-    def get_area(self, area_id: str) -> Area: ...
+from things_models.errors import (
+    ThingsError,
+    ThingsNotFoundError,
+    ThingsPermissionError,
+)
+from things_models.models import Area, Project, Todo
+from things_models.status import validate_status
 
 TAB_PLACEHOLDER = "\u241e"
 NEWLINE_PLACEHOLDER = "\u241f"
@@ -421,9 +396,9 @@ class TodoFilter:
 class AppleScriptRunner:
     """Runs AppleScript by shelling out to ``osascript``."""
 
-    def __init__(self, osascript_path: str = "/usr/bin/osascript", timeout: float = 30.0):
+    def __init__(self, osascript_path: str = "/usr/bin/osascript", timeout_seconds: float = 30.0):
         self._osascript_path = osascript_path
-        self._timeout = timeout
+        self._timeout_seconds = timeout_seconds
 
     def run(self, script: str) -> str:
         try:
@@ -432,35 +407,36 @@ class AppleScriptRunner:
                 input=script,
                 capture_output=True,
                 text=True,
-                timeout=self._timeout,
+                timeout=self._timeout_seconds,
             )
         except FileNotFoundError as exc:
             raise ThingsError(f"osascript not found at {self._osascript_path}") from exc
         except subprocess.TimeoutExpired as exc:
-            # Mirror the non-zero exit diagnostic: keep the HTTP response body
-            # sparse while giving operators enough detail on the bridge's own
-            # stderr to distinguish timeouts from other ``502 things_unavailable``
-            # causes. TimeoutExpired carries any partial stderr captured before
-            # the kill — surface it so a permissions prompt or similar hint
+            # Mirror the non-zero exit diagnostic: keep the stderr detail on
+            # the process's own stderr while raising a sparse ThingsError so
+            # callers can distinguish timeouts from other unavailable causes.
+            # TimeoutExpired carries any partial stderr captured before the
+            # kill — surface it so a permissions prompt or similar hint
             # doesn't get dropped.
             partial = (exc.stderr or "").strip() if isinstance(exc.stderr, str) else ""
             print(
-                f"things-bridge: osascript timed out after {self._timeout}s: "
-                f"{partial or '<empty stderr>'}",
+                f"things-client-cli-applescript: osascript timed out after "
+                f"{self._timeout_seconds}s: {partial or '<empty stderr>'}",
                 file=sys.stderr,
                 flush=True,
             )
-            raise ThingsError(f"osascript timed out after {self._timeout}s") from exc
+            raise ThingsError(f"osascript timed out after {self._timeout_seconds}s") from exc
 
         if result.returncode != 0:
             stderr = (result.stderr or "").strip()
-            # Surface the raw osascript message to the bridge's own stderr
-            # so operators can diagnose failures. The HTTP response body is
-            # intentionally sparse to avoid leaking host paths or script
-            # fragments to clients, which makes stderr the only channel.
+            # Forward the raw osascript diagnostic to stderr so operators
+            # can diagnose failures. The CLI JSON body is intentionally
+            # sparse (see cli.py) to avoid leaking host paths or script
+            # fragments to callers — the parent bridge strips this stderr
+            # from the HTTP response for the same reason.
             print(
-                f"things-bridge: osascript failed (rc={result.returncode}): "
-                f"{stderr or '<empty stderr>'}",
+                f"things-client-cli-applescript: osascript failed "
+                f"(rc={result.returncode}): {stderr or '<empty stderr>'}",
                 file=sys.stderr,
                 flush=True,
             )
@@ -592,19 +568,6 @@ def _todo_source(flt: TodoFilter) -> str:
     if flt.tag is not None:
         return f"to dos of tag {_quote(flt.tag)}"
     return "to dos"
-
-
-VALID_STATUSES = {"open", "completed", "canceled"}
-
-
-def validate_status(status: str | None) -> str | None:
-    if status is None:
-        return None
-    if status not in VALID_STATUSES:
-        raise ThingsError(
-            f"Invalid status filter: {status!r} (expected one of {sorted(VALID_STATUSES)})"
-        )
-    return status
 
 
 class ThingsApplescriptClient:
@@ -739,6 +702,5 @@ end tell
 __all__ = [
     "AppleScriptRunner",
     "ThingsApplescriptClient",
-    "ThingsClient",
     "TodoFilter",
 ]

@@ -23,6 +23,7 @@ dev = [
 agent-auth = "agent_auth.cli:main"
 things-bridge = "things_bridge.cli:main"
 things-cli = "things_cli.cli:main"
+things-client-cli-applescript = "things_client_applescript.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
