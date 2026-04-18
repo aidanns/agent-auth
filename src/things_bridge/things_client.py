@@ -31,7 +31,10 @@ class ThingsSubprocessClient:
     contains subprocess output.
     """
 
-    def __init__(self, command: list[str], timeout_seconds: float = 30.0):
+    def __init__(self, command: list[str], timeout_seconds: float = 35.0):
+        # Default margin over the shipped CLI's own 30s osascript timeout so
+        # the bridge lets the CLI surface a structured timeout error rather
+        # than killing the child mid-call.
         if not command:
             raise ValueError("ThingsSubprocessClient: command must not be empty")
         self._command = list(command)
@@ -91,6 +94,7 @@ class ThingsSubprocessClient:
                 capture_output=True,
                 text=True,
                 timeout=self._timeout_seconds,
+                stdin=subprocess.DEVNULL,
             )
         except FileNotFoundError as exc:
             raise ThingsError(
@@ -159,7 +163,8 @@ def _error_from_payload(payload: dict) -> ThingsError:
         return ThingsNotFoundError(detail or "not found")
     if code == "things_permission_denied":
         return ThingsPermissionError(detail or "permission denied")
-    return ThingsError(detail or (code or "things unavailable"))
+    message = f"{code}: {detail}" if code and detail else detail or code or "things unavailable"
+    return ThingsError(message)
 
 
 __all__ = ["ThingsSubprocessClient", "ThingsClient"]

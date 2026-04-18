@@ -37,7 +37,9 @@ class Config:
     # request-specific sub-command (``todos list --status open``, etc.)
     # before invoking. Tests override this to point at the in-tree fake.
     things_client_command: list[str] = field(default_factory=_default_things_client_command)
-    request_timeout_seconds: float = 30.0
+    # Kept above the shipped CLI's own 30s osascript timeout so the child can
+    # surface a structured timeout envelope before the bridge kills it.
+    request_timeout_seconds: float = 35.0
     log_path: str = ""
 
     def __post_init__(self):

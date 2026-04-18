@@ -138,6 +138,7 @@ def run_cli(
 
     if args.command is None:
         parser.print_help(sys.stderr)
+        _emit_error("things_unavailable", "missing sub-command")
         return EXIT_UNAVAILABLE
 
     try:
@@ -152,8 +153,9 @@ def run_cli(
     except ThingsError as exc:
         _emit_error("things_unavailable", str(exc))
         return EXIT_UNAVAILABLE
-    except _MissingSubcommandError:
+    except _MissingSubcommandError as exc:
         parser.print_help(sys.stderr)
+        _emit_error("things_unavailable", f"missing {exc.command} sub-command")
         return EXIT_UNAVAILABLE
 
     print(json.dumps(result), flush=True)

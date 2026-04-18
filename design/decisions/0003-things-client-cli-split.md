@@ -122,26 +122,32 @@ against both CLIs, so the two implementations cannot drift.
 
 `Config` gains `things_client_command: list[str]` (default
 `["things-client-cli-applescript"]`) and retains
-`request_timeout_seconds`, now used as the subprocess timeout. The old
-`osascript_path` field is removed from the bridge's config — it
-belongs to the AppleScript CLI and is read there from
-`--osascript-path` / `THINGS_CLIENT_OSASCRIPT_PATH`. The developer-only
-`--fake-things` flag is deleted along with the banner that announced
-it.
+`request_timeout_seconds`, now used as the subprocess timeout. It
+defaults to 35s — kept above the shipped AppleScript CLI's own 30s
+osascript timeout so the child can surface a structured timeout
+envelope on stdout before the bridge kills it. The old `osascript_path`
+field is removed from the bridge's config — it belongs to the
+AppleScript CLI and is read there from `--osascript-path` /
+`THINGS_CLIENT_OSASCRIPT_PATH`. The developer-only `--fake-things`
+flag is deleted along with the banner that announced it.
 
 ### Error taxonomy (HTTP-facing)
 
-Unchanged from ADR 0001:
+The JSON envelope is authoritative: if stdout contains `{"error": ...}`
+the bridge raises that error regardless of the exit code (a buggy CLI
+reporting rc=0 with an error body still fails closed). The exit code
+only disambiguates success from failure when the envelope is absent.
 
-| Subprocess error code | Raised as | HTTP status |
+| Subprocess signal | Raised as | HTTP status |
 |---|---|---|
-| `not_found` | `ThingsNotFoundError` | 404 |
-| `things_permission_denied` | `ThingsPermissionError` | 503 |
-| `things_unavailable` | `ThingsError` | 502 |
+| `error=not_found` on stdout | `ThingsNotFoundError` | 404 |
+| `error=things_permission_denied` on stdout | `ThingsPermissionError` | 503 |
+| `error=things_unavailable` on stdout | `ThingsError` | 502 |
 | non-zero exit, no error body | `ThingsError` | 502 |
 | empty/non-JSON/non-object stdout | `ThingsError` | 502 |
 | subprocess timeout | `ThingsError` | 502 |
 | `FileNotFoundError` (binary missing) | `ThingsError` | 502 |
+| argparse misuse (exit 2, empty stdout) | `ThingsError` | 502 |
 
 ## Consequences
 

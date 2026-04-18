@@ -158,6 +158,21 @@ def test_unknown_error_code_falls_back_to_things_error(monkeypatch, client):
     # Neither of the more-specific subclasses should match.
     assert not isinstance(exc_info.value, ThingsNotFoundError)
     assert not isinstance(exc_info.value, ThingsPermissionError)
+    # Unknown codes still carry the raw code so forward-compat failures are
+    # debuggable rather than stripped to just the detail string.
+    assert "something_else" in str(exc_info.value)
+
+
+def test_error_body_with_zero_exit_still_raises(monkeypatch, client):
+    # JSON body is authoritative. An ``error`` key on stdout must raise even
+    # if the CLI mistakenly reports rc=0; otherwise a buggy client could
+    # return a synthetic empty envelope to the bridge without failing.
+    _patch_run(
+        monkeypatch,
+        _FakeCompleted(stdout='{"error": "not_found", "detail": "x"}', returncode=0),
+    )
+    with pytest.raises(ThingsNotFoundError):
+        client.list_todos()
 
 
 def test_non_zero_exit_without_error_body_raises_things_error(monkeypatch, client):

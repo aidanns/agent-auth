@@ -146,13 +146,15 @@ def test_no_fixtures_defaults_to_empty_store():
     assert _json(result) == {"todos": []}
 
 
-def test_missing_subcommand_exits_nonzero_without_stdout_payload():
-    # Help on stderr, nothing parseable on stdout — the bridge's
-    # ``_parse_payload`` treats an empty stdout as a protocol violation
-    # and raises ``ThingsError``. Verify the contract surface.
+def test_missing_subcommand_emits_structured_error_payload():
+    # Help on stderr for operators running the CLI directly, plus a
+    # structured ``things_unavailable`` envelope on stdout so the bridge
+    # can surface the condition through its normal error-mapping path
+    # instead of falling back to a generic "no JSON output" protocol
+    # violation.
     result = _run()  # no subcommand
     assert result.returncode != 0
-    assert result.stdout.strip() == ""
+    assert _json(result)["error"] == "things_unavailable"
     assert "usage:" in result.stderr.lower()
 
 
