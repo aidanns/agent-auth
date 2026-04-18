@@ -1,7 +1,12 @@
 # treefmt formatter/linter multiplexer.
 # shfmt formatting options live in .editorconfig.
-# The authoritative bash gate is scripts/lint.sh + scripts/format.sh,
-# invoked directly by .github/workflows/bash.yml and lefthook.yml.
+# mdformat reads .mdformat.toml; taplo reads taplo.toml.
+# The authoritative project gate is scripts/lint.sh + scripts/format.sh,
+# invoked directly by .github/workflows/check.yml and lefthook.yml.
+
+[formatter.mdformat]
+command = "mdformat"
+includes = ["*.md"]
 
 [formatter.shellcheck]
 command = "shellcheck"
@@ -11,3 +16,8 @@ includes = ["*.sh"]
 command = "shfmt"
 options = ["-w"]
 includes = ["*.sh"]
+
+[formatter.taplo]
+command = "taplo"
+options = ["format"]
+includes = ["*.toml"]

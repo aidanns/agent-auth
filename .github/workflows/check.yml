@@ -7,8 +7,13 @@ on:
     branches: [main]
 
 env:
+  KEEP_SORTED_VERSION: 0.8.0
+  MDFORMAT_GFM_VERSION: 1.0.0
+  MDFORMAT_TABLES_VERSION: 1.0.0
+  MDFORMAT_VERSION: 0.7.22
   SHELLCHECK_VERSION: 0.10.0
   SHFMT_VERSION: 3.8.0
+  TAPLO_VERSION: 0.10.0
 
 jobs:
   check:
@@ -16,9 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          enable-cache: true
 
       - name: Install d2
         run: curl -fsSL https://d2lang.com/install.sh | sh -s --
@@ -49,6 +55,30 @@ jobs:
             "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64"
           sudo install -m0755 /tmp/shfmt /usr/local/bin/shfmt
           shfmt --version
+
+      - name: Install mdformat
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "mdformat==${MDFORMAT_VERSION}" \
+            "mdformat-gfm==${MDFORMAT_GFM_VERSION}" \
+            "mdformat-tables==${MDFORMAT_TABLES_VERSION}"
+          mdformat --version
+
+      - name: Install taplo
+        run: |
+          curl -fsSL -o /tmp/taplo.gz \
+            "https://github.com/tamasfe/taplo/releases/download/${TAPLO_VERSION}/taplo-linux-x86_64.gz"
+          gunzip -f /tmp/taplo.gz
+          sudo install -m0755 /tmp/taplo /usr/local/bin/taplo
+          taplo --version
+
+      - name: Install keep-sorted
+        run: |
+          curl -fsSL -o /tmp/keep-sorted \
+            "https://github.com/google/keep-sorted/releases/download/v${KEEP_SORTED_VERSION}/keep-sorted_linux"
+          sudo install -m0755 /tmp/keep-sorted /usr/local/bin/keep-sorted
+          keep-sorted --version
 
       - name: Verify Required Tooling
         run: task verify-dependencies

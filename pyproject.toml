@@ -8,24 +8,30 @@ dynamic = ["version"]
 description = "Token-based authorization for AI agent access to macOS applications"
 requires-python = ">=3.11"
 dependencies = [
-    "keyring>=25.0",
+    # keep-sorted start
     "cryptography>=42.0",
+    "keyring>=25.0",
     "pyyaml>=6.0",
+    # keep-sorted end
 ]
 
 [project.optional-dependencies]
 dev = [
+    # keep-sorted start
     "build>=1.0",
     "pytest>=8.0",
     "testcontainers[compose]>=4",
+    # keep-sorted end
 ]
 tests-support = []
 
 [project.scripts]
+# keep-sorted start
 agent-auth = "agent_auth.cli:main"
 things-bridge = "things_bridge.cli:main"
 things-cli = "things_cli.cli:main"
 things-client-cli-applescript = "things_client_applescript.cli:main"
+# keep-sorted end
 
 [tool.setuptools.packages.find]
 where = ["src"]

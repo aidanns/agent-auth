@@ -48,13 +48,11 @@ structurally the same idea but lives in the test tree. The production
 New module `src/things_bridge/fake.py`:
 
 - `FakeThingsStore` — dataclass with `todos: list[Todo]`,
-  `projects: list[Project]`, `areas: list[Area]` plus a `list_memberships:
-  dict[str, set[str]]` sidecar (list_id -> set of todo ids) for modelling
+  `projects: list[Project]`, `areas: list[Area]` plus a `list_memberships: dict[str, set[str]]` sidecar (list_id -> set of todo ids) for modelling
   Things' built-in smart lists. `__post_init__` builds id→object indexes.
 - `FakeThingsClient(store: FakeThingsStore)` — implements the
   `ThingsClient` protocol:
-  - `list_todos(*, list_id=None, project_id=None, area_id=None, tag=None,
-    status=None)` — apply the same filter semantics the real client
+  - `list_todos(*, list_id=None, project_id=None, area_id=None, tag=None, status=None)` — apply the same filter semantics the real client
     applies in AppleScript: `list_id` consults `list_memberships`;
     `project_id` / `area_id` filter by field equality; `tag` filters by
     `tag in tag_names`; `status` is validated against
@@ -189,6 +187,7 @@ Two issues will be opened immediately after this change lands.
 > macOS-runner minutes on every PR.
 >
 > Blockers to investigate first:
+>
 > - Things 3 distribution: can we install a licensed copy on a GH
 >   runner? (May need a self-hosted runner on a Mac mini.)
 > - Automation permission: TCC DB pre-seeding vs interactive prompt.
@@ -209,11 +208,11 @@ Two issues will be opened immediately after this change lands.
 >
 > Refactor the client so the AppleScript side is as close to a dumb
 > data dump as possible: return every field of every requested object
-> as raw AppleScript values (or JSON via `_private_experimental_
-> json` where available), and do filtering, tag-splitting, date
+> as raw AppleScript values (or JSON via `_private_experimental_ json` where available), and do filtering, tag-splitting, date
 > parsing, and missing-value handling in Python on the parsed result.
 >
 > Benefits:
+>
 > - Shrinks the attack/injection surface (fewer caller-supplied
 >   strings end up inside AppleScript).
 > - Makes unit tests of the filter and shape logic trivial — they

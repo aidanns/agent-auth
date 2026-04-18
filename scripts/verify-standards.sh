@@ -20,6 +20,13 @@
 #      skipped rather than required.
 #   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
 #      lefthook per .claude/instructions/bash.md.
+#   4. Markdown (mdformat) and TOML (taplo) formatters are wired into
+#      treefmt.toml, and keep-sorted is wired into either lefthook.yml
+#      pre-commit or a CI workflow, per
+#      .claude/instructions/tooling-and-ci.md.
+#   5. uv is the sole Python resolver per .claude/instructions/python.md:
+#      uv.lock matches pyproject.toml, and no scripts/*.sh file invokes
+#      `pip install` to bootstrap a venv.
 
 set -euo pipefail
 
@@ -47,8 +54,8 @@ fi
 # Only list task names that are required by the cross-project tooling
 # standard, not project-specific service/CLI entry points. See the
 # header comment for the rationale.
-# keep-sorted start
 REQUIRED_TASKS=(
+  # keep-sorted start
   build
   check
   format
@@ -60,8 +67,8 @@ REQUIRED_TASKS=(
   verify-design
   verify-function-tests
   verify-standards
+  # keep-sorted end
 )
-# keep-sorted end
 
 catalogue="$(task --list-all --json)"
 
@@ -157,6 +164,9 @@ treefmt_stripped=""
 [[ -f treefmt.toml ]] && treefmt_stripped="$(strip_comments treefmt.toml)"
 lefthook_stripped=""
 [[ -f lefthook.yml ]] && lefthook_stripped="$(strip_comments lefthook.yml)"
+scripts_stripped="$(find scripts -name '*.sh' -print0 2>/dev/null \
+  | xargs -0 -r cat 2>/dev/null \
+  | strip_comments)"
 
 for tool in shellcheck shfmt; do
   if ! grep -qE "\\b${tool}\\b" <<<"${workflows_stripped}"; then
@@ -180,3 +190,86 @@ if [[ ${bash_tool_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: shellcheck and shfmt are wired into CI, treefmt, and lefthook."
+
+# mdformat, taplo, and keep-sorted gating per
+# .claude/instructions/tooling-and-ci.md. keep-sorted may be wired via
+# either lefthook.yml or a CI workflow.
+
+doc_tool_missing=0
+
+fail_doc_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  doc_tool_missing=1
+}
+
+for tool in mdformat taplo; do
+  if ! grep -qE "^\\[formatter\\.${tool}\\]" <<<"${treefmt_stripped}"; then
+    fail_doc_check "'${tool}' is not registered as a treefmt formatter in treefmt.toml." \
+      "Add a [formatter.${tool}] section to treefmt.toml."
+  fi
+done
+
+# Match the invocation pattern `keep-sorted --mode=...` rather than the bare
+# tool name — a CI workflow's install step mentions `keep-sorted` without
+# actually running it, which would otherwise defeat the regression check.
+# Covers lefthook.yml pre-commit, workflow YAML, and scripts/*.sh (since CI
+# runs scripts/lint.sh transitively via `task check`).
+if ! grep -qE "keep-sorted --mode=" <<<"${lefthook_stripped}" \
+  && ! grep -qE "keep-sorted --mode=" <<<"${workflows_stripped}" \
+  && ! grep -qE "keep-sorted --mode=" <<<"${scripts_stripped}"; then
+  fail_doc_check "'keep-sorted' is not invoked in lefthook.yml, any .github/workflows/*.yml, or scripts/*.sh." \
+    "Add a 'keep-sorted --mode=lint' invocation to one of those locations."
+fi
+
+if [[ ${doc_tool_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: mdformat + taplo are wired into treefmt, and keep-sorted is configured."
+
+# uv is the project-standard Python resolver (.claude/instructions/python.md).
+# Two invariants:
+#   1. uv.lock is in sync with pyproject.toml (`uv lock --check`).
+#   2. No scripts/*.sh file reintroduces `pip install` for venv bootstrap.
+
+if [[ -f pyproject.toml ]]; then
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "verify-standards: 'uv' is required to verify uv.lock is in sync." >&2
+    echo "  Install from https://astral.sh/uv/install.sh and re-run." >&2
+    exit 1
+  fi
+
+  # `uv lock --check` exits non-zero for both a missing lockfile and a
+  # stale one, so a single call covers both invariants.
+  if ! uv lock --check >/dev/null 2>&1; then
+    echo "verify-standards: uv.lock is missing or out of date with pyproject.toml." >&2
+    echo "  Run 'uv lock' and commit the result." >&2
+    exit 1
+  fi
+
+  echo "verify-standards: uv.lock is in sync with pyproject.toml."
+fi
+
+# Ban `pip install` in scripts/. Collapse backslash-newline continuations
+# first so `pip \` / `install` on separate lines still trips the check,
+# then strip comments so a docstring-style reference in a heredoc doesn't
+# trigger a false positive. This script is excluded from the scan
+# because it references the forbidden pattern in its own diagnostic
+# output.
+pip_install_offenders=()
+while IFS= read -r script; do
+  [[ -f "${script}" ]] || continue
+  [[ "${script}" == "scripts/verify-standards.sh" ]] && continue
+  if sed ':a;N;$!ba;s/\\\n/ /g' "${script}" | strip_comments | grep -qE '\bpip[0-9]*\b[^\n]*\binstall\b'; then
+    pip_install_offenders+=("${script}")
+  fi
+done < <(find scripts -type f -name '*.sh' -print)
+
+if [[ ${#pip_install_offenders[@]} -gt 0 ]]; then
+  echo "verify-standards: scripts/ must not invoke 'pip install' (use 'uv sync')." >&2
+  printf '  - %s\n' "${pip_install_offenders[@]}" >&2
+  exit 1
+fi
+
+echo "verify-standards: no scripts/*.sh file invokes 'pip install'."

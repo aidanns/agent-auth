@@ -49,6 +49,7 @@ is placed earlier on `$PATH` in tests and returns canned TSV.
   parallel test runs that want distinct fixtures per test.
 
 ### Keep `--fake-things` but move it behind a strictly developer-only
+
 build flag (e.g. an extras install, a separate package entry point)
 
 The bridge still loads the fake in-process; the only change is making
@@ -138,16 +139,16 @@ the bridge raises that error regardless of the exit code (a buggy CLI
 reporting rc=0 with an error body still fails closed). The exit code
 only disambiguates success from failure when the envelope is absent.
 
-| Subprocess signal | Raised as | HTTP status |
-|---|---|---|
-| `error=not_found` on stdout | `ThingsNotFoundError` | 404 |
-| `error=things_permission_denied` on stdout | `ThingsPermissionError` | 503 |
-| `error=things_unavailable` on stdout | `ThingsError` | 502 |
-| non-zero exit, no error body | `ThingsError` | 502 |
-| empty/non-JSON/non-object stdout | `ThingsError` | 502 |
-| subprocess timeout | `ThingsError` | 502 |
-| `FileNotFoundError` (binary missing) | `ThingsError` | 502 |
-| argparse misuse (exit 2, empty stdout) | `ThingsError` | 502 |
+| Subprocess signal                          | Raised as               | HTTP status |
+| ------------------------------------------ | ----------------------- | ----------- |
+| `error=not_found` on stdout                | `ThingsNotFoundError`   | 404         |
+| `error=things_permission_denied` on stdout | `ThingsPermissionError` | 503         |
+| `error=things_unavailable` on stdout       | `ThingsError`           | 502         |
+| non-zero exit, no error body               | `ThingsError`           | 502         |
+| empty/non-JSON/non-object stdout           | `ThingsError`           | 502         |
+| subprocess timeout                         | `ThingsError`           | 502         |
+| `FileNotFoundError` (binary missing)       | `ThingsError`           | 502         |
+| argparse misuse (exit 2, empty stdout)     | `ThingsError`           | 502         |
 
 ## Consequences
 

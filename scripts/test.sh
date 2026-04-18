@@ -27,17 +27,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./_bootstrap_venv.sh
 source "${SCRIPT_DIR}/_bootstrap_venv.sh"
 
-pytest="${VENV_DIR}/bin/python -m pytest"
-
 case "${mode}" in
   unit)
-    exec ${pytest} tests/ --ignore=tests/integration "$@"
+    exec uv run --no-sync pytest tests/ --ignore=tests/integration "$@"
     ;;
   integration)
-    exec ${pytest} tests/integration/ "$@"
+    exec uv run --no-sync pytest tests/integration/ "$@"
     ;;
   all)
-    ${pytest} tests/ --ignore=tests/integration "$@"
-    exec ${pytest} tests/integration/ "$@"
+    uv run --no-sync pytest tests/ --ignore=tests/integration "$@"
+    exec uv run --no-sync pytest tests/integration/ "$@"
     ;;
 esac

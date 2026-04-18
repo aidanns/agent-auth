@@ -108,8 +108,7 @@ README.md                          # "Development" section with docker + DinD no
 
 1. Add `_handle_health` in `server.py` that opens a read-only query
    (`SELECT 1`) via `store` and returns `200 {"status": "ok"}` on success,
-   `503 {"status": "unhealthy"}` on store error. Route `GET
-   /agent-auth/health`.
+   `503 {"status": "unhealthy"}` on store error. Route `GET /agent-auth/health`.
 2. Unit test in `tests/test_server.py`.
 3. Update `design/DESIGN.md` to list the endpoint, and
    `design/functional_decomposition.yaml` to add a leaf function
@@ -146,8 +145,7 @@ README.md                          # "Development" section with docker + DinD no
 
 1. `tests/integration/conftest.py` exposes:
    - `agent_auth_container` (function scope by default): generates a
-     unique run id (`uuid4().hex`), runs `docker compose -f
-     docker/compose.test.yaml -p <run-id> up -d --build`, polls
+     unique run id (`uuid4().hex`), runs `docker compose -f docker/compose.test.yaml -p <run-id> up -d --build`, polls
      `GET /agent-auth/health` up to 30s, yields a dataclass
      `{base_url, run_id, exec}` where `exec` is a helper that runs a CLI
      command inside the container via `docker compose exec`.
@@ -180,8 +178,7 @@ as unit-scope only.
 1. `scripts/test.sh` grows `--unit` (default), `--integration`, `--all`.
    Integration mode requires Docker and builds the image once per run.
 2. `.github/workflows/test.yml` splits into two jobs: `unit` (runs
-   `scripts/test.sh --unit`) and `integration` (runs `scripts/test.sh
-   --integration` on a runner with Docker).
+   `scripts/test.sh --unit`) and `integration` (runs `scripts/test.sh --integration` on a runner with Docker).
 3. `scripts/verify-integration-isolation.sh` asserts:
    - No file under `tests/integration/` contains a raw `127.0.0.1`
      host-bind literal (allowed only in assertions against the fixture's
@@ -273,6 +270,5 @@ as unit-scope only.
 4. `scripts/verify-integration-isolation.sh` passes; forcing a raw
    `127.0.0.1` literal into a file under `tests/integration/` makes it
    fail.
-5. `curl http://<mapped>/agent-auth/health` returns `200 {"status":
-   "ok"}` against a running container.
+5. `curl http://<mapped>/agent-auth/health` returns `200 {"status": "ok"}` against a running container.
 6. Every CI job is green on the PR.
