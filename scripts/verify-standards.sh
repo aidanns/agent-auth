@@ -10,6 +10,8 @@
 #      tooling-and-ci.md Security). An ecosystem is "in use" when its
 #      manifest files are present; ecosystems without manifests are
 #      skipped rather than required.
+#   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
+#      lefthook per .claude/instructions/bash.md.
 
 set -euo pipefail
 
@@ -37,6 +39,7 @@ fi
 # keep-sorted start
 REQUIRED_TASKS=(
   build
+  check
   format
   install-hooks
   lint
@@ -54,7 +57,8 @@ catalogue="$(task --list-all --json)"
 # Capture into a variable (not process substitution) so `set -e` catches a
 # crash in the python helper — otherwise a parser failure silently yields an
 # empty `missing` array and the check falsely reports success.
-missing_output="$(python3 - "${catalogue}" "${REQUIRED_TASKS[@]}" <<'PY'
+missing_output="$(
+  python3 - "${catalogue}" "${REQUIRED_TASKS[@]}" <<'PY'
 import json
 import sys
 
@@ -113,3 +117,55 @@ else
 
   echo "verify-standards: dependabot.yml covers detected ecosystems (${required_ecosystems[*]}) with minor/patch grouping."
 fi
+
+# Bash tooling: shellcheck + shfmt must be wired into CI, treefmt, and
+# lefthook per .claude/instructions/bash.md. Strip comments before
+# grepping so a stale `# shellcheck` mention doesn't satisfy the check
+# after the actual invocation has been removed.
+
+bash_tool_missing=0
+
+fail_bash_check() {
+  echo "verify-standards: '$1' is not wired into $2." >&2
+  echo "  $3" >&2
+  bash_tool_missing=1
+}
+
+strip_comments() {
+  sed -E 's/(^|[[:space:]])#.*$//' "$@"
+}
+
+# Collect comment-stripped content into variables so the match step
+# doesn't early-exit its upstream pipeline — `grep -q` exiting on first
+# match would otherwise SIGPIPE `sed`/`cat`, and `pipefail` turns that
+# into a whole-pipeline failure when the input is large enough to race.
+workflows_stripped="$(find .github/workflows -name '*.yml' -print0 2>/dev/null \
+  | xargs -0 -r cat 2>/dev/null \
+  | strip_comments)"
+treefmt_stripped=""
+[[ -f treefmt.toml ]] && treefmt_stripped="$(strip_comments treefmt.toml)"
+lefthook_stripped=""
+[[ -f lefthook.yml ]] && lefthook_stripped="$(strip_comments lefthook.yml)"
+
+for tool in shellcheck shfmt; do
+  if ! grep -qE "\\b${tool}\\b" <<<"${workflows_stripped}"; then
+    fail_bash_check "${tool}" ".github/workflows/*.yml" \
+      "Add a workflow step that invokes '${tool}' (see .github/workflows/check.yml)."
+  fi
+
+  if ! grep -qE "^\\[formatter\\.${tool}\\]" <<<"${treefmt_stripped}"; then
+    fail_bash_check "${tool}" "treefmt.toml" \
+      "Add a [formatter.${tool}] entry to treefmt.toml."
+  fi
+
+  if ! grep -qE "\\b${tool}\\b" <<<"${lefthook_stripped}"; then
+    fail_bash_check "${tool}" "lefthook.yml" \
+      "Add a pre-commit command that invokes '${tool}' to lefthook.yml."
+  fi
+done
+
+if [[ ${bash_tool_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: shellcheck and shfmt are wired into CI, treefmt, and lefthook."

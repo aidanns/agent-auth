@@ -9,14 +9,20 @@ tasks:
       - scripts/test.sh {{.CLI_ARGS}}
 
   lint:
-    desc: Run all configured linters (placeholder — no linters wired yet).
+    desc: Run all configured linters.
     cmds:
       - scripts/lint.sh
 
   format:
-    desc: Run all configured formatters (placeholder — no formatters wired yet).
+    desc: Run all configured formatters. Pass `-- --check` for diff-only mode.
     cmds:
-      - scripts/format.sh
+      - scripts/format.sh {{.CLI_ARGS}}
+
+  check:
+    desc: Run all linters and assert every tracked file is formatted.
+    cmds:
+      - scripts/lint.sh
+      - scripts/format.sh --check
 
   verify-design:
     desc: Verify every leaf function in the functional decomposition is allocated in the product breakdown.
