@@ -12,9 +12,39 @@ un-escaped by the parser so free-form text survives the framing.
 import subprocess
 import sys
 from dataclasses import dataclass
+from typing import Protocol
 
 from things_bridge.errors import ThingsError, ThingsNotFoundError, ThingsPermissionError
 from things_bridge.models import Area, Project, Todo
+
+
+class ThingsClient(Protocol):
+    """Read-only Things 3 client surface consumed by :mod:`things_bridge.server`.
+
+    Two implementations exist: :class:`ThingsApplescriptClient` (production,
+    shells to ``osascript``) and :class:`things_bridge.fake.FakeThingsClient`
+    (test / Linux-devcontainer use, backed by an in-memory store).
+    """
+
+    def list_todos(
+        self,
+        *,
+        list_id: str | None = None,
+        project_id: str | None = None,
+        area_id: str | None = None,
+        tag: str | None = None,
+        status: str | None = None,
+    ) -> list[Todo]: ...
+
+    def get_todo(self, todo_id: str) -> Todo: ...
+
+    def list_projects(self, *, area_id: str | None = None) -> list[Project]: ...
+
+    def get_project(self, project_id: str) -> Project: ...
+
+    def list_areas(self) -> list[Area]: ...
+
+    def get_area(self, area_id: str) -> Area: ...
 
 TAB_PLACEHOLDER = "\u241e"
 NEWLINE_PLACEHOLDER = "\u241f"
@@ -407,6 +437,19 @@ class AppleScriptRunner:
         except FileNotFoundError as exc:
             raise ThingsError(f"osascript not found at {self._osascript_path}") from exc
         except subprocess.TimeoutExpired as exc:
+            # Mirror the non-zero exit diagnostic: keep the HTTP response body
+            # sparse while giving operators enough detail on the bridge's own
+            # stderr to distinguish timeouts from other ``502 things_unavailable``
+            # causes. TimeoutExpired carries any partial stderr captured before
+            # the kill — surface it so a permissions prompt or similar hint
+            # doesn't get dropped.
+            partial = (exc.stderr or "").strip() if isinstance(exc.stderr, str) else ""
+            print(
+                f"things-bridge: osascript timed out after {self._timeout}s: "
+                f"{partial or '<empty stderr>'}",
+                file=sys.stderr,
+                flush=True,
+            )
             raise ThingsError(f"osascript timed out after {self._timeout}s") from exc
 
         if result.returncode != 0:
@@ -551,15 +594,15 @@ def _todo_source(flt: TodoFilter) -> str:
     return "to dos"
 
 
-_VALID_STATUSES = {"open", "completed", "canceled"}
+VALID_STATUSES = {"open", "completed", "canceled"}
 
 
-def _validate_status(status: str | None) -> str | None:
+def validate_status(status: str | None) -> str | None:
     if status is None:
         return None
-    if status not in _VALID_STATUSES:
+    if status not in VALID_STATUSES:
         raise ThingsError(
-            f"Invalid status filter: {status!r} (expected one of {sorted(_VALID_STATUSES)})"
+            f"Invalid status filter: {status!r} (expected one of {sorted(VALID_STATUSES)})"
         )
     return status
 
@@ -581,7 +624,7 @@ class ThingsApplescriptClient:
     ) -> list[Todo]:
         flt = TodoFilter(
             list_id=list_id, project_id=project_id, area_id=area_id,
-            tag=tag, status=_validate_status(status),
+            tag=tag, status=validate_status(status),
         )
         source = _todo_source(flt)
         body = _todo_batch_applescript(source, flt.status)
@@ -696,5 +739,6 @@ end tell
 __all__ = [
     "AppleScriptRunner",
     "ThingsApplescriptClient",
+    "ThingsClient",
     "TodoFilter",
 ]

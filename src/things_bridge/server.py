@@ -15,7 +15,7 @@ from things_bridge.errors import (
     ThingsNotFoundError,
     ThingsPermissionError,
 )
-from things_bridge.things import ThingsApplescriptClient
+from things_bridge.things import ThingsClient
 
 READ_SCOPE = "things:read"
 
@@ -112,7 +112,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "unauthorized"})
             return
 
-        things: ThingsApplescriptClient = self._bridge.things
+        things: ThingsClient = self._bridge.things
 
         # Routing: longest-prefix specific paths first.
         if path == "/things-bridge/todos":
@@ -228,14 +228,14 @@ def _first(params: dict[str, list[str]], key: str) -> str | None:
 class ThingsBridgeServer(ThreadingHTTPServer):
     """Threaded HTTP server with shared state for things-bridge."""
 
-    def __init__(self, config: Config, things: ThingsApplescriptClient, authz: AgentAuthClient):
+    def __init__(self, config: Config, things: ThingsClient, authz: AgentAuthClient):
         self.config = config
         self.things = things
         self.authz = authz
         super().__init__((config.host, config.port), ThingsBridgeHandler)
 
 
-def run_server(config: Config, things: ThingsApplescriptClient, authz: AgentAuthClient) -> None:
+def run_server(config: Config, things: ThingsClient, authz: AgentAuthClient) -> None:
     """Start the things-bridge HTTP server."""
     server = ThingsBridgeServer(config, things, authz)
     print(f"things-bridge listening on {config.host}:{config.port}")
