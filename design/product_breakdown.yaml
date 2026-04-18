@@ -67,6 +67,7 @@ components:
           - Delegate Token Validation
           - Execute External System Interaction
           - Serve Bridge HTTP API
+          - Serve Fake Things Client
   - name: things-cli
     description: Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer.
     configuration_items:

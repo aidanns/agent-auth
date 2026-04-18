@@ -112,6 +112,8 @@ functions:
         description: Interact with the Things 3 application and return structured results.
       - name: Serve Bridge HTTP API
         description: Expose Things 3 read operations as HTTP endpoints for the CLI client under the /things-bridge/ prefix.
+      - name: Serve Fake Things Client
+        description: Developer-only in-memory implementation of the Things client protocol that lets the bridge run on Linux without osascript. Selected via `things-bridge serve --fake-things[=PATH]`; seeds todos, projects, areas, and list memberships from a YAML fixture.
   - name: Things CLI
     description: Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer.
     functions:

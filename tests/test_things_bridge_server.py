@@ -4,7 +4,8 @@ import json
 import threading
 import urllib.request
 import urllib.error
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Any
 
 import pytest
 
@@ -15,11 +16,13 @@ from things_bridge.errors import (
     AuthzTokenInvalidError,
     AuthzUnavailableError,
     ThingsError,
-    ThingsNotFoundError,
     ThingsPermissionError,
 )
-from things_bridge.models import Area, Project, Todo
+from things_bridge.fake import FakeThingsClient, FakeThingsStore
+from things_bridge.models import Area
 from things_bridge.server import ThingsBridgeServer
+
+from tests.factories import make_project as _project, make_todo as _todo
 
 
 @dataclass
@@ -37,56 +40,58 @@ class FakeAuthz:
             raise self.raise_on_validate
 
 
-@dataclass
-class FakeThings:
-    todos: list[Todo] = field(default_factory=list)
-    projects: list[Project] = field(default_factory=list)
-    areas: list[Area] = field(default_factory=list)
-    todos_by_id: dict = field(default_factory=dict)
-    projects_by_id: dict = field(default_factory=dict)
-    areas_by_id: dict = field(default_factory=dict)
-    raise_on_call: Exception | None = None
-    last_list_todos_kwargs: dict | None = None
+class _InjectableThings:
+    """Wrap :class:`FakeThingsClient` with error-injection and call spying.
+
+    Used by HTTP integration tests that need to assert the bridge maps
+    ``ThingsError`` / ``ThingsPermissionError`` / arbitrary client failures
+    to the right HTTP status, and to verify filter forwarding.
+    """
+
+    def __init__(self, store: FakeThingsStore):
+        self.store = store
+        self._client = FakeThingsClient(store)
+        self.raise_on_call: Exception | None = None
+        self.last_list_todos_kwargs: dict[str, Any] | None = None
 
     def list_todos(self, **kwargs):
         self.last_list_todos_kwargs = kwargs
         if self.raise_on_call is not None:
             raise self.raise_on_call
-        return list(self.todos)
+        return self._client.list_todos(**kwargs)
 
     def get_todo(self, todo_id):
         if self.raise_on_call is not None:
             raise self.raise_on_call
-        if todo_id not in self.todos_by_id:
-            raise ThingsNotFoundError(todo_id)
-        return self.todos_by_id[todo_id]
+        return self._client.get_todo(todo_id)
 
     def list_projects(self, *, area_id=None):
         if self.raise_on_call is not None:
             raise self.raise_on_call
-        return list(self.projects)
+        return self._client.list_projects(area_id=area_id)
 
     def get_project(self, project_id):
-        if project_id not in self.projects_by_id:
-            raise ThingsNotFoundError(project_id)
-        return self.projects_by_id[project_id]
+        if self.raise_on_call is not None:
+            raise self.raise_on_call
+        return self._client.get_project(project_id)
 
     def list_areas(self):
         if self.raise_on_call is not None:
             raise self.raise_on_call
-        return list(self.areas)
+        return self._client.list_areas()
 
     def get_area(self, area_id):
-        if area_id not in self.areas_by_id:
-            raise ThingsNotFoundError(area_id)
-        return self.areas_by_id[area_id]
+        if self.raise_on_call is not None:
+            raise self.raise_on_call
+        return self._client.get_area(area_id)
 
 
 @pytest.fixture
 def bridge():
     config = Config(host="127.0.0.1", port=0)
     authz = FakeAuthz()
-    things = FakeThings()
+    store = FakeThingsStore()
+    things = _InjectableThings(store)
     server = ThingsBridgeServer(config, things, authz)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -95,11 +100,14 @@ def bridge():
         yield {
             "url": f"http://127.0.0.1:{port}",
             "authz": authz,
+            "store": store,
             "things": things,
             "server": server,
         }
     finally:
         server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def _get(url: str, token: str | None = "aa_test_token"):
@@ -118,32 +126,6 @@ def _get(url: str, token: str | None = "aa_test_token"):
         return exc.code, parsed
 
 
-def _todo(**overrides):
-    defaults = dict(
-        id="t1", name="Buy milk", notes="", status="open",
-        project_id=None, project_name=None,
-        area_id=None, area_name=None,
-        tag_names=[],
-        due_date=None, activation_date=None,
-        completion_date=None, cancellation_date=None,
-        creation_date=None, modification_date=None,
-    )
-    defaults.update(overrides)
-    return Todo(**defaults)
-
-
-def _project(**overrides):
-    defaults = dict(
-        id="p1", name="Q2 Plan", notes="", status="open",
-        area_id=None, area_name=None, tag_names=[],
-        due_date=None, activation_date=None,
-        completion_date=None, cancellation_date=None,
-        creation_date=None, modification_date=None,
-    )
-    defaults.update(overrides)
-    return Project(**defaults)
-
-
 def test_get_todos_requires_bearer_token(bridge):
     status, data = _get(f"{bridge['url']}/things-bridge/todos", token=None)
     assert status == 401
@@ -151,7 +133,7 @@ def test_get_todos_requires_bearer_token(bridge):
 
 
 def test_get_todos_delegates_to_authz_and_returns_list(bridge):
-    bridge["things"].todos = [_todo(id="t1", name="A"), _todo(id="t2", name="B")]
+    bridge["store"].todos = [_todo(id="t1", name="A"), _todo(id="t2", name="B")]
     status, data = _get(f"{bridge['url']}/things-bridge/todos")
     assert status == 200
     assert bridge["authz"].last_token == "aa_test_token"
@@ -215,7 +197,7 @@ def test_get_todos_things_permission_error_maps_to_503(bridge):
 
 
 def test_get_todo_by_id_returns_single(bridge):
-    bridge["things"].todos_by_id = {"t1": _todo(id="t1", name="X")}
+    bridge["store"].todos = [_todo(id="t1", name="X")]
     status, data = _get(f"{bridge['url']}/things-bridge/todos/t1")
     assert status == 200
     assert data["todo"]["id"] == "t1"
@@ -229,28 +211,28 @@ def test_get_todo_not_found_returns_404(bridge):
 
 
 def test_get_projects_list(bridge):
-    bridge["things"].projects = [_project(id="p1"), _project(id="p2")]
+    bridge["store"].projects = [_project(id="p1"), _project(id="p2")]
     status, data = _get(f"{bridge['url']}/things-bridge/projects")
     assert status == 200
     assert [p["id"] for p in data["projects"]] == ["p1", "p2"]
 
 
 def test_get_project_by_id(bridge):
-    bridge["things"].projects_by_id = {"p1": _project(id="p1")}
+    bridge["store"].projects = [_project(id="p1")]
     status, data = _get(f"{bridge['url']}/things-bridge/projects/p1")
     assert status == 200
     assert data["project"]["id"] == "p1"
 
 
 def test_get_areas_list(bridge):
-    bridge["things"].areas = [Area(id="a1", name="Personal", tag_names=[])]
+    bridge["store"].areas = [Area(id="a1", name="Personal", tag_names=[])]
     status, data = _get(f"{bridge['url']}/things-bridge/areas")
     assert status == 200
     assert data["areas"][0]["id"] == "a1"
 
 
 def test_get_area_by_id(bridge):
-    bridge["things"].areas_by_id = {"a1": Area(id="a1", name="Personal", tag_names=["home"])}
+    bridge["store"].areas = [Area(id="a1", name="Personal", tag_names=["home"])]
     status, data = _get(f"{bridge['url']}/things-bridge/areas/a1")
     assert status == 200
     assert data["area"]["tag_names"] == ["home"]
