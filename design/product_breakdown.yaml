@@ -59,14 +59,28 @@ components:
         description: Operating system keyring backend (via libsecret/D-Bus Secret Service) used to securely store the HMAC signing key and database encryption key on Linux.
         functions: []
   - name: things-bridge
-    description: HTTP server running on the host that proxies read operations to the Things 3 application via AppleScript, delegating authorization to agent-auth.
+    description: HTTP server running on the host that proxies read operations to a Things-client subprocess, delegating authorization to agent-auth. Contains no Things 3 logic itself.
     configuration_items:
       - name: things-bridge
-        description: HTTP server service that maps /things-bridge/ endpoints to Things 3 AppleScript interactions, delegating token validation to agent-auth.
+        description: HTTP server service that maps /things-bridge/ endpoints to a configured things-client-cli subprocess, delegating token validation to agent-auth.
         functions:
           - Delegate Token Validation
-          - Execute External System Interaction
+          - Spawn Things Client Subprocess
           - Serve Bridge HTTP API
+  - name: things-client-cli-applescript
+    description: Production Things 3 client CLI that shells to osascript. Shipped with the distribution as the bridge's default things_client_command.
+    configuration_items:
+      - name: things-client-cli-applescript
+        description: Read-only CLI that answers todos / projects / areas sub-commands by running AppleScript via osascript and emits JSON on stdout per the bridge's subprocess contract.
+        functions:
+          - Execute External System Interaction
+          - Serve Things Client CLI Contract
+  - name: things-client-cli-fake
+    description: Test-only Things client CLI that reads a YAML fixture. Lives under tests/things_client_fake/ and is never shipped; invoked by the bridge during integration/e2e tests.
+    configuration_items:
+      - name: things-client-cli-fake
+        description: Read-only CLI that answers the shared Things-client contract from an in-memory store loaded from a YAML fixture. Enables end-to-end exercise of the agent-auth + things-bridge + things-cli stack on Linux.
+        functions:
           - Serve Fake Things Client
   - name: things-cli
     description: Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer.

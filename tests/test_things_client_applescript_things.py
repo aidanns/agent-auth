@@ -14,8 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from things_bridge.errors import ThingsError, ThingsNotFoundError
-from things_bridge.things import (
+from things_client_applescript.things import (
     NEWLINE_PLACEHOLDER,
     TAB_PLACEHOLDER,
     AppleScriptRunner,
@@ -25,6 +24,7 @@ from things_bridge.things import (
     _PROJECT_FIELDS,
     _AREA_FIELDS,
 )
+from things_models.errors import ThingsError, ThingsNotFoundError
 
 _darwin_only = pytest.mark.skipif(
     sys.platform != "darwin" or shutil.which("osascript") is None,
@@ -442,7 +442,7 @@ def test_osascript_failure_writes_diagnostic_to_stderr(capfd):
     captured = capfd.readouterr()
     # Should name the subsystem so mixed stderr streams stay greppable,
     # and include enough of osascript's message to be useful.
-    assert "things-bridge" in captured.err
+    assert "things-client-cli-applescript" in captured.err
     assert "osascript" in captured.err.lower()
 
 
@@ -458,7 +458,7 @@ def test_osascript_timeout_writes_diagnostic_to_stderr(capfd, monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", _raise_timeout)
 
-    runner = AppleScriptRunner(timeout=0.5)
+    runner = AppleScriptRunner(timeout_seconds=0.5)
     with pytest.raises(ThingsError):
         runner.run("tell application \"Things3\" to return \"\"")
 
@@ -466,7 +466,7 @@ def test_osascript_timeout_writes_diagnostic_to_stderr(capfd, monkeypatch):
     # Same greppability and subsystem-naming requirements as the
     # exit-code branch, plus the word "timed out" so operators can
     # distinguish the failure mode at a glance.
-    assert "things-bridge" in captured.err
+    assert "things-client-cli-applescript" in captured.err
     assert "timed out" in captured.err
 
 
@@ -485,11 +485,11 @@ def test_osascript_timeout_surfaces_partial_stderr(capfd, monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", _raise_timeout)
 
-    runner = AppleScriptRunner(timeout=0.5)
+    runner = AppleScriptRunner(timeout_seconds=0.5)
     with pytest.raises(ThingsError):
         runner.run("tell application \"Things3\" to return \"\"")
 
     captured = capfd.readouterr()
-    assert "things-bridge" in captured.err
+    assert "things-client-cli-applescript" in captured.err
     assert "timed out" in captured.err
     assert "waiting on user to grant automation access" in captured.err

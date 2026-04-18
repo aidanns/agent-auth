@@ -206,7 +206,7 @@ f47.width: 400
 root -> f47
 f47_container: "" {
   grid-columns: 1
-  grid-rows: 4
+  grid-rows: 3
   grid-gap: 5
   style: {
     stroke-width: 0
@@ -214,19 +214,51 @@ f47_container: "" {
   }
   f48: Delegate Token Validation
   f48.width: 400
-  f49: Execute External System Interaction
+  f49: Spawn Things Client Subprocess
   f49.width: 400
   f50: Serve Bridge HTTP API
   f50.width: 400
-  f50a: Serve Fake Things Client
-  f50a.width: 400
 }
 f47 -> f47_container
 
-f51: Things CLI
+f51: Things Client (AppleScript)
 f51.width: 400
 root -> f51
 f51_container: "" {
+  grid-columns: 1
+  grid-rows: 2
+  grid-gap: 5
+  style: {
+    stroke-width: 0
+    fill: transparent
+  }
+  f52: Execute External System Interaction
+  f52.width: 400
+  f53: Serve Things Client CLI Contract
+  f53.width: 400
+}
+f51 -> f51_container
+
+f54: Things Client (Fake)
+f54.width: 400
+root -> f54
+f54_container: "" {
+  grid-columns: 1
+  grid-rows: 1
+  grid-gap: 5
+  style: {
+    stroke-width: 0
+    fill: transparent
+  }
+  f55: Serve Fake Things Client
+  f55.width: 400
+}
+f54 -> f54_container
+
+f56: Things CLI
+f56.width: 400
+root -> f56
+f56_container: "" {
   grid-columns: 1
   grid-rows: 5
   grid-gap: 5
@@ -234,15 +266,15 @@ f51_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f52: Send Bridge Request
-  f52.width: 400
-  f53: Auto Refresh Token
-  f53.width: 400
-  f54: Store CLI Credentials
-  f54.width: 400
-  f55: Handle App Commands
-  f55.width: 400
-  f56: Display Results
-  f56.width: 400
+  f57: Send Bridge Request
+  f57.width: 400
+  f58: Auto Refresh Token
+  f58.width: 400
+  f59: Store CLI Credentials
+  f59.width: 400
+  f60: Handle App Commands
+  f60.width: 400
+  f61: Display Results
+  f61.width: 400
 }
-f51 -> f51_container
+f56 -> f56_container

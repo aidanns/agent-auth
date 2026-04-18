@@ -2,11 +2,15 @@
 
 import pytest
 
-from things_bridge.errors import ThingsError, ThingsNotFoundError
-from things_bridge.fake import FakeThingsClient, FakeThingsStore, load_fake_store
-from things_bridge.models import Area
+from things_models.errors import ThingsError, ThingsNotFoundError
+from things_models.models import Area
 
 from tests.factories import make_project as _project, make_todo as _todo
+from tests.things_client_fake.store import (
+    FakeThingsClient,
+    FakeThingsStore,
+    load_fake_store,
+)
 
 
 @pytest.mark.covers_function("Serve Fake Things Client")

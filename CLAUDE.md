@@ -16,6 +16,7 @@ simplifying for "personal project" scope.
 - `agent-auth --help` — show CLI usage
 - `scripts/agent-auth.sh <args...>` — run the agent-auth CLI (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/agent-auth.sh serve`
 - `scripts/things-bridge.sh <args...>` — run the things-bridge CLI (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/things-bridge.sh serve`
+- `scripts/things-client-applescript.sh <args...>` — run the things-client-cli-applescript CLI directly (macOS-only); e.g. `scripts/things-client-applescript.sh todos list --status open`
 - `scripts/things-cli.sh <args...>` — run the things-cli client (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/things-cli.sh todos list`
 
 ## Architecture
@@ -44,10 +45,15 @@ simplifying for "personal project" scope.
 - Plugin trust boundary: the notification plugin currently uses
   `importlib.import_module` inside the server process which holds signing
   and encryption keys — tracked in #6 for migration to out-of-process
-- Linux devcontainer e2e: `things-bridge serve --fake-things[=PATH]`
-  swaps `ThingsApplescriptClient` for an in-memory `FakeThingsClient`
-  so the stack runs without `osascript`. Developer-only — not a config
-  file option. See `design/decisions/0001-things-client-fake.md`.
+- Things-client architecture: the bridge contains no Things 3 logic.
+  It runs a configured `things_client_command` (default
+  `["things-client-cli-applescript"]`) per request and parses a JSON
+  envelope on stdout. The production CLI is shipped; a test-only fake
+  lives under `tests/things_client_fake/` and is invoked as
+  `python -m tests.things_client_fake --fixtures PATH`. For Linux
+  devcontainer e2e, point `things_client_command` in `config.yaml` at
+  the fake. See `design/decisions/0003-things-client-cli-split.md`
+  (supersedes 0001).
 
 ## Detailed instructions
 

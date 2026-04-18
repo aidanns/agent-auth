@@ -18,9 +18,10 @@ from things_bridge.errors import (
     ThingsError,
     ThingsPermissionError,
 )
-from things_bridge.fake import FakeThingsClient, FakeThingsStore
-from things_bridge.models import Area
 from things_bridge.server import ThingsBridgeServer
+from things_models.models import Area
+
+from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
 
 from tests.factories import make_project as _project, make_todo as _todo
 

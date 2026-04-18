@@ -50,11 +50,15 @@
 | CLI Interface | Handle Token Revoke Command | Parse arguments and invoke token family revocation. |
 | CLI Interface | Handle Token Rotate Command | Parse arguments and invoke token family rotation. |
 | CLI Interface | Handle Serve Command | Start the agent-auth HTTP server. |
-| agent-auth | Things Bridge | Proxy requests from the CLI to the Things 3 application via AppleScript, delegating authorization to agent-auth. |
+| agent-auth | Things Bridge | Proxy requests from the CLI to a Things-client subprocess, delegating authorization to agent-auth. |
 | Things Bridge | Delegate Token Validation | Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation. |
-| Things Bridge | Execute External System Interaction | Interact with the Things 3 application via AppleScript (osascript) and return structured results. |
+| Things Bridge | Spawn Things Client Subprocess | Run the configured things-client-cli command per request, parse the JSON envelope on stdout, rehydrate dataclasses, and map error bodies to the ThingsError hierarchy. Forwards subprocess stderr to the bridge's own stderr for operator diagnostics. |
 | Things Bridge | Serve Bridge HTTP API | Expose Things 3 read operations as HTTP endpoints for the CLI client under the /things-bridge/ prefix. |
-| Things Bridge | Serve Fake Things Client | Developer-only in-memory implementation of the Things client protocol that lets the bridge run on Linux without osascript. Selected via `things-bridge serve --fake-things[=PATH]`; seeds todos, projects, areas, and list memberships from a YAML fixture. |
+| agent-auth | Things Client (AppleScript) | Read-only Things 3 client CLI that shells to osascript. Ships with the distribution and is the bridge's default things_client_command. |
+| Things Client (AppleScript) | Execute External System Interaction | Interact with the Things 3 application via AppleScript / osascript and return structured results. Owns AppleScript generation, TSV parsing, and the 30s per-call osascript timeout. |
+| Things Client (AppleScript) | Serve Things Client CLI Contract | Expose the shared read surface (todos / projects / areas sub-commands) and emit the JSON-on-stdout + exit-code envelope that the things-bridge subprocess contract requires. |
+| agent-auth | Things Client (Fake) | Test-only in-memory Things client CLI that reads a YAML fixture. Never shipped; invoked by the bridge during integration/e2e tests. |
+| Things Client (Fake) | Serve Fake Things Client | Answer the shared Things-client CLI surface from an in-memory store seeded from a YAML fixture. Enables end-to-end exercise of the agent-auth + things-bridge + things-cli stack on Linux without osascript or Things 3. |
 | agent-auth | Things CLI | Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer. |
 | Things CLI | Send Bridge Request | Send an authenticated HTTP request to the app bridge with the bearer token. |
 | Things CLI | Auto Refresh Token | Detect 401 responses, refresh the token pair via agent-auth, and retry the request. If the refresh token has expired, attempt re-issuance via JIT approval. |
