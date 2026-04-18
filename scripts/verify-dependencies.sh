@@ -12,12 +12,12 @@ REQUIRED_TOOLS=(
   keep-sorted
   mdformat
   python3
-  shasum
   shellcheck
   shfmt
   systems-engineering
   taplo
   task
+  uv
   yq
   # keep-sorted end
 )

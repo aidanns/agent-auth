@@ -50,7 +50,7 @@ list_tracked() {
 require_tool shfmt \
   "Install from https://github.com/mvdan/sh/releases or 'brew install shfmt' (macOS), then re-run."
 require_tool mdformat \
-  "Install via 'pip install mdformat mdformat-gfm mdformat-tables' in the project venv, then re-run."
+  "Install via 'uv tool install mdformat --with mdformat-gfm --with mdformat-tables', then re-run."
 require_tool taplo \
   "Install from https://github.com/tamasfe/taplo/releases or 'brew install taplo' (macOS), then re-run."
 
