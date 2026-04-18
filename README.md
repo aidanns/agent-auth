@@ -94,6 +94,24 @@ things-bridge serve
 
 Host, port, and agent-auth URL are configured in `~/.config/things-bridge/config.yaml`.
 
+#### Running on Linux with a fake Things client
+
+`things-bridge serve --fake-things[=<fixtures.yaml>]` swaps the AppleScript client for an in-memory `FakeThingsClient` so the full agent-auth + things-bridge + things-cli stack can be exercised on Linux without `osascript` or Things 3. A sample fixture is included at `examples/fake-things.yaml`. The flag is developer-only (not configurable via `config.yaml`) and prints a loud stderr banner at startup — never point it at real traffic.
+
+```bash
+# Terminal 1: agent-auth
+agent-auth serve
+
+# Terminal 2: things-bridge, seeded from examples/fake-things.yaml
+things-bridge serve --fake-things=examples/fake-things.yaml
+
+# Terminal 3: things-cli
+things-cli login --bridge-url http://127.0.0.1:9200 \
+    --auth-url http://127.0.0.1:9100 --family-id <id>
+things-cli todos list
+things-cli todos list --list TMTodayListSource
+```
+
 ### things-cli
 
 `things-cli` is a thin client for `things-bridge` that auto-refreshes/reissues tokens via `agent-auth`. Credentials are kept in the system keyring by default; when no keyring backend is available (e.g. inside a devcontainer), the CLI automatically falls back to a `0600` YAML file at `~/.config/things-cli/credentials.yaml`.

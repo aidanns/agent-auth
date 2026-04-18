@@ -44,6 +44,8 @@ Each external system gets its own bridge server. Bridges are independent of each
 
 The first concrete bridge is `things-bridge`, which wraps the Things 3 AppleScript API (see `design/THINGS.md`) via `osascript`. It listens on `127.0.0.1:9200` by default and currently exposes read-only endpoints; write and JIT-gated endpoints are a follow-up.
 
+The Things-client surface (`list_todos`, `get_todo`, `list_projects`, `get_project`, `list_areas`, `get_area`) is exposed as the `ThingsClient` Protocol so the bridge can be configured with either the production `ThingsApplescriptClient` or an in-memory `FakeThingsClient`. The fake is developer-only — it is selected by passing `--fake-things[=PATH]` to `things-bridge serve`, which also emits a prominent stderr banner so operators cannot miss that the server is not talking to Things. The fake exists so that the full HTTP stack (agent-auth + things-bridge + things-cli) can be exercised in a Linux devcontainer or CI without `osascript` or Things 3. See `design/decisions/0001-things-client-fake.md` for the rationale.
+
 Read-only endpoints (all require the `things:read` scope on the presented bearer token):
 
 | Method | Path | Description |

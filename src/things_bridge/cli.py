@@ -5,8 +5,9 @@ import sys
 
 from things_bridge.authz import AgentAuthClient
 from things_bridge.config import load_config
+from things_bridge.fake import FakeThingsClient, FakeThingsStore, load_fake_store
 from things_bridge.server import run_server
-from things_bridge.things import AppleScriptRunner, ThingsApplescriptClient
+from things_bridge.things import AppleScriptRunner, ThingsApplescriptClient, ThingsClient
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,9 +17,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command")
-    subparsers.add_parser("serve", help="Start the HTTP bridge server")
+    serve = subparsers.add_parser("serve", help="Start the HTTP bridge server")
+    serve.add_argument(
+        "--fake-things",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Serve against an in-memory fake ThingsClient instead of shelling to "
+            "osascript. PATH is an optional YAML fixtures file; omit it for an "
+            "empty store. Intended for Linux devcontainer / CI use — never run "
+            "against real traffic."
+        ),
+    )
 
     return parser
+
+
+def _print_fake_banner(path: str) -> None:
+    source = path or "empty in-memory store"
+    banner = (
+        "================================================================\n"
+        "  things-bridge: --fake-things active — NOT TALKING TO THINGS 3\n"
+        f"  fixtures: {source}\n"
+        "================================================================"
+    )
+    print(banner, file=sys.stderr)
 
 
 def main():
@@ -31,10 +56,16 @@ def main():
 
     config = load_config()
     if args.command == "serve":
-        runner = AppleScriptRunner(
-            osascript_path=config.osascript_path, timeout=config.request_timeout_seconds,
-        )
-        things = ThingsApplescriptClient(runner)
+        things: ThingsClient
+        if args.fake_things is not None:
+            store = load_fake_store(args.fake_things) if args.fake_things else FakeThingsStore()
+            things = FakeThingsClient(store)
+            _print_fake_banner(args.fake_things)
+        else:
+            runner = AppleScriptRunner(
+                osascript_path=config.osascript_path, timeout=config.request_timeout_seconds,
+            )
+            things = ThingsApplescriptClient(runner)
         authz = AgentAuthClient(config.auth_url, timeout_seconds=config.request_timeout_seconds)
         run_server(config, things, authz)
         return
