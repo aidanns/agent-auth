@@ -29,7 +29,7 @@ tasks:
       - scripts/verify-function-tests.sh
 
   verify-dependencies:
-    desc: Verify Dependabot covers every dependency ecosystem used by this project.
+    desc: Verify required CLI tools (python3, task, yq, ...) are installed on PATH.
     cmds:
       - scripts/verify-dependencies.sh
 

@@ -5,9 +5,11 @@
 #
 #   1. Taskfile.yml exposes every task named in REQUIRED_TASKS (see
 #      tooling-and-ci.md Orchestration).
-#
-# Project-specific checks (e.g. dependency coverage) live in their own
-# sibling scripts — see verify-dependencies.sh.
+#   2. .github/dependabot.yml covers every dependency ecosystem actually
+#      in use by this repository with minor/patch grouping (see
+#      tooling-and-ci.md Security). An ecosystem is "in use" when its
+#      manifest files are present; ecosystems without manifests are
+#      skipped rather than required.
 
 set -euo pipefail
 
@@ -24,6 +26,11 @@ fi
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "verify-standards: 'python3' is required to parse the task catalogue." >&2
+  exit 1
+fi
+
+if ! command -v yq >/dev/null 2>&1; then
+  echo "verify-standards: 'yq' (https://github.com/mikefarah/yq) is required to parse the dependabot config." >&2
   exit 1
 fi
 
@@ -67,3 +74,42 @@ if [[ -n "${missing_output}" ]]; then
 fi
 
 echo "verify-standards: Taskfile.yml exposes all required tasks."
+
+DEPENDABOT_CONFIG="${REPO_ROOT}/.github/dependabot.yml"
+
+if [[ ! -f "${DEPENDABOT_CONFIG}" ]]; then
+  echo "verify-standards: ${DEPENDABOT_CONFIG} is missing" >&2
+  exit 1
+fi
+
+required_ecosystems=()
+
+if [[ -f pyproject.toml ]] || [[ -f setup.py ]] || compgen -G 'requirements*.txt' >/dev/null; then
+  required_ecosystems+=(pip)
+fi
+
+if compgen -G '.github/workflows/*.yml' >/dev/null || compgen -G '.github/workflows/*.yaml' >/dev/null; then
+  required_ecosystems+=(github-actions)
+fi
+
+if [[ ${#required_ecosystems[@]} -eq 0 ]]; then
+  echo "verify-standards: no known dependency ecosystems detected; skipping dependabot coverage check."
+else
+  for ecosystem in "${required_ecosystems[@]}"; do
+    matched=$(yq ".updates[] | select(.[\"package-ecosystem\"] == \"${ecosystem}\") | .[\"package-ecosystem\"]" "${DEPENDABOT_CONFIG}")
+    if [[ "${matched}" != "${ecosystem}" ]]; then
+      echo "verify-standards: dependabot.yml does not declare the '${ecosystem}' ecosystem" >&2
+      exit 1
+    fi
+
+    update_types=$(yq ".updates[] | select(.[\"package-ecosystem\"] == \"${ecosystem}\") | .groups.[].update-types[]" "${DEPENDABOT_CONFIG}")
+    for update_type in minor patch; do
+      if ! printf '%s\n' "${update_types}" | grep -qFx "${update_type}"; then
+        echo "verify-standards: ecosystem '${ecosystem}' does not group '${update_type}' updates" >&2
+        exit 1
+      fi
+    done
+  done
+
+  echo "verify-standards: dependabot.yml covers detected ecosystems (${required_ecosystems[*]}) with minor/patch grouping."
+fi

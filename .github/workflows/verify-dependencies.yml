@@ -12,5 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Dependabot ecosystem coverage
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.50.0
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Required Tooling
         run: scripts/verify-dependencies.sh
