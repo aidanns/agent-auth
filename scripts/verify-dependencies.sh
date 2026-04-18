@@ -10,6 +10,8 @@ set -euo pipefail
 # keep-sorted start
 REQUIRED_TOOLS=(
   python3
+  shellcheck
+  shfmt
   systems-engineering
   task
   yq

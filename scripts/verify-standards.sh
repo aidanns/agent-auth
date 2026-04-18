@@ -39,6 +39,7 @@ fi
 # keep-sorted start
 REQUIRED_TASKS=(
   build
+  check
   format
   install-hooks
   lint
@@ -149,7 +150,7 @@ lefthook_stripped=""
 for tool in shellcheck shfmt; do
   if ! grep -qE "\\b${tool}\\b" <<<"${workflows_stripped}"; then
     fail_bash_check "${tool}" ".github/workflows/*.yml" \
-      "Add a workflow step that invokes '${tool}' (see .github/workflows/bash.yml)."
+      "Add a workflow step that invokes '${tool}' (see .github/workflows/check.yml)."
   fi
 
   if ! grep -qE "^\\[formatter\\.${tool}\\]" <<<"${treefmt_stripped}"; then

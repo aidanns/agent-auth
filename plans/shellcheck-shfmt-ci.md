@@ -37,9 +37,12 @@ compliance so CI is green on merge.
 4. **`scripts/format.sh`** — replaces the placeholder with a real implementation
    that runs `shfmt -w` to write canonical formatting. A `--check` mode runs
    `shfmt -d` (diff) and exits non-zero on any drift; CI uses this mode.
-5. **`.github/workflows/bash.yml`** — new workflow that installs `shellcheck`
-   and `shfmt`, then runs `scripts/lint.sh` and `scripts/format.sh --check`.
-   Gates PRs for every `*.sh`.
+5. **`.github/workflows/check.yml`** — new unified "Check" workflow that
+   installs `shellcheck` and `shfmt` (and future cross-language lint/format
+   tooling), runs `task verify-dependencies` as a preflight, then invokes
+   `task check` (which wraps `task lint` + `task format -- --check`). Gates
+   PRs for every `*.sh`; extension points for other languages land in the
+   same workflow rather than fanning out per-language workflows.
 6. **`scripts/verify-standards.sh`** — extend with a new deterministic check
    that asserts:
    - At least one `.github/workflows/*.yml` invokes `shellcheck` AND `shfmt`.
@@ -96,10 +99,12 @@ intentionally skipped:
    and `shfmt -d`, each run only on staged `*.sh` files (using lefthook's
    `{staged_files}` substitution). Glob restricted to `*.sh`. shfmt flags
    come from `.editorconfig`, not inline.
-6. **`.github/workflows/bash.yml`** — mirror the `verify-standards.yml`
-   skeleton. Install `shellcheck` via `apt-get install shellcheck` (Ubuntu
-   runner ships a recent version) and `shfmt` via a pinned GitHub release
-   download. Run `scripts/lint.sh` then `scripts/format.sh --check`.
+6. **`.github/workflows/check.yml`** — mirror the `verify-standards.yml`
+   skeleton. Install `shellcheck` and `shfmt` from pinned GitHub releases
+   (both tools are also declared in `scripts/verify-dependencies.sh` so the
+   preflight catches drift). Run `task verify-dependencies` then
+   `task check`. Job name is `check` and the workflow is a single
+   cross-language "check" entrypoint rather than one-per-language.
 7. **`scripts/verify-standards.sh`** — extend the existing script with a
    section that uses `grep` against `treefmt.toml`, `lefthook.yml`, and
    `.github/workflows/*.yml` to assert the three regression checks above.

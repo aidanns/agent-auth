@@ -1,4 +1,4 @@
-name: Bash
+name: Check
 
 on:
   push:
@@ -11,7 +11,7 @@ env:
   SHFMT_VERSION: 3.8.0
 
 jobs:
-  bash:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,8 +53,5 @@ jobs:
       - name: Verify Required Tooling
         run: task verify-dependencies
 
-      - name: Run shellcheck
-        run: task lint
-
-      - name: Run shfmt --check
-        run: task format -- --check
+      - name: Run lint + format --check
+        run: task check
