@@ -34,14 +34,14 @@ on _esc(v)
     if v is missing value then return "missing value"
     set s to v as text
     set out to ""
-    set tabPh to (character id 9246)
-    set lfPh to (character id 9247)
+    set tabPlaceholder to (character id 9246)
+    set linefeedPlaceholder to (character id 9247)
     repeat with i from 1 to count of characters of s
         set c to character i of s
         if c is tab then
-            set out to out & tabPh
+            set out to out & tabPlaceholder
         else if c is return or c is linefeed then
-            set out to out & lfPh
+            set out to out & linefeedPlaceholder
         else
             set out to out & c
         end if

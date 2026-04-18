@@ -6,9 +6,11 @@ number of tests exercise the real AppleScriptRunner on macOS to guard against
 regressions where the emitted script is rejected by osascript itself.
 """
 
+import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -27,6 +29,24 @@ from things_bridge.things import (
 _darwin_only = pytest.mark.skipif(
     sys.platform != "darwin" or shutil.which("osascript") is None,
     reason="osascript is only available on macOS",
+)
+
+
+def _things3_installed() -> bool:
+    for candidate in (
+        "/Applications/Things3.app",
+        os.path.expanduser("~/Applications/Things3.app"),
+    ):
+        if Path(candidate).is_dir():
+            return True
+    return False
+
+
+_requires_things3 = pytest.mark.skipif(
+    sys.platform != "darwin"
+    or shutil.which("osascript") is None
+    or not _things3_installed(),
+    reason="requires macOS with Things 3 installed",
 )
 
 
@@ -266,7 +286,7 @@ def test_helper_applescript_is_valid_syntax(tmp_path):
 
 
 @pytest.mark.covers_function("Execute External System Interaction")
-@_darwin_only
+@_requires_things3
 def test_list_projects_executes_against_things():
     """End-to-end smoke test against real Things 3.
 
@@ -284,7 +304,6 @@ def test_list_projects_executes_against_things():
     client.list_projects()
 
 
-@pytest.mark.covers_function("Execute External System Interaction")
 @_darwin_only
 def test_osascript_failure_writes_diagnostic_to_stderr(capfd):
     """Clients receive a deliberately-sparse ``502 things_unavailable`` on
