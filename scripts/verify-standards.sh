@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
-# Verify project-level standards mandated by .claude/instructions/ are in
-# place:
+# Verify generic project standards mandated by .claude/instructions/.
+# Checks grow over time as new cross-cutting standards are added. Today:
 #
 #   1. Taskfile.yml exposes every task named in REQUIRED_TASKS (see
 #      tooling-and-ci.md Orchestration).
-#   2. .github/dependabot.yml declares the pip and github-actions
-#      ecosystems and groups minor/patch updates for each (see
-#      tooling-and-ci.md Security).
+#
+# Project-specific checks (e.g. dependency coverage) live in their own
+# sibling scripts — see verify-dependencies.sh.
 
 set -euo pipefail
 
@@ -27,11 +27,6 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v yq >/dev/null 2>&1; then
-  echo "verify-standards: 'yq' (https://github.com/mikefarah/yq) is required to parse the dependabot config." >&2
-  exit 1
-fi
-
 # keep-sorted start
 REQUIRED_TASKS=(
   build
@@ -40,6 +35,7 @@ REQUIRED_TASKS=(
   lint
   release
   test
+  verify-dependencies
   verify-design
   verify-function-tests
   verify-standards
@@ -71,28 +67,3 @@ if [[ -n "${missing_output}" ]]; then
 fi
 
 echo "verify-standards: Taskfile.yml exposes all required tasks."
-
-DEPENDABOT_CONFIG="${REPO_ROOT}/.github/dependabot.yml"
-
-if [[ ! -f "${DEPENDABOT_CONFIG}" ]]; then
-  echo "verify-standards: ${DEPENDABOT_CONFIG} is missing" >&2
-  exit 1
-fi
-
-for ecosystem in pip github-actions; do
-  matched=$(yq ".updates[] | select(.[\"package-ecosystem\"] == \"${ecosystem}\") | .[\"package-ecosystem\"]" "${DEPENDABOT_CONFIG}")
-  if [[ "${matched}" != "${ecosystem}" ]]; then
-    echo "verify-standards: dependabot.yml does not declare the '${ecosystem}' ecosystem" >&2
-    exit 1
-  fi
-
-  update_types=$(yq ".updates[] | select(.[\"package-ecosystem\"] == \"${ecosystem}\") | .groups.[].update-types[]" "${DEPENDABOT_CONFIG}")
-  for update_type in minor patch; do
-    if ! printf '%s\n' "${update_types}" | grep -qFx "${update_type}"; then
-      echo "verify-standards: ecosystem '${ecosystem}' does not group '${update_type}' updates" >&2
-      exit 1
-    fi
-  done
-done
-
-echo "verify-standards: dependabot.yml declares pip and github-actions with minor/patch grouping."

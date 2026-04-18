@@ -28,8 +28,13 @@ tasks:
     cmds:
       - scripts/verify-function-tests.sh
 
+  verify-dependencies:
+    desc: Verify Dependabot covers every dependency ecosystem used by this project.
+    cmds:
+      - scripts/verify-dependencies.sh
+
   verify-standards:
-    desc: Verify tooling-and-ci standards (Taskfile task coverage and Dependabot config).
+    desc: Verify Project Standards
     cmds:
       - scripts/verify-standards.sh
 

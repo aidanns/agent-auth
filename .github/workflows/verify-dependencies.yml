@@ -1,0 +1,16 @@
+name: Verify Dependencies
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Dependabot ecosystem coverage
+        run: scripts/verify-dependencies.sh
