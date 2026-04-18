@@ -2,14 +2,17 @@
 
 import pytest
 
-from things_bridge.errors import ThingsError, ThingsNotFoundError
-from things_bridge.fake import FakeThingsClient, FakeThingsStore, load_fake_store
-from things_bridge.models import Area
+from things_models.errors import ThingsError, ThingsNotFoundError
+from things_models.models import Area
 
 from tests.factories import make_project as _project, make_todo as _todo
+from tests.things_client_fake.store import (
+    FakeThingsClient,
+    FakeThingsStore,
+    load_fake_store,
+)
 
 
-@pytest.mark.covers_function("Serve Fake Things Client")
 def test_list_todos_returns_all_without_filters():
     store = FakeThingsStore(todos=[_todo(id="t1"), _todo(id="t2")])
     client = FakeThingsClient(store)
@@ -62,7 +65,6 @@ def test_list_todos_rejects_invalid_status():
         client.list_todos(status="in_progress")
 
 
-@pytest.mark.covers_function("Serve Fake Things Client")
 def test_list_todos_filters_by_list_id_via_memberships():
     store = FakeThingsStore(
         todos=[_todo(id="t1"), _todo(id="t2"), _todo(id="t3")],
@@ -126,7 +128,6 @@ def test_list_areas_and_get_area():
         client.get_area("missing")
 
 
-@pytest.mark.covers_function("Serve Fake Things Client")
 def test_load_fake_store_reads_full_fixture(tmp_path):
     path = tmp_path / "things.yaml"
     path.write_text(

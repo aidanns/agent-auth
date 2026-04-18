@@ -15,7 +15,7 @@ from things_bridge.errors import (
     ThingsNotFoundError,
     ThingsPermissionError,
 )
-from things_bridge.things import ThingsClient
+from things_models.client import ThingsClient
 
 READ_SCOPE = "things:read"
 

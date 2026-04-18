@@ -12,11 +12,12 @@ simplifying for "personal project" scope.
 ## Commands
 
 - `export UV_PROJECT_ENVIRONMENT=".venv-$(uname -s)-$(uname -m)"` — point uv at the per-OS/arch venv so Darwin and Linux venvs can coexist on a shared filesystem
-- `uv sync --extra dev` — bootstrap the project virtualenv in development mode (reads `uv.lock`)
+- `uv sync --extra dev` — bootstrap the project virtualenv in development mode (reads `uv.lock`; refreshes automatically when `pyproject.toml` or `uv.lock` change)
 - `uv run agent-auth --help` — show CLI usage
-- `scripts/agent-auth.sh <args...>` — run the agent-auth CLI (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/agent-auth.sh serve`
-- `scripts/things-bridge.sh <args...>` — run the things-bridge CLI (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/things-bridge.sh serve`
-- `scripts/things-cli.sh <args...>` — run the things-cli client (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/things-cli.sh todos list`
+- `task agent-auth -- <args...>` (or `scripts/agent-auth.sh <args...>`) — run the agent-auth CLI. E.g. `task agent-auth -- serve`.
+- `task things-bridge -- <args...>` (or `scripts/things-bridge.sh <args...>`) — run the things-bridge CLI. E.g. `task things-bridge -- serve`.
+- `task things-client-applescript -- <args...>` (or `scripts/things-client-applescript.sh <args...>`) — run the things-client-cli-applescript CLI directly (macOS-only). E.g. `task things-client-applescript -- todos list --status open`.
+- `task things-cli -- <args...>` (or `scripts/things-cli.sh <args...>`) — run the things-cli client. E.g. `task things-cli -- todos list`.
 
 ## Architecture
 
@@ -41,15 +42,20 @@ simplifying for "personal project" scope.
   refresh/rotate pair -> JIT approval for prompt-tier scope -> revoke ->
   verify invalidation
 - Function-to-test allocation tracked via `scripts/verify-function-tests.sh`
-- Project standards (Taskfile task coverage, Dependabot ecosystem coverage, `uv.lock` sync, ...) verified via `scripts/verify-standards.sh`
+- Generic, portable project standards (Taskfile task coverage, Dependabot ecosystem coverage, bash CI gating, `uv.lock` sync, ...) verified via `scripts/verify-standards.sh`. Project-specific task names (e.g. `task agent-auth`) are **not** enforced by this script — its `REQUIRED_TASKS` list only covers cross-project standards so the check stays portable.
 - Required local CLI tooling (python3, task, uv, yq, ...) verified via `scripts/verify-dependencies.sh`
 - Plugin trust boundary: the notification plugin currently uses
   `importlib.import_module` inside the server process which holds signing
   and encryption keys — tracked in #6 for migration to out-of-process
-- Linux devcontainer e2e: `things-bridge serve --fake-things[=PATH]`
-  swaps `ThingsApplescriptClient` for an in-memory `FakeThingsClient`
-  so the stack runs without `osascript`. Developer-only — not a config
-  file option. See `design/decisions/0001-things-client-fake.md`.
+- Things-client architecture: the bridge contains no Things 3 logic.
+  It runs a configured `things_client_command` (default
+  `["things-client-cli-applescript"]`) per request and parses a JSON
+  envelope on stdout. The production CLI is shipped; a test-only fake
+  lives under `tests/things_client_fake/` and is invoked as
+  `python -m tests.things_client_fake --fixtures PATH`. For Linux
+  devcontainer e2e, point `things_client_command` in `config.yaml` at
+  the fake. See `design/decisions/0003-things-client-cli-split.md`
+  (supersedes 0001).
 
 ## Detailed instructions
 

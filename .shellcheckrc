@@ -1,0 +1,10 @@
+# Allow shellcheck to follow `source` directives (e.g.
+# `# shellcheck source=./_bootstrap_venv.sh`) across files so SC1091 does
+# not fire on intentional shared helpers sourced via a variable path.
+external-sources=true
+
+# Resolve `source=` paths relative to each script's own directory, not
+# the current working directory, so shared helpers (e.g.
+# scripts/_bootstrap_venv.sh) resolve consistently whether shellcheck is
+# invoked from the repo root or another directory.
+source-path=SCRIPTDIR

@@ -50,11 +50,10 @@
 | CLI Interface | Handle Token Revoke Command | Parse arguments and invoke token family revocation. |
 | CLI Interface | Handle Token Rotate Command | Parse arguments and invoke token family rotation. |
 | CLI Interface | Handle Serve Command | Start the agent-auth HTTP server. |
-| agent-auth | Things Bridge | Proxy requests from the CLI to the Things 3 application via AppleScript, delegating authorization to agent-auth. |
+| agent-auth | Things Bridge | Expose authenticated Things 3 read operations over HTTP to the CLI client, delegating authorization to agent-auth. |
 | Things Bridge | Delegate Token Validation | Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation. |
-| Things Bridge | Execute External System Interaction | Interact with the Things 3 application via AppleScript (osascript) and return structured results. |
+| Things Bridge | Fetch Things Data | Retrieve the todos, projects, or areas requested by the client, translating typed errors into the ThingsError hierarchy. |
 | Things Bridge | Serve Bridge HTTP API | Expose Things 3 read operations as HTTP endpoints for the CLI client under the /things-bridge/ prefix. |
-| Things Bridge | Serve Fake Things Client | Developer-only in-memory implementation of the Things client protocol that lets the bridge run on Linux without osascript. Selected via `things-bridge serve --fake-things[=PATH]`; seeds todos, projects, areas, and list memberships from a YAML fixture. |
 | agent-auth | Things CLI | Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer. |
 | Things CLI | Send Bridge Request | Send an authenticated HTTP request to the app bridge with the bearer token. |
 | Things CLI | Auto Refresh Token | Detect 401 responses, refresh the token pair via agent-auth, and retry the request. If the refresh token has expired, attempt re-issuance via JIT approval. |

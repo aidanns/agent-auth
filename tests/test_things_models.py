@@ -1,6 +1,6 @@
-"""Tests for things-bridge dataclass models."""
+"""Tests for the shared Things dataclass models."""
 
-from things_bridge.models import Area, Project, Todo
+from things_models.models import Area, Project, Todo
 
 
 def test_todo_to_json_round_trips_all_fields():

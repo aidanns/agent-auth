@@ -29,14 +29,20 @@ task test        # bootstraps .venv-$(uname -s)-$(uname -m) via `uv sync` and ru
 Every repeatable operation is exposed through the task runner — run `task --list` to see the catalogue. Common commands:
 
 ```bash
-task test                   # run the pytest suite
-task build                  # build sdist and wheel into dist/
-task verify-design          # verify functional decomposition allocation
-task verify-function-tests  # verify functional decomposition test coverage
-task verify-standards       # verify the Taskfile matches the tooling standard
+task test                           # run the pytest suite
+task build                          # build sdist and wheel into dist/
+task verify-design                  # verify functional decomposition allocation
+task verify-function-tests          # verify functional decomposition test coverage
+task verify-standards               # verify the Taskfile matches the tooling standard
+task agent-auth -- serve            # run the agent-auth CLI (any subcommand)
+task things-bridge -- serve         # run the things-bridge CLI
+task things-cli -- todos list       # run the things-cli client
+task things-client-applescript -- todos list  # run the macOS-only things client CLI
 ```
 
-If you don't have `go-task` installed, every task dispatches to a script under `scripts/*.sh` that you can invoke directly (e.g. `scripts/test.sh`).
+Every tool invocation routes through `scripts/_bootstrap_venv.sh`, which creates the per-OS/arch virtualenv on first use and reinstalls in editable mode whenever `pyproject.toml` changes (hash-compared against a marker file inside the venv), so rerunning a task after a dependency or entry-point edit picks the change up automatically.
+
+If you don't have `go-task` installed, every task dispatches to a script under `scripts/*.sh` that you can invoke directly (e.g. `scripts/test.sh`, `scripts/agent-auth.sh serve`).
 
 For a bare install without the task runner:
 
@@ -100,32 +106,38 @@ curl -H "Authorization: Bearer aa_<id>_<sig>" \
 
 ### things-bridge (macOS host)
 
-`things-bridge` is an HTTP server that wraps the Things 3 application on macOS via AppleScript. It delegates token validation to `agent-auth` and exposes read-only endpoints under `/things-bridge/`. Run it alongside `agent-auth serve`:
+`things-bridge` is an HTTP server that delegates token validation to `agent-auth` and exposes read-only Things 3 endpoints under `/things-bridge/`. It contains no Things 3 logic itself — every read-path request is translated into a subprocess invocation of a configured Things-client CLI (default `things-client-cli-applescript`, which shells to `osascript` on macOS). Run it alongside `agent-auth serve`:
 
 ```bash
 # Start the bridge (default: 127.0.0.1:9200)
 things-bridge serve
 ```
 
-Host, port, and agent-auth URL are configured in `~/.config/things-bridge/config.yaml`.
+Host, port, agent-auth URL, and `things_client_command` are configured in `~/.config/things-bridge/config.yaml`.
 
-#### Running on Linux with a fake Things client
+#### things-client-cli-applescript
 
-`things-bridge serve --fake-things[=<fixtures.yaml>]` swaps the AppleScript client for an in-memory `FakeThingsClient` so the full agent-auth + things-bridge + things-cli stack can be exercised on Linux without `osascript` or Things 3. A sample fixture is included at `examples/fake-things.yaml`. The flag is developer-only (not configurable via `config.yaml`) and prints a loud stderr banner at startup — never point it at real traffic.
+Standalone read-only CLI that talks to Things 3 via `osascript`. Useful for local debugging of the Things side independent of the bridge and agent-auth. Emits JSON on stdout.
 
 ```bash
-# Terminal 1: agent-auth
-agent-auth serve
-
-# Terminal 2: things-bridge, seeded from examples/fake-things.yaml
-things-bridge serve --fake-things=examples/fake-things.yaml
-
-# Terminal 3: things-cli
-things-cli login --bridge-url http://127.0.0.1:9200 \
-    --auth-url http://127.0.0.1:9100 --family-id <id>
-things-cli todos list
-things-cli todos list --list TMTodayListSource
+things-client-cli-applescript todos list --status open
+things-client-cli-applescript projects show <project-id>
 ```
+
+#### Running on Linux with the fake Things client
+
+The bridge is indifferent to which Things-client CLI is installed — it simply runs `things_client_command`. For Linux devcontainer development and CI, a test-only fake client (`tests/things_client_fake/`, invoked as `python -m tests.things_client_fake --fixtures PATH`) reads an in-memory store from a YAML fixture so the full agent-auth + things-bridge + things-cli stack runs end-to-end without `osascript` or Things 3. Point the bridge at it via `config.yaml`:
+
+```yaml
+things_client_command:
+  - python
+  - -m
+  - tests.things_client_fake
+  - --fixtures
+  - examples/fake-things.yaml
+```
+
+The fake CLI is not shipped in the sdist/wheel — it lives under `tests/` and is only reachable when running from a development checkout. It exists for integration and end-to-end testing only; never point production traffic at it.
 
 ### things-cli
 

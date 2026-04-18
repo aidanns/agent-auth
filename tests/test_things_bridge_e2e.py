@@ -2,21 +2,23 @@
 
 Drives the full read path through real HTTP: a client sends a request with
 an agent-auth-issued bearer token to things-bridge, which delegates to a
-real agent-auth server running in-process, then consults an in-memory
-:class:`FakeThingsClient`.
+real agent-auth server running in-process, then shells out to the
+``tests.things_client_fake`` subprocess for the Things response.
 
 This suite is what makes the stack exercisable in a Linux devcontainer
-without ``osascript`` or a real Things 3 installation. The runner-level
-AppleScript interaction is not covered here — that's the subject of a
-follow-up macOS-runner workflow.
+without ``osascript`` or a real Things 3 installation. Real AppleScript
+interaction is not covered here — that's the subject of a follow-up
+macOS-runner workflow.
 """
 
 import json
 import os
 import socket
+import sys
 import threading
 import urllib.error
 import urllib.request
+import yaml
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -35,11 +37,8 @@ from agent_auth.tokens import (
 )
 from things_bridge.authz import AgentAuthClient
 from things_bridge.config import Config as BridgeConfig
-from things_bridge.fake import FakeThingsClient, FakeThingsStore
-from things_bridge.models import Area
 from things_bridge.server import ThingsBridgeServer
-
-from tests.factories import make_project as _project, make_todo as _todo
+from things_bridge.things_client import ThingsSubprocessClient
 
 
 class _AutoApprovePlugin(NotificationPlugin):
@@ -75,39 +74,46 @@ def _create_tokens(signing_key, store, *, scopes=None, access_ttl=timedelta(hour
     return family_id, access_token, refresh_token
 
 
-def _seeded_store() -> FakeThingsStore:
-    todos = [
-        _todo(id="t1", name="Buy milk", area_id="a1", area_name="Personal",
-              tag_names=["Errand"]),
-        _todo(id="t2", name="Write report",
-              notes="Include:\n\t- milestones\n\t- owners",
-              project_id="p1", project_name="Q2 Planning",
-              area_id="a2", area_name="Work",
-              tag_names=["planning", "deep-work"]),
-        _todo(id="t3", name="Fix tap", status="completed",
-              area_id="a1", area_name="Personal"),
-        _todo(id="t4", name="Dentist", area_id="a1", area_name="Personal",
-              tag_names=["Errand"]),
-    ]
-    projects = [
-        _project(id="p1", name="Q2 Planning", area_id="a2", area_name="Work"),
-        _project(id="p2", name="Home", area_id="a1", area_name="Personal"),
-    ]
-    areas = [
-        Area(id="a1", name="Personal", tag_names=[]),
-        Area(id="a2", name="Work", tag_names=[]),
-    ]
-    return FakeThingsStore(
-        todos=todos,
-        projects=projects,
-        areas=areas,
-        list_memberships={"TMTodayListSource": {"t1", "t2"}},
-    )
+_SEEDED_FIXTURE = {
+    "areas": [
+        {"id": "a1", "name": "Personal", "tag_names": []},
+        {"id": "a2", "name": "Work", "tag_names": []},
+    ],
+    "projects": [
+        {"id": "p1", "name": "Q2 Planning", "area_id": "a2", "area_name": "Work"},
+        {"id": "p2", "name": "Home", "area_id": "a1", "area_name": "Personal"},
+    ],
+    "todos": [
+        {"id": "t1", "name": "Buy milk", "area_id": "a1", "area_name": "Personal",
+         "tag_names": ["Errand"]},
+        {"id": "t2", "name": "Write report",
+         "notes": "Include:\n\t- milestones\n\t- owners",
+         "project_id": "p1", "project_name": "Q2 Planning",
+         "area_id": "a2", "area_name": "Work",
+         "tag_names": ["planning", "deep-work"]},
+        {"id": "t3", "name": "Fix tap", "status": "completed",
+         "area_id": "a1", "area_name": "Personal"},
+        {"id": "t4", "name": "Dentist", "area_id": "a1", "area_name": "Personal",
+         "tag_names": ["Errand"]},
+    ],
+    "list_memberships": {"TMTodayListSource": ["t1", "t2"]},
+}
+
+
+def _fake_client_command(fixture_path: str) -> list[str]:
+    return [sys.executable, "-m", "tests.things_client_fake", "--fixtures", fixture_path]
+
+
+def _write_seeded_fixture(tmp_dir: str) -> str:
+    path = os.path.join(tmp_dir, "things-fixture.yaml")
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(_SEEDED_FIXTURE, f)
+    return path
 
 
 @pytest.fixture
 def stack(tmp_dir, signing_key, encryption_key):
-    """Spin up a real agent-auth + things-bridge pair with a fake Things client."""
+    """Spin up a real agent-auth + things-bridge pair with the fake client subprocess."""
     agent_auth_config = AgentAuthConfig(
         db_path=os.path.join(tmp_dir, "tokens.db"),
         log_path=os.path.join(tmp_dir, "audit.log"),
@@ -126,8 +132,10 @@ def stack(tmp_dir, signing_key, encryption_key):
     )
     agent_auth_thread.start()
 
-    store = _seeded_store()
-    things = FakeThingsClient(store)
+    fixture_path = _write_seeded_fixture(tmp_dir)
+    things = ThingsSubprocessClient(
+        command=_fake_client_command(fixture_path), timeout_seconds=10.0,
+    )
     authz = AgentAuthClient(f"http://127.0.0.1:{agent_auth_port}", timeout_seconds=5.0)
     bridge_config = BridgeConfig(host="127.0.0.1", port=0)
     bridge_server = ThingsBridgeServer(bridge_config, things, authz)
@@ -142,7 +150,6 @@ def stack(tmp_dir, signing_key, encryption_key):
             "bridge_url": f"http://127.0.0.1:{bridge_port}",
             "signing_key": signing_key,
             "token_store": token_store,
-            "store": store,
         }
     finally:
         bridge_server.shutdown()
@@ -313,7 +320,13 @@ def test_list_todos_authz_unavailable_returns_502(tmp_dir):
 
     authz = AgentAuthClient(f"http://127.0.0.1:{unused_port}", timeout_seconds=1.0)
     bridge_config = BridgeConfig(host="127.0.0.1", port=0)
-    things = FakeThingsClient(FakeThingsStore())
+    # The subprocess is never invoked here: authz rejects the request before
+    # the bridge gets to the client. Point it at an unreachable command so
+    # the test fails loudly if that invariant ever breaks.
+    things = ThingsSubprocessClient(
+        command=[sys.executable, "-m", "tests.things_client_fake"],
+        timeout_seconds=2.0,
+    )
     server = ThingsBridgeServer(bridge_config, things, authz)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)

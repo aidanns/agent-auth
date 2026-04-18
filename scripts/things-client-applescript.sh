@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Build sdist and wheel distributions into dist/ using the project virtualenv.
+# Run the things-client-cli-applescript CLI inside the project virtualenv.
 
 set -euo pipefail
 
@@ -8,4 +8,4 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./_bootstrap_venv.sh
 source "${SCRIPT_DIR}/_bootstrap_venv.sh"
 
-exec uv run --no-sync python -m build --outdir "${REPO_ROOT}/dist"
+exec uv run --no-sync things-client-cli-applescript "$@"

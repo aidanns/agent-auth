@@ -60,13 +60,17 @@ p6_container: "" {
   p7.width: 150
   p7.height: 150
   p7.shape: circle
+  p8: things\nclient\ncli\napplescript
+  p8.width: 150
+  p8.height: 150
+  p8.shape: circle
 }
 p6 -> p6_container
 
-p8: things-cli
-p8.width: 400
-root -> p8
-p8_container: "" {
+p9: things-cli
+p9.width: 400
+root -> p9
+p9_container: "" {
   grid-columns: 3
   grid-rows: 2
   grid-gap: 5
@@ -74,21 +78,21 @@ p8_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  p9: things\ncli
-  p9.width: 150
-  p9.height: 150
-  p9.shape: circle
-  p10: keyring
+  p10: things\ncli
   p10.width: 150
   p10.height: 150
   p10.shape: circle
-  p11: macOS\nKeychain
+  p11: keyring
   p11.width: 150
   p11.height: 150
   p11.shape: circle
-  p12: gnome\nkeyring
+  p12: macOS\nKeychain
   p12.width: 150
   p12.height: 150
   p12.shape: circle
+  p13: gnome\nkeyring
+  p13.width: 150
+  p13.height: 150
+  p13.shape: circle
 }
-p8 -> p8_container
+p9 -> p9_container

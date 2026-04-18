@@ -42,9 +42,14 @@ Responsibilities:
 
 Each external system gets its own bridge server. Bridges are independent of each other and only depend on agent-auth for authorization.
 
-The first concrete bridge is `things-bridge`, which wraps the Things 3 AppleScript API (see `design/THINGS.md`) via `osascript`. It listens on `127.0.0.1:9200` by default and currently exposes read-only endpoints; write and JIT-gated endpoints are a follow-up.
+The first concrete bridge is `things-bridge`. It listens on `127.0.0.1:9200` by default and currently exposes read-only endpoints; write and JIT-gated endpoints are a follow-up. The bridge itself contains no Things 3 logic — it shells out to a separately-packaged Things-client CLI (see below) for every read request, treating it as a black box that answers an argv with JSON on stdout.
 
-The Things-client surface (`list_todos`, `get_todo`, `list_projects`, `get_project`, `list_areas`, `get_area`) is exposed as the `ThingsClient` Protocol so the bridge can be configured with either the production `ThingsApplescriptClient` or an in-memory `FakeThingsClient`. The fake is developer-only — it is selected by passing `--fake-things[=PATH]` to `things-bridge serve`, which also emits a prominent stderr banner so operators cannot miss that the server is not talking to Things. The fake exists so that the full HTTP stack (agent-auth + things-bridge + things-cli) can be exercised in a Linux devcontainer or CI without `osascript` or Things 3. See `design/decisions/0001-things-client-fake.md` for the rationale.
+The Things-client surface (`list_todos`, `get_todo`, `list_projects`, `get_project`, `list_areas`, `get_area`) is exposed as the `ThingsClient` Protocol in `things_models.client`. The bridge's only in-process implementation is `ThingsSubprocessClient`, which translates each protocol call into an argv, runs the configured client CLI as a subprocess, and rehydrates the resulting JSON into `Todo` / `Project` / `Area` dataclasses. The command to run is controlled by `Config.things_client_command` (default `["things-client-cli-applescript"]`). Two concrete client CLIs exist today:
+
+- **`things-client-cli-applescript`** — production client, ships with the dist. Runs on macOS, talks to Things 3 via `osascript`. No authentication (the trust boundary is that the user ran it locally).
+- **`things-client-cli-fake`** — test-only, never shipped. Reads an in-memory store from a YAML fixture file and lives under `tests/things_client_fake/`. Invoked as `python -m tests.things_client_fake --fixtures PATH`. Lets the agent-auth + things-bridge + things-cli stack run end-to-end on Linux without `osascript` or Things 3.
+
+The subprocess contract is stable and publicly documented so the bridge can adopt alternative clients (a future persistent AppleScript host, a non-macOS Things client) without code changes. See `design/decisions/0003-things-client-cli-split.md` for the rationale; `design/decisions/0001-things-client-fake.md` for the client-level-fake history it supersedes.
 
 Read-only endpoints (all require the `things:read` scope on the presented bearer token):
 
@@ -67,10 +72,21 @@ Error responses from the bridge:
 | 404 | `{"error": "not_found"}` | Unknown path or unknown Things id |
 | 405 | `{"error": "method_not_allowed"}` | Non-GET verb on a read-only endpoint (writes are a follow-up) |
 | 502 | `{"error": "authz_unavailable"}` | agent-auth is unreachable |
-| 502 | `{"error": "things_unavailable"}` | AppleScript or Things reported an error |
+| 502 | `{"error": "things_unavailable"}` | Client subprocess failed, timed out, exited non-zero, or emitted malformed output |
 | 503 | `{"error": "things_permission_denied"}` | macOS Automation permission not granted for Things |
 
-Error bodies intentionally omit server-side detail: AppleScript / `osascript` stderr can contain local filesystem paths and usernames, so the bridge returns only a canonical error code. Full error detail (including stderr) is written to the service log for operator diagnostics.
+Error bodies intentionally omit server-side detail: the client subprocess's stderr can contain local filesystem paths, usernames, or script fragments, so the bridge returns only a canonical error code. Full error detail (including subprocess stderr) is forwarded verbatim to the bridge's own stderr for operator diagnostics.
+
+### Things-client subprocess contract
+
+Every read-path request to the bridge produces one subprocess invocation of the configured Things-client command. The contract is public and fixed:
+
+- **argv** — `<command...> <resource> <verb> [flags]` (e.g. `things-client-cli-applescript todos list --status open`). The resource / verb / flag surface mirrors `things-cli`'s read commands.
+- **stdout** — JSON, always. Success: `{"todos": [...]}`, `{"todo": {...}}`, `{"projects": [...]}`, `{"project": {...}}`, `{"areas": [...]}`, `{"area": {...}}`. Error: `{"error": "<code>", "detail": "<operator-only text>"}` where `<code>` is one of `not_found`, `things_permission_denied`, or `things_unavailable`.
+- **exit code** — 0 on success, non-zero on error. The JSON body is authoritative for the error *kind*; the exit code only distinguishes success from failure. The bridge raises `ThingsError` if the stdout is missing, non-JSON, or not an object (protocol violation).
+- **stderr** — operator diagnostics only. The bridge captures it and forwards it verbatim to its own stderr. HTTP response bodies never include stderr content.
+
+See `src/things_client_common/cli.py` for the shared argparse / dispatcher that both client CLIs use to emit this contract, and `src/things_bridge/things_client.py` for the client-side implementation.
 
 ### things-cli (and future app CLIs)
 
