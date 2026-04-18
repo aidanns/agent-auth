@@ -57,8 +57,6 @@
 | agent-auth | Things Client (AppleScript) | Read-only Things 3 client CLI that shells to osascript. Ships with the distribution and is the bridge's default things_client_command. |
 | Things Client (AppleScript) | Execute External System Interaction | Interact with the Things 3 application via AppleScript / osascript and return structured results. Owns AppleScript generation, TSV parsing, and the 30s per-call osascript timeout. |
 | Things Client (AppleScript) | Serve Things Client CLI Contract | Expose the shared read surface (todos / projects / areas sub-commands) and emit the JSON-on-stdout + exit-code envelope that the things-bridge subprocess contract requires. |
-| agent-auth | Things Client (Fake) | Test-only in-memory Things client CLI that reads a YAML fixture. Never shipped; invoked by the bridge during integration/e2e tests. |
-| Things Client (Fake) | Serve Fake Things Client | Answer the shared Things-client CLI surface from an in-memory store seeded from a YAML fixture. Enables end-to-end exercise of the agent-auth + things-bridge + things-cli stack on Linux without osascript or Things 3. |
 | agent-auth | Things CLI | Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer. |
 | Things CLI | Send Bridge Request | Send an authenticated HTTP request to the app bridge with the bearer token. |
 | Things CLI | Auto Refresh Token | Detect 401 responses, refresh the token pair via agent-auth, and retry the request. If the refresh token has expired, attempt re-issuance via JIT approval. |

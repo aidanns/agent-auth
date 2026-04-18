@@ -155,10 +155,9 @@ def test_unknown_error_code_falls_back_to_things_error(monkeypatch, client):
     )
     with pytest.raises(ThingsError) as exc_info:
         client.list_todos()
-    # Neither of the more-specific subclasses should match.
     assert not isinstance(exc_info.value, ThingsNotFoundError)
     assert not isinstance(exc_info.value, ThingsPermissionError)
-    # Unknown codes still carry the raw code so forward-compat failures are
+    # Unknown codes must carry the raw code so forward-compat failures are
     # debuggable rather than stripped to just the detail string.
     assert "something_else" in str(exc_info.value)
 

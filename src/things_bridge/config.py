@@ -64,15 +64,4 @@ def load_config() -> Config:
     with open(config_path) as f:
         data = yaml.safe_load(f) or {}
     kwargs = {k: v for k, v in data.items() if k in valid_fields}
-    _validate_things_client_command(kwargs.get("things_client_command"))
     return Config(**kwargs)
-
-
-def _validate_things_client_command(value) -> None:
-    if value is None:
-        return
-    if not isinstance(value, list) or not value or not all(isinstance(x, str) for x in value):
-        raise ValueError(
-            "things_client_command must be a non-empty list of strings "
-            f"(got {type(value).__name__}: {value!r})"
-        )

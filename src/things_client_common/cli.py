@@ -33,6 +33,7 @@ from things_models.errors import (
     ThingsNotFoundError,
     ThingsPermissionError,
 )
+from things_models.status import VALID_STATUSES
 
 
 EXIT_OK = 0
@@ -60,7 +61,7 @@ def add_read_commands(subparsers: "argparse._SubParsersAction[argparse.ArgumentP
     todos_list.add_argument("--tag", help="Tag name filter")
     todos_list.add_argument(
         "--status",
-        choices=("open", "completed", "canceled"),
+        choices=sorted(VALID_STATUSES),
         help="Status filter",
     )
     todos_show = todos_sub.add_parser("show", help="Show a todo by id")
@@ -80,7 +81,7 @@ def add_read_commands(subparsers: "argparse._SubParsersAction[argparse.ArgumentP
     areas_show.add_argument("id")
 
 
-def _dispatch_read(client: ThingsClient, args: argparse.Namespace) -> dict:
+def _dispatch_read(client: ThingsClient, args: argparse.Namespace) -> dict | None:
     if args.command == "todos":
         if args.todos_command == "list":
             todos = client.list_todos(
@@ -108,17 +109,7 @@ def _dispatch_read(client: ThingsClient, args: argparse.Namespace) -> dict:
         if args.areas_command == "show":
             area = client.get_area(args.id)
             return {"area": area.to_json()}
-    # argparse's ``choices`` already narrow the top-level command; hitting
-    # this branch means a sub-command was omitted.
-    raise _MissingSubcommandError(args.command)
-
-
-class _MissingSubcommandError(Exception):
-    """Top-level command was valid but no sub-command was supplied."""
-
-    def __init__(self, command: str):
-        super().__init__(command)
-        self.command = command
+    return None
 
 
 def run_cli(
@@ -153,9 +144,10 @@ def run_cli(
     except ThingsError as exc:
         _emit_error("things_unavailable", str(exc))
         return EXIT_UNAVAILABLE
-    except _MissingSubcommandError as exc:
+
+    if result is None:
         parser.print_help(sys.stderr)
-        _emit_error("things_unavailable", f"missing {exc.command} sub-command")
+        _emit_error("things_unavailable", f"missing {args.command} sub-command")
         return EXIT_UNAVAILABLE
 
     print(json.dumps(result), flush=True)

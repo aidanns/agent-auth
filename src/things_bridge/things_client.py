@@ -11,7 +11,6 @@ import json
 import subprocess
 import sys
 
-from things_models.client import ThingsClient
 from things_models.errors import (
     ThingsError,
     ThingsNotFoundError,
@@ -32,9 +31,6 @@ class ThingsSubprocessClient:
     """
 
     def __init__(self, command: list[str], timeout_seconds: float = 35.0):
-        # Default margin over the shipped CLI's own 30s osascript timeout so
-        # the bridge lets the CLI surface a structured timeout error rather
-        # than killing the child mid-call.
         if not command:
             raise ValueError("ThingsSubprocessClient: command must not be empty")
         self._command = list(command)
@@ -101,7 +97,7 @@ class ThingsSubprocessClient:
                 f"things client not found at {self._command[0]!r}"
             ) from exc
         except subprocess.TimeoutExpired as exc:
-            partial = (exc.stderr or "").strip() if isinstance(exc.stderr, str) else ""
+            partial = (exc.stderr or "").strip()
             print(
                 f"things-bridge: things client subprocess timed out after "
                 f"{self._timeout_seconds}s: {partial or '<empty stderr>'}",
@@ -114,21 +110,16 @@ class ThingsSubprocessClient:
 
         stderr = (result.stderr or "").strip()
         if stderr:
-            # Forward the client's stderr unchanged so operators see any
-            # osascript diagnostics, fixture-load errors, etc. The HTTP
-            # response body is kept sparse (see server._send_things_error_response)
-            # to avoid leaking host paths or script fragments to clients.
+            # Forward client stderr so operators see osascript diagnostics,
+            # fixture-load errors, etc. HTTP responses never include it.
             print(stderr, file=sys.stderr, flush=True)
 
-        stdout = result.stdout or ""
-        payload = _parse_payload(stdout, full_command, result.returncode)
+        payload = _parse_payload(result.stdout or "", full_command, result.returncode)
 
         if "error" in payload:
             raise _error_from_payload(payload)
 
         if result.returncode != 0:
-            # Non-zero exit with no structured error body — treat as
-            # generic unavailability so the HTTP layer maps to 502.
             raise ThingsError(
                 f"things client exited {result.returncode} without a structured error body"
             )
@@ -137,13 +128,12 @@ class ThingsSubprocessClient:
 
 
 def _parse_payload(stdout: str, command: list[str], returncode: int) -> dict:
-    stripped = stdout.strip()
-    if not stripped:
+    if not stdout or stdout.isspace():
         raise ThingsError(
             f"things client {command[0]!r} emitted no JSON output (rc={returncode})"
         )
     try:
-        payload = json.loads(stripped)
+        payload = json.loads(stdout)
     except json.JSONDecodeError as exc:
         raise ThingsError(
             f"things client {command[0]!r} emitted non-JSON output (rc={returncode})"
@@ -167,4 +157,4 @@ def _error_from_payload(payload: dict) -> ThingsError:
     return ThingsError(message)
 
 
-__all__ = ["ThingsSubprocessClient", "ThingsClient"]
+__all__ = ["ThingsSubprocessClient"]

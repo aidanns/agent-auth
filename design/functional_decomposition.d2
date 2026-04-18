@@ -239,26 +239,10 @@ f51_container: "" {
 }
 f51 -> f51_container
 
-f54: Things Client (Fake)
+f54: Things CLI
 f54.width: 400
 root -> f54
 f54_container: "" {
-  grid-columns: 1
-  grid-rows: 1
-  grid-gap: 5
-  style: {
-    stroke-width: 0
-    fill: transparent
-  }
-  f55: Serve Fake Things Client
-  f55.width: 400
-}
-f54 -> f54_container
-
-f56: Things CLI
-f56.width: 400
-root -> f56
-f56_container: "" {
   grid-columns: 1
   grid-rows: 5
   grid-gap: 5
@@ -266,15 +250,15 @@ f56_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f57: Send Bridge Request
+  f55: Send Bridge Request
+  f55.width: 400
+  f56: Auto Refresh Token
+  f56.width: 400
+  f57: Store CLI Credentials
   f57.width: 400
-  f58: Auto Refresh Token
+  f58: Handle App Commands
   f58.width: 400
-  f59: Store CLI Credentials
+  f59: Display Results
   f59.width: 400
-  f60: Handle App Commands
-  f60.width: 400
-  f61: Display Results
-  f61.width: 400
 }
-f56 -> f56_container
+f54 -> f54_container
