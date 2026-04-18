@@ -14,11 +14,16 @@
 3. Clone the repo and `cd` into it.
 4. Run `task --list` to see every repeatable operation.
 
-The first time you run `task test` or `task build`, the script
-bootstraps a per-OS/arch virtualenv at `.venv-$(uname -s)-$(uname -m)/`
-and installs the project in editable mode with dev extras. Other tasks
-(e.g. `task verify-standards`) do not require the venv and skip that
-setup.
+The first time you run any venv-backed task (e.g. `task test`,
+`task build`, or a service task like `task agent-auth -- serve`), the
+shared `scripts/_bootstrap_venv.sh` helper creates the per-OS/arch
+virtualenv at `.venv-$(uname -s)-$(uname -m)/` and installs the project
+in editable mode with dev extras. The helper hashes `pyproject.toml`
+into a marker inside the venv and reinstalls on the next invocation
+whenever the hash changes, so a new dependency or entry-point edit is
+picked up automatically without you having to blow away the venv.
+Other tasks (e.g. `task verify-standards`) do not require the venv and
+skip that setup.
 
 ## Running tasks
 
@@ -34,8 +39,13 @@ Every repeatable operation is exposed through the task runner. Run
 | `task install-hooks` | Install project git hooks (lefthook). |
 | `task verify-design` | Verify every leaf function in the functional decomposition is allocated in the product breakdown. |
 | `task verify-function-tests` | Verify every leaf function in the functional decomposition has test coverage. |
-| `task verify-standards` | Verify the Taskfile exposes every task mandated by the tooling-and-ci standard. |
+| `task verify-dependencies` | Verify required CLI tools (python3, task, yq, ...) are installed on PATH. |
+| `task verify-standards` | Verify generic, portable standards (Taskfile task coverage, Dependabot ecosystem coverage, bash CI gating). Does not enforce project-specific task names. |
 | `task release` | Cut a release (version bump, tag, GitHub release, publish). |
+| `task agent-auth -- <args>` | Run the `agent-auth` CLI (any subcommand). |
+| `task things-bridge -- <args>` | Run the `things-bridge` CLI. |
+| `task things-cli -- <args>` | Run the `things-cli` client. |
+| `task things-client-applescript -- <args>` | Run the `things-client-cli-applescript` CLI (macOS-only). |
 
 Each task dispatches to a script under `scripts/*.sh`; the scripts are
 the single source of truth and can also be invoked directly if

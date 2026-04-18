@@ -14,10 +14,10 @@ simplifying for "personal project" scope.
 - `source ".venv-$(uname -s)-$(uname -m)/bin/activate"` — activate the virtualenv (per-OS/arch so Darwin and Linux venvs can coexist on a shared filesystem)
 - `pip install -e .` — install in development mode
 - `agent-auth --help` — show CLI usage
-- `scripts/agent-auth.sh <args...>` — run the agent-auth CLI (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/agent-auth.sh serve`
-- `scripts/things-bridge.sh <args...>` — run the things-bridge CLI (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/things-bridge.sh serve`
-- `scripts/things-client-applescript.sh <args...>` — run the things-client-cli-applescript CLI directly (macOS-only); e.g. `scripts/things-client-applescript.sh todos list --status open`
-- `scripts/things-cli.sh <args...>` — run the things-cli client (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/things-cli.sh todos list`
+- `task agent-auth -- <args...>` (or `scripts/agent-auth.sh <args...>`) — run the agent-auth CLI; bootstraps `.venv-$(uname -s)-$(uname -m)` and reinstalls when `pyproject.toml` changes. E.g. `task agent-auth -- serve`.
+- `task things-bridge -- <args...>` (or `scripts/things-bridge.sh <args...>`) — run the things-bridge CLI. E.g. `task things-bridge -- serve`.
+- `task things-client-applescript -- <args...>` (or `scripts/things-client-applescript.sh <args...>`) — run the things-client-cli-applescript CLI directly (macOS-only). E.g. `task things-client-applescript -- todos list --status open`.
+- `task things-cli -- <args...>` (or `scripts/things-cli.sh <args...>`) — run the things-cli client. E.g. `task things-cli -- todos list`.
 
 ## Architecture
 
@@ -42,7 +42,7 @@ simplifying for "personal project" scope.
   refresh/rotate pair -> JIT approval for prompt-tier scope -> revoke ->
   verify invalidation
 - Function-to-test allocation tracked via `scripts/verify-function-tests.sh`
-- Project standards (Taskfile task coverage, Dependabot ecosystem coverage, ...) verified via `scripts/verify-standards.sh`
+- Generic, portable project standards (Taskfile task coverage, Dependabot ecosystem coverage, bash CI gating, ...) verified via `scripts/verify-standards.sh`. Project-specific task names (e.g. `task agent-auth`) are **not** enforced by this script — its `REQUIRED_TASKS` list only covers cross-project standards so the check stays portable.
 - Required local CLI tooling (python3, task, yq, ...) verified via `scripts/verify-dependencies.sh`
 - Plugin trust boundary: the notification plugin currently uses
   `importlib.import_module` inside the server process which holds signing

@@ -26,14 +26,20 @@ task test        # bootstraps .venv-$(uname -s)-$(uname -m) and runs the suite
 Every repeatable operation is exposed through the task runner — run `task --list` to see the catalogue. Common commands:
 
 ```bash
-task test                   # run the pytest suite
-task build                  # build sdist and wheel into dist/
-task verify-design          # verify functional decomposition allocation
-task verify-function-tests  # verify functional decomposition test coverage
-task verify-standards       # verify the Taskfile matches the tooling standard
+task test                           # run the pytest suite
+task build                          # build sdist and wheel into dist/
+task verify-design                  # verify functional decomposition allocation
+task verify-function-tests          # verify functional decomposition test coverage
+task verify-standards               # verify the Taskfile matches the tooling standard
+task agent-auth -- serve            # run the agent-auth CLI (any subcommand)
+task things-bridge -- serve         # run the things-bridge CLI
+task things-cli -- todos list       # run the things-cli client
+task things-client-applescript -- todos list  # run the macOS-only things client CLI
 ```
 
-If you don't have `go-task` installed, every task dispatches to a script under `scripts/*.sh` that you can invoke directly (e.g. `scripts/test.sh`).
+Every tool invocation routes through `scripts/_bootstrap_venv.sh`, which creates the per-OS/arch virtualenv on first use and reinstalls in editable mode whenever `pyproject.toml` changes (hash-compared against a marker file inside the venv), so rerunning a task after a dependency or entry-point edit picks the change up automatically.
+
+If you don't have `go-task` installed, every task dispatches to a script under `scripts/*.sh` that you can invoke directly (e.g. `scripts/test.sh`, `scripts/agent-auth.sh serve`).
 
 For a bare Python install without the task runner:
 

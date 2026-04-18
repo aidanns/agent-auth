@@ -10,6 +10,7 @@ set -euo pipefail
 # keep-sorted start
 REQUIRED_TOOLS=(
   python3
+  shasum
   shellcheck
   shfmt
   systems-engineering
