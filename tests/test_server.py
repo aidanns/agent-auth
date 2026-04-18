@@ -3,15 +3,15 @@
 import json
 import os
 import threading
-import urllib.request
 import urllib.error
+import urllib.request
+from datetime import UTC
 
 import pytest
 
 from agent_auth.approval import ApprovalManager
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
-from agent_auth.keys import KeyManager
 from agent_auth.plugins import ApprovalResult, NotificationPlugin
 from agent_auth.server import AgentAuthServer
 from agent_auth.store import TokenStore
@@ -59,48 +59,68 @@ def _start_server(config, signing_key, store, audit, plugin=None):
 
 def _create_test_tokens(signing_key, store, scopes=None):
     """Create a test token family and return (family_id, access_token, refresh_token)."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
 
     scopes = scopes or {"things:read": "allow"}
     family_id = generate_token_id()
     store.create_family(family_id, scopes)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     access_id = generate_token_id()
     access_token = sign_token(access_id, PREFIX_ACCESS, signing_key)
     _, _, access_sig = access_token.split("_")
-    store.create_token(access_id, access_sig, family_id, "access",
-                       (now + timedelta(hours=1)).isoformat())
+    store.create_token(
+        access_id,
+        access_sig,
+        family_id,
+        "access",
+        (now + timedelta(hours=1)).isoformat(),
+    )
 
     refresh_id = generate_token_id()
     refresh_token = sign_token(refresh_id, PREFIX_REFRESH, signing_key)
     _, _, refresh_sig = refresh_token.split("_")
-    store.create_token(refresh_id, refresh_sig, family_id, "refresh",
-                       (now + timedelta(hours=8)).isoformat())
+    store.create_token(
+        refresh_id,
+        refresh_sig,
+        family_id,
+        "refresh",
+        (now + timedelta(hours=8)).isoformat(),
+    )
 
     return family_id, access_token, refresh_token
 
 
 def _create_test_tokens_expired_refresh(signing_key, store, scopes=None):
     """Create a test token family with an expired refresh token (for reissue tests)."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
 
     scopes = scopes or {"things:read": "allow"}
     family_id = generate_token_id()
     store.create_family(family_id, scopes)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     access_id = generate_token_id()
     access_token = sign_token(access_id, PREFIX_ACCESS, signing_key)
     _, _, access_sig = access_token.split("_")
-    store.create_token(access_id, access_sig, family_id, "access",
-                       (now - timedelta(hours=1)).isoformat())
+    store.create_token(
+        access_id,
+        access_sig,
+        family_id,
+        "access",
+        (now - timedelta(hours=1)).isoformat(),
+    )
 
     refresh_id = generate_token_id()
     refresh_token = sign_token(refresh_id, PREFIX_REFRESH, signing_key)
     _, _, refresh_sig = refresh_token.split("_")
-    store.create_token(refresh_id, refresh_sig, family_id, "refresh",
-                       (now - timedelta(hours=1)).isoformat())
+    store.create_token(
+        refresh_id,
+        refresh_sig,
+        family_id,
+        "refresh",
+        (now - timedelta(hours=1)).isoformat(),
+    )
 
     return family_id, access_token, refresh_token
 
@@ -126,16 +146,20 @@ def _get(url, headers=None):
 
 # -- Validate endpoint tests --
 
+
 @pytest.mark.covers_function("Serve Validate Endpoint", "Check Token Expiry")
 def test_validate_allow(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)
     try:
         _, access_token, _ = _create_test_tokens(signing_key, store)
-        status, body = _post(f"{base}/agent-auth/validate", {
-            "token": access_token,
-            "required_scope": "things:read",
-        })
+        status, body = _post(
+            f"{base}/agent-auth/validate",
+            {
+                "token": access_token,
+                "required_scope": "things:read",
+            },
+        )
         assert status == 200
         assert body["valid"] is True
     finally:
@@ -147,10 +171,13 @@ def test_validate_invalid_token(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)
     try:
-        status, body = _post(f"{base}/agent-auth/validate", {
-            "token": "aa_fake_bad",
-            "required_scope": "things:read",
-        })
+        status, body = _post(
+            f"{base}/agent-auth/validate",
+            {
+                "token": "aa_fake_bad",
+                "required_scope": "things:read",
+            },
+        )
         assert status == 401
         assert body["valid"] is False
     finally:
@@ -163,10 +190,13 @@ def test_validate_scope_denied(server_env, signing_key):
     server, base = _start_server(config, signing_key, store, audit)
     try:
         _, access_token, _ = _create_test_tokens(signing_key, store)
-        status, body = _post(f"{base}/agent-auth/validate", {
-            "token": access_token,
-            "required_scope": "things:write",
-        })
+        status, body = _post(
+            f"{base}/agent-auth/validate",
+            {
+                "token": access_token,
+                "required_scope": "things:write",
+            },
+        )
         assert status == 403
         assert body["error"] == "scope_denied"
     finally:
@@ -180,11 +210,14 @@ def test_validate_prompt_tier_approved(server_env, signing_key):
     try:
         scopes = {"things:write": "prompt"}
         _, access_token, _ = _create_test_tokens(signing_key, store, scopes)
-        status, body = _post(f"{base}/agent-auth/validate", {
-            "token": access_token,
-            "required_scope": "things:write",
-            "description": "Complete todo: Buy milk",
-        })
+        status, body = _post(
+            f"{base}/agent-auth/validate",
+            {
+                "token": access_token,
+                "required_scope": "things:write",
+                "description": "Complete todo: Buy milk",
+            },
+        )
         assert status == 200
         assert body["valid"] is True
     finally:
@@ -198,10 +231,13 @@ def test_validate_prompt_tier_denied(server_env, signing_key):
     try:
         scopes = {"things:write": "prompt"}
         _, access_token, _ = _create_test_tokens(signing_key, store, scopes)
-        status, body = _post(f"{base}/agent-auth/validate", {
-            "token": access_token,
-            "required_scope": "things:write",
-        })
+        status, body = _post(
+            f"{base}/agent-auth/validate",
+            {
+                "token": access_token,
+                "required_scope": "things:write",
+            },
+        )
         assert status == 403
         assert body["error"] == "scope_denied"
     finally:
@@ -210,15 +246,19 @@ def test_validate_prompt_tier_denied(server_env, signing_key):
 
 # -- Refresh endpoint tests --
 
+
 @pytest.mark.covers_function("Serve Refresh Endpoint", "Refresh Token Pair")
 def test_refresh_success(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)
     try:
         _, _, refresh_token = _create_test_tokens(signing_key, store)
-        status, body = _post(f"{base}/agent-auth/token/refresh", {
-            "refresh_token": refresh_token,
-        })
+        status, body = _post(
+            f"{base}/agent-auth/token/refresh",
+            {
+                "refresh_token": refresh_token,
+            },
+        )
         assert status == 200
         assert "access_token" in body
         assert "refresh_token" in body
@@ -234,14 +274,20 @@ def test_refresh_reuse_detection(server_env, signing_key):
     try:
         family_id, _, refresh_token = _create_test_tokens(signing_key, store)
 
-        status1, body1 = _post(f"{base}/agent-auth/token/refresh", {
-            "refresh_token": refresh_token,
-        })
+        status1, _body1 = _post(
+            f"{base}/agent-auth/token/refresh",
+            {
+                "refresh_token": refresh_token,
+            },
+        )
         assert status1 == 200
 
-        status2, body2 = _post(f"{base}/agent-auth/token/refresh", {
-            "refresh_token": refresh_token,
-        })
+        status2, body2 = _post(
+            f"{base}/agent-auth/token/refresh",
+            {
+                "refresh_token": refresh_token,
+            },
+        )
         assert status2 == 401
         assert body2["error"] == "refresh_token_reuse_detected"
 
@@ -253,15 +299,19 @@ def test_refresh_reuse_detection(server_env, signing_key):
 
 # -- Status endpoint tests --
 
+
 @pytest.mark.covers_function("Serve Status Endpoint", "Introspect Token")
 def test_status(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)
     try:
         _, access_token, _ = _create_test_tokens(signing_key, store)
-        status, body = _get(f"{base}/agent-auth/token/status", {
-            "Authorization": f"Bearer {access_token}",
-        })
+        status, body = _get(
+            f"{base}/agent-auth/token/status",
+            {
+                "Authorization": f"Bearer {access_token}",
+            },
+        )
         assert status == 200
         assert body["type"] == "access"
         assert "scopes" in body
@@ -275,7 +325,7 @@ def test_status_missing_token(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit)
     try:
-        status, body = _get(f"{base}/agent-auth/token/status")
+        status, _body = _get(f"{base}/agent-auth/token/status")
         assert status == 401
     finally:
         server.shutdown()
@@ -283,15 +333,19 @@ def test_status_missing_token(server_env, signing_key):
 
 # -- Reissue endpoint tests --
 
+
 @pytest.mark.covers_function("Serve Reissue Endpoint", "Request Approval")
 def test_reissue_approved(server_env, signing_key):
     config, signing_key, store, audit = server_env
     server, base = _start_server(config, signing_key, store, audit, AutoApprovePlugin())
     try:
         family_id, _, _ = _create_test_tokens_expired_refresh(signing_key, store)
-        status, body = _post(f"{base}/agent-auth/token/reissue", {
-            "family_id": family_id,
-        })
+        status, body = _post(
+            f"{base}/agent-auth/token/reissue",
+            {
+                "family_id": family_id,
+            },
+        )
         assert status == 200
         assert "access_token" in body
         assert "refresh_token" in body
@@ -305,9 +359,12 @@ def test_reissue_denied(server_env, signing_key):
     server, base = _start_server(config, signing_key, store, audit, AutoDenyPlugin())
     try:
         family_id, _, _ = _create_test_tokens_expired_refresh(signing_key, store)
-        status, body = _post(f"{base}/agent-auth/token/reissue", {
-            "family_id": family_id,
-        })
+        status, body = _post(
+            f"{base}/agent-auth/token/reissue",
+            {
+                "family_id": family_id,
+            },
+        )
         assert status == 403
         assert body["error"] == "reissue_denied"
     finally:
@@ -321,9 +378,12 @@ def test_reissue_revoked_family(server_env, signing_key):
     try:
         family_id, _, _ = _create_test_tokens(signing_key, store)
         store.mark_family_revoked(family_id)
-        status, body = _post(f"{base}/agent-auth/token/reissue", {
-            "family_id": family_id,
-        })
+        status, body = _post(
+            f"{base}/agent-auth/token/reissue",
+            {
+                "family_id": family_id,
+            },
+        )
         assert status == 401
         assert body["error"] == "family_revoked"
     finally:

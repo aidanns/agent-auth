@@ -51,6 +51,8 @@ def mock_keyring():
     def set_password(service, username, password):
         passwords[(service, username)] = password
 
-    with patch("agent_auth.keys.keyring.get_password", side_effect=get_password), \
-         patch("agent_auth.keys.keyring.set_password", side_effect=set_password):
+    with (
+        patch("agent_auth.keys.keyring.get_password", side_effect=get_password),
+        patch("agent_auth.keys.keyring.set_password", side_effect=set_password),
+    ):
         yield passwords

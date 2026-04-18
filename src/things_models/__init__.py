@@ -17,6 +17,7 @@ from things_models.models import Area, Project, Todo
 from things_models.status import VALID_STATUSES, validate_status
 
 __all__ = [
+    "VALID_STATUSES",
     "Area",
     "Project",
     "ThingsClient",
@@ -24,6 +25,5 @@ __all__ = [
     "ThingsNotFoundError",
     "ThingsPermissionError",
     "Todo",
-    "VALID_STATUSES",
     "validate_status",
 ]

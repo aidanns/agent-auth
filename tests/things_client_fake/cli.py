@@ -9,14 +9,13 @@ import argparse
 import os
 import sys
 
-from things_client_common.cli import add_read_commands, run_cli
-from things_models.client import ThingsClient
-
 from tests.things_client_fake.store import (
     FakeThingsClient,
     FakeThingsStore,
     load_fake_store,
 )
+from things_client_common.cli import add_read_commands, run_cli
+from things_models.client import ThingsClient
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,8 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--fixtures",
         default=os.environ.get("THINGS_CLIENT_FIXTURES"),
         help=(
-            "Path to a YAML fixture file. Omit for an empty store "
-            "(or set THINGS_CLIENT_FIXTURES)."
+            "Path to a YAML fixture file. Omit for an empty store (or set THINGS_CLIENT_FIXTURES)."
         ),
     )
     subparsers = parser.add_subparsers(dest="command")

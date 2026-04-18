@@ -3,7 +3,7 @@
 import json
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -64,7 +64,7 @@ class TokenStore:
 
     def create_family(self, family_id: str, scopes: dict[str, str]) -> dict:
         """Create a new token family with the given scopes."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         encrypted_scopes = self._encrypt(json.dumps(scopes))
         conn = self._get_conn()
         conn.execute(
@@ -131,7 +131,8 @@ class TokenStore:
         encrypted_sig = self._encrypt(hmac_signature)
         conn = self._get_conn()
         conn.execute(
-            "INSERT INTO tokens (id, hmac_signature, family_id, type, expires_at, consumed) VALUES (?, ?, ?, ?, ?, 0)",
+            "INSERT INTO tokens (id, hmac_signature, family_id, type, expires_at, consumed) "
+            "VALUES (?, ?, ?, ?, ?, 0)",
             (token_id, encrypted_sig, family_id, token_type, expires_at),
         )
         conn.commit()
@@ -175,7 +176,10 @@ class TokenStore:
         ]
 
     def mark_consumed(self, token_id: str) -> bool:
-        """Atomically mark a refresh token as consumed. Returns True if successful (was not already consumed)."""
+        """Atomically mark a refresh token as consumed.
+
+        Returns True if the token was not already consumed.
+        """
         conn = self._get_conn()
         cursor = conn.execute(
             "UPDATE tokens SET consumed = 1 WHERE id = ? AND consumed = 0",

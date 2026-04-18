@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-# Run shellcheck over every tracked *.sh file.
+# Run shellcheck over every tracked *.sh file and ruff check over every
+# tracked *.py file. ruff is provided by the per-OS/arch project venv
+# (installed as a `dev` extra).
 
 set -euo pipefail
 
@@ -23,10 +25,22 @@ fi
 shell_files_raw="$(git ls-files '*.sh')"
 
 if [[ -z "${shell_files_raw}" ]]; then
-  echo "task lint: no *.sh files tracked; nothing to lint."
+  echo "task lint: no *.sh files tracked; skipping shellcheck."
+else
+  mapfile -t shell_files <<<"${shell_files_raw}"
+  shellcheck "${shell_files[@]}"
+fi
+
+python_files_raw="$(git ls-files '*.py')"
+
+if [[ -z "${python_files_raw}" ]]; then
+  echo "task lint: no *.py files tracked; skipping ruff check."
   exit 0
 fi
 
-mapfile -t shell_files <<<"${shell_files_raw}"
+mapfile -t python_files <<<"${python_files_raw}"
 
-shellcheck "${shell_files[@]}"
+# shellcheck source=./_bootstrap_venv.sh
+source "${SCRIPT_DIR}/_bootstrap_venv.sh"
+
+"${VENV_DIR}/bin/ruff" check "${python_files[@]}"

@@ -1,6 +1,7 @@
 # lefthook git hook manager configuration.
 # Install with `task install-hooks` (wraps `lefthook install`).
 # shfmt formatting options live in .editorconfig.
+# ruff formatting options live in pyproject.toml.
 
 pre-commit:
   parallel: true
@@ -11,3 +12,12 @@ pre-commit:
     shfmt:
       glob: "*.sh"
       run: shfmt -d {staged_files}
+    # ruff lives in the per-OS/arch venv, not on PATH; use the venv-local
+    # binary so `git commit` works without needing the venv activated first.
+    # Venv is bootstrapped by any `task` entrypoint that needs it.
+    ruff-check:
+      glob: "*.py"
+      run: ./.venv-$(uname -s)-$(uname -m)/bin/ruff check {staged_files}
+    ruff-format:
+      glob: "*.py"
+      run: ./.venv-$(uname -s)-$(uname -m)/bin/ruff format --check {staged_files}

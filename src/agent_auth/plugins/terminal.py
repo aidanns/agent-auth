@@ -17,9 +17,9 @@ class Plugin(NotificationPlugin):
         description: str | None,
         family_id: str,
     ) -> ApprovalResult:
-        print(f"\n{'='*60}", file=sys.stderr)
+        print(f"\n{'=' * 60}", file=sys.stderr)
         print("JIT APPROVAL REQUEST", file=sys.stderr)
-        print(f"{'='*60}", file=sys.stderr)
+        print(f"{'=' * 60}", file=sys.stderr)
         print(f"  Scope:     {scope}", file=sys.stderr)
         if description:
             print(f"  Operation: {description}", file=sys.stderr)
@@ -30,7 +30,7 @@ class Plugin(NotificationPlugin):
         print("  [s] Approve for this session (60 minutes)", file=sys.stderr)
         print("  [t] Approve for N minutes", file=sys.stderr)
         print("  [n] Deny", file=sys.stderr)
-        print(f"{'='*60}", file=sys.stderr)
+        print(f"{'=' * 60}", file=sys.stderr)
 
         try:
             choice = input("Choice [y/s/t/n]: ").strip().lower()

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
-# Run shfmt over every tracked *.sh file. Pass --check to diff-only mode
-# (CI uses this); default rewrites files in place. shfmt reads formatting
-# options from .editorconfig at the repo root.
+# Run shfmt over every tracked *.sh file and ruff format over every
+# tracked *.py file. Pass --check for diff-only mode (CI uses this);
+# default rewrites files in place. shfmt reads formatting options from
+# .editorconfig; ruff reads them from pyproject.toml. ruff is provided
+# by the per-OS/arch project venv (installed as a `dev` extra).
 
 set -euo pipefail
 
@@ -37,14 +39,30 @@ fi
 shell_files_raw="$(git ls-files '*.sh')"
 
 if [[ -z "${shell_files_raw}" ]]; then
-  echo "task format: no *.sh files tracked; nothing to format."
+  echo "task format: no *.sh files tracked; skipping shfmt."
+else
+  mapfile -t shell_files <<<"${shell_files_raw}"
+  if [[ "${mode}" == "check" ]]; then
+    shfmt -d "${shell_files[@]}"
+  else
+    shfmt -w "${shell_files[@]}"
+  fi
+fi
+
+python_files_raw="$(git ls-files '*.py')"
+
+if [[ -z "${python_files_raw}" ]]; then
+  echo "task format: no *.py files tracked; skipping ruff format."
   exit 0
 fi
 
-mapfile -t shell_files <<<"${shell_files_raw}"
+mapfile -t python_files <<<"${python_files_raw}"
+
+# shellcheck source=./_bootstrap_venv.sh
+source "${SCRIPT_DIR}/_bootstrap_venv.sh"
 
 if [[ "${mode}" == "check" ]]; then
-  shfmt -d "${shell_files[@]}"
+  "${VENV_DIR}/bin/ruff" format --check "${python_files[@]}"
 else
-  shfmt -w "${shell_files[@]}"
+  "${VENV_DIR}/bin/ruff" format "${python_files[@]}"
 fi

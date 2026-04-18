@@ -1,7 +1,10 @@
 # treefmt formatter/linter multiplexer.
 # shfmt formatting options live in .editorconfig.
+# ruff formatting options live in pyproject.toml ([tool.ruff]).
 # The authoritative bash gate is scripts/lint.sh + scripts/format.sh,
 # invoked directly by .github/workflows/bash.yml and lefthook.yml.
+# The authoritative python gate is the same pair of scripts, invoked
+# via .github/workflows/check.yml (task check).
 
 [formatter.shellcheck]
 command = "shellcheck"
@@ -11,3 +14,13 @@ includes = ["*.sh"]
 command = "shfmt"
 options = ["-w"]
 includes = ["*.sh"]
+
+# ruff lives in the per-OS/arch venv, not on PATH. Users who run
+# `treefmt` directly must either activate the venv (`source
+# .venv-$(uname -s)-$(uname -m)/bin/activate`) or have ruff installed
+# globally (e.g. `pipx install ruff`). The authoritative python gate is
+# `task check`, which uses the venv-local ruff automatically.
+[formatter.ruff]
+command = "ruff"
+options = ["format"]
+includes = ["*.py"]

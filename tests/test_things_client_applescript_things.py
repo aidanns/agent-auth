@@ -15,14 +15,14 @@ from pathlib import Path
 import pytest
 
 from things_client_applescript.things import (
+    _AREA_FIELDS,
+    _HELPERS,
+    _PROJECT_FIELDS,
+    _TODO_FIELDS,
     NEWLINE_PLACEHOLDER,
     TAB_PLACEHOLDER,
     AppleScriptRunner,
     ThingsApplescriptClient,
-    _HELPERS,
-    _TODO_FIELDS,
-    _PROJECT_FIELDS,
-    _AREA_FIELDS,
 )
 from things_models.errors import ThingsError, ThingsNotFoundError
 
@@ -43,9 +43,7 @@ def _things3_installed() -> bool:
 
 
 _requires_things3 = pytest.mark.skipif(
-    sys.platform != "darwin"
-    or shutil.which("osascript") is None
-    or not _things3_installed(),
+    sys.platform != "darwin" or shutil.which("osascript") is None or not _things3_installed(),
     reason="requires macOS with Things 3 installed",
 )
 
@@ -80,13 +78,31 @@ def _area_row(values: dict) -> str:
 
 
 def test_list_todos_parses_tsv_rows():
-    runner = FakeRunner(output=(
-        _todo_row({"id": "t1", "name": "Buy milk", "status": "open", "tag_names": "Errand, P1"}) + "\n"
-        + _todo_row({"id": "t2", "name": "Call dentist", "status": "completed",
-                     "project_id": "p1", "project_name": "Health",
-                     "due_date": "2026-05-01T00:00:00",
-                     "completion_date": "2026-04-15T10:00:00"}) + "\n"
-    ))
+    runner = FakeRunner(
+        output=(
+            _todo_row(
+                {
+                    "id": "t1",
+                    "name": "Buy milk",
+                    "status": "open",
+                    "tag_names": "Errand, P1",
+                }
+            )
+            + "\n"
+            + _todo_row(
+                {
+                    "id": "t2",
+                    "name": "Call dentist",
+                    "status": "completed",
+                    "project_id": "p1",
+                    "project_name": "Health",
+                    "due_date": "2026-05-01T00:00:00",
+                    "completion_date": "2026-04-15T10:00:00",
+                }
+            )
+            + "\n"
+        )
+    )
     client = ThingsApplescriptClient(runner)
     todos = client.list_todos()
     assert len(todos) == 2
@@ -173,9 +189,17 @@ def test_list_todos_reads_properties_from_collection_in_one_apple_event():
     # form. If any of these regress to per-element reads the timeout
     # symptom returns.
     for prop in (
-        "id", "name", "notes", "status", "tag names",
-        "due date", "activation date", "completion date",
-        "cancellation date", "creation date", "modification date",
+        "id",
+        "name",
+        "notes",
+        "status",
+        "tag names",
+        "due date",
+        "activation date",
+        "completion date",
+        "cancellation date",
+        "creation date",
+        "modification date",
     ):
         assert f"{prop} of every to do" in script, (
             f"expected batched collection read for {prop!r} in emitted script"
@@ -187,13 +211,15 @@ def test_list_todos_reads_properties_from_collection_in_one_apple_event():
     # try-wrapped project/area handlers — it does not touch ids, names,
     # notes, statuses, tag names, or dates.
     forbidden_per_element_reads = (
-        "id of t)", "name of t)", "notes of t)", "status of t)",
-        "tag names of t)", "due date of t)",
+        "id of t)",
+        "name of t)",
+        "notes of t)",
+        "status of t)",
+        "tag names of t)",
+        "due date of t)",
     )
     for bad in forbidden_per_element_reads:
-        assert bad not in script, (
-            f"unfiltered todos list reintroduced per-element read {bad!r}"
-        )
+        assert bad not in script, f"unfiltered todos list reintroduced per-element read {bad!r}"
 
 
 def test_list_todos_empty_database_returns_no_todos():
@@ -215,7 +241,10 @@ def test_list_todos_filtered_scope_uses_batched_reads():
     client = ThingsApplescriptClient(runner)
 
     for kwargs, expected in [
-        ({"list_id": "TMTodayListSource"}, 'every to do of list id "TMTodayListSource"'),
+        (
+            {"list_id": "TMTodayListSource"},
+            'every to do of list id "TMTodayListSource"',
+        ),
         ({"project_id": "p1"}, 'every to do of project id "p1"'),
         ({"area_id": "a1"}, 'every to do of area id "a1"'),
         ({"tag": "P1"}, 'every to do of tag "P1"'),
@@ -310,8 +339,16 @@ def test_list_projects_default_source():
 
 
 def test_list_projects_parses_rows():
-    row = _project_row({"id": "p1", "name": "Q2", "status": "open", "area_id": "a1",
-                        "area_name": "Work", "tag_names": "P1"})
+    row = _project_row(
+        {
+            "id": "p1",
+            "name": "Q2",
+            "status": "open",
+            "area_id": "a1",
+            "area_name": "Work",
+            "tag_names": "P1",
+        }
+    )
     runner = FakeRunner(output=row + "\n")
     client = ThingsApplescriptClient(runner)
     [project] = client.list_projects()
@@ -350,19 +387,23 @@ def test_malformed_row_raises_things_error():
 # a tab or newline through the TSV framing. These must be rejected before the
 # script is built, not silently quoted.
 
-@pytest.mark.parametrize("bad", [
-    "foo\nbar",
-    "foo\rbar",
-    "foo\tbar",
-    f"foo{TAB_PLACEHOLDER}bar",
-    f"foo{NEWLINE_PLACEHOLDER}bar",
-    "foo\x00bar",
-    "foo\x1bbar",
-    # DEL — path-segment ids were already rejected here by _safe_id, but
-    # tag/project/area/list query params bypass _safe_id and reach _quote
-    # directly, so _quote must also reject DEL to stay consistent.
-    "foo\x7fbar",
-])
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "foo\nbar",
+        "foo\rbar",
+        "foo\tbar",
+        f"foo{TAB_PLACEHOLDER}bar",
+        f"foo{NEWLINE_PLACEHOLDER}bar",
+        "foo\x00bar",
+        "foo\x1bbar",
+        # DEL — path-segment ids were already rejected here by _safe_id, but
+        # tag/project/area/list query params bypass _safe_id and reach _quote
+        # directly, so _quote must also reject DEL to stay consistent.
+        "foo\x7fbar",
+    ],
+)
 def test_list_todos_rejects_injection_via_filter_ids(bad):
     """Control characters in caller-supplied ids must not reach AppleScript."""
     runner = FakeRunner(output="")
@@ -403,9 +444,7 @@ def test_helper_applescript_is_valid_syntax(tmp_path):
         text=True,
         timeout=10,
     )
-    assert result.returncode == 0, (
-        f"osacompile rejected _HELPERS: {result.stderr.strip()}"
-    )
+    assert result.returncode == 0, f"osacompile rejected _HELPERS: {result.stderr.strip()}"
 
 
 @_requires_things3
@@ -452,6 +491,7 @@ def test_osascript_timeout_writes_diagnostic_to_stderr(capfd, monkeypatch):
     other AppleScript failures, which was painful during a live ``todos
     list`` debugging session.
     """
+
     def _raise_timeout(*args, **kwargs):
         raise subprocess.TimeoutExpired(cmd=args[0], timeout=kwargs.get("timeout"))
 
@@ -459,7 +499,7 @@ def test_osascript_timeout_writes_diagnostic_to_stderr(capfd, monkeypatch):
 
     runner = AppleScriptRunner(timeout_seconds=0.5)
     with pytest.raises(ThingsError):
-        runner.run("tell application \"Things3\" to return \"\"")
+        runner.run('tell application "Things3" to return ""')
 
     captured = capfd.readouterr()
     # Same greppability and subsystem-naming requirements as the
@@ -475,6 +515,7 @@ def test_osascript_timeout_surfaces_partial_stderr(capfd, monkeypatch):
     on the bridge's stderr — otherwise they are left with only a bare timeout
     line and no way to tell the two failure shapes apart.
     """
+
     def _raise_timeout(*args, **kwargs):
         raise subprocess.TimeoutExpired(
             cmd=args[0],
@@ -486,7 +527,7 @@ def test_osascript_timeout_surfaces_partial_stderr(capfd, monkeypatch):
 
     runner = AppleScriptRunner(timeout_seconds=0.5)
     with pytest.raises(ThingsError):
-        runner.run("tell application \"Things3\" to return \"\"")
+        runner.run('tell application "Things3" to return ""')
 
     captured = capfd.readouterr()
     assert "things-client-cli-applescript" in captured.err

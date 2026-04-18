@@ -1,10 +1,6 @@
 """Tests for the SQLite token store."""
 
-import json
-
 import pytest
-
-from agent_auth.store import TokenStore
 
 
 @pytest.mark.covers_function("Store Token Family", "Query Tokens")
@@ -91,6 +87,7 @@ def test_scopes_are_encrypted_in_db(store, encryption_key):
     """Verify that scope data is stored encrypted, not as plaintext JSON."""
     store.create_family("fam1", {"secret:scope": "allow"})
     import sqlite3
+
     conn = sqlite3.connect(store._db_path)
     row = conn.execute("SELECT scopes FROM token_families WHERE id = 'fam1'").fetchone()
     raw = row[0]

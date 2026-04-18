@@ -147,11 +147,22 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     login = subparsers.add_parser("login", help="Save credentials for the bridge and auth server")
-    login.add_argument("--bridge-url", required=True, help="Bridge base URL (e.g. http://127.0.0.1:9200)")
-    login.add_argument("--auth-url", required=True, help="agent-auth base URL (e.g. http://127.0.0.1:9100)")
+    login.add_argument(
+        "--bridge-url",
+        required=True,
+        help="Bridge base URL (e.g. http://127.0.0.1:9200)",
+    )
+    login.add_argument(
+        "--auth-url",
+        required=True,
+        help="agent-auth base URL (e.g. http://127.0.0.1:9100)",
+    )
     login.add_argument("--access-token", required=True, help="agent-auth access token")
     login.add_argument("--refresh-token", required=True, help="agent-auth refresh token")
-    login.add_argument("--family-id", help="agent-auth token family ID (optional, required for reissue)")
+    login.add_argument(
+        "--family-id",
+        help="agent-auth token family ID (optional, required for reissue)",
+    )
 
     subparsers.add_parser("logout", help="Clear stored credentials")
     subparsers.add_parser("status", help="Show stored credential metadata (values are redacted)")
@@ -160,11 +171,15 @@ def build_parser() -> argparse.ArgumentParser:
     todos = subparsers.add_parser("todos", help="Todo commands")
     todos_sub = todos.add_subparsers(dest="todos_command")
     todos_list = todos_sub.add_parser("list", help="List todos")
-    todos_list.add_argument("--list", help="Built-in list id (e.g. TMInboxListSource, TMTodayListSource)")
+    todos_list.add_argument(
+        "--list", help="Built-in list id (e.g. TMInboxListSource, TMTodayListSource)"
+    )
     todos_list.add_argument("--project", help="Project id filter")
     todos_list.add_argument("--area", help="Area id filter")
     todos_list.add_argument("--tag", help="Tag name filter")
-    todos_list.add_argument("--status", choices=("open", "completed", "canceled"), help="Status filter")
+    todos_list.add_argument(
+        "--status", choices=("open", "completed", "canceled"), help="Status filter"
+    )
     todos_show = todos_sub.add_parser("show", help="Show a todo by id")
     todos_show.add_argument("id")
 

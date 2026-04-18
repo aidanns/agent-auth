@@ -41,6 +41,7 @@ def test_sign_and_verify_refresh_token(signing_key):
 @pytest.mark.covers_function("Verify Token Signature")
 def test_verify_with_wrong_key(signing_key):
     import os
+
     token_id = generate_token_id()
     token = sign_token(token_id, PREFIX_ACCESS, signing_key)
     wrong_key = os.urandom(32)
