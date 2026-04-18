@@ -172,7 +172,13 @@ _AREA_FIELDS = ["id", "name", "tag_names"]
 
 
 def _todo_row_applescript(var: str) -> str:
-    """AppleScript that appends one todo's TSV row to the `out` accumulator."""
+    """AppleScript that appends one todo's TSV row to the `out` accumulator.
+
+    Used by :func:`ThingsApplescriptClient.get_todo`, which reads exactly one
+    todo and has nothing to batch. The list endpoints use
+    :func:`_todo_batch_applescript` instead to avoid paying ``O(properties)``
+    Apple Events per todo.
+    """
     return f"""
                 set _row to my _esc(id of {var})
                 set _row to _row & {_TAB_LIT} & my _esc(name of {var})
@@ -194,6 +200,7 @@ def _todo_row_applescript(var: str) -> str:
 
 
 def _project_row_applescript(var: str) -> str:
+    """Per-project TSV row for :func:`ThingsApplescriptClient.get_project`."""
     return f"""
                 set _row to my _esc(id of {var})
                 set _row to _row & {_TAB_LIT} & my _esc(name of {var})
@@ -213,11 +220,192 @@ def _project_row_applescript(var: str) -> str:
 
 
 def _area_row_applescript(var: str) -> str:
+    """Per-area TSV row for :func:`ThingsApplescriptClient.get_area`."""
     return f"""
                 set _row to my _esc(id of {var})
                 set _row to _row & {_TAB_LIT} & my _esc(name of {var})
                 set _row to _row & {_TAB_LIT} & my _esc(tag names of {var})
                 set out to out & _row & {_LF_LIT}
+"""
+
+
+def _every_form(plural: str, singular: str, scope: str) -> str:
+    """Translate a plural element scope into the ``every <singular>`` form.
+
+    AppleScript's batched property reads (``id of every to do of …``) and
+    the plural iteration (``repeat with t in (to dos of …)``) use the same
+    reference under two surface syntaxes. ``_todo_source`` and the project
+    list branches already emit the plural form, so this helper just swaps
+    the prefix so the same scope expression can drive both styles.
+
+    Caller invariant: ``scope`` is either exactly ``plural`` or
+    ``f"{plural} of <reference>"``. Any other shape signals a bug in the
+    caller and is surfaced rather than smuggled into emitted AppleScript.
+    """
+    if scope == plural:
+        return f"every {singular}"
+    prefix = f"{plural} of "
+    if scope.startswith(prefix):
+        return f"every {singular} of " + scope[len(prefix):]
+    raise ThingsError(
+        f"Internal error: unsupported {singular} scope expression: {scope!r}"
+    )
+
+
+def _todo_batch_applescript(scope: str, status_filter: str | None) -> str:
+    """Batched AppleScript body that emits TSV rows for every todo in ``scope``.
+
+    ``scope`` is the AppleScript element reference that selects which todos
+    to read, e.g. ``"to dos"``, ``"to dos of project id \\"p1\\""``,
+    ``"to dos of tag \\"Urgent\\""``. It is translated internally to the
+    ``every to do ...`` form so each property can be read as a collection
+    in a single Apple Event — ``id of every to do of <X>`` returns a list
+    of ids in one round-trip, versus ``id of t`` inside a ``repeat`` which
+    costs one Apple Event per todo.
+
+    The ``project`` and ``area`` relationships are optional on a todo. The
+    collection forms ``project of every to do of <X>`` and ``area of every
+    to do of <X>`` raise when any element has no project/area attached, so
+    those four fields stay on per-element handlers wrapped in ``try``.
+    That's still one ``repeat`` pass over the collection, but it only
+    reads the four project/area fields per todo instead of all ~15.
+
+    ``status_filter`` — when non-null, rows whose coerced status text does
+    not match are omitted from ``out``. The filter runs against the
+    already-batched status list, so it costs no extra Apple Events.
+    """
+    every_scope = _every_form("to dos", "to do", scope)
+
+    if status_filter is not None:
+        status_guard_open = (
+            f"        if my _statusText(item _i of _statuses) "
+            f"is {_quote(status_filter)} then\n"
+        )
+        status_guard_close = "        end if\n"
+    else:
+        status_guard_open = ""
+        status_guard_close = ""
+
+    return f"""
+    set _ids to id of {every_scope}
+    set _n to count of _ids
+    if _n is 0 then return ""
+    set _names to name of {every_scope}
+    set _notes to notes of {every_scope}
+    set _statuses to status of {every_scope}
+    set _tagNames to tag names of {every_scope}
+    set _dueDates to due date of {every_scope}
+    set _activationDates to activation date of {every_scope}
+    set _completionDates to completion date of {every_scope}
+    set _cancellationDates to cancellation date of {every_scope}
+    set _creationDates to creation date of {every_scope}
+    set _modificationDates to modification date of {every_scope}
+
+    -- project and area are optional relationships; the collection form
+    -- errors when any element has no project/area. Fall back to a single
+    -- pass that invokes the try-wrapped per-element handlers.
+    set _projectIds to {{}}
+    set _projectNames to {{}}
+    set _areaIds to {{}}
+    set _areaNames to {{}}
+    repeat with _t in ({scope})
+        set end of _projectIds to my _projId(_t)
+        set end of _projectNames to my _projName(_t)
+        set end of _areaIds to my _areaId(_t)
+        set end of _areaNames to my _areaName(_t)
+    end repeat
+
+    set out to ""
+    repeat with _i from 1 to _n
+{status_guard_open}        set _row to my _esc(item _i of _ids)
+        set _row to _row & {_TAB_LIT} & my _esc(item _i of _names)
+        set _row to _row & {_TAB_LIT} & my _esc(item _i of _notes)
+        set _row to _row & {_TAB_LIT} & my _statusText(item _i of _statuses)
+        set _row to _row & {_TAB_LIT} & (item _i of _projectIds)
+        set _row to _row & {_TAB_LIT} & (item _i of _projectNames)
+        set _row to _row & {_TAB_LIT} & (item _i of _areaIds)
+        set _row to _row & {_TAB_LIT} & (item _i of _areaNames)
+        set _row to _row & {_TAB_LIT} & my _esc(item _i of _tagNames)
+        set _row to _row & {_TAB_LIT} & my _iso(item _i of _dueDates)
+        set _row to _row & {_TAB_LIT} & my _iso(item _i of _activationDates)
+        set _row to _row & {_TAB_LIT} & my _iso(item _i of _completionDates)
+        set _row to _row & {_TAB_LIT} & my _iso(item _i of _cancellationDates)
+        set _row to _row & {_TAB_LIT} & my _iso(item _i of _creationDates)
+        set _row to _row & {_TAB_LIT} & my _iso(item _i of _modificationDates)
+        set out to out & _row & {_LF_LIT}
+{status_guard_close}    end repeat
+    return out
+"""
+
+
+def _project_batch_applescript(scope: str) -> str:
+    """Batched AppleScript body for :func:`ThingsApplescriptClient.list_projects`.
+
+    See :func:`_todo_batch_applescript` for the rationale. Projects always
+    have an area relationship available via the same try-wrapped handlers,
+    so we use the same per-element fallback for those fields.
+    """
+    every_scope = _every_form("projects", "project", scope)
+
+    return f"""
+    set _ids to id of {every_scope}
+    set _n to count of _ids
+    if _n is 0 then return ""
+    set _names to name of {every_scope}
+    set _notes to notes of {every_scope}
+    set _statuses to status of {every_scope}
+    set _tagNames to tag names of {every_scope}
+    set _dueDates to due date of {every_scope}
+    set _activationDates to activation date of {every_scope}
+    set _completionDates to completion date of {every_scope}
+    set _cancellationDates to cancellation date of {every_scope}
+    set _creationDates to creation date of {every_scope}
+    set _modificationDates to modification date of {every_scope}
+
+    set _areaIds to {{}}
+    set _areaNames to {{}}
+    repeat with _p in ({scope})
+        set end of _areaIds to my _areaId(_p)
+        set end of _areaNames to my _areaName(_p)
+    end repeat
+
+    set out to ""
+    repeat with _i from 1 to _n
+        set _row to my _esc(item _i of _ids)
+        set _row to _row & {_TAB_LIT} & my _esc(item _i of _names)
+        set _row to _row & {_TAB_LIT} & my _esc(item _i of _notes)
+        set _row to _row & {_TAB_LIT} & my _statusText(item _i of _statuses)
+        set _row to _row & {_TAB_LIT} & (item _i of _areaIds)
+        set _row to _row & {_TAB_LIT} & (item _i of _areaNames)
+        set _row to _row & {_TAB_LIT} & my _esc(item _i of _tagNames)
+        set _row to _row & {_TAB_LIT} & my _iso(item _i of _dueDates)
+        set _row to _row & {_TAB_LIT} & my _iso(item _i of _activationDates)
+        set _row to _row & {_TAB_LIT} & my _iso(item _i of _completionDates)
+        set _row to _row & {_TAB_LIT} & my _iso(item _i of _cancellationDates)
+        set _row to _row & {_TAB_LIT} & my _iso(item _i of _creationDates)
+        set _row to _row & {_TAB_LIT} & my _iso(item _i of _modificationDates)
+        set out to out & _row & {_LF_LIT}
+    end repeat
+    return out
+"""
+
+
+def _area_batch_applescript() -> str:
+    """Batched AppleScript body for :func:`ThingsApplescriptClient.list_areas`."""
+    return f"""
+    set _ids to id of every area
+    set _n to count of _ids
+    if _n is 0 then return ""
+    set _names to name of every area
+    set _tagNames to tag names of every area
+    set out to ""
+    repeat with _i from 1 to _n
+        set _row to my _esc(item _i of _ids)
+        set _row to _row & {_TAB_LIT} & my _esc(item _i of _names)
+        set _row to _row & {_TAB_LIT} & my _esc(item _i of _tagNames)
+        set out to out & _row & {_LF_LIT}
+    end repeat
+    return out
 """
 
 
@@ -439,22 +627,12 @@ class ThingsApplescriptClient:
             tag=tag, status=validate_status(status),
         )
         source = _todo_source(flt)
-        body = _todo_row_applescript("t")
-        if flt.status:
-            body = (
-                f"                if my _statusText(status of t) is {_quote(flt.status)} then\n"
-                f"{body}"
-                f"                end if\n"
-            )
+        body = _todo_batch_applescript(source, flt.status)
         script = f"""
 {_HELPERS}
 
 tell application "Things3"
-    set out to ""
-    repeat with t in ({source})
-{body}    end repeat
-    return out
-end tell
+{body}end tell
 """
         output = self._runner.run(script)
         return [_row_to_todo(row) for row in _parse_rows(output, len(_TODO_FIELDS))]
@@ -488,16 +666,12 @@ end tell
             source = f"projects of area id {_quote(area_id)}"
         else:
             source = "projects"
-        body = _project_row_applescript("p")
+        body = _project_batch_applescript(source)
         script = f"""
 {_HELPERS}
 
 tell application "Things3"
-    set out to ""
-    repeat with p in ({source})
-{body}    end repeat
-    return out
-end tell
+{body}end tell
 """
         output = self._runner.run(script)
         return [_row_to_project(row) for row in _parse_rows(output, len(_PROJECT_FIELDS))]
@@ -527,16 +701,12 @@ end tell
         return _row_to_project(rows[0])
 
     def list_areas(self) -> list[Area]:
-        body = _area_row_applescript("a")
+        body = _area_batch_applescript()
         script = f"""
 {_HELPERS}
 
 tell application "Things3"
-    set out to ""
-    repeat with a in areas
-{body}    end repeat
-    return out
-end tell
+{body}end tell
 """
         output = self._runner.run(script)
         return [_row_to_area(row) for row in _parse_rows(output, len(_AREA_FIELDS))]
