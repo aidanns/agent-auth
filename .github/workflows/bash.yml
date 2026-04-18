@@ -1,0 +1,35 @@
+name: Bash
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  SHFMT_VERSION: 3.8.0
+
+jobs:
+  bash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck --version
+
+      - name: Install shfmt
+        run: |
+          curl -fsSL -o /tmp/shfmt \
+            "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64"
+          sudo install -m0755 /tmp/shfmt /usr/local/bin/shfmt
+          shfmt --version
+
+      - name: Run shellcheck
+        run: scripts/lint.sh
+
+      - name: Run shfmt --check
+        run: scripts/format.sh --check

@@ -10,6 +10,8 @@
 #      tooling-and-ci.md Security). An ecosystem is "in use" when its
 #      manifest files are present; ecosystems without manifests are
 #      skipped rather than required.
+#   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
+#      lefthook per .claude/instructions/bash.md.
 
 set -euo pipefail
 
@@ -54,7 +56,8 @@ catalogue="$(task --list-all --json)"
 # Capture into a variable (not process substitution) so `set -e` catches a
 # crash in the python helper — otherwise a parser failure silently yields an
 # empty `missing` array and the check falsely reports success.
-missing_output="$(python3 - "${catalogue}" "${REQUIRED_TASKS[@]}" <<'PY'
+missing_output="$(
+  python3 - "${catalogue}" "${REQUIRED_TASKS[@]}" <<'PY'
 import json
 import sys
 
@@ -113,3 +116,37 @@ else
 
   echo "verify-standards: dependabot.yml covers detected ecosystems (${required_ecosystems[*]}) with minor/patch grouping."
 fi
+
+# Bash tooling: shellcheck + shfmt must be wired into CI, treefmt, and
+# lefthook per .claude/instructions/bash.md.
+
+bash_tool_missing=0
+
+fail_bash_check() {
+  echo "verify-standards: '$1' is not wired into $2." >&2
+  echo "  $3" >&2
+  bash_tool_missing=1
+}
+
+for tool in shellcheck shfmt; do
+  if ! grep -rqE "\\b${tool}\\b" .github/workflows 2>/dev/null; then
+    fail_bash_check "${tool}" ".github/workflows/*.yml" \
+      "Add a workflow step that invokes '${tool}' (see .github/workflows/bash.yml)."
+  fi
+
+  if ! grep -qE "\\b${tool}\\b" treefmt.toml 2>/dev/null; then
+    fail_bash_check "${tool}" "treefmt.toml" \
+      "Add a [formatter.${tool}] entry to treefmt.toml."
+  fi
+
+  if ! grep -qE "\\b${tool}\\b" lefthook.yml 2>/dev/null; then
+    fail_bash_check "${tool}" "lefthook.yml" \
+      "Add a pre-commit command that invokes '${tool}' to lefthook.yml."
+  fi
+done
+
+if [[ ${bash_tool_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: shellcheck and shfmt are wired into CI, treefmt, and lefthook."

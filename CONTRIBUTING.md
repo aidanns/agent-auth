@@ -6,8 +6,13 @@
    canonical task runner (`brew install go-task` on macOS,
    `sh -c "$(curl -fsSL https://taskfile.dev/install.sh)" -- -d -b "$HOME/.local/bin"`
    elsewhere).
-2. Clone the repo and `cd` into it.
-3. Run `task --list` to see every repeatable operation.
+2. Install [shellcheck](https://www.shellcheck.net/) and
+   [shfmt](https://github.com/mvdan/sh) — required by `task lint` and
+   `task format` (and gated in CI). On macOS: `brew install shellcheck
+   shfmt`. On Debian/Ubuntu: `apt-get install shellcheck` and download
+   `shfmt` from its [GitHub releases](https://github.com/mvdan/sh/releases).
+3. Clone the repo and `cd` into it.
+4. Run `task --list` to see every repeatable operation.
 
 The first time you run `task test` or `task build`, the script
 bootstraps a per-OS/arch virtualenv at `.venv-$(uname -s)-$(uname -m)/`
@@ -24,7 +29,7 @@ Every repeatable operation is exposed through the task runner. Run
 | --- | --- |
 | `task test` | Run the pytest suite. |
 | `task lint` | Run all configured linters. |
-| `task format` | Run all configured formatters. |
+| `task format` | Run all configured formatters. Pass `-- --check` for diff-only mode (CI uses this). |
 | `task build` | Build sdist and wheel distributions into `dist/`. |
 | `task install-hooks` | Install project git hooks (lefthook). |
 | `task verify-design` | Verify every leaf function in the functional decomposition is allocated in the product breakdown. |
