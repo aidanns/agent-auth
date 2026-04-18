@@ -115,8 +115,8 @@ Review*):
 - [ ] `/simplify` on the changes.
 - [ ] Independent code-review subagent; address findings.
 - [ ] One parallel subagent per file in `.claude/instructions/` — each
-      reviews the diff against its instruction file and reports
-      violations. Address findings.
+  reviews the diff against its instruction file and reports
+  violations. Address findings.
 
 Specifically verify:
 

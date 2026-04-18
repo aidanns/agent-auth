@@ -33,30 +33,30 @@ convention (and the python.md standard).
 
 ## Deliverables
 
-1. `scripts/test.sh`, `scripts/build.sh`, `scripts/agent-auth.sh`,
-   `scripts/things-bridge.sh`, `scripts/things-cli.sh` — replace the
-   `python3 -m venv` + `pip install` bootstrap with a single
-   `uv sync --extra dev --quiet` and dispatch with `uv run`.
-2. `uv.lock` committed at the repo root.
-3. `pyproject.toml` — no structural change; add minimal uv
-   configuration (e.g. `required-version`) only if needed.
-4. `scripts/verify-dependencies.sh` — require `uv` on PATH.
-5. `scripts/verify-standards.sh` — add two new checks:
-   - `uv lock --check` (fails if `uv.lock` is missing or stale
-     relative to `pyproject.toml` — a single call covers both cases).
-   - Fail if any file under `scripts/` invokes `pip install` (or
-     `pip3 install`, including backslash-newline continuations).
-6. CI workflows (`test.yml`, `check.yml`, `verify-standards.yml`,
-   `verify-design.yml`, `verify-function-tests.yml`) — install uv via
-   `astral-sh/setup-uv@v5` (pinned), drop `actions/setup-python@v5`
-   (uv manages the interpreter), and let the existing `task ...`
-   invocations drive the work.
-7. `README.md` — document `uv` as a prerequisite alongside `go-task`.
-   Update the "bare Python install" fallback to use `uv sync --extra dev`.
-8. `CONTRIBUTING.md` — add `uv` to the prerequisites list; reword the
-   bootstrap description.
-9. `CLAUDE.md` — update the activation command to `uv sync --extra dev`
-   and reference `uv run` in place of `pip install -e .`.
+01. `scripts/test.sh`, `scripts/build.sh`, `scripts/agent-auth.sh`,
+    `scripts/things-bridge.sh`, `scripts/things-cli.sh` — replace the
+    `python3 -m venv` + `pip install` bootstrap with a single
+    `uv sync --extra dev --quiet` and dispatch with `uv run`.
+02. `uv.lock` committed at the repo root.
+03. `pyproject.toml` — no structural change; add minimal uv
+    configuration (e.g. `required-version`) only if needed.
+04. `scripts/verify-dependencies.sh` — require `uv` on PATH.
+05. `scripts/verify-standards.sh` — add two new checks:
+    - `uv lock --check` (fails if `uv.lock` is missing or stale
+      relative to `pyproject.toml` — a single call covers both cases).
+    - Fail if any file under `scripts/` invokes `pip install` (or
+      `pip3 install`, including backslash-newline continuations).
+06. CI workflows (`test.yml`, `check.yml`, `verify-standards.yml`,
+    `verify-design.yml`, `verify-function-tests.yml`) — install uv via
+    `astral-sh/setup-uv@v5` (pinned), drop `actions/setup-python@v5`
+    (uv manages the interpreter), and let the existing `task ...`
+    invocations drive the work.
+07. `README.md` — document `uv` as a prerequisite alongside `go-task`.
+    Update the "bare Python install" fallback to use `uv sync --extra dev`.
+08. `CONTRIBUTING.md` — add `uv` to the prerequisites list; reword the
+    bootstrap description.
+09. `CLAUDE.md` — update the activation command to `uv sync --extra dev`
+    and reference `uv run` in place of `pip install -e .`.
 10. `.github/dependabot.yml` — no change (the `pip` ecosystem already
     covers uv-managed projects).
 
@@ -145,8 +145,8 @@ Review*):
 - [ ] `/simplify` on the changes.
 - [ ] Independent code-review subagent; address findings.
 - [ ] One parallel subagent per file in `.claude/instructions/` — each
-      reviews the diff against its instruction file and reports
-      violations. Address findings.
+  reviews the diff against its instruction file and reports
+  violations. Address findings.
 
 Specifically verify:
 

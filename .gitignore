@@ -1,8 +1,10 @@
-.venv*/
-__pycache__/
-*.pyc
+# keep-sorted start
 *.egg-info/
-dist/
-build/
+*.pyc
 .eggs/
 .idea
+.venv*/
+__pycache__/
+build/
+dist/
+# keep-sorted end
