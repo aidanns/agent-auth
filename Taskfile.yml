@@ -28,8 +28,13 @@ tasks:
     cmds:
       - scripts/verify-function-tests.sh
 
+  verify-dependencies:
+    desc: Verify required CLI tools (python3, task, yq, ...) are installed on PATH.
+    cmds:
+      - scripts/verify-dependencies.sh
+
   verify-standards:
-    desc: Verify the Taskfile exposes every task required by the tooling-and-ci standard.
+    desc: Verify Project Standards
     cmds:
       - scripts/verify-standards.sh
 

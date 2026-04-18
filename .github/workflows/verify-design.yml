@@ -25,5 +25,14 @@ jobs:
           bash install.sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.50.0
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Required Tooling
+        run: task verify-dependencies
+
       - name: Verify all functions are allocated
-        run: scripts/verify-design.sh
+        run: task verify-design
