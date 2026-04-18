@@ -1,0 +1,16 @@
+name: Verify Standards
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify-standards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify repository-level standards
+        run: scripts/verify-standards.sh
