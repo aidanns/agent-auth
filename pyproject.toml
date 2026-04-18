@@ -18,6 +18,7 @@ dev = [
     "build>=1.0",
     "pytest>=8.0",
 ]
+tests-support = []
 
 [project.scripts]
 agent-auth = "agent_auth.cli:main"

@@ -1,0 +1,40 @@
+# Integration-test image only — bundles keyrings.alt plaintext backend
+# so agent-auth starts unattended. Never publish; never use in production.
+
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HOME=/home/agent-auth \
+    XDG_CONFIG_HOME=/home/agent-auth/.config \
+    XDG_DATA_HOME=/home/agent-auth/.local/share \
+    XDG_STATE_HOME=/home/agent-auth/.local/state \
+    PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring \
+    AGENT_AUTH_HOST=0.0.0.0 \
+    AGENT_AUTH_PORT=9100
+
+RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin agent-auth
+
+WORKDIR /src
+
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+
+RUN pip install --no-cache-dir ".[tests-support]" "keyrings.alt>=5.0"
+
+COPY docker/entrypoint.test.sh /usr/local/bin/agent-auth-test-entrypoint
+RUN chmod +x /usr/local/bin/agent-auth-test-entrypoint
+
+RUN mkdir -p "$XDG_CONFIG_HOME/agent-auth" \
+             "$XDG_DATA_HOME/agent-auth" \
+             "$XDG_STATE_HOME/agent-auth" \
+             "$XDG_CONFIG_HOME/python_keyring" \
+    && chown -R agent-auth:agent-auth /home/agent-auth
+
+USER agent-auth
+
+EXPOSE 9100
+
+ENTRYPOINT ["agent-auth-test-entrypoint"]

@@ -65,6 +65,8 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/agent-auth/token/status":
             self._handle_status()
+        elif self.path == "/agent-auth/health":
+            self._handle_health()
         else:
             self._send_json(404, {"error": "not_found"})
 
@@ -301,6 +303,15 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             "expires_in": config.access_token_ttl_seconds,
             "scopes": family["scopes"],
         })
+
+    def _handle_health(self):
+        store: TokenStore = self._server.store
+        try:
+            store.ping()
+        except Exception:
+            self._send_json(503, {"status": "unhealthy"})
+            return
+        self._send_json(200, {"status": "ok"})
 
     def _handle_status(self):
         auth_header = self.headers.get("Authorization", "")

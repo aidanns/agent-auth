@@ -81,6 +81,8 @@ functions:
         description: Handle POST /agent-auth/token/reissue requests from CLIs when the refresh token has expired. Triggers JIT approval via the configured notification plugin.
       - name: Serve Status Endpoint
         description: Handle GET /agent-auth/token/status requests for token introspection.
+      - name: Serve Health Endpoint
+        description: Handle GET /agent-auth/health liveness / readiness probes, returning 200 when the token store is reachable and 503 otherwise.
   - name: Audit Logging
     description: Record all token operations and authorization decisions for security review.
     functions:

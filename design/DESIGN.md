@@ -474,6 +474,26 @@ Response (401 — family revoked or not found):
 {"error": "family_revoked"}
 ```
 
+### GET /agent-auth/health
+
+Liveness / readiness probe. Returns 200 when the token store is
+reachable, 503 otherwise. Unauthenticated — the response carries no
+token or scope metadata.
+
+Response (200):
+```json
+{"status": "ok"}
+```
+
+Response (503):
+```json
+{"status": "unhealthy"}
+```
+
+Used by the integration-test harness to wait for the container to be
+ready before driving requests; also suitable for production readiness
+probes.
+
 ### GET /agent-auth/token/status
 
 Introspect a token (read-only, for debugging).
@@ -509,6 +529,32 @@ Response (200):
 - App bridges listen on `127.0.0.1:9200`
 - Docker port forwarding exposes host ports to the devcontainer
 - CLIs use `host.docker.internal:9200` for bridge, `host.docker.internal:9100` for agent-auth
+
+## Testing
+
+### Unit tests
+
+`tests/test_*.py` exercise individual modules in-process. Handler
+edge cases (malformed JSON, unknown routes, oversize bodies, the
+`/agent-auth/health` endpoint) are covered by in-process tests in
+`tests/test_server.py` using a thread-local `AgentAuthServer`.
+
+### Integration tests
+
+`tests/integration/test_*.py` drive a containerised `agent-auth serve`
+end-to-end over HTTP. Each test gets its own Docker Compose project
+(named by a uuid), its own ephemeral host port, its own SQLite file,
+and its own keyring — so concurrent test runs on the same host cannot
+collide. Tests use only the public surface: the HTTP API and the
+`agent-auth` CLI invoked inside the container via
+`docker compose exec`. See `design/decisions/0004-docker-integration-tests.md`.
+
+Run modes:
+- `scripts/test.sh --unit` (default) — in-process tests only; no Docker
+  required.
+- `scripts/test.sh --integration` — container-backed tests; requires
+  Docker.
+- `scripts/test.sh --all` — both layers.
 
 ## Security Considerations
 
