@@ -56,7 +56,7 @@ def test_list_todos_filters_by_status():
 
 
 def test_list_todos_rejects_invalid_status():
-    # Matches ThingsApplescriptClient._validate_status so bridge error mapping is uniform.
+    # Shares validate_status with ThingsApplescriptClient so bridge error mapping is uniform.
     client = FakeThingsClient(FakeThingsStore())
     with pytest.raises(ThingsError):
         client.list_todos(status="in_progress")
@@ -126,13 +126,6 @@ def test_list_areas_and_get_area():
         client.get_area("missing")
 
 
-def test_store_indexes_reflect_mutations():
-    store = FakeThingsStore()
-    store.todos = [_todo(id="t9")]
-    client = FakeThingsClient(store)
-    assert client.get_todo("t9").id == "t9"
-
-
 @pytest.mark.covers_function("Serve Fake Things Client")
 def test_load_fake_store_reads_full_fixture(tmp_path):
     path = tmp_path / "things.yaml"
@@ -165,14 +158,14 @@ list_memberships:
     assert [p.id for p in store.projects] == ["p1"]
     assert [t.id for t in store.todos] == ["t1"]
     assert store.list_memberships == {"TMTodayListSource": {"t1"}}
-    assert store.todos_by_id["t1"].name == "Buy milk"
+    assert store.todos[0].name == "Buy milk"
 
 
 def test_load_fake_store_tolerates_missing_optional_fields(tmp_path):
     path = tmp_path / "things.yaml"
     path.write_text("todos:\n  - id: t1\n", encoding="utf-8")
     store = load_fake_store(path)
-    todo = store.todos_by_id["t1"]
+    todo = store.todos[0]
     assert todo.status == "open"
     assert todo.tag_names == []
     assert todo.project_id is None
@@ -186,3 +179,34 @@ def test_load_fake_store_empty_yaml(tmp_path):
     assert store.projects == []
     assert store.areas == []
     assert store.list_memberships == {}
+
+
+def test_load_fake_store_rejects_unknown_top_level_key(tmp_path):
+    # Typos in top-level keys (e.g. `todoss:`) must fail loud, otherwise
+    # fixtures silently load as empty and tests pass for the wrong reason.
+    path = tmp_path / "things.yaml"
+    path.write_text("todoss:\n  - id: t1\n", encoding="utf-8")
+    with pytest.raises(ThingsError, match="unknown top-level key"):
+        load_fake_store(path)
+
+
+def test_load_fake_store_rejects_non_mapping_root(tmp_path):
+    path = tmp_path / "things.yaml"
+    path.write_text("- just\n- a\n- list\n", encoding="utf-8")
+    with pytest.raises(ThingsError, match="YAML mapping"):
+        load_fake_store(path)
+
+
+def test_load_fake_store_rejects_scalar_tag_names(tmp_path):
+    # Guard against `tag_names: Errand` silently becoming ["E","r","r","a","n","d"].
+    path = tmp_path / "things.yaml"
+    path.write_text("todos:\n  - id: t1\n    tag_names: Errand\n", encoding="utf-8")
+    with pytest.raises(ThingsError, match="tag_names must be a list"):
+        load_fake_store(path)
+
+
+def test_load_fake_store_rejects_invalid_status(tmp_path):
+    path = tmp_path / "things.yaml"
+    path.write_text("todos:\n  - id: t1\n    status: done\n", encoding="utf-8")
+    with pytest.raises(ThingsError, match="Invalid status"):
+        load_fake_store(path)

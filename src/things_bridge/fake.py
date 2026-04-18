@@ -15,9 +15,11 @@ from typing import Any
 
 import yaml
 
-from things_bridge.errors import ThingsNotFoundError
+from things_bridge.errors import ThingsError, ThingsNotFoundError
 from things_bridge.models import Area, Project, Todo
-from things_bridge.things import validate_status
+from things_bridge.things import VALID_STATUSES, validate_status
+
+_ALLOWED_TOP_LEVEL_KEYS = {"areas", "projects", "todos", "list_memberships"}
 
 
 @dataclass
@@ -34,18 +36,6 @@ class FakeThingsStore:
     projects: list[Project] = field(default_factory=list)
     areas: list[Area] = field(default_factory=list)
     list_memberships: dict[str, set[str]] = field(default_factory=dict)
-
-    @property
-    def todos_by_id(self) -> dict[str, Todo]:
-        return {t.id: t for t in self.todos}
-
-    @property
-    def projects_by_id(self) -> dict[str, Project]:
-        return {p.id: p for p in self.projects}
-
-    @property
-    def areas_by_id(self) -> dict[str, Area]:
-        return {a.id: a for a in self.areas}
 
 
 class FakeThingsClient:
@@ -82,10 +72,10 @@ class FakeThingsClient:
         return results
 
     def get_todo(self, todo_id: str) -> Todo:
-        todo = self._store.todos_by_id.get(todo_id)
-        if todo is None:
-            raise ThingsNotFoundError(f"todo {todo_id!r} not found")
-        return todo
+        for todo in self._store.todos:
+            if todo.id == todo_id:
+                return todo
+        raise ThingsNotFoundError(f"todo {todo_id!r} not found")
 
     def list_projects(self, *, area_id: str | None = None) -> list[Project]:
         if area_id is None:
@@ -93,64 +83,75 @@ class FakeThingsClient:
         return [p for p in self._store.projects if p.area_id == area_id]
 
     def get_project(self, project_id: str) -> Project:
-        project = self._store.projects_by_id.get(project_id)
-        if project is None:
-            raise ThingsNotFoundError(f"project {project_id!r} not found")
-        return project
+        for project in self._store.projects:
+            if project.id == project_id:
+                return project
+        raise ThingsNotFoundError(f"project {project_id!r} not found")
 
     def list_areas(self) -> list[Area]:
         return list(self._store.areas)
 
     def get_area(self, area_id: str) -> Area:
-        area = self._store.areas_by_id.get(area_id)
-        if area is None:
-            raise ThingsNotFoundError(f"area {area_id!r} not found")
-        return area
+        for area in self._store.areas:
+            if area.id == area_id:
+                return area
+        raise ThingsNotFoundError(f"area {area_id!r} not found")
+
+
+def _tag_names(data: dict[str, Any]) -> list[str]:
+    tags = data.get("tag_names", [])
+    if tags is None:
+        return []
+    if not isinstance(tags, list):
+        # Guard against YAML scalars like `tag_names: Errand` silently splitting
+        # into individual characters via `list("Errand")`.
+        raise ThingsError(f"tag_names must be a list, got {type(tags).__name__}: {tags!r}")
+    return list(tags)
+
+
+def _validate_fixture_status(status: str) -> str:
+    if status not in VALID_STATUSES:
+        raise ThingsError(
+            f"Invalid status {status!r} in fixture (expected one of {sorted(VALID_STATUSES)})"
+        )
+    return status
+
+
+def _shared_item_kwargs(data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": data["id"],
+        "name": data.get("name", ""),
+        "notes": data.get("notes", ""),
+        "status": _validate_fixture_status(data.get("status", "open")),
+        "area_id": data.get("area_id"),
+        "area_name": data.get("area_name"),
+        "tag_names": _tag_names(data),
+        "due_date": data.get("due_date"),
+        "activation_date": data.get("activation_date"),
+        "completion_date": data.get("completion_date"),
+        "cancellation_date": data.get("cancellation_date"),
+        "creation_date": data.get("creation_date"),
+        "modification_date": data.get("modification_date"),
+    }
 
 
 def _build_todo(data: dict[str, Any]) -> Todo:
     return Todo(
-        id=data["id"],
-        name=data.get("name", ""),
-        notes=data.get("notes", ""),
-        status=data.get("status", "open"),
+        **_shared_item_kwargs(data),
         project_id=data.get("project_id"),
         project_name=data.get("project_name"),
-        area_id=data.get("area_id"),
-        area_name=data.get("area_name"),
-        tag_names=list(data.get("tag_names", [])),
-        due_date=data.get("due_date"),
-        activation_date=data.get("activation_date"),
-        completion_date=data.get("completion_date"),
-        cancellation_date=data.get("cancellation_date"),
-        creation_date=data.get("creation_date"),
-        modification_date=data.get("modification_date"),
     )
 
 
 def _build_project(data: dict[str, Any]) -> Project:
-    return Project(
-        id=data["id"],
-        name=data.get("name", ""),
-        notes=data.get("notes", ""),
-        status=data.get("status", "open"),
-        area_id=data.get("area_id"),
-        area_name=data.get("area_name"),
-        tag_names=list(data.get("tag_names", [])),
-        due_date=data.get("due_date"),
-        activation_date=data.get("activation_date"),
-        completion_date=data.get("completion_date"),
-        cancellation_date=data.get("cancellation_date"),
-        creation_date=data.get("creation_date"),
-        modification_date=data.get("modification_date"),
-    )
+    return Project(**_shared_item_kwargs(data))
 
 
 def _build_area(data: dict[str, Any]) -> Area:
     return Area(
         id=data["id"],
         name=data.get("name", ""),
-        tag_names=list(data.get("tag_names", [])),
+        tag_names=_tag_names(data),
     )
 
 
@@ -182,8 +183,18 @@ def load_fake_store(path: str | os.PathLike[str]) -> FakeThingsStore:
         list_memberships:
           TMTodayListSource: [t1]
     """
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
+
+    if not isinstance(data, dict):
+        raise ThingsError(f"fixture must be a YAML mapping, got {type(data).__name__}")
+
+    unknown = set(data) - _ALLOWED_TOP_LEVEL_KEYS
+    if unknown:
+        raise ThingsError(
+            f"unknown top-level key(s) in fixture: {sorted(unknown)} "
+            f"(allowed: {sorted(_ALLOWED_TOP_LEVEL_KEYS)})"
+        )
 
     areas = [_build_area(a) for a in data.get("areas", []) or []]
     projects = [_build_project(p) for p in data.get("projects", []) or []]

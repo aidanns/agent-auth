@@ -13,6 +13,7 @@ follow-up macOS-runner workflow.
 
 import json
 import os
+import socket
 import threading
 import urllib.error
 import urllib.request
@@ -46,7 +47,12 @@ class _AutoApprovePlugin(NotificationPlugin):
         return ApprovalResult(approved=True, grant_type="once")
 
 
-def _create_tokens(signing_key, store, scopes=None):
+def _create_tokens(signing_key, store, *, scopes=None, access_ttl=timedelta(hours=1)):
+    """Mint an (access, refresh) pair for a new family.
+
+    ``access_ttl`` may be negative to produce an already-expired access token;
+    the refresh token is omitted in that case since no test needs it.
+    """
     scopes = scopes or {"things:read": "allow"}
     family_id = generate_token_id()
     store.create_family(family_id, scopes)
@@ -56,7 +62,10 @@ def _create_tokens(signing_key, store, scopes=None):
     access_token = sign_token(access_id, PREFIX_ACCESS, signing_key)
     _, _, access_sig = access_token.split("_")
     store.create_token(access_id, access_sig, family_id, "access",
-                       (now + timedelta(hours=1)).isoformat())
+                       (now + access_ttl).isoformat())
+
+    if access_ttl <= timedelta(0):
+        return family_id, access_token, None
 
     refresh_id = generate_token_id()
     refresh_token = sign_token(refresh_id, PREFIX_REFRESH, signing_key)
@@ -64,20 +73,6 @@ def _create_tokens(signing_key, store, scopes=None):
     store.create_token(refresh_id, refresh_sig, family_id, "refresh",
                        (now + timedelta(hours=8)).isoformat())
     return family_id, access_token, refresh_token
-
-
-def _expired_access_tokens(signing_key, store, scopes=None):
-    scopes = scopes or {"things:read": "allow"}
-    family_id = generate_token_id()
-    store.create_family(family_id, scopes)
-
-    now = datetime.now(timezone.utc)
-    access_id = generate_token_id()
-    access_token = sign_token(access_id, PREFIX_ACCESS, signing_key)
-    _, _, access_sig = access_token.split("_")
-    store.create_token(access_id, access_sig, family_id, "access",
-                       (now - timedelta(hours=1)).isoformat())
-    return family_id, access_token
 
 
 def _seeded_store() -> FakeThingsStore:
@@ -191,7 +186,9 @@ def test_list_todos_missing_token_returns_401(stack):
 
 @pytest.mark.covers_function("Delegate Token Validation")
 def test_list_todos_expired_access_token_returns_401_token_expired(stack):
-    _, expired_token = _expired_access_tokens(stack["signing_key"], stack["token_store"])
+    _, expired_token, _ = _create_tokens(
+        stack["signing_key"], stack["token_store"], access_ttl=-timedelta(hours=1),
+    )
     status, data = _get(f"{stack['bridge_url']}/things-bridge/todos", expired_token)
     assert status == 401
     assert data == {"error": "token_expired"}
@@ -306,8 +303,15 @@ def test_projects_and_areas(stack):
 
 def test_list_todos_authz_unavailable_returns_502(tmp_dir):
     """If agent-auth isn't reachable, the bridge should report 502 authz_unavailable."""
-    # Point the bridge at a port nothing is listening on.
-    authz = AgentAuthClient("http://127.0.0.1:1", timeout_seconds=1.0)
+    # Bind and immediately close a socket to claim an ephemeral port, then
+    # point the bridge at it — more portable than hard-coding port 1, which
+    # can return EACCES/EPERM on some container configurations.
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.bind(("127.0.0.1", 0))
+    unused_port = probe.getsockname()[1]
+    probe.close()
+
+    authz = AgentAuthClient(f"http://127.0.0.1:{unused_port}", timeout_seconds=1.0)
     bridge_config = BridgeConfig(host="127.0.0.1", port=0)
     things = FakeThingsClient(FakeThingsStore())
     server = ThingsBridgeServer(bridge_config, things, authz)

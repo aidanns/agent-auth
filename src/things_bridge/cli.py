@@ -37,13 +37,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _print_fake_banner(path: str) -> None:
     source = path or "empty in-memory store"
-    banner = (
-        "================================================================\n"
-        "  things-bridge: --fake-things active — NOT TALKING TO THINGS 3\n"
-        f"  fixtures: {source}\n"
-        "================================================================"
+    print(
+        f"things-bridge: --fake-things active (NOT talking to Things 3); fixtures={source}",
+        file=sys.stderr,
     )
-    print(banner, file=sys.stderr)
 
 
 def main():
