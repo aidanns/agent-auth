@@ -1,4 +1,4 @@
-# ADR 0001: Batch AppleScript property reads in `list_todos`
+# ADR 0002: Batch AppleScript property reads in `list_todos`
 
 Date: 2026-04-18
 
