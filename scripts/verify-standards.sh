@@ -118,7 +118,9 @@ else
 fi
 
 # Bash tooling: shellcheck + shfmt must be wired into CI, treefmt, and
-# lefthook per .claude/instructions/bash.md.
+# lefthook per .claude/instructions/bash.md. Strip comments before
+# grepping so a stale `# shellcheck` mention doesn't satisfy the check
+# after the actual invocation has been removed.
 
 bash_tool_missing=0
 
@@ -128,18 +130,25 @@ fail_bash_check() {
   bash_tool_missing=1
 }
 
+strip_comments() {
+  sed -E 's/(^|[[:space:]])#.*$//' "$@"
+}
+
 for tool in shellcheck shfmt; do
-  if ! grep -rqE "\\b${tool}\\b" .github/workflows 2>/dev/null; then
+  if ! find .github/workflows -name '*.yml' -print0 2>/dev/null \
+    | xargs -0 -r cat 2>/dev/null \
+    | strip_comments \
+    | grep -qE "\\b${tool}\\b"; then
     fail_bash_check "${tool}" ".github/workflows/*.yml" \
       "Add a workflow step that invokes '${tool}' (see .github/workflows/bash.yml)."
   fi
 
-  if ! grep -qE "\\b${tool}\\b" treefmt.toml 2>/dev/null; then
+  if ! { [[ -f treefmt.toml ]] && strip_comments treefmt.toml | grep -qE "^\\[formatter\\.${tool}\\]"; }; then
     fail_bash_check "${tool}" "treefmt.toml" \
       "Add a [formatter.${tool}] entry to treefmt.toml."
   fi
 
-  if ! grep -qE "\\b${tool}\\b" lefthook.yml 2>/dev/null; then
+  if ! { [[ -f lefthook.yml ]] && strip_comments lefthook.yml | grep -qE "\\b${tool}\\b"; }; then
     fail_bash_check "${tool}" "lefthook.yml" \
       "Add a pre-commit command that invokes '${tool}' to lefthook.yml."
   fi
