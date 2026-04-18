@@ -14,6 +14,7 @@ REQUIRED_TOOLS=(
   shfmt
   systems-engineering
   task
+  uv
   yq
 )
 # keep-sorted end

@@ -16,11 +16,14 @@ agent-auth provides a local authorization layer between AI agents (e.g. Claude C
 
 ## Installation
 
-Requires Python 3.11+ and [go-task](https://taskfile.dev) (`brew install go-task` on macOS).
+Requires:
+
+- [uv](https://docs.astral.sh/uv/) — Python package and environment manager. Install via `brew install uv` (macOS) or `curl -LsSf https://astral.sh/uv/install.sh | sh` (Linux). uv reads `requires-python` from `pyproject.toml` and installs a matching CPython automatically, so Python 3.11+ does not need to be pre-installed.
+- [go-task](https://taskfile.dev) — task runner (`brew install go-task` on macOS).
 
 ```bash
 cd ~/Projects/agent-auth
-task test        # bootstraps .venv-$(uname -s)-$(uname -m) and runs the suite
+task test        # bootstraps .venv-$(uname -s)-$(uname -m) via `uv sync` and runs the suite
 ```
 
 Every repeatable operation is exposed through the task runner — run `task --list` to see the catalogue. Common commands:
@@ -35,12 +38,12 @@ task verify-standards       # verify the Taskfile matches the tooling standard
 
 If you don't have `go-task` installed, every task dispatches to a script under `scripts/*.sh` that you can invoke directly (e.g. `scripts/test.sh`).
 
-For a bare Python install without the task runner:
+For a bare install without the task runner:
 
 ```bash
-python3 -m venv ".venv-$(uname -s)-$(uname -m)"
-source ".venv-$(uname -s)-$(uname -m)/bin/activate"
-pip install -e ".[dev]"
+export UV_PROJECT_ENVIRONMENT=".venv-$(uname -s)-$(uname -m)"
+uv sync --extra dev
+uv run agent-auth --help
 ```
 
 ## Usage

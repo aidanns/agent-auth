@@ -9,14 +9,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${REPO_ROOT}"
 
-VENV_DIR=".venv-$(uname -s)-$(uname -m)"
+UV_PROJECT_ENVIRONMENT=".venv-$(uname -s)-$(uname -m)"
+export UV_PROJECT_ENVIRONMENT
 
-if [[ ! -d "${VENV_DIR}" ]]; then
-  python3 -m venv "${VENV_DIR}"
-fi
+uv sync --extra dev --quiet
 
-# Re-run the editable install unconditionally so that a venv created before
-# `build` was added to [dev] extras picks it up on the next `task build`.
-"${VENV_DIR}/bin/pip" install --quiet -e ".[dev]"
-
-"${VENV_DIR}/bin/python" -m build --outdir "${REPO_ROOT}/dist"
+exec uv run --no-sync python -m build --outdir "${REPO_ROOT}/dist"

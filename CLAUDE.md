@@ -11,9 +11,9 @@ simplifying for "personal project" scope.
 
 ## Commands
 
-- `source ".venv-$(uname -s)-$(uname -m)/bin/activate"` — activate the virtualenv (per-OS/arch so Darwin and Linux venvs can coexist on a shared filesystem)
-- `pip install -e .` — install in development mode
-- `agent-auth --help` — show CLI usage
+- `export UV_PROJECT_ENVIRONMENT=".venv-$(uname -s)-$(uname -m)"` — point uv at the per-OS/arch venv so Darwin and Linux venvs can coexist on a shared filesystem
+- `uv sync --extra dev` — bootstrap the project virtualenv in development mode (reads `uv.lock`)
+- `uv run agent-auth --help` — show CLI usage
 - `scripts/agent-auth.sh <args...>` — run the agent-auth CLI (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/agent-auth.sh serve`
 - `scripts/things-bridge.sh <args...>` — run the things-bridge CLI (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/things-bridge.sh serve`
 - `scripts/things-cli.sh <args...>` — run the things-cli client (bootstraps `.venv-$(uname -s)-$(uname -m)` if missing); e.g. `scripts/things-cli.sh todos list`
@@ -41,8 +41,8 @@ simplifying for "personal project" scope.
   refresh/rotate pair -> JIT approval for prompt-tier scope -> revoke ->
   verify invalidation
 - Function-to-test allocation tracked via `scripts/verify-function-tests.sh`
-- Project standards (Taskfile task coverage, Dependabot ecosystem coverage, ...) verified via `scripts/verify-standards.sh`
-- Required local CLI tooling (python3, task, yq, ...) verified via `scripts/verify-dependencies.sh`
+- Project standards (Taskfile task coverage, Dependabot ecosystem coverage, `uv.lock` sync, ...) verified via `scripts/verify-standards.sh`
+- Required local CLI tooling (python3, task, uv, yq, ...) verified via `scripts/verify-dependencies.sh`
 - Plugin trust boundary: the notification plugin currently uses
   `importlib.import_module` inside the server process which holds signing
   and encryption keys — tracked in #6 for migration to out-of-process
