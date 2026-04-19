@@ -27,5 +27,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   via agent-auth. Stores credentials in the system keyring (falls back to a
   `~/.config/things-cli/credentials.yaml` file when no keyring backend is available).
 
-[Unreleased]: https://github.com/aidanns/agent-auth/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/aidanns/agent-auth/releases/tag/v0.1.0
+[unreleased]: https://github.com/aidanns/agent-auth/compare/v0.1.0...HEAD
