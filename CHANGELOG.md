@@ -37,5 +37,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so a detected major bump is demoted to a minor bump; pass an explicit
   `task release -- 1.0.0` to graduate.
 
-[unreleased]: https://github.com/aidanns/agent-auth/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/aidanns/agent-auth/releases/tag/v0.1.0
+[unreleased]: https://github.com/aidanns/agent-auth/compare/v0.1.0...HEAD
