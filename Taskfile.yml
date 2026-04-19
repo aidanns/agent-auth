@@ -62,7 +62,7 @@ tasks:
       - scripts/install-hooks.sh
 
   release:
-    desc: "Cut a release. The version is set by the argument you pass (e.g. task release -- 1.2.3); it must match a ## [X.Y.Z] section in CHANGELOG.md. The script creates and pushes the tag vX.Y.Z and publishes the GitHub release."
+    desc: "Cut a release. With no args (task release), the next version is derived from conventional commits since the last v* tag (major/minor/patch from BREAKING/feat/fix). Pass an explicit version (task release -- 1.2.3) to override. The resolved version must match a ## [X.Y.Z] section in CHANGELOG.md. The script creates and pushes the tag vX.Y.Z and publishes the GitHub release."
     cmds:
       - scripts/release.sh {{.CLI_ARGS}}
 

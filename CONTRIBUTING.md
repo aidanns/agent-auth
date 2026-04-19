@@ -85,22 +85,35 @@ For every user-facing PR, update `CHANGELOG.md` before merging:
 
 ### Cutting a release
 
-`task release` is the release entrypoint. It delegates to `scripts/release.sh`
-which performs these steps automatically:
+`task release` is the release entrypoint. It delegates to `scripts/release.sh`,
+which:
 
-1. Validates the working tree is clean and local `main` matches `origin/main`.
-2. Checks that `CHANGELOG.md` contains a `## [X.Y.Z]` section with content.
-3. Prompts for confirmation, then creates a signed git tag (`vX.Y.Z`).
-4. Pushes the tag to `origin`.
-5. Creates a GitHub release from the CHANGELOG entry for that version.
+1. Resolves the target version — either from the argument you pass, or by
+   deriving it from Conventional Commits since the last `v*` tag (see below).
+2. Validates the working tree is clean and local `main` matches `origin/main`.
+3. Checks that `CHANGELOG.md` contains a `## [X.Y.Z]` section with content for
+   the resolved version.
+4. Prompts for confirmation, then creates a signed git tag (`vX.Y.Z`).
+5. Pushes the tag to `origin`.
+6. Creates a GitHub release from the CHANGELOG entry for that version.
+
+#### Version resolution
+
+| Invocation              | Behaviour                                                                                                                                                                                                                                                                                                                                |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task release`          | Auto-detect. Finds the latest `vX.Y.Z` tag, walks commits since that tag, and applies the largest SemVer bump implied by their Conventional Commit types: any `<type>!:` subject or `BREAKING CHANGE:` footer → **major**; any `feat:` → **minor**; any `fix:` → **patch**. Other types alone (docs, chore, refactor, ...) → no release. |
+| `task release -- 1.2.3` | Explicit override — use this for the very first release (before any `v*` tag exists) or to force a non-default bump (e.g. `1.0.0` graduation).                                                                                                                                                                                           |
 
 To cut a release:
 
-1. Move the entries under `## [Unreleased]` into a new `## [X.Y.Z] - YYYY-MM-DD`
-   section in `CHANGELOG.md`, replacing `X.Y.Z` with the new version and
-   `YYYY-MM-DD` with today's date. Leave `## [Unreleased]` empty above it.
-2. Commit and push: `git commit -m "chore: prepare release vX.Y.Z"`.
-3. Run `task release -- X.Y.Z` (e.g. `task release -- 1.2.3`).
+1. Move the entries under `## [Unreleased]` in `CHANGELOG.md` into a new
+   `## [X.Y.Z] - YYYY-MM-DD` section. If you don't know the version yet, run
+   `task release` once — it will print the auto-detected version (e.g.
+   `Auto-detected minor bump from commits since v0.1.0: v0.2.0`) then exit
+   asking you to update the CHANGELOG.
+2. Leave a fresh empty `## [Unreleased]` section above the new version.
+3. Commit and push: `git commit -m "chore: prepare release vX.Y.Z"`.
+4. Run `task release` (auto-detect) or `task release -- X.Y.Z` (explicit).
 
 The version string embedded in the distributed package is derived from the git
 tag at build time via `setuptools-scm`; no other version file needs updating.
