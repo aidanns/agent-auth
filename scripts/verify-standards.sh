@@ -32,7 +32,15 @@
 #   7. CONTRIBUTING.md exists at repo root and contains dev-setup, testing,
 #      release, and commit-signing sections per
 #      .claude/instructions/release-and-hygiene.md.
-#   8. lefthook pre-commit hook is installed in the local clone when
+#   8. Every file under design/decisions/ (other than README.md and
+#      TEMPLATE.md) contains Context / Decision / Consequences sections
+#      and is linked from design/decisions/README.md, per
+#      .claude/instructions/design.md "Architecture Decision Records".
+#   9. design/ASSURANCE.md exists, declares a QM or SIL level, and lists
+#      the required activities and evidence for that level, per
+#      .claude/instructions/design.md "Quality management / safety
+#      integrity level".
+#  10. lefthook pre-commit hook is installed in the local clone when
 #      lefthook.yml is present (skipped under CI=true, since CI enforces
 #      the same gates via explicit workflow steps).
 
@@ -387,6 +395,115 @@ if [[ ${contributing_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: CONTRIBUTING.md exists with dev-setup, testing, release, and commit-signing sections."
+
+# ADR discipline per .claude/instructions/design.md. Every file under
+# design/decisions/ other than README.md / TEMPLATE.md must:
+#   - contain ## Context, ## Decision, and ## Consequences sections
+#     (case-insensitive, anchored to start of line),
+#   - be linked from design/decisions/README.md (filename appears as a
+#     markdown link target).
+
+adr_missing=0
+
+fail_adr_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  adr_missing=1
+}
+
+ADR_DIR="design/decisions"
+ADR_INDEX="${ADR_DIR}/README.md"
+
+if [[ ! -d "${ADR_DIR}" ]]; then
+  fail_adr_check \
+    "${ADR_DIR}/ is missing." \
+    "Create ${ADR_DIR}/ with README.md, TEMPLATE.md, and at least one ADR."
+elif [[ ! -f "${ADR_INDEX}" ]]; then
+  fail_adr_check \
+    "${ADR_INDEX} is missing." \
+    "Create ${ADR_INDEX} listing every ADR by filename link."
+else
+  index_content="$(cat "${ADR_INDEX}")"
+  while IFS= read -r adr; do
+    [[ -f "${adr}" ]] || continue
+    base="$(basename "${adr}")"
+    [[ "${base}" == "README.md" || "${base}" == "TEMPLATE.md" ]] && continue
+
+    # strip_comments eats Markdown headings (they start with `#`), so the
+    # ADR gate reads the raw file. The required sections are unambiguous
+    # — no code-block fencing concern inside an ADR section heading.
+    for section in Context Decision Consequences; do
+      if ! grep -qiE "^##[[:space:]]+${section}([[:space:]]|$)" "${adr}"; then
+        fail_adr_check \
+          "${adr} is missing a '## ${section}' section." \
+          "Add a '## ${section}' heading (see ${ADR_DIR}/TEMPLATE.md)."
+      fi
+    done
+
+    # Match as a Markdown link target `](filename)` rather than a bare
+    # substring so a filename mentioned in prose doesn't spuriously
+    # satisfy the check, and a filename that happens to be a suffix of
+    # another entry can't substring-match it.
+    escaped_base="${base//./\\.}"
+    if ! grep -qE "\]\(${escaped_base}\)" <<<"${index_content}"; then
+      fail_adr_check \
+        "${adr} is not linked from ${ADR_INDEX}." \
+        "Add an entry to ${ADR_INDEX} with a Markdown link to ${base}."
+    fi
+  done < <(find "${ADR_DIR}" -type f -name '*.md' -print)
+fi
+
+if [[ ${adr_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: ADRs under ${ADR_DIR}/ all have Context/Decision/Consequences sections and are linked from ${ADR_INDEX}."
+
+# QM / SIL declaration per .claude/instructions/design.md. design/ASSURANCE.md
+# must exist, declare at least one of QM / SIL, and list required activities
+# and evidence.
+
+assurance_missing=0
+
+fail_assurance_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  assurance_missing=1
+}
+
+ASSURANCE_FILE="design/ASSURANCE.md"
+
+if [[ ! -f "${ASSURANCE_FILE}" ]]; then
+  fail_assurance_check \
+    "${ASSURANCE_FILE} is missing." \
+    "Create ${ASSURANCE_FILE} declaring a QM (ISO 9000) or SIL (IEC 61508) level."
+else
+  # strip_comments eats Markdown headings (they start with `#`), so the
+  # ASSURANCE gate reads the raw file.
+  if ! grep -qE "\\b(QM|SIL)\\b" "${ASSURANCE_FILE}"; then
+    fail_assurance_check \
+      "${ASSURANCE_FILE} does not declare a QM or SIL level." \
+      "Name the chosen level (QM or SIL N) in a top-level heading or paragraph."
+  fi
+
+  if ! grep -qiE "^##[[:space:]]+Required activities" "${ASSURANCE_FILE}"; then
+    fail_assurance_check \
+      "${ASSURANCE_FILE} is missing a '## Required activities' section." \
+      "List the activities required by the declared level."
+  fi
+
+  if ! grep -qiE "^##[[:space:]]+Required evidence" "${ASSURANCE_FILE}"; then
+    fail_assurance_check \
+      "${ASSURANCE_FILE} is missing a '## Required evidence' section." \
+      "List the evidence that demonstrates conformance to the declared level."
+  fi
+fi
+
+if [[ ${assurance_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: ${ASSURANCE_FILE} declares a QM/SIL level with required activities and evidence."
 
 # CHANGELOG.md must exist and contain a ## [Unreleased] section per
 # .claude/instructions/release-and-hygiene.md (Keep-a-Changelog format).
