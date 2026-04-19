@@ -384,3 +384,167 @@ if [[ ${contributing_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: CONTRIBUTING.md exists with dev-setup, testing, release, and commit-signing sections."
+
+# CHANGELOG.md must exist and contain a ## [Unreleased] section per
+# .claude/instructions/release-and-hygiene.md (Keep-a-Changelog format).
+
+if [[ ! -f CHANGELOG.md ]]; then
+  echo "verify-standards: CHANGELOG.md is missing from the repo root." >&2
+  echo "  Add CHANGELOG.md following the Keep-a-Changelog format." >&2
+  exit 1
+fi
+
+if ! grep -qE "^## \\[Unreleased\\]" CHANGELOG.md; then
+  echo "verify-standards: CHANGELOG.md does not contain a '## [Unreleased]' section." >&2
+  echo "  Add '## [Unreleased]' as the topmost version section in CHANGELOG.md." >&2
+  exit 1
+fi
+
+echo "verify-standards: CHANGELOG.md exists with a [Unreleased] section."
+
+# LICENSE.md must exist and README.md must link to it from a ## License section
+# per .claude/instructions/release-and-hygiene.md.
+
+license_missing=0
+
+if [[ ! -f LICENSE.md ]]; then
+  echo "verify-standards: LICENSE.md is missing from the repo root." >&2
+  echo "  Add LICENSE.md (default: MIT) at the repo root." >&2
+  license_missing=1
+fi
+
+if [[ ! -f README.md ]]; then
+  echo "verify-standards: README.md is missing from the repo root." >&2
+  license_missing=1
+elif ! grep -qE "^## License" README.md; then
+  echo "verify-standards: README.md does not contain a '## License' section." >&2
+  echo "  Add a '## License' section to README.md linking to LICENSE.md." >&2
+  license_missing=1
+elif ! grep -qiE "\\[.*\\]\\(LICENSE\\.md\\)" README.md; then
+  echo "verify-standards: README.md '## License' section does not link to LICENSE.md." >&2
+  echo "  Add a markdown link to LICENSE.md in the '## License' section of README.md." >&2
+  license_missing=1
+fi
+
+if [[ ${license_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: LICENSE.md exists and README.md links to it from a License section."
+
+# SECURITY.md must exist and contain the required sections per
+# .claude/instructions/release-and-hygiene.md and .claude/instructions/design.md.
+
+security_missing=0
+
+fail_security_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  security_missing=1
+}
+
+if [[ ! -f SECURITY.md ]]; then
+  fail_security_check \
+    "SECURITY.md is missing from the repo root." \
+    "Add SECURITY.md covering trust boundaries, threat model, key handling, revocation flow, audit surface, and vulnerability reporting."
+else
+  security_section_names=(
+    # keep-sorted start
+    audit-surface
+    cybersecurity-standard
+    key-handling
+    revocation-flow
+    threat-model
+    trust-boundaries
+    vulnerability-reporting
+    # keep-sorted end
+  )
+  security_section_patterns=(
+    "## Audit surface|## Audit log"
+    "## Cybersecurity standard|Cybersecurity standard"
+    "## Key handling"
+    "## Revocation flow"
+    "## Threat model"
+    "## Trust boundaries|## Trust boundary"
+    "## Vulnerability reporting|## Reporting vulnerabilities"
+  )
+
+  [[ ${#security_section_names[@]} -eq ${#security_section_patterns[@]} ]] \
+    || { echo "BUG: security parallel arrays length mismatch" >&2; exit 1; }
+
+  for i in "${!security_section_names[@]}"; do
+    if ! grep -qiE "${security_section_patterns[${i}]}" SECURITY.md; then
+      fail_security_check \
+        "SECURITY.md is missing a '${security_section_names[${i}]}' section." \
+        "Add a section matching: ${security_section_patterns[${i}]}"
+    fi
+  done
+fi
+
+if [[ ${security_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: SECURITY.md exists with all required sections including the cybersecurity standard."
+
+# install.sh must exist at the repo root and be executable per
+# .claude/instructions/release-and-hygiene.md.
+
+if [[ ! -f install.sh ]]; then
+  echo "verify-standards: install.sh is missing from the repo root." >&2
+  echo "  Add install.sh following the bash script conventions in .claude/instructions/bash.md." >&2
+  exit 1
+fi
+
+if [[ ! -x install.sh ]]; then
+  echo "verify-standards: install.sh exists but is not executable." >&2
+  echo "  Run 'chmod +x install.sh' and commit the mode change." >&2
+  exit 1
+fi
+
+echo "verify-standards: install.sh exists and is executable."
+
+# GitHub repository About metadata must be populated per
+# .claude/instructions/release-and-hygiene.md. Skipped when 'gh' is not
+# available or not authenticated (e.g. local dev without credentials).
+
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  repo_meta="$(gh repo view --json description,homepageUrl,repositoryTopics 2>/dev/null || true)"
+  if [[ -n "${repo_meta}" ]]; then
+    mapfile -t _gh_fields < <(
+      python3 -c "
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get('description', ''))
+print(d.get('homepageUrl', ''))
+print(len(d.get('repositoryTopics', [])))
+" "${repo_meta}"
+    )
+    repo_description="${_gh_fields[0]:-}"
+    repo_homepage="${_gh_fields[1]:-}"
+    repo_topics="${_gh_fields[2]:-0}"
+
+    gh_meta_missing=0
+    if [[ -z "${repo_description}" ]]; then
+      echo "verify-standards: GitHub repo 'About' description is empty." >&2
+      echo "  Set it via 'gh repo edit --description \"...\"'." >&2
+      gh_meta_missing=1
+    fi
+    if [[ -z "${repo_homepage}" ]]; then
+      echo "verify-standards: GitHub repo 'About' homepage is empty." >&2
+      echo "  Set it via 'gh repo edit --homepage \"...\"'." >&2
+      gh_meta_missing=1
+    fi
+    if [[ "${repo_topics}" -eq 0 ]]; then
+      echo "verify-standards: GitHub repo has no topics set." >&2
+      echo "  Set them via 'gh repo edit --add-topic <topic>'." >&2
+      gh_meta_missing=1
+    fi
+    if [[ ${gh_meta_missing} -ne 0 ]]; then
+      exit 1
+    fi
+    echo "verify-standards: GitHub repo About metadata (description, homepage, topics) is populated."
+  fi
+else
+  echo "verify-standards: 'gh' not available or not authenticated; skipping GitHub metadata check."
+fi

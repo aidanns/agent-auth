@@ -62,9 +62,9 @@ tasks:
       - scripts/install-hooks.sh
 
   release:
-    desc: Cut a release (version bump, tag, GitHub release, publish).
+    desc: "Cut a release (version bump, tag, GitHub release, publish). Usage: task release -- X.Y.Z"
     cmds:
-      - scripts/release.sh
+      - scripts/release.sh {{.CLI_ARGS}}
 
   agent-auth:
     desc: Run the agent-auth CLI (e.g. `task agent-auth -- serve`).

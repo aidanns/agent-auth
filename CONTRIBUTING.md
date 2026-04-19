@@ -75,11 +75,35 @@ signing are sibling requirements, not the same thing.
 
 ## Release process
 
-`task release` is the release entrypoint. The underlying automation
-(version bump, tag, GitHub release, publish) is tracked in
-[#18](https://github.com/aidanns/agent-auth/issues/18) and is not yet
-implemented — running the task today exits non-zero to prevent manual
-releases that would skip the standard checks.
+### Before releasing
+
+For every user-facing PR, update `CHANGELOG.md` before merging:
+
+1. Add a bullet under `## [Unreleased]` describing the user-visible change.
+2. Keep the format consistent with the existing entries (present-tense action,
+   linked to relevant issues/PRs where helpful).
+
+### Cutting a release
+
+`task release` is the release entrypoint. It delegates to `scripts/release.sh`
+which performs these steps automatically:
+
+1. Validates the working tree is clean and local `main` matches `origin/main`.
+2. Checks that `CHANGELOG.md` contains a `## [X.Y.Z]` section with content.
+3. Prompts for confirmation, then creates a signed git tag (`vX.Y.Z`).
+4. Pushes the tag to `origin`.
+5. Creates a GitHub release from the CHANGELOG entry for that version.
+
+To cut a release:
+
+1. Move the entries under `## [Unreleased]` into a new `## [X.Y.Z] - YYYY-MM-DD`
+   section in `CHANGELOG.md`, replacing `X.Y.Z` with the new version and
+   `YYYY-MM-DD` with today's date. Leave `## [Unreleased]` empty above it.
+2. Commit and push: `git commit -m "chore: prepare release vX.Y.Z"`.
+3. Run `task release -- X.Y.Z` (e.g. `task release -- 1.2.3`).
+
+The version string embedded in the distributed package is derived from the git
+tag at build time via `setuptools-scm`; no other version file needs updating.
 
 ## Commit signing
 
