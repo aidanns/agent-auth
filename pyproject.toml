@@ -52,8 +52,9 @@ fallback_version = "0.0.0+unknown"
 
 [tool.pip-audit]
 # List known-acceptable advisories here with a comment explaining why each
-# is acceptable. Example:
-#   ignore-vuln = ["PYSEC-2024-12345"]  # Not reachable via our usage of <package>
+# is acceptable. pip-audit accepts identifiers from multiple databases. Examples:
+#   ignore-vuln = ["PYSEC-2024-12345"]     # PYSEC advisory
+#   ignore-vuln = ["GHSA-xxxx-xxxx-xxxx"]  # GitHub Security Advisory
 ignore-vuln = []
 
 [tool.pytest.ini_options]
