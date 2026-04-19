@@ -67,10 +67,20 @@ def _docker_compose_available() -> bool:
 
 @dataclass
 class AgentAuthContainer:
-    """Handle for a running agent-auth integration-test container."""
+    """Handle for a running agent-auth integration-test container.
+
+    ``env`` is the per-project ``{AGENT_AUTH_TEST_CONFIG_DIR,
+    COMPOSE_PROJECT_NAME}`` pair this container was started with. It is
+    reapplied via ``_scoped_env`` around every ``docker compose exec``
+    call because testcontainers invokes ``docker compose`` without an
+    explicit ``env=``, so each subprocess inherits whatever
+    ``os.environ`` holds at call time — and the compose file needs
+    ``${AGENT_AUTH_TEST_CONFIG_DIR}`` interpolated on every exec.
+    """
 
     base_url: str
     compose: DockerCompose
+    env: dict[str, str]
     service: str = "agent-auth"
 
     def url(self, path: str) -> str:
@@ -84,10 +94,11 @@ class AgentAuthContainer:
         exit so pytest tracebacks show *why* the CLI failed rather than an
         opaque ``CalledProcessError``.
         """
-        stdout, stderr, exit_code = self.compose.exec_in_container(
-            ["agent-auth", *args],
-            service_name=self.service,
-        )
+        with _scoped_env(**self.env):
+            stdout, stderr, exit_code = self.compose.exec_in_container(
+                ["agent-auth", *args],
+                service_name=self.service,
+            )
         if exit_code != 0:
             raise RuntimeError(
                 f"`agent-auth {' '.join(args)}` failed: "
@@ -321,7 +332,11 @@ def agent_auth_container_factory(
             port = compose.get_service_port("agent-auth", 9100)
             base_url = f"http://{host}:{port}"
             _wait_until_server_ready(f"{base_url}/agent-auth/health")
-            return AgentAuthContainer(base_url=base_url, compose=compose)
+            return AgentAuthContainer(
+                base_url=base_url,
+                compose=compose,
+                env=compose_env,
+            )
 
     yield _factory
 
