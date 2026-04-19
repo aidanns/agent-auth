@@ -35,6 +35,7 @@ components:
           - Serve Token Modify Endpoint
           - Serve Token Revoke Endpoint
           - Serve Token Rotate Endpoint
+          - Bootstrap Management Token
           - Log Token Operation
           - Log Authorization Decision
           - Handle Token Create Command

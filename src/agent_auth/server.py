@@ -8,7 +8,7 @@ from agent_auth.approval import ApprovalManager
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
 from agent_auth.errors import ScopeDeniedError, TokenInvalidError
-from agent_auth.keys import SigningKey
+from agent_auth.keys import KeyManager, SigningKey
 from agent_auth.plugins import load_plugin
 from agent_auth.scopes import VALID_TIERS, check_scope
 from agent_auth.store import TokenStore
@@ -19,6 +19,8 @@ from agent_auth.tokens import (
     generate_token_id,
     verify_token,
 )
+
+MANAGEMENT_SCOPE = "agent-auth:manage"
 
 
 class AgentAuthHandler(BaseHTTPRequestHandler):
@@ -312,6 +314,48 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             },
         )
 
+    def _require_management_auth(self) -> bool:
+        """Validate management bearer token. Sends 401/403 and returns False if invalid."""
+        auth_header = self.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            self._send_json(401, {"error": "missing_token"})
+            return False
+
+        token_raw = auth_header[7:]
+        store: TokenStore = self._server.store
+        signing_key: SigningKey = self._server.signing_key
+
+        try:
+            prefix, token_id = verify_token(token_raw, signing_key)
+        except TokenInvalidError:
+            self._send_json(401, {"error": "invalid_token"})
+            return False
+        if prefix != PREFIX_ACCESS:
+            self._send_json(401, {"error": "invalid_token"})
+            return False
+
+        token_record = store.get_token(token_id)
+        if token_record is None:
+            self._send_json(401, {"error": "invalid_token"})
+            return False
+
+        family = store.get_family(token_record["family_id"])
+        if family is None or family["revoked"]:
+            self._send_json(401, {"error": "invalid_token"})
+            return False
+
+        now = datetime.now(UTC)
+        expires_at = datetime.fromisoformat(token_record["expires_at"])
+        if now >= expires_at:
+            self._send_json(401, {"error": "token_expired"})
+            return False
+
+        if family["scopes"].get(MANAGEMENT_SCOPE) != "allow":
+            self._send_json(403, {"error": "scope_denied"})
+            return False
+
+        return True
+
     def _get_active_family(self, store: TokenStore, family_id: str) -> dict | None:
         """Return family if it exists and is not revoked; send 404/409 and return None otherwise."""
         family = store.get_family(family_id)
@@ -324,6 +368,8 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         return family
 
     def _handle_token_create(self):
+        if not self._require_management_auth():
+            return
         data = self._read_json()
         if data is None:
             self._send_json(400, {"error": "malformed_request"})
@@ -359,10 +405,15 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_token_list(self):
+        if not self._require_management_auth():
+            return
         store: TokenStore = self._server.store
-        self._send_json(200, store.list_families())
+        families = [f for f in store.list_families() if MANAGEMENT_SCOPE not in f.get("scopes", {})]
+        self._send_json(200, families)
 
     def _handle_token_modify(self):
+        if not self._require_management_auth():
+            return
         data = self._read_json()
         if data is None:
             self._send_json(400, {"error": "malformed_request"})
@@ -413,6 +464,8 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         self._send_json(200, {"family_id": family_id, "scopes": scopes})
 
     def _handle_token_revoke(self):
+        if not self._require_management_auth():
+            return
         data = self._read_json()
         if data is None:
             self._send_json(400, {"error": "malformed_request"})
@@ -436,6 +489,8 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         self._send_json(200, {"family_id": family_id, "revoked": True})
 
     def _handle_token_rotate(self):
+        if not self._require_management_auth():
+            return
         data = self._read_json()
         if data is None:
             self._send_json(400, {"error": "malformed_request"})
@@ -592,8 +647,40 @@ class AgentAuthServer(ThreadingHTTPServer):
         super().__init__((config.host, config.port), AgentAuthHandler)
 
 
-def run_server(config: Config, signing_key: SigningKey, store: TokenStore, audit: AuditLogger):
+def _bootstrap_management_token(
+    store: TokenStore,
+    signing_key: SigningKey,
+    config: Config,
+    key_manager: KeyManager,
+) -> None:
+    """Create the management token family on first startup if one does not already exist."""
+    existing_refresh = key_manager.get_management_refresh_token()
+    if existing_refresh is not None:
+        try:
+            _prefix, token_id = verify_token(existing_refresh, signing_key)
+            token_record = store.get_token(token_id)
+            if token_record is not None:
+                family = store.get_family(token_record["family_id"])
+                if family is not None and not family["revoked"]:
+                    return
+        except Exception:
+            pass
+
+    family_id = generate_token_id()
+    store.create_family(family_id, {MANAGEMENT_SCOPE: "allow"})
+    _access_token, refresh_token = create_token_pair(signing_key, store, family_id, config)
+    key_manager.set_management_refresh_token(refresh_token)
+
+
+def run_server(
+    config: Config,
+    signing_key: SigningKey,
+    store: TokenStore,
+    audit: AuditLogger,
+    key_manager: KeyManager,
+) -> None:
     """Start the agent-auth HTTP server."""
+    _bootstrap_management_token(store, signing_key, config, key_manager)
     plugin = load_plugin(config.notification_plugin, config.notification_plugin_config)
     approval_manager = ApprovalManager(plugin, store, audit)
     server = AgentAuthServer(config, signing_key, store, audit, approval_manager)

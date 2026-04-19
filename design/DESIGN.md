@@ -564,6 +564,19 @@ Response (200):
 }
 ```
 
+### Management endpoint authentication
+
+All five management endpoints require `Authorization: Bearer <access_token>`
+where the access token's family has `agent-auth:manage=allow` in its scopes.
+On first startup, the server creates this management token family automatically
+and stores the refresh token in the OS keyring. Retrieve the refresh token via
+`agent-auth management-token show`, then exchange it for an access token via
+`POST /agent-auth/token/refresh` before calling management endpoints. See
+[ADR 0006](decisions/0006-management-endpoint-no-auth.md) for the rationale.
+
+Errors returned when auth is missing or invalid: `401 missing_token`,
+`401 invalid_token`, `401 token_expired`, `403 scope_denied`.
+
 ### POST /agent-auth/token/create
 
 Create a new token family and return an access/refresh token pair.

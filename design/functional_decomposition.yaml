@@ -93,6 +93,8 @@ functions:
         description: Handle POST /agent-auth/token/revoke requests to revoke a token family, invalidating all its tokens.
       - name: Serve Token Rotate Endpoint
         description: Handle POST /agent-auth/token/rotate requests to revoke an existing token family and create a new one with the same scopes.
+      - name: Bootstrap Management Token
+        description: On server startup, check the OS keyring for a management refresh token; if absent or revoked, create a new agent-auth:manage=allow token family directly via the store and persist the refresh token to the keyring.
   - name: Audit Logging
     description: Record all token operations and authorization decisions for security review.
     functions:

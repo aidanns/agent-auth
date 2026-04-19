@@ -11,9 +11,11 @@ There are two trust zones:
 
 ## Token Management Endpoints
 
-The management endpoints (`POST /agent-auth/token/create`, `GET /agent-auth/token/list`, `POST /agent-auth/token/modify`, `POST /agent-auth/token/revoke`, `POST /agent-auth/token/rotate`) carry no additional authentication. The trust boundary is the server's bind address — any caller that can reach the server already has equivalent access via the CLI.
+The management endpoints (`POST /agent-auth/token/create`, `GET /agent-auth/token/list`, `POST /agent-auth/token/modify`, `POST /agent-auth/token/revoke`, `POST /agent-auth/token/rotate`) require `Authorization: Bearer <token>` where the token's family carries `agent-auth:manage=allow` in its scopes.
 
-If the server is ever reconfigured to bind to a non-loopback address, these endpoints become network-accessible without authentication. Operators who expose agent-auth on a non-local interface must place a reverse proxy with an independent auth layer in front of it. See `design/decisions/0006-management-endpoint-no-auth.md` for the full rationale.
+On first startup the server creates this management token family directly via the store and stores the refresh token in the OS keyring. Operators retrieve it with `agent-auth management-token show` and exchange it for an access token via `POST /agent-auth/token/refresh`. External clients must refresh before each management session (access tokens expire after 900 s by default).
+
+The `agent-auth:manage` scope is reserved. The management token family is excluded from `GET /token/list` responses. If the management family is rotated or revoked, the server recreates it automatically on the next restart. See `design/decisions/0006-management-endpoint-no-auth.md` for the full rationale.
 
 ## Cryptographic Key Handling
 
