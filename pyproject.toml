@@ -50,6 +50,12 @@ exclude = ["tests_support*"]
 # ``0.2.1.dev5+g1234abc``.
 fallback_version = "0.0.0+unknown"
 
+[tool.pip-audit]
+# List known-acceptable advisories here with a comment explaining why each
+# is acceptable. Example:
+#   ignore-vuln = ["PYSEC-2024-12345"]  # Not reachable via our usage of <package>
+ignore-vuln = []
+
 [tool.pytest.ini_options]
 # ``tests_support`` is deliberately excluded from the ``agent-auth``
 # wheel (see ``[tool.setuptools.packages.find]``) so it can never ship

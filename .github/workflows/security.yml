@@ -21,4 +21,4 @@ jobs:
           enable-cache: true
 
       - name: Run pip-audit
-        run: uv run --with pip-audit pip-audit
+        run: uv run --extra dev pip-audit

@@ -40,6 +40,11 @@ tasks:
     cmds:
       - scripts/verify-dependencies.sh
 
+  pip-audit:
+    desc: Scan dependencies for known vulnerabilities using pip-audit.
+    cmds:
+      - uv run --extra dev pip-audit
+
   verify-standards:
     desc: Verify Project Standards
     cmds:
