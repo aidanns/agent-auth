@@ -162,7 +162,7 @@ strip_comments() {
 # doesn't early-exit its upstream pipeline — `grep -q` exiting on first
 # match would otherwise SIGPIPE `sed`/`cat`, and `pipefail` turns that
 # into a whole-pipeline failure when the input is large enough to race.
-workflows_stripped="$(find .github/workflows -name '*.yml' -print0 2>/dev/null \
+workflows_stripped="$(find .github/workflows .github/actions -name '*.yml' -print0 2>/dev/null \
   | xargs -0 -r cat 2>/dev/null \
   | strip_comments)"
 treefmt_stripped=""
@@ -326,6 +326,16 @@ if [[ ${ruff_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: ruff is configured in pyproject.toml, wired into treefmt and lefthook, and gated in CI."
+
+# pip-audit must be wired into at least one CI workflow
+# (.claude/instructions/python.md Tooling).
+if ! grep -qE "\\bpip-audit\\b" <<<"${workflows_stripped}"; then
+  echo "verify-standards: 'pip-audit' is not invoked in any .github/workflows/*.yml file." >&2
+  echo "  Add a workflow step that runs 'pip-audit' (see .github/workflows/security.yml)." >&2
+  exit 1
+fi
+
+echo "verify-standards: pip-audit is wired into CI."
 
 # CONTRIBUTING.md must exist and contain the four required sections per
 # .claude/instructions/release-and-hygiene.md.

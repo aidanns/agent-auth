@@ -19,6 +19,7 @@ dependencies = [
 dev = [
     # keep-sorted start
     "build>=1.0",
+    "pip-audit>=2.7",
     "pytest>=8.0",
     "testcontainers[compose]>=4",
     # keep-sorted end
@@ -48,6 +49,13 @@ exclude = ["tests_support*"]
 # ``0.2.0``). Untagged commits get a development version like
 # ``0.2.1.dev5+g1234abc``.
 fallback_version = "0.0.0+unknown"
+
+[tool.pip-audit]
+# List known-acceptable advisories here with a comment explaining why each
+# is acceptable. pip-audit accepts identifiers from multiple databases. Examples:
+#   ignore-vuln = ["PYSEC-2024-12345"]     # PYSEC advisory
+#   ignore-vuln = ["GHSA-xxxx-xxxx-xxxx"]  # GitHub Security Advisory
+ignore-vuln = []
 
 [tool.pytest.ini_options]
 # ``tests_support`` is deliberately excluded from the ``agent-auth``

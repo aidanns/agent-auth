@@ -1,0 +1,133 @@
+name: Setup Toolchain
+description: Install all CI tooling and verify dependencies
+
+inputs:
+  go-task-version:
+    description: go-task version to install
+    default: "3.50.0"
+  keep-sorted-version:
+    description: keep-sorted version to install
+    default: "0.8.0"
+  mdformat-version:
+    description: mdformat version to install
+    default: "0.7.22"
+  mdformat-gfm-version:
+    description: mdformat-gfm version to install
+    default: "1.0.0"
+  mdformat-tables-version:
+    description: mdformat-tables version to install
+    default: "1.0.0"
+  shellcheck-version:
+    description: shellcheck version to install
+    default: "0.10.0"
+  ruff-version:
+    description: ruff version to install
+    default: "0.6.9"
+  shfmt-version:
+    description: shfmt version to install
+    default: "3.8.0"
+  taplo-version:
+    description: taplo version to install
+    default: "0.10.0"
+  systems-engineering-ref:
+    description: Commit SHA or ref of aidanns/systems-engineering to install
+    default: "d8e664a5ad20c071d4ec1cd62377597f9404b6e9"
+  github-token:
+    description: GitHub token to avoid rate limits when installing go-task
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+
+    - name: Install d2
+      shell: bash
+      run: curl -fsSL https://d2lang.com/install.sh | sh -s --
+
+    - name: Install systems-engineering
+      shell: bash
+      env:
+        SYSTEMS_ENGINEERING_REF: ${{ inputs.systems-engineering-ref }}
+      run: |
+        curl -fsSL "https://raw.githubusercontent.com/aidanns/systems-engineering/${SYSTEMS_ENGINEERING_REF}/install.sh" | bash
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Install go-task
+      uses: arduino/setup-task@v2
+      with:
+        version: ${{ inputs.go-task-version }}
+        repo-token: ${{ inputs.github-token }}
+
+    - name: Install shellcheck
+      shell: bash
+      env:
+        SHELLCHECK_VERSION: ${{ inputs.shellcheck-version }}
+      run: |
+        curl -fsSL -o /tmp/shellcheck.tar.xz \
+          "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+        tar -xJf /tmp/shellcheck.tar.xz -C /tmp
+        sudo install -m0755 "/tmp/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+        shellcheck --version
+
+    - name: Install shfmt
+      shell: bash
+      env:
+        SHFMT_VERSION: ${{ inputs.shfmt-version }}
+      run: |
+        curl -fsSL -o /tmp/shfmt \
+          "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64"
+        sudo install -m0755 /tmp/shfmt /usr/local/bin/shfmt
+        shfmt --version
+
+    - name: Install ruff
+      shell: bash
+      env:
+        RUFF_VERSION: ${{ inputs.ruff-version }}
+      run: |
+        curl -fsSL -o /tmp/ruff.tar.gz \
+          "https://github.com/astral-sh/ruff/releases/download/${RUFF_VERSION}/ruff-x86_64-unknown-linux-gnu.tar.gz"
+        tar -xzf /tmp/ruff.tar.gz -C /tmp
+        sudo install -m0755 /tmp/ruff-x86_64-unknown-linux-gnu/ruff /usr/local/bin/ruff
+        ruff --version
+
+    - name: Install mdformat
+      shell: bash
+      env:
+        MDFORMAT_VERSION: ${{ inputs.mdformat-version }}
+        MDFORMAT_GFM_VERSION: ${{ inputs.mdformat-gfm-version }}
+        MDFORMAT_TABLES_VERSION: ${{ inputs.mdformat-tables-version }}
+      run: |
+        uv tool install \
+          "mdformat==${MDFORMAT_VERSION}" \
+          --with "mdformat-gfm==${MDFORMAT_GFM_VERSION}" \
+          --with "mdformat-tables==${MDFORMAT_TABLES_VERSION}"
+        mdformat --version
+
+    - name: Install taplo
+      shell: bash
+      env:
+        TAPLO_VERSION: ${{ inputs.taplo-version }}
+      run: |
+        curl -fsSL -o /tmp/taplo.gz \
+          "https://github.com/tamasfe/taplo/releases/download/${TAPLO_VERSION}/taplo-linux-x86_64.gz"
+        gunzip -f /tmp/taplo.gz
+        sudo install -m0755 /tmp/taplo /usr/local/bin/taplo
+        taplo --version
+
+    - name: Install keep-sorted
+      shell: bash
+      env:
+        KEEP_SORTED_VERSION: ${{ inputs.keep-sorted-version }}
+      run: |
+        curl -fsSL -o /tmp/keep-sorted \
+          "https://github.com/google/keep-sorted/releases/download/v${KEEP_SORTED_VERSION}/keep-sorted_linux"
+        sudo install -m0755 /tmp/keep-sorted /usr/local/bin/keep-sorted
+        keep-sorted --version
+
+    - name: Verify Required Tooling
+      shell: bash
+      run: task verify-dependencies
