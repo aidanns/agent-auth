@@ -25,7 +25,7 @@ require_tool() {
 require_tool shellcheck \
   "Install via 'apt-get install shellcheck' (Linux) or 'brew install shellcheck' (macOS), then re-run."
 require_tool ruff \
-  "Install via 'pip install ruff' or from https://github.com/astral-sh/ruff/releases, then re-run."
+  "Install via 'uv tool install ruff' or from https://github.com/astral-sh/ruff/releases, then re-run."
 require_tool keep-sorted \
   "Install from https://github.com/google/keep-sorted/releases or 'go install github.com/google/keep-sorted@latest', then re-run."
 

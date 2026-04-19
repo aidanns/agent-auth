@@ -51,7 +51,7 @@ list_tracked() {
 require_tool shfmt \
   "Install from https://github.com/mvdan/sh/releases or 'brew install shfmt' (macOS), then re-run."
 require_tool ruff \
-  "Install via 'pip install ruff' or from https://github.com/astral-sh/ruff/releases, then re-run."
+  "Install via 'uv tool install ruff' or from https://github.com/astral-sh/ruff/releases, then re-run."
 require_tool mdformat \
   "Install via 'uv tool install mdformat --with mdformat-gfm --with mdformat-tables', then re-run."
 require_tool taplo \
