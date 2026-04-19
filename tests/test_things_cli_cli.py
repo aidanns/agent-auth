@@ -19,15 +19,25 @@ def test_help_without_command_exits_nonzero(capsys):
 
 def test_login_saves_credentials(tmp_path, capsys):
     creds_path = str(tmp_path / "creds.json")
-    rc = main([
-        "--credential-store", "file", "--credentials-file", creds_path,
-        "login",
-        "--bridge-url", "http://127.0.0.1:9200",
-        "--auth-url", "http://127.0.0.1:9100",
-        "--access-token", "aa_abc",
-        "--refresh-token", "rt_def",
-        "--family-id", "fam-1",
-    ])
+    rc = main(
+        [
+            "--credential-store",
+            "file",
+            "--credentials-file",
+            creds_path,
+            "login",
+            "--bridge-url",
+            "http://127.0.0.1:9200",
+            "--auth-url",
+            "http://127.0.0.1:9100",
+            "--access-token",
+            "aa_abc",
+            "--refresh-token",
+            "rt_def",
+            "--family-id",
+            "fam-1",
+        ]
+    )
     assert rc == 0
     with open(creds_path) as f:
         data = yaml.safe_load(f)
@@ -42,12 +52,20 @@ def test_status_without_credentials(tmp_path):
 
 def test_status_prints_redacted_values(tmp_path, capsys):
     # login first
-    main(_args(tmp_path,
-               "login",
-               "--bridge-url", "http://127.0.0.1:9200",
-               "--auth-url", "http://127.0.0.1:9100",
-               "--access-token", "aa_secret",
-               "--refresh-token", "rt_secret"))
+    main(
+        _args(
+            tmp_path,
+            "login",
+            "--bridge-url",
+            "http://127.0.0.1:9200",
+            "--auth-url",
+            "http://127.0.0.1:9100",
+            "--access-token",
+            "aa_secret",
+            "--refresh-token",
+            "rt_secret",
+        )
+    )
     capsys.readouterr()
     rc = main(_args(tmp_path, "status"))
     captured = capsys.readouterr()
@@ -59,13 +77,23 @@ def test_status_prints_redacted_values(tmp_path, capsys):
 
 def test_logout_clears_file(tmp_path):
     creds_path = str(tmp_path / "creds.json")
-    main([
-        "--credential-store", "file", "--credentials-file", creds_path,
-        "login",
-        "--bridge-url", "http://127.0.0.1:9200",
-        "--auth-url", "http://127.0.0.1:9100",
-        "--access-token", "aa", "--refresh-token", "rt",
-    ])
+    main(
+        [
+            "--credential-store",
+            "file",
+            "--credentials-file",
+            creds_path,
+            "login",
+            "--bridge-url",
+            "http://127.0.0.1:9200",
+            "--auth-url",
+            "http://127.0.0.1:9100",
+            "--access-token",
+            "aa",
+            "--refresh-token",
+            "rt",
+        ]
+    )
     assert os.path.exists(creds_path)
     main(_args(tmp_path, "logout"))
     assert not os.path.exists(creds_path)
@@ -85,19 +113,31 @@ def test_bare_subcommand_prints_help(tmp_path, sub):
     assert rc == 1
 
 
-@pytest.mark.parametrize("command,expected_id", [
-    (["todos", "show", "id with spaces"], "id with spaces"),
-    (["projects", "show", "p/slash"], "p/slash"),
-    (["areas", "show", "a#frag"], "a#frag"),
-])
+@pytest.mark.parametrize(
+    "command,expected_id",
+    [
+        (["todos", "show", "id with spaces"], "id with spaces"),
+        (["projects", "show", "p/slash"], "p/slash"),
+        (["areas", "show", "a#frag"], "a#frag"),
+    ],
+)
 def test_show_commands_pass_raw_id_to_client(tmp_path, command, expected_id, monkeypatch):
     # The CLI passes the raw user-supplied id to the typed client method
     # (get_todo, get_project, get_area); URL-encoding is the client's job.
-    main(_args(tmp_path,
-               "login",
-               "--bridge-url", "http://127.0.0.1:9200",
-               "--auth-url", "http://127.0.0.1:9100",
-               "--access-token", "aa", "--refresh-token", "rt"))
+    main(
+        _args(
+            tmp_path,
+            "login",
+            "--bridge-url",
+            "http://127.0.0.1:9200",
+            "--auth-url",
+            "http://127.0.0.1:9100",
+            "--access-token",
+            "aa",
+            "--refresh-token",
+            "rt",
+        )
+    )
 
     captured_ids: list[str] = []
 

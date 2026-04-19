@@ -36,7 +36,7 @@ def _safe_id(raw: str | None) -> str | None:
         return None
     for ch in raw:
         cp = ord(ch)
-        # Allow printable ASCII (0x20–0x7E) except slash, plus non-ASCII (>0x7F).
+        # Allow printable ASCII (0x20-0x7E) except slash, plus non-ASCII (>0x7F).
         if cp > 0x7F:
             continue
         if cp < 0x20 or cp == 0x7F or ch == "/":
@@ -59,7 +59,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_request(self, code="-", size="-"):  # noqa: ARG002
+    def log_request(self, code="-", size="-"):
         # Suppress the default access log — request paths can reveal
         # Things ids and our bearer tokens appear in headers. Errors
         # still surface via the default ``log_error`` implementation.
@@ -102,7 +102,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
         self._send_json(502, {"error": "things_unavailable"})
 
-    def do_GET(self):  # noqa: N802 — BaseHTTPRequestHandler API
+    def do_GET(self):
         url = urlsplit(self.path)
         path = url.path
         params = parse_qs(url.query)
@@ -133,7 +133,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/things-bridge/todos/"):
-            todo_id = _safe_id(path[len("/things-bridge/todos/"):])
+            todo_id = _safe_id(path[len("/things-bridge/todos/") :])
             if todo_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
@@ -159,7 +159,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/things-bridge/projects/"):
-            project_id = _safe_id(path[len("/things-bridge/projects/"):])
+            project_id = _safe_id(path[len("/things-bridge/projects/") :])
             if project_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
@@ -185,7 +185,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/things-bridge/areas/"):
-            area_id = _safe_id(path[len("/things-bridge/areas/"):])
+            area_id = _safe_id(path[len("/things-bridge/areas/") :])
             if area_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
@@ -210,12 +210,12 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    do_POST = _method_not_allowed  # noqa: N815
-    do_PUT = _method_not_allowed  # noqa: N815
-    do_PATCH = _method_not_allowed  # noqa: N815
-    do_DELETE = _method_not_allowed  # noqa: N815
-    do_HEAD = _method_not_allowed  # noqa: N815
-    do_OPTIONS = _method_not_allowed  # noqa: N815
+    do_POST = _method_not_allowed
+    do_PUT = _method_not_allowed
+    do_PATCH = _method_not_allowed
+    do_DELETE = _method_not_allowed
+    do_HEAD = _method_not_allowed
+    do_OPTIONS = _method_not_allowed
 
 
 def _first(params: dict[str, list[str]], key: str) -> str | None:

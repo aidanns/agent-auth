@@ -18,10 +18,10 @@ import sys
 import threading
 import urllib.error
 import urllib.request
-import yaml
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
+import yaml
 
 from agent_auth.approval import ApprovalManager
 from agent_auth.audit import AuditLogger
@@ -56,12 +56,11 @@ def _create_tokens(signing_key, store, *, scopes=None, access_ttl=timedelta(hour
     family_id = generate_token_id()
     store.create_family(family_id, scopes)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     access_id = generate_token_id()
     access_token = sign_token(access_id, PREFIX_ACCESS, signing_key)
     _, _, access_sig = access_token.split("_")
-    store.create_token(access_id, access_sig, family_id, "access",
-                       (now + access_ttl).isoformat())
+    store.create_token(access_id, access_sig, family_id, "access", (now + access_ttl).isoformat())
 
     if access_ttl <= timedelta(0):
         return family_id, access_token, None
@@ -69,8 +68,13 @@ def _create_tokens(signing_key, store, *, scopes=None, access_ttl=timedelta(hour
     refresh_id = generate_token_id()
     refresh_token = sign_token(refresh_id, PREFIX_REFRESH, signing_key)
     _, _, refresh_sig = refresh_token.split("_")
-    store.create_token(refresh_id, refresh_sig, family_id, "refresh",
-                       (now + timedelta(hours=8)).isoformat())
+    store.create_token(
+        refresh_id,
+        refresh_sig,
+        family_id,
+        "refresh",
+        (now + timedelta(hours=8)).isoformat(),
+    )
     return family_id, access_token, refresh_token
 
 
@@ -84,24 +88,50 @@ _SEEDED_FIXTURE = {
         {"id": "p2", "name": "Home", "area_id": "a1", "area_name": "Personal"},
     ],
     "todos": [
-        {"id": "t1", "name": "Buy milk", "area_id": "a1", "area_name": "Personal",
-         "tag_names": ["Errand"]},
-        {"id": "t2", "name": "Write report",
-         "notes": "Include:\n\t- milestones\n\t- owners",
-         "project_id": "p1", "project_name": "Q2 Planning",
-         "area_id": "a2", "area_name": "Work",
-         "tag_names": ["planning", "deep-work"]},
-        {"id": "t3", "name": "Fix tap", "status": "completed",
-         "area_id": "a1", "area_name": "Personal"},
-        {"id": "t4", "name": "Dentist", "area_id": "a1", "area_name": "Personal",
-         "tag_names": ["Errand"]},
+        {
+            "id": "t1",
+            "name": "Buy milk",
+            "area_id": "a1",
+            "area_name": "Personal",
+            "tag_names": ["Errand"],
+        },
+        {
+            "id": "t2",
+            "name": "Write report",
+            "notes": "Include:\n\t- milestones\n\t- owners",
+            "project_id": "p1",
+            "project_name": "Q2 Planning",
+            "area_id": "a2",
+            "area_name": "Work",
+            "tag_names": ["planning", "deep-work"],
+        },
+        {
+            "id": "t3",
+            "name": "Fix tap",
+            "status": "completed",
+            "area_id": "a1",
+            "area_name": "Personal",
+        },
+        {
+            "id": "t4",
+            "name": "Dentist",
+            "area_id": "a1",
+            "area_name": "Personal",
+            "tag_names": ["Errand"],
+        },
     ],
     "list_memberships": {"TMTodayListSource": ["t1", "t2"]},
 }
 
 
 def _fake_client_command(fixture_path: str) -> list[str]:
-    return [sys.executable, "-m", "tests.things_client_fake", "--fixtures", fixture_path]
+    return [
+        sys.executable,
+        "-m",
+        "tests.things_client_fake",
+        "--fixtures",
+        fixture_path,
+    ]
 
 
 def _write_seeded_fixture(tmp_dir: str) -> str:
@@ -124,24 +154,31 @@ def stack(tmp_dir, signing_key, encryption_key):
     audit = AuditLogger(agent_auth_config.log_path)
     approval_manager = ApprovalManager(_AutoApprovePlugin(), token_store, audit)
     agent_auth_server = AgentAuthServer(
-        agent_auth_config, signing_key, token_store, audit, approval_manager,
+        agent_auth_config,
+        signing_key,
+        token_store,
+        audit,
+        approval_manager,
     )
     agent_auth_port = agent_auth_server.server_address[1]
     agent_auth_thread = threading.Thread(
-        target=agent_auth_server.serve_forever, daemon=True,
+        target=agent_auth_server.serve_forever,
+        daemon=True,
     )
     agent_auth_thread.start()
 
     fixture_path = _write_seeded_fixture(tmp_dir)
     things = ThingsSubprocessClient(
-        command=_fake_client_command(fixture_path), timeout_seconds=10.0,
+        command=_fake_client_command(fixture_path),
+        timeout_seconds=10.0,
     )
     authz = AgentAuthClient(f"http://127.0.0.1:{agent_auth_port}", timeout_seconds=5.0)
     bridge_config = BridgeConfig(host="127.0.0.1", port=0)
     bridge_server = ThingsBridgeServer(bridge_config, things, authz)
     bridge_port = bridge_server.server_address[1]
     bridge_thread = threading.Thread(
-        target=bridge_server.serve_forever, daemon=True,
+        target=bridge_server.serve_forever,
+        daemon=True,
     )
     bridge_thread.start()
 
@@ -194,7 +231,9 @@ def test_list_todos_missing_token_returns_401(stack):
 @pytest.mark.covers_function("Delegate Token Validation")
 def test_list_todos_expired_access_token_returns_401_token_expired(stack):
     _, expired_token, _ = _create_tokens(
-        stack["signing_key"], stack["token_store"], access_ttl=-timedelta(hours=1),
+        stack["signing_key"],
+        stack["token_store"],
+        access_ttl=-timedelta(hours=1),
     )
     status, data = _get(f"{stack['bridge_url']}/things-bridge/todos", expired_token)
     assert status == 401
@@ -204,7 +243,8 @@ def test_list_todos_expired_access_token_returns_401_token_expired(stack):
 @pytest.mark.covers_function("Delegate Token Validation", "Check Scope Authorization")
 def test_list_todos_wrong_scope_returns_403(stack):
     _, token, _ = _create_tokens(
-        stack["signing_key"], stack["token_store"],
+        stack["signing_key"],
+        stack["token_store"],
         scopes={"outlook:mail:read": "allow"},
     )
     status, data = _get(f"{stack['bridge_url']}/things-bridge/todos", token)
@@ -225,7 +265,8 @@ def test_list_todos_revoked_family_returns_401(stack):
 def test_list_todos_filters_forwarded_through_fake(stack):
     _, token, _ = _create_tokens(stack["signing_key"], stack["token_store"])
     status, data = _get(
-        f"{stack['bridge_url']}/things-bridge/todos?project=p1", token,
+        f"{stack['bridge_url']}/things-bridge/todos?project=p1",
+        token,
     )
     assert status == 200
     assert [t["id"] for t in data["todos"]] == ["t2"]
@@ -235,7 +276,8 @@ def test_list_todos_filters_forwarded_through_fake(stack):
 def test_list_todos_list_filter_resolves_via_memberships(stack):
     _, token, _ = _create_tokens(stack["signing_key"], stack["token_store"])
     status, data = _get(
-        f"{stack['bridge_url']}/things-bridge/todos?list=TMTodayListSource", token,
+        f"{stack['bridge_url']}/things-bridge/todos?list=TMTodayListSource",
+        token,
     )
     assert status == 200
     assert {t["id"] for t in data["todos"]} == {"t1", "t2"}
@@ -245,7 +287,8 @@ def test_list_todos_list_filter_resolves_via_memberships(stack):
 def test_list_todos_tag_filter(stack):
     _, token, _ = _create_tokens(stack["signing_key"], stack["token_store"])
     status, data = _get(
-        f"{stack['bridge_url']}/things-bridge/todos?tag=Errand", token,
+        f"{stack['bridge_url']}/things-bridge/todos?tag=Errand",
+        token,
     )
     assert status == 200
     assert {t["id"] for t in data["todos"]} == {"t1", "t4"}
@@ -255,7 +298,8 @@ def test_list_todos_tag_filter(stack):
 def test_list_todos_status_filter(stack):
     _, token, _ = _create_tokens(stack["signing_key"], stack["token_store"])
     status, data = _get(
-        f"{stack['bridge_url']}/things-bridge/todos?status=completed", token,
+        f"{stack['bridge_url']}/things-bridge/todos?status=completed",
+        token,
     )
     assert status == 200
     assert [t["id"] for t in data["todos"]] == ["t3"]
@@ -290,7 +334,8 @@ def test_projects_and_areas(stack):
     assert {p["id"] for p in projects["projects"]} == {"p1", "p2"}
 
     status, filtered = _get(
-        f"{stack['bridge_url']}/things-bridge/projects?area=a1", token,
+        f"{stack['bridge_url']}/things-bridge/projects?area=a1",
+        token,
     )
     assert status == 200
     assert [p["id"] for p in filtered["projects"]] == ["p2"]

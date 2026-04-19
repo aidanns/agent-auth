@@ -4,7 +4,7 @@ import json
 from http.client import HTTPConnection, HTTPSConnection
 from urllib.parse import quote, urlencode, urlparse
 
-from things_cli.credentials import CredentialStore, Credentials
+from things_cli.credentials import Credentials, CredentialStore
 from things_cli.errors import (
     BridgeForbiddenError,
     BridgeNotFoundError,
@@ -27,7 +27,13 @@ class BridgeClient:
     4. Any further 401 surfaces as :class:`BridgeUnauthorizedError`.
     """
 
-    def __init__(self, credentials: Credentials, store: CredentialStore, *, timeout_seconds: float = 30.0):
+    def __init__(
+        self,
+        credentials: Credentials,
+        store: CredentialStore,
+        *,
+        timeout_seconds: float = 30.0,
+    ):
         self._credentials = credentials
         self._store = store
         self._timeout = timeout_seconds
@@ -84,9 +90,7 @@ class BridgeClient:
                 # A 2xx with no body is never expected from things-bridge; surface
                 # it as a typed error rather than crashing callers that expect
                 # a dict to `.get()` on.
-                raise BridgeUnavailableError(
-                    f"Bridge returned status {status} with empty body"
-                )
+                raise BridgeUnavailableError(f"Bridge returned status {status} with empty body")
             return data
 
         if status == 401 and not _already_retried:
@@ -96,9 +100,7 @@ class BridgeClient:
                 return self._request(method, path, params=params, _already_retried=True)
 
         if status == 401:
-            raise BridgeUnauthorizedError(
-                (data or {}).get("error") or "unauthorized"
-            )
+            raise BridgeUnauthorizedError((data or {}).get("error") or "unauthorized")
         if status == 403:
             raise BridgeForbiddenError((data or {}).get("error") or "forbidden")
         if status == 404:

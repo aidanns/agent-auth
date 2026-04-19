@@ -32,11 +32,11 @@ class Project:
     id: str
     name: str
     notes: str
-    status: str                       # "open" | "completed" | "canceled"
+    status: str  # "open" | "completed" | "canceled"
     area_id: str | None
     area_name: str | None
     tag_names: list[str]
-    due_date: str | None              # ISO 8601 date (YYYY-MM-DD) or None
+    due_date: str | None  # ISO 8601 date (YYYY-MM-DD) or None
     activation_date: str | None
     completion_date: str | None
     cancellation_date: str | None
@@ -70,7 +70,7 @@ class Todo:
     id: str
     name: str
     notes: str
-    status: str                       # "open" | "completed" | "canceled"
+    status: str  # "open" | "completed" | "canceled"
     project_id: str | None
     project_name: str | None
     area_id: str | None

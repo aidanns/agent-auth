@@ -11,7 +11,6 @@ import pytest
 
 from tests._http import post
 
-
 REFRESH_TTL_SECONDS = 1
 EXPIRY_SLEEP_SECONDS = REFRESH_TTL_SECONDS + 1
 

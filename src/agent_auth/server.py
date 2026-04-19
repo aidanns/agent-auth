@@ -1,7 +1,7 @@
 """HTTP server for agent-auth API."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from agent_auth.approval import ApprovalManager
@@ -108,7 +108,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"valid": False, "error": "invalid_token"})
             return
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires_at = datetime.fromisoformat(token_record["expires_at"])
         if now >= expires_at:
             audit.log_authorization_decision(
@@ -154,9 +154,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             return
 
         if tier == "prompt":
-            result = approval_manager.request_approval(
-                family["id"], required_scope, description
-            )
+            result = approval_manager.request_approval(family["id"], required_scope, description)
             if result.approved:
                 audit.log_authorization_decision(
                     "validation_allowed",
@@ -208,7 +206,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "family_revoked"})
             return
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires_at = datetime.fromisoformat(token_record["expires_at"])
         if now >= expires_at:
             self._send_json(401, {"error": "refresh_token_expired"})
@@ -222,27 +220,29 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
                 family_id=token_record["family_id"],
                 reason="refresh_token_reuse_detected",
             )
-            self._send_json(401, {
-                "error": "refresh_token_reuse_detected",
-                "detail": "Token family revoked",
-            })
+            self._send_json(
+                401,
+                {
+                    "error": "refresh_token_reuse_detected",
+                    "detail": "Token family revoked",
+                },
+            )
             return
 
         family_id = token_record["family_id"]
-        access_token, new_refresh_token = create_token_pair(
-            signing_key, store, family_id, config
-        )
+        access_token, new_refresh_token = create_token_pair(signing_key, store, family_id, config)
 
-        audit.log_token_operation(
-            "token_refreshed", family_id=family_id
-        )
+        audit.log_token_operation("token_refreshed", family_id=family_id)
 
-        self._send_json(200, {
-            "access_token": access_token,
-            "refresh_token": new_refresh_token,
-            "expires_in": config.access_token_ttl_seconds,
-            "scopes": family["scopes"],
-        })
+        self._send_json(
+            200,
+            {
+                "access_token": access_token,
+                "refresh_token": new_refresh_token,
+                "expires_in": config.access_token_ttl_seconds,
+                "scopes": family["scopes"],
+            },
+        )
 
     def _handle_reissue(self):
         data = self._read_json()
@@ -270,7 +270,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "family_revoked"})
             return
         latest_refresh = max(refresh_tokens, key=lambda t: t["expires_at"])
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         refresh_expires = datetime.fromisoformat(latest_refresh["expires_at"])
         if now < refresh_expires and not latest_refresh["consumed"]:
             self._send_json(400, {"error": "refresh_token_still_valid"})
@@ -283,26 +283,23 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             family_id, "token:reissue", "Re-issue token pair for expired refresh token"
         )
         if not result.approved:
-            audit.log_token_operation(
-                "reissue_denied", family_id=family_id
-            )
+            audit.log_token_operation("reissue_denied", family_id=family_id)
             self._send_json(403, {"error": "reissue_denied"})
             return
 
-        access_token, new_refresh_token = create_token_pair(
-            signing_key, store, family_id, config
-        )
+        access_token, new_refresh_token = create_token_pair(signing_key, store, family_id, config)
 
-        audit.log_token_operation(
-            "token_reissued", family_id=family_id
-        )
+        audit.log_token_operation("token_reissued", family_id=family_id)
 
-        self._send_json(200, {
-            "access_token": access_token,
-            "refresh_token": new_refresh_token,
-            "expires_in": config.access_token_ttl_seconds,
-            "scopes": family["scopes"],
-        })
+        self._send_json(
+            200,
+            {
+                "access_token": access_token,
+                "refresh_token": new_refresh_token,
+                "expires_in": config.access_token_ttl_seconds,
+                "scopes": family["scopes"],
+            },
+        )
 
     HEALTH_SCOPE = "agent-auth:health"
 
@@ -335,7 +332,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "invalid_token"})
             return
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires_at = datetime.fromisoformat(token_record["expires_at"])
         if now >= expires_at:
             self._send_json(401, {"error": "token_expired"})
@@ -365,7 +362,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         signing_key: SigningKey = self._server.signing_key
 
         try:
-            prefix, token_id = verify_token(token_raw, signing_key)
+            _prefix, token_id = verify_token(token_raw, signing_key)
         except TokenInvalidError:
             self._send_json(401, {"error": "invalid_token"})
             return
@@ -380,19 +377,22 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "invalid_token"})
             return
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires_at = datetime.fromisoformat(token_record["expires_at"])
         expires_in = max(0, int((expires_at - now).total_seconds()))
 
-        self._send_json(200, {
-            "token_id": token_id,
-            "family_id": token_record["family_id"],
-            "type": token_record["type"],
-            "scopes": family["scopes"],
-            "revoked": family["revoked"],
-            "expires_at": token_record["expires_at"],
-            "expires_in": expires_in,
-        })
+        self._send_json(
+            200,
+            {
+                "token_id": token_id,
+                "family_id": token_record["family_id"],
+                "type": token_record["type"],
+                "scopes": family["scopes"],
+                "revoked": family["revoked"],
+                "expires_at": token_record["expires_at"],
+                "expires_in": expires_in,
+            },
+        )
 
 
 class AgentAuthServer(ThreadingHTTPServer):
