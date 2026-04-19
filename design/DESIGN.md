@@ -564,6 +564,114 @@ Response (200):
 }
 ```
 
+### POST /agent-auth/token/create
+
+Create a new token family and return an access/refresh token pair.
+
+Request:
+
+```json
+{"scopes": {"things:read": "allow", "things:write": "prompt"}}
+```
+
+Response (200):
+
+```json
+{
+  "family_id": "fff",
+  "access_token": "aa_xxx_yyy",
+  "refresh_token": "rt_xxx_yyy",
+  "scopes": {"things:read": "allow", "things:write": "prompt"},
+  "expires_in": 900
+}
+```
+
+Errors: `400 no_scopes` (empty or missing scopes), `400 invalid_tier` (tier not in `allow`/`prompt`/`deny`), `400 malformed_request`.
+
+No authentication required. Trust boundary is the server's bind address (127.0.0.1 by default — see ADR 0006).
+
+### GET /agent-auth/token/list
+
+Return all token families, including revoked ones.
+
+Response (200): JSON array of family objects.
+
+```json
+[
+  {"id": "fff", "scopes": {"things:read": "allow"}, "created_at": "2026-04-19T10:00:00Z", "revoked": false}
+]
+```
+
+No authentication required.
+
+### POST /agent-auth/token/modify
+
+Modify the scopes on an existing token family. Takes effect on the next `/validate` call — no new tokens are issued.
+
+Request:
+
+```json
+{
+  "family_id": "fff",
+  "add_scopes": {"things:write": "allow"},
+  "remove_scopes": ["things:read"],
+  "set_tiers": {"things:write": "prompt"}
+}
+```
+
+All modification fields are optional; at least one must be non-empty. `set_tiers` silently skips scope names that do not exist on the family.
+
+Response (200):
+
+```json
+{"family_id": "fff", "scopes": {"things:write": "prompt"}}
+```
+
+Errors: `400 no_modifications`, `400 invalid_tier`, `400 malformed_request`, `404 family_not_found`, `409 family_revoked`. No authentication required.
+
+### POST /agent-auth/token/revoke
+
+Revoke a token family, invalidating all its tokens. Idempotent: revoking an already-revoked family returns 200.
+
+Request:
+
+```json
+{"family_id": "fff"}
+```
+
+Response (200):
+
+```json
+{"family_id": "fff", "revoked": true}
+```
+
+Errors: `400 malformed_request`, `404 family_not_found`. No authentication required.
+
+### POST /agent-auth/token/rotate
+
+Revoke an existing token family and create a new one with the same scopes.
+
+Request:
+
+```json
+{"family_id": "fff"}
+```
+
+Response (200):
+
+```json
+{
+  "old_family_id": "fff",
+  "new_family_id": "ggg",
+  "access_token": "aa_xxx_yyy",
+  "refresh_token": "rt_xxx_yyy",
+  "scopes": {"things:read": "allow"},
+  "expires_in": 900
+}
+```
+
+Errors: `400 malformed_request`, `404 family_not_found`, `409 family_revoked`. No authentication required.
+
 ## Network Configuration
 
 ### Local (host only)

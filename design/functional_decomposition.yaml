@@ -83,6 +83,16 @@ functions:
         description: Handle GET /agent-auth/token/status requests for token introspection.
       - name: Serve Health Endpoint
         description: Handle GET /agent-auth/health liveness / readiness probes; require an access token carrying the agent-auth:health scope, return 200 when the token store is reachable, 401 / 403 on missing / unscoped tokens, and 503 when the store is unreachable.
+      - name: Serve Token Create Endpoint
+        description: Handle POST /agent-auth/token/create requests to create a new token family and return an access/refresh token pair.
+      - name: Serve Token List Endpoint
+        description: Handle GET /agent-auth/token/list requests to return all token families and their scopes.
+      - name: Serve Token Modify Endpoint
+        description: Handle POST /agent-auth/token/modify requests to add, remove, or change tiers on scopes of an existing token family.
+      - name: Serve Token Revoke Endpoint
+        description: Handle POST /agent-auth/token/revoke requests to revoke a token family, invalidating all its tokens.
+      - name: Serve Token Rotate Endpoint
+        description: Handle POST /agent-auth/token/rotate requests to revoke an existing token family and create a new one with the same scopes.
   - name: Audit Logging
     description: Record all token operations and authorization decisions for security review.
     functions:

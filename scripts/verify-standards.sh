@@ -384,3 +384,40 @@ if [[ ${contributing_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: CONTRIBUTING.md exists with dev-setup, testing, release, and commit-signing sections."
+
+# Verify every `agent-auth token *` CLI subcommand has a corresponding HTTP
+# route registered in the server. This prevents adding a new CLI subcommand
+# without exposing it over HTTP (or vice versa).
+
+if [[ -f pyproject.toml ]] && command -v uv >/dev/null 2>&1; then
+  cli_http_check_output="$(
+    uv run python3 - <<'PY'
+import sys
+
+try:
+    from agent_auth.cli import COMMAND_HANDLERS
+    from agent_auth.server import AgentAuthHandler
+except ImportError as e:
+    print(f"verify-standards: could not import agent_auth modules: {e}", file=sys.stderr)
+    sys.exit(1)
+
+missing = []
+for cmd in sorted(COMMAND_HANDLERS):
+    method = f"_handle_token_{cmd}"
+    if not hasattr(AgentAuthHandler, method):
+        missing.append(f"  token {cmd!r} has no handler method {method!r} on AgentAuthHandler")
+
+if missing:
+    print("verify-standards: agent-auth token subcommands missing HTTP handler methods:", file=sys.stderr)
+    for line in missing:
+        print(line, file=sys.stderr)
+    sys.exit(1)
+PY
+  )"
+  cli_http_exit=$?
+  if [[ ${cli_http_exit} -ne 0 ]]; then
+    [[ -n "${cli_http_check_output}" ]] && echo "${cli_http_check_output}" >&2
+    exit 1
+  fi
+  echo "verify-standards: every 'agent-auth token *' subcommand has a matching HTTP route."
+fi
