@@ -392,6 +392,7 @@ echo "verify-standards: CONTRIBUTING.md exists with dev-setup, testing, release,
 if [[ -f pyproject.toml ]] && command -v uv >/dev/null 2>&1; then
   cli_http_check_output="$(
     uv run python3 - <<'PY'
+import inspect
 import sys
 
 try:
@@ -401,14 +402,22 @@ except ImportError as e:
     print(f"verify-standards: could not import agent_auth modules: {e}", file=sys.stderr)
     sys.exit(1)
 
+routing_source = (
+    inspect.getsource(AgentAuthHandler.do_POST)
+    + inspect.getsource(AgentAuthHandler.do_GET)
+)
+
 missing = []
 for cmd in sorted(COMMAND_HANDLERS):
     method = f"_handle_token_{cmd}"
+    route = f"/agent-auth/token/{cmd}"
     if not hasattr(AgentAuthHandler, method):
-        missing.append(f"  token {cmd!r} has no handler method {method!r} on AgentAuthHandler")
+        missing.append(f"  token {cmd!r}: no handler method {method!r}")
+    elif route not in routing_source:
+        missing.append(f"  token {cmd!r}: method exists but route {route!r} is not wired in do_POST/do_GET")
 
 if missing:
-    print("verify-standards: agent-auth token subcommands missing HTTP handler methods:", file=sys.stderr)
+    print("verify-standards: agent-auth token subcommands missing HTTP routes:", file=sys.stderr)
     for line in missing:
         print(line, file=sys.stderr)
     sys.exit(1)

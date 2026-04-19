@@ -88,6 +88,33 @@ def test_token_modify_add_scope_is_reflected_in_validation(agent_auth_container)
     assert body["valid"] is True
 
 
+@pytest.mark.covers_function("Serve Token Modify Endpoint")
+def test_token_modify_returns_404_for_unknown_family(agent_auth_container):
+    status, body = post(
+        agent_auth_container.url("token/modify"),
+        {"family_id": "no-such-family", "add_scopes": {"x": "allow"}},
+    )
+    assert status == 404
+    assert body["error"] == "family_not_found"
+
+
+@pytest.mark.covers_function("Serve Token Modify Endpoint")
+def test_token_modify_returns_409_for_revoked_family(agent_auth_container):
+    _, create_body = post(
+        agent_auth_container.url("token/create"),
+        {"scopes": {"things:read": "allow"}},
+    )
+    family_id = create_body["family_id"]
+    post(agent_auth_container.url("token/revoke"), {"family_id": family_id})
+
+    status, body = post(
+        agent_auth_container.url("token/modify"),
+        {"family_id": family_id, "add_scopes": {"things:write": "allow"}},
+    )
+    assert status == 409
+    assert body["error"] == "family_revoked"
+
+
 @pytest.mark.covers_function("Serve Token Revoke Endpoint")
 def test_token_revoke_makes_access_token_invalid(agent_auth_container):
     _, create_body = post(

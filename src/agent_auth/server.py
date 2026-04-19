@@ -367,16 +367,26 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         if data is None:
             self._send_json(400, {"error": "malformed_request"})
             return
-        family_id = data.get("family_id", "")
+        family_id = data.get("family_id")
+        if not isinstance(family_id, str) or not family_id:
+            self._send_json(400, {"error": "malformed_request"})
+            return
         add_scopes = data.get("add_scopes") or {}
         remove_scopes = data.get("remove_scopes") or []
         set_tiers = data.get("set_tiers") or {}
+        if (
+            not isinstance(add_scopes, dict)
+            or not isinstance(set_tiers, dict)
+            or not isinstance(remove_scopes, list)
+        ):
+            self._send_json(400, {"error": "malformed_request"})
+            return
 
         if not add_scopes and not remove_scopes and not set_tiers:
             self._send_json(400, {"error": "no_modifications"})
             return
-        merged = {**add_scopes, **set_tiers}
-        invalid_tiers = {k: v for k, v in merged.items() if v not in VALID_TIERS}
+        invalid_tiers = {k: v for k, v in add_scopes.items() if v not in VALID_TIERS}
+        invalid_tiers.update({k: v for k, v in set_tiers.items() if v not in VALID_TIERS})
         if invalid_tiers:
             self._send_json(400, {"error": "invalid_tier", "detail": invalid_tiers})
             return
@@ -407,7 +417,10 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         if data is None:
             self._send_json(400, {"error": "malformed_request"})
             return
-        family_id = data.get("family_id", "")
+        family_id = data.get("family_id")
+        if not isinstance(family_id, str) or not family_id:
+            self._send_json(400, {"error": "malformed_request"})
+            return
 
         store: TokenStore = self._server.store
         audit: AuditLogger = self._server.audit
@@ -427,7 +440,10 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         if data is None:
             self._send_json(400, {"error": "malformed_request"})
             return
-        old_family_id = data.get("family_id", "")
+        old_family_id = data.get("family_id")
+        if not isinstance(old_family_id, str) or not old_family_id:
+            self._send_json(400, {"error": "malformed_request"})
+            return
 
         store: TokenStore = self._server.store
         signing_key: SigningKey = self._server.signing_key
@@ -439,11 +455,10 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             return
 
         scopes = old_family["scopes"]
-        store.mark_family_revoked(old_family_id)
-
         new_family_id = generate_token_id()
         store.create_family(new_family_id, scopes)
         access_token, refresh_token = create_token_pair(signing_key, store, new_family_id, config)
+        store.mark_family_revoked(old_family_id)
 
         audit.log_token_operation(
             "token_rotated",

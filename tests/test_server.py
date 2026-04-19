@@ -317,6 +317,36 @@ def test_token_modify_set_tiers_silently_skips_unknown_scope(in_process_server):
     assert body["scopes"] == {"things:read": "allow"}
 
 
+@pytest.mark.covers_function("Serve Token Modify Endpoint")
+def test_token_modify_rejects_malformed_json(in_process_server):
+    _, base, _ = in_process_server
+    status, body = post(f"{base}/agent-auth/token/modify", raw=b"{bad")
+    assert status == 400
+    assert body["error"] == "malformed_request"
+
+
+@pytest.mark.covers_function("Serve Token Modify Endpoint")
+def test_token_modify_rejects_missing_family_id(in_process_server):
+    _, base, _ = in_process_server
+    status, body = post(f"{base}/agent-auth/token/modify", data={"add_scopes": {"x": "allow"}})
+    assert status == 400
+    assert body["error"] == "malformed_request"
+
+
+@pytest.mark.covers_function("Serve Token Modify Endpoint")
+def test_token_modify_rejects_wrong_type_for_add_scopes(in_process_server):
+    _, base, _ = in_process_server
+    _, create_body = post(
+        f"{base}/agent-auth/token/create", data={"scopes": {"things:read": "allow"}}
+    )
+    status, body = post(
+        f"{base}/agent-auth/token/modify",
+        data={"family_id": create_body["family_id"], "add_scopes": "not-a-dict"},
+    )
+    assert status == 400
+    assert body["error"] == "malformed_request"
+
+
 # --- token revoke ---
 
 
@@ -361,6 +391,22 @@ def test_token_revoke_returns_404_for_unknown_family(in_process_server):
     status, body = post(f"{base}/agent-auth/token/revoke", data={"family_id": "no-such"})
     assert status == 404
     assert body["error"] == "family_not_found"
+
+
+@pytest.mark.covers_function("Serve Token Revoke Endpoint")
+def test_token_revoke_rejects_malformed_json(in_process_server):
+    _, base, _ = in_process_server
+    status, body = post(f"{base}/agent-auth/token/revoke", raw=b"{bad")
+    assert status == 400
+    assert body["error"] == "malformed_request"
+
+
+@pytest.mark.covers_function("Serve Token Revoke Endpoint")
+def test_token_revoke_rejects_missing_family_id(in_process_server):
+    _, base, _ = in_process_server
+    status, body = post(f"{base}/agent-auth/token/revoke", data={})
+    assert status == 400
+    assert body["error"] == "malformed_request"
 
 
 # --- token rotate ---
@@ -418,3 +464,19 @@ def test_token_rotate_returns_409_for_revoked_family(in_process_server):
     status, body = post(f"{base}/agent-auth/token/rotate", data={"family_id": family_id})
     assert status == 409
     assert body["error"] == "family_revoked"
+
+
+@pytest.mark.covers_function("Serve Token Rotate Endpoint")
+def test_token_rotate_rejects_malformed_json(in_process_server):
+    _, base, _ = in_process_server
+    status, body = post(f"{base}/agent-auth/token/rotate", raw=b"{bad")
+    assert status == 400
+    assert body["error"] == "malformed_request"
+
+
+@pytest.mark.covers_function("Serve Token Rotate Endpoint")
+def test_token_rotate_rejects_missing_family_id(in_process_server):
+    _, base, _ = in_process_server
+    status, body = post(f"{base}/agent-auth/token/rotate", data={})
+    assert status == 400
+    assert body["error"] == "malformed_request"
