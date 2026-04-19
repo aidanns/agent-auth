@@ -47,49 +47,49 @@ things-cli. Threats are rated High / Medium / Low by impact × likelihood.
 
 ### Spoofing
 
-| Threat | Rating | Mitigation |
-|--------|--------|------------|
-| Forged token presented to agent-auth `/validate` | High | HMAC-SHA256 signature over `prefix + token-id` prevents forgery without the signing key. |
-| Cross-type token substitution (access token used as refresh token) | Medium | The token prefix (`aa_` vs `rt_`) is included in the HMAC input; a valid access-token signature does not verify for the refresh-token type. |
-| Rogue process binding to 127.0.0.1:9100 before agent-auth | Medium | Mitigated by user being the sole operator of the host machine. No cryptographic protection against a co-located rogue process winning the bind race. |
+| Threat                                                             | Rating | Mitigation                                                                                                                                           |
+| ------------------------------------------------------------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Forged token presented to agent-auth `/validate`                   | High   | HMAC-SHA256 signature over `prefix + token-id` prevents forgery without the signing key.                                                             |
+| Cross-type token substitution (access token used as refresh token) | Medium | The token prefix (`aa_` vs `rt_`) is included in the HMAC input; a valid access-token signature does not verify for the refresh-token type.          |
+| Rogue process binding to 127.0.0.1:9100 before agent-auth          | Medium | Mitigated by user being the sole operator of the host machine. No cryptographic protection against a co-located rogue process winning the bind race. |
 
 ### Tampering
 
-| Threat | Rating | Mitigation |
-|--------|--------|------------|
-| Direct modification of `tokens.db` | High | Scope and HMAC-signature fields are AES-256-GCM encrypted at rest; modification without the key produces authentication-tag failures on read. |
-| Replay of a revoked token | High | Revocation writes `revoked_at` to the token record; validation checks `revoked_at IS NULL` before accepting. Reuse of a refresh token triggers family-wide revocation. |
-| Tampering with the signing key in the system keyring | High | Requires OS-level access to the keyring (macOS Keychain or libsecret). If the key is replaced, all previously issued tokens become invalid on next validation. |
+| Threat                                               | Rating | Mitigation                                                                                                                                                             |
+| ---------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Direct modification of `tokens.db`                   | High   | Scope and HMAC-signature fields are AES-256-GCM encrypted at rest; modification without the key produces authentication-tag failures on read.                          |
+| Replay of a revoked token                            | High   | Revocation writes `revoked_at` to the token record; validation checks `revoked_at IS NULL` before accepting. Reuse of a refresh token triggers family-wide revocation. |
+| Tampering with the signing key in the system keyring | High   | Requires OS-level access to the keyring (macOS Keychain or libsecret). If the key is replaced, all previously issued tokens become invalid on next validation.         |
 
 ### Repudiation
 
-| Threat | Rating | Mitigation |
-|--------|--------|------------|
+| Threat                                         | Rating | Mitigation                                                                                                 |
+| ---------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
 | Agent denies performing a privileged operation | Medium | All token operations and authorization decisions are written to the audit log before the response is sent. |
-| Audit log tampered post-hoc | Low | Audit log is append-only in the current implementation; cryptographic chaining is a future hardening step. |
+| Audit log tampered post-hoc                    | Low    | Audit log is append-only in the current implementation; cryptographic chaining is a future hardening step. |
 
 ### Information disclosure
 
-| Threat | Rating | Mitigation |
-|--------|--------|------------|
-| Token scopes exposed via database read | Medium | Scope fields are AES-256-GCM encrypted at rest; plaintext is only available in-process after decryption. |
-| HMAC signing key extracted from keyring | High | The key is held in the OS keyring (Keychain on macOS, libsecret on Linux). No in-memory caching beyond the process lifetime. |
-| Token value logged in plaintext | Low | Tokens are never written to logs. Audit records reference token family IDs only. |
+| Threat                                  | Rating | Mitigation                                                                                                                   |
+| --------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Token scopes exposed via database read  | Medium | Scope fields are AES-256-GCM encrypted at rest; plaintext is only available in-process after decryption.                     |
+| HMAC signing key extracted from keyring | High   | The key is held in the OS keyring (Keychain on macOS, libsecret on Linux). No in-memory caching beyond the process lifetime. |
+| Token value logged in plaintext         | Low    | Tokens are never written to logs. Audit records reference token family IDs only.                                             |
 
 ### Denial of service
 
-| Threat | Rating | Mitigation |
-|--------|--------|------------|
-| Oversized request body exhausting agent-auth | Medium | Request bodies are capped at 1 MiB. |
-| Rapid token-creation filling `tokens.db` | Low | No rate limiting currently; the server is local-only so the attack requires code execution on the host. Rate limiting is a future hardening step. |
+| Threat                                       | Rating | Mitigation                                                                                                                                        |
+| -------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Oversized request body exhausting agent-auth | Medium | Request bodies are capped at 1 MiB.                                                                                                               |
+| Rapid token-creation filling `tokens.db`     | Low    | No rate limiting currently; the server is local-only so the attack requires code execution on the host. Rate limiting is a future hardening step. |
 
 ### Elevation of privilege
 
-| Threat | Rating | Mitigation |
-|--------|--------|------------|
-| AI agent escalates from `allow`-tier to `prompt`-tier scope without JIT approval | High | Scope tier is validated server-side on every request; the agent cannot self-approve `prompt`-tier requests. |
-| Malicious notification plugin runs in-process | High | Tracked in [#6](https://github.com/aidanns/agent-auth/issues/6). Current mitigation: only install plugins from trusted sources under your user account. |
-| things-cli constructs arbitrary argv passed to things-client CLI | Medium | things-bridge constructs the argv from validated, schema-matched request parameters, not from raw client input. |
+| Threat                                                                           | Rating | Mitigation                                                                                                                                              |
+| -------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI agent escalates from `allow`-tier to `prompt`-tier scope without JIT approval | High   | Scope tier is validated server-side on every request; the agent cannot self-approve `prompt`-tier requests.                                             |
+| Malicious notification plugin runs in-process                                    | High   | Tracked in [#6](https://github.com/aidanns/agent-auth/issues/6). Current mitigation: only install plugins from trusted sources under your user account. |
+| things-bridge constructs arbitrary argv passed to things-client CLI              | Medium | things-bridge constructs the argv from validated, schema-matched request parameters, not from raw client input.                                         |
 
 ## Key handling
 
@@ -152,13 +152,20 @@ and its control catalog is machine-readable for automated compliance checking.
 
 ### Control families relevant to this project
 
-| Family | ID | Selected controls |
-|--------|----|-------------------|
-| Access Control | AC | AC-2 (Account Management), AC-3 (Access Enforcement), AC-6 (Least Privilege), AC-17 (Remote Access) |
-| Audit and Accountability | AU | AU-2 (Event Logging), AU-3 (Content of Audit Records), AU-9 (Protection of Audit Information), AU-12 (Audit Record Generation) |
-| Identification and Authentication | IA | IA-5 (Authenticator Management), IA-9 (Service Identification and Authentication) |
-| System and Communications Protection | SC | SC-8 (Transmission Confidentiality and Integrity), SC-28 (Protection of Information at Rest) |
-| System and Information Integrity | SI | SI-10 (Information Input Validation), SI-12 (Information Management and Retention) |
+| Family                               | ID  | Selected controls                                                                                                              |
+| ------------------------------------ | --- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Access Control                       | AC  | AC-2 (Account Management), AC-3 (Access Enforcement), AC-6 (Least Privilege), AC-17 (Remote Access)                            |
+| Audit and Accountability             | AU  | AU-2 (Event Logging), AU-3 (Content of Audit Records), AU-9 (Protection of Audit Information), AU-12 (Audit Record Generation) |
+| Identification and Authentication    | IA  | IA-5 (Authenticator Management), IA-9 (Service Identification and Authentication)                                              |
+| System and Communications Protection | SC  | SC-8 (Transmission Confidentiality and Integrity) ¹, SC-28 (Protection of Information at Rest)                                 |
+| System and Information Integrity     | SI  | SI-10 (Information Input Validation), SI-12 (Information Management and Retention)                                             |
+
+¹ **SC-8 known gap**: In the devcontainer deployment scenario (see trust boundary
+diagram), `things-cli` communicates with `things-bridge` and `agent-auth` over a
+plain HTTP loopback connection that crosses a real network interface. SC-8 is
+not currently satisfied for this path. Mitigation: TLS between devcontainer and
+host services is tracked as a future hardening step; until then, this deployment
+is restricted to single-user local networks.
 
 Implementation plans for new features should verify compliance against the
 controls above that are in scope for the change. Control applicability

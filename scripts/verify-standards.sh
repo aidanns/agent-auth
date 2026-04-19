@@ -449,7 +449,6 @@ if [[ ! -f SECURITY.md ]]; then
     "Add SECURITY.md covering trust boundaries, threat model, key handling, revocation flow, audit surface, and vulnerability reporting."
 else
   security_section_names=(
-    # keep-sorted start
     audit-surface
     cybersecurity-standard
     key-handling
@@ -457,7 +456,6 @@ else
     threat-model
     trust-boundaries
     vulnerability-reporting
-    # keep-sorted end
   )
   security_section_patterns=(
     "## Audit surface|## Audit log"

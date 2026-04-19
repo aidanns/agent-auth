@@ -33,7 +33,7 @@ if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
-for cmd in git gh uv; do
+for cmd in git gh; do
   if ! command -v "${cmd}" >/dev/null 2>&1; then
     echo "release: '${cmd}' is required but not found on PATH." >&2
     exit 1

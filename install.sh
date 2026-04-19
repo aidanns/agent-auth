@@ -6,7 +6,7 @@
 set -euo pipefail
 
 REPO="aidanns/agent-auth"
-INSTALL_SOURCE="git+https://github.com/${REPO}.git"
+GITHUB_URL="https://github.com/${REPO}"
 
 if ! command -v uv >/dev/null 2>&1; then
   cat >&2 <<'EOF'
@@ -21,7 +21,21 @@ EOF
   exit 1
 fi
 
-echo "Installing agent-auth from ${INSTALL_SOURCE} ..."
+# Resolve the latest release tag so users get the tagged version, not HEAD.
+# Falls back to HEAD if no release has been cut yet.
+LATEST_TAG="$(
+  curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+    | python3 -c "import json,sys; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null \
+    || true
+)"
+
+if [[ -n "${LATEST_TAG}" ]]; then
+  INSTALL_SOURCE="git+${GITHUB_URL}.git@${LATEST_TAG}"
+else
+  INSTALL_SOURCE="git+${GITHUB_URL}.git"
+fi
+
+echo "Installing agent-auth ${LATEST_TAG:-HEAD} from ${GITHUB_URL} ..."
 uv tool install --force "${INSTALL_SOURCE}"
 
 echo
