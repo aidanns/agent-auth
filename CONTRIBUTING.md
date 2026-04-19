@@ -2,29 +2,36 @@
 
 ## Dev setup
 
-1. Install [uv](https://docs.astral.sh/uv/) — the project's canonical
-   Python package and environment manager (`brew install uv` on macOS,
-   `curl -LsSf https://astral.sh/uv/install.sh | sh` elsewhere).
-2. Install [go-task](https://taskfile.dev/installation/) — the project's
-   canonical task runner (`brew install go-task` on macOS,
-   `sh -c "$(curl -fsSL https://taskfile.dev/install.sh)" -- -d -b "$HOME/.local/bin"`
-   elsewhere).
-3. Install [shellcheck](https://www.shellcheck.net/) and
-   [shfmt](https://github.com/mvdan/sh) — required by `task lint` and
-   `task format` (and gated in CI). On macOS: `brew install shellcheck shfmt`. On Debian/Ubuntu: `apt-get install shellcheck` and download
-   `shfmt` from its [GitHub releases](https://github.com/mvdan/sh/releases).
-4. Install [mdformat](https://mdformat.readthedocs.io/) with its GFM and
-   tables plugins — required by `task format` for Markdown. Install as a
-   uv-managed tool: `uv tool install mdformat --with mdformat-gfm --with mdformat-tables`.
-5. Install [taplo](https://taplo.tamasfe.dev/) — required by
-   `task format` for TOML. On macOS: `brew install taplo`. Elsewhere:
-   download from [GitHub releases](https://github.com/tamasfe/taplo/releases).
-6. Install [keep-sorted](https://github.com/google/keep-sorted) — required
-   by `task lint` to verify annotated sorted blocks stay sorted. On macOS
-   / Linux: `go install github.com/google/keep-sorted@latest`, or download
-   from [GitHub releases](https://github.com/google/keep-sorted/releases).
-7. Clone the repo and `cd` into it.
-8. Run `task --list` to see every repeatable operation.
+01. Install [uv](https://docs.astral.sh/uv/) — the project's canonical
+    Python package and environment manager (`brew install uv` on macOS,
+    `curl -LsSf https://astral.sh/uv/install.sh | sh` elsewhere).
+02. Install [go-task](https://taskfile.dev/installation/) — the project's
+    canonical task runner (`brew install go-task` on macOS,
+    `sh -c "$(curl -fsSL https://taskfile.dev/install.sh)" -- -d -b "$HOME/.local/bin"`
+    elsewhere).
+03. Install [shellcheck](https://www.shellcheck.net/) and
+    [shfmt](https://github.com/mvdan/sh) — required by `task lint` and
+    `task format` (and gated in CI). On macOS: `brew install shellcheck shfmt`. On Debian/Ubuntu: `apt-get install shellcheck` and download
+    `shfmt` from its [GitHub releases](https://github.com/mvdan/sh/releases).
+04. Install [mdformat](https://mdformat.readthedocs.io/) with its GFM and
+    tables plugins — required by `task format` for Markdown. Install as a
+    uv-managed tool: `uv tool install mdformat --with mdformat-gfm --with mdformat-tables`.
+05. Install [taplo](https://taplo.tamasfe.dev/) — required by
+    `task format` for TOML. On macOS: `brew install taplo`. Elsewhere:
+    download from [GitHub releases](https://github.com/tamasfe/taplo/releases).
+06. Install [keep-sorted](https://github.com/google/keep-sorted) — required
+    by `task lint` to verify annotated sorted blocks stay sorted. On macOS
+    / Linux: `go install github.com/google/keep-sorted@latest`, or download
+    from [GitHub releases](https://github.com/google/keep-sorted/releases).
+07. Install [lefthook](https://lefthook.dev/) — runs the pre-commit
+    checks configured in `lefthook.yml` (shellcheck, shfmt, ruff,
+    mdformat, taplo, keep-sorted). On macOS: `brew install lefthook`.
+    Elsewhere: `go install github.com/evilmartians/lefthook@latest`.
+08. Clone the repo and `cd` into it.
+09. Run `task install-hooks` to install the pre-commit hook shim.
+    `task verify-standards` gates on this being installed so that
+    configured pre-commit checks actually fire on every commit.
+10. Run `task --list` to see every repeatable operation.
 
 The first time you run any venv-backed task (e.g. `task test`,
 `task build`, or a service task like `task agent-auth -- serve`), the

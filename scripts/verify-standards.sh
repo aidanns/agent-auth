@@ -32,6 +32,9 @@
 #   7. CONTRIBUTING.md exists at repo root and contains dev-setup, testing,
 #      release, and commit-signing sections per
 #      .claude/instructions/release-and-hygiene.md.
+#   8. lefthook pre-commit hook is installed in the local clone when
+#      lefthook.yml is present (skipped under CI=true, since CI enforces
+#      the same gates via explicit workflow steps).
 
 set -euo pipefail
 
@@ -496,6 +499,25 @@ if [[ ! -x install.sh ]]; then
 fi
 
 echo "verify-standards: install.sh exists and is executable."
+
+# lefthook hooks must be installed locally so the pre-commit commands
+# configured in lefthook.yml actually fire. Skipped when CI=true — CI
+# gates the same checks explicitly via workflow steps, so a fresh
+# checkout doesn't need the local hook shim. A local clone with
+# lefthook.yml present but no pre-commit shim is a silent failure mode
+# (commits land without the configured checks), which this gate catches.
+
+if [[ -f lefthook.yml && -z "${CI:-}" ]]; then
+  hooks_dir="$(git rev-parse --git-path hooks)"
+  pre_commit_hook="${hooks_dir}/pre-commit"
+  if [[ ! -f "${pre_commit_hook}" ]] || ! grep -q lefthook "${pre_commit_hook}"; then
+    echo "verify-standards: lefthook hooks are not installed in this clone." >&2
+    echo "  lefthook.yml is present but ${pre_commit_hook} is missing or is not a lefthook shim." >&2
+    echo "  Run 'task install-hooks' to install them." >&2
+    exit 1
+  fi
+  echo "verify-standards: lefthook pre-commit hook is installed."
+fi
 
 # GitHub repository About metadata must be populated per
 # .claude/instructions/release-and-hygiene.md. Skipped when 'gh' is not
