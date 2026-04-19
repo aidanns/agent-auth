@@ -323,3 +323,13 @@ if [[ ${ruff_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: ruff is configured in pyproject.toml, wired into treefmt and lefthook, and gated in CI."
+
+# pip-audit must be wired into at least one CI workflow
+# (.claude/instructions/python.md Tooling).
+if ! grep -qE "\\bpip-audit\\b" <<<"${workflows_stripped}"; then
+  echo "verify-standards: 'pip-audit' is not invoked in any .github/workflows/*.yml file." >&2
+  echo "  Add a workflow step that runs 'pip-audit' (see .github/workflows/security.yml)." >&2
+  exit 1
+fi
+
+echo "verify-standards: pip-audit is wired into CI."
