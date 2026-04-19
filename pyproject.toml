@@ -23,7 +23,6 @@ dev = [
     "testcontainers[compose]>=4",
     # keep-sorted end
 ]
-tests-support = []
 
 [project.scripts]
 # keep-sorted start
@@ -35,6 +34,14 @@ things-client-cli-applescript = "things_client_applescript.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+# ``tests_support`` ships the always-approve / always-deny notification
+# plugins used by the Docker integration tests. It lives under ``src/``
+# for ergonomic in-tree development but must never enter the distributed
+# wheel — a misconfigured production ``notification_plugin`` setting
+# could otherwise load ``AlwaysApprovePlugin`` by name. The integration
+# container imports it via ``PYTHONPATH`` instead of an installed
+# distribution (see ``docker/Dockerfile.test``).
+exclude = ["tests_support*"]
 
 [tool.setuptools_scm]
 # Versions are derived from git tags (e.g. a ``v0.2.0`` tag produces
@@ -43,6 +50,11 @@ where = ["src"]
 fallback_version = "0.0.0+unknown"
 
 [tool.pytest.ini_options]
+# ``tests_support`` is deliberately excluded from the ``agent-auth``
+# wheel (see ``[tool.setuptools.packages.find]``) so it can never ship
+# in a production install. Tests still need to import it from the
+# source tree, so add ``src/`` to the pytest pythonpath.
+pythonpath = ["src"]
 markers = [
     "covers_function(*names): declare which functional-decomposition leaf functions a test exercises (read by `systems-engineering function verify`)",
 ]

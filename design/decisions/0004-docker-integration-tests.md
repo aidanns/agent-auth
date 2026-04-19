@@ -62,11 +62,16 @@ Adopt the Docker-per-test approach, using
 [`testcontainers-python`](https://testcontainers-python.readthedocs.io/)
 to drive the Compose lifecycle instead of hand-rolled subprocess calls.
 
-- `docker/Dockerfile.test` installs `agent-auth[tests-support]` plus
-  `keyrings.alt` so the server can start without an interactive keyring
-  backend. Its `ENTRYPOINT` is just `agent-auth serve` — configuration
-  is read from a bind-mounted `config.json`, not rendered from env vars
-  by a shell entrypoint.
+- `docker/Dockerfile.test` installs `agent-auth` plus `keyrings.alt`
+  so the server can start without an interactive keyring backend. The
+  `tests_support` package (always-approve / always-deny plugins) is
+  explicitly excluded from the `agent-auth` wheel so it can never ship
+  to production; the Dockerfile copies `src/tests_support/` into
+  `/opt/tests-support/` and sets `PYTHONPATH=/opt/tests-support` so the
+  running server can still `importlib.import_module` it. The
+  `ENTRYPOINT` is just `agent-auth serve` — configuration is read from a
+  bind-mounted `config.json`, not rendered from env vars by a shell
+  entrypoint.
 - `docker/config.test.json` is the committed baseline test config
   (deny-by-default plugin, stock TTLs). The pytest fixture copies it
   into a per-test tmpdir, applies overrides (plugin choice, TTLs), and
@@ -102,12 +107,14 @@ to drive the Compose lifecycle instead of hand-rolled subprocess calls.
 - Integration tests are slower: image build on first run + per-test
   container startup. Mitigated by running the unit layer first in CI
   and only gating on integration after unit passes.
-- The `tests_support` package is shipped alongside `agent-auth` and
-  loaded by `importlib.import_module` inside the running server, which
-  means it falls under the same plugin-trust caveat
+- The `tests_support` package is loaded by `importlib.import_module`
+  inside the running server, which means it falls under the same
+  plugin-trust caveat
   ([#6](https://github.com/aidanns/agent-auth/issues/6)). Acceptable
-  here because the package is installed *only* when the image is built,
-  not in production.
+  here because the package is excluded from the `agent-auth` wheel
+  (`[tool.setuptools.packages.find] exclude = ["tests_support*"]`) and
+  is only made importable inside the integration-test image via a
+  dedicated copy + `PYTHONPATH`, never in production.
 - `/agent-auth/health` is added as a readiness probe (satisfying the
   `service-design.md` health-endpoint standard). It requires an access
   token carrying the `agent-auth:health` scope; the fixture polls for
