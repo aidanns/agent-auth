@@ -12,7 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`task release` auto-derives the next version.** Run `task release` with no
   argument and the script walks Conventional Commits since the last `v*` tag to
   pick a major / minor / patch bump (BREAKING → major, `feat:` → minor,
-  `fix:` → patch). Pass `task release -- X.Y.Z` to override.
+  `fix:` → patch). Pass `task release -- X.Y.Z` to override. While the current
+  tag is in the `0.x` range the API is not considered stable (SemVer 2.0.0 §4),
+  so a detected major bump is demoted to a minor bump; pass an explicit
+  `task release -- 1.0.0` to graduate.
 
 ## [0.1.0] - 2026-04-19
 

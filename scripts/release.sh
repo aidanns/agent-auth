@@ -17,6 +17,10 @@
 #   - any `fix:`  / `fix(scope):`  subject                → patch
 #   - other types alone (docs, chore, refactor, ...)      → no release
 #
+# Pre-v1.0.0 exception: while the current tag is in the 0.x range the API is
+# not considered stable (SemVer 2.0.0 §4), so a detected major bump is
+# demoted to a minor bump. Pass an explicit '1.0.0' to graduate.
+#
 # The resolved version must already appear as a section header in CHANGELOG.md:
 #   ## [1.2.3] - YYYY-MM-DD
 
@@ -53,7 +57,9 @@ compute_bump() {
   # Regexes live in variables because shellcheck can't parse `:` inside `[[ =~ ]]`
   # patterns (SC1073). Quoting the RHS of `=~` would turn it into a literal match,
   # so the variable-indirection trick is the shellcheck-safe way to keep them regex.
-  local breaking_re='^[a-zA-Z]+(\([^)]+\))?!:'
+  # Conventional Commits requires lowercase types, so match lowercase only and
+  # keep the three regexes symmetric.
+  local breaking_re='^[a-z]+(\([^)]+\))?!:'
   local feat_re='^feat(\([^)]+\))?:'
   local fix_re='^fix(\([^)]+\))?:'
 
@@ -138,8 +144,21 @@ else
     exit 1
   fi
 
+  # Pre-v1.0.0 API: the public surface is not considered stable until the
+  # v1.0.0 graduation release, so BREAKING commits bump the minor number
+  # rather than the major number. SemVer 2.0.0 §4 explicitly permits this.
+  DEMOTED_FROM=""
+  if [[ "${BUMP}" == "major" && "${LAST_TAG}" =~ ^v0\. ]]; then
+    DEMOTED_FROM="major"
+    BUMP="minor"
+  fi
+
   VERSION="$(apply_bump "${LAST_TAG}" "${BUMP}")"
-  echo "Auto-detected ${BUMP} bump from commits since ${LAST_TAG}: v${VERSION}"
+  if [[ -n "${DEMOTED_FROM}" ]]; then
+    echo "Auto-detected ${DEMOTED_FROM} bump from commits since ${LAST_TAG}; demoted to ${BUMP} per pre-v1.0.0 API rule: v${VERSION}"
+  else
+    echo "Auto-detected ${BUMP} bump from commits since ${LAST_TAG}: v${VERSION}"
+  fi
 fi
 
 TAG="v${VERSION}"

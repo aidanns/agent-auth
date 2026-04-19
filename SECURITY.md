@@ -154,16 +154,33 @@ family IDs only.
 ## Cybersecurity standard
 
 This project adopts **NIST SP 800-53 Revision 5** as its reference cybersecurity
-standard. NIST SP 800-53 Rev 5 is a widely-used, publicly-available catalog of
-security and privacy controls applicable to information systems, independent of
-sector or organization type. It maps naturally onto a token-based authorization
-system that handles key material and sensitive user data.
+standard. The five control families below are in scope because each maps to a
+specific component of the current implementation:
 
-**Rationale**: The project handles cryptographic key material (HMAC signing key,
-AES-256-GCM encryption key), a local SQLite token store, and a JIT approval
-surface. NIST SP 800-53 Rev 5 provides clear control families for these
-responsibilities (AC, AU, IA, SC, SI) with well-defined implementation guidance,
-and its control catalog is machine-readable for automated compliance checking.
+- **AC — Access Control**: the three-tier scope model (`allow`/`prompt`/`deny`)
+  and the per-family scope set enforced in `src/agent_auth/scopes.py` and the
+  `validate_token_scope` function in
+  [`design/functional_decomposition.yaml`](design/functional_decomposition.yaml).
+- **AU — Audit and Accountability**: the append-only audit log in
+  `src/agent_auth/audit.py`, fed by every token lifecycle event and
+  authorization decision.
+- **IA — Identification and Authentication**: HMAC-SHA256 signed tokens with
+  per-family revocation (`src/agent_auth/tokens.py`) and the agent-auth
+  server as the sole validation authority
+  (`src/agent_auth/server.py` — the `/validate` endpoint).
+- **SC — System and Communications Protection**: AES-256-GCM field encryption
+  (`src/agent_auth/crypto.py`) and the signing/encryption keys held in the
+  system keyring (`src/agent_auth/keys.py`). Transport protection is a known
+  gap — see the SC-8 note below.
+- **SI — System and Information Integrity**: request-body size caps and
+  schema-validated parameters before subprocess argv construction
+  (`src/things_bridge/server.py`).
+
+Controls outside these families are out of scope for the current codebase; the
+product is a local, single-user authorization system and does not cover
+personnel, supply-chain, physical, or enterprise-scale controls. Applicability
+assessments for new features are documented in ADRs under
+`design/decisions/`.
 
 ### Control families relevant to this project
 
@@ -185,10 +202,7 @@ Control applicability assessments for new features should be documented in
 
 ## Vulnerability reporting
 
-This is a personal project. If you find a security issue:
-
-1. **Do not open a public GitHub issue.** Use
-   [GitHub private vulnerability reporting](https://github.com/aidanns/agent-auth/security/advisories/new)
-   to disclose the issue confidentially.
-2. Alternatively, email **aidanns@gmail.com** with the subject line
-   `[agent-auth] Security vulnerability`.
+This is a personal project. If you find a security issue, **do not open a
+public GitHub issue.** Use
+[GitHub private vulnerability reporting](https://github.com/aidanns/agent-auth/security/advisories/new)
+to disclose the issue confidentially.
