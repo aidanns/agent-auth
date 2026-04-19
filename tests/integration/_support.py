@@ -51,11 +51,11 @@ def wait_until_server_ready(
 ) -> None:
     """Block until ``health_url`` answers, treating ``accept_status`` as up.
 
-    The agent-auth health endpoint requires an ``agent-auth:health``
-    token, so an unauthenticated probe returns ``401``. The fixture
-    treats that — along with ``403`` (valid shape, scope missing) — as
-    a positive "server is up" signal. The things-bridge health endpoint
-    is unauthenticated, so any 2xx response is up.
+    Both health endpoints (``agent-auth/health`` and
+    ``things-bridge/health``) require a scoped bearer token, so an
+    unauthenticated probe returns ``401``. The fixture treats that —
+    along with ``403`` (valid shape, scope missing) — as a positive
+    "server is up" signal.
     """
     deadline = time.monotonic() + READY_POLL_TIMEOUT_SECONDS
     last_error: Exception | None = None
@@ -78,19 +78,25 @@ def wait_until_server_ready(
 
 
 def render_compose_file(target_dir: Path, **substitutions: str) -> Path:
-    """Render ``docker-compose.yaml`` with ``{{ NAME }}`` placeholders
+    """Render the compose template with double-brace placeholders
     substituted, writing the result into ``target_dir`` and returning
     the rendered path.
 
     The compose template carries every test-specific value as a
-    ``{{ NAME }}`` placeholder so the rendered file is self-contained:
+    double-brace placeholder so the rendered file is self-contained:
     docker compose never has to inherit env vars from the test runner,
     and there is no shared mutable state between concurrent fixture
     invocations.
 
+    Comment lines (those whose first non-whitespace char is ``#``) are
+    excluded from the leftover-placeholder check, so the template can
+    document its own substitution syntax in YAML comments without
+    tripping the guard.
+
     Raises ``KeyError`` if a substitution doesn't match any placeholder
     in the template (typo guard) or if the rendered output still
-    contains an unsubstituted placeholder (forgotten value guard).
+    contains an unsubstituted placeholder outside a comment (forgotten
+    value guard).
     """
     template = COMPOSE_TEMPLATE.read_text()
     for key, value in substitutions.items():
@@ -98,7 +104,10 @@ def render_compose_file(target_dir: Path, **substitutions: str) -> Path:
         if placeholder not in template:
             raise KeyError(f"placeholder {placeholder!r} not found in {COMPOSE_TEMPLATE.name}")
         template = template.replace(placeholder, value)
-    leftover = sorted(set(_PLACEHOLDER_PATTERN.findall(template)))
+    non_comment = "\n".join(
+        line for line in template.splitlines() if not line.lstrip().startswith("#")
+    )
+    leftover = sorted(set(_PLACEHOLDER_PATTERN.findall(non_comment)))
     if leftover:
         raise KeyError(f"unsubstituted placeholders in {COMPOSE_TEMPLATE.name}: {leftover}")
     target = target_dir / COMPOSE_FILE_NAME

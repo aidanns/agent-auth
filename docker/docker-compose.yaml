@@ -1,8 +1,9 @@
-# Template — placeholders are substituted by render_compose_file() in
-# tests/integration/_support.py before docker compose ever sees the
-# file. Using `{{ NAME }}` markers (rather than ${NAME}) keeps the
-# whole substitution surface in Python: the rendered, per-test file is
-# self-contained and docker compose never has to inherit env vars.
+# Template — Python-style double-brace placeholders are substituted by
+# render_compose_file() in tests/integration/_support.py before docker
+# compose ever sees the file. Keeping the substitution surface in
+# Python (rather than $VAR interpolation handled by docker compose
+# itself) means the rendered, per-test file is self-contained and
+# docker compose never has to inherit env vars from the test process.
 name: {{ COMPOSE_PROJECT_NAME }}
 
 services:
