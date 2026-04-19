@@ -1,0 +1,26 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run daily at 06:00 UTC to catch newly-published advisories on main.
+    - cron: "0 6 * * *"
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Run pip-audit
+        # Audit all packages resolved from uv.lock (production + dev deps).
+        # pip-audit fails the step on any unignored advisory.
+        run: uv run --extra dev pip-audit

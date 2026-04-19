@@ -19,6 +19,7 @@ dependencies = [
 dev = [
     # keep-sorted start
     "build>=1.0",
+    "pip-audit>=2.7",
     "pytest>=8.0",
     "testcontainers[compose]>=4",
     # keep-sorted end
