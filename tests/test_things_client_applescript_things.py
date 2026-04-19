@@ -201,9 +201,9 @@ def test_list_todos_reads_properties_from_collection_in_one_apple_event():
         "creation date",
         "modification date",
     ):
-        assert f"{prop} of every to do" in script, (
-            f"expected batched collection read for {prop!r} in emitted script"
-        )
+        assert (
+            f"{prop} of every to do" in script
+        ), f"expected batched collection read for {prop!r} in emitted script"
 
     # The unfiltered body must not contain a per-element property read of
     # the form ``id of t`` / ``name of t`` / ``notes of t``. The only
@@ -267,9 +267,9 @@ def test_list_projects_reads_properties_from_collection_in_one_apple_event():
     script = runner.last_script
     assert script is not None
     for prop in ("id", "name", "notes", "status", "tag names", "due date"):
-        assert f"{prop} of every project" in script, (
-            f"expected batched collection read for {prop!r} in projects script"
-        )
+        assert (
+            f"{prop} of every project" in script
+        ), f"expected batched collection read for {prop!r} in projects script"
 
 
 def test_list_areas_reads_properties_from_collection_in_one_apple_event():
@@ -280,9 +280,9 @@ def test_list_areas_reads_properties_from_collection_in_one_apple_event():
     script = runner.last_script
     assert script is not None
     for prop in ("id", "name", "tag names"):
-        assert f"{prop} of every area" in script, (
-            f"expected batched collection read for {prop!r} in areas script"
-        )
+        assert (
+            f"{prop} of every area" in script
+        ), f"expected batched collection read for {prop!r} in areas script"
 
 
 def test_unescape_handles_placeholders():

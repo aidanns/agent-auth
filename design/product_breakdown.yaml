@@ -29,6 +29,7 @@ components:
           - Serve Refresh Endpoint
           - Serve Reissue Endpoint
           - Serve Status Endpoint
+          - Serve Health Endpoint
           - Log Token Operation
           - Log Authorization Decision
           - Handle Token Create Command

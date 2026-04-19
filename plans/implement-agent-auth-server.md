@@ -7,6 +7,7 @@ The agent-auth project has a comprehensive design (in `design/DESIGN.md`) but no
 ## Dependencies
 
 Add to `pyproject.toml`:
+
 - `keyring>=25.0` — system keyring access for signing/encryption keys
 - `cryptography>=42.0` — AES-256-GCM field encryption
 
@@ -70,6 +71,7 @@ Build order (each depends on prior):
 ### Phase 2: CLI token management
 
 **`cli.py`** — argparse with subcommands:
+
 - `agent-auth token create --scope things:read=allow --scope things:write=prompt`
 - `agent-auth token list`
 - `agent-auth token modify <family-id> --add-scope ... --remove-scope ... --set-tier ...`
@@ -88,6 +90,7 @@ Support `--json` flag for machine-readable output.
 3. **`approval.py`** — `ApprovalManager` with in-memory session grants dict (thread-safe). Methods: `check_grant()`, `request_approval()`, `record_grant()`, `expire_grants()`. Also persists grants to `approval_grants` table for audit.
 
 4. **`server.py`** — `AgentAuthServer(ThreadingHTTPServer)` + `AgentAuthHandler(BaseHTTPRequestHandler)`. Routes:
+
    - `POST /agent-auth/validate` — verify token, check scope, handle prompt tier
    - `POST /agent-auth/token/refresh` — refresh with reuse detection
    - `POST /agent-auth/token/reissue` — JIT-approved re-issuance

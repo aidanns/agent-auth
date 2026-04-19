@@ -16,11 +16,14 @@ agent-auth provides a local authorization layer between AI agents (e.g. Claude C
 
 ## Installation
 
-Requires Python 3.11+ and [go-task](https://taskfile.dev) (`brew install go-task` on macOS).
+Requires:
+
+- [uv](https://docs.astral.sh/uv/) — Python package and environment manager. Install via `brew install uv` (macOS) or `curl -LsSf https://astral.sh/uv/install.sh | sh` (Linux). uv reads `requires-python` from `pyproject.toml` and installs a matching CPython automatically, so Python 3.11+ does not need to be pre-installed.
+- [go-task](https://taskfile.dev) — task runner (`brew install go-task` on macOS).
 
 ```bash
 cd ~/Projects/agent-auth
-task test        # bootstraps .venv-$(uname -s)-$(uname -m) and runs the suite
+task test        # bootstraps .venv-$(uname -s)-$(uname -m) via `uv sync` and runs the suite
 ```
 
 Every repeatable operation is exposed through the task runner — run `task --list` to see the catalogue. Common commands:
@@ -41,12 +44,12 @@ Every tool invocation routes through `scripts/_bootstrap_venv.sh`, which creates
 
 If you don't have `go-task` installed, every task dispatches to a script under `scripts/*.sh` that you can invoke directly (e.g. `scripts/test.sh`, `scripts/agent-auth.sh serve`).
 
-For a bare Python install without the task runner:
+For a bare install without the task runner:
 
 ```bash
-python3 -m venv ".venv-$(uname -s)-$(uname -m)"
-source ".venv-$(uname -s)-$(uname -m)/bin/activate"
-pip install -e ".[dev]"
+export UV_PROJECT_ENVIRONMENT=".venv-$(uname -s)-$(uname -m)"
+uv sync --extra dev
+uv run agent-auth --help
 ```
 
 ## Usage
@@ -164,6 +167,58 @@ things-cli areas show <area-id>
 # Discard stored credentials
 things-cli logout
 ```
+
+## Development
+
+### Running tests
+
+Tests are split into two layers:
+
+- **Unit** (fast, in-process) — `scripts/test.sh --unit` (default).
+- **Integration** (Docker-backed) — `scripts/test.sh --integration`. Each
+  test spins up its own `agent-auth serve` container via Docker Compose
+  (one ephemeral Compose project per test), drives it over HTTP, and
+  uses `docker compose exec` to invoke the `agent-auth` CLI inside the
+  container. Requires Docker + Docker Compose on the host. Tests skip
+  automatically if Docker is not available.
+- **Both** — `scripts/test.sh --all`.
+
+See `design/decisions/0004-docker-integration-tests.md` for the design
+rationale.
+
+### Running integration tests from a devcontainer
+
+When running the integration tests inside a devcontainer, prefer
+**rootless Docker-in-Docker** over bind-mounting the host's Docker
+socket:
+
+- A mounted host socket lets any process inside the devcontainer mount
+  arbitrary host paths (`~/.ssh`, `~/.aws`, keyring-backed credentials),
+  which short-circuits agent-auth's token/scope contract. Rootless DinD
+  keeps the blast radius inside the devcontainer.
+- Socket-mount containers are siblings of the devcontainer on the host
+  (volumes resolve against host paths, they outlive the devcontainer,
+  they share networks with other host processes). DinD nests them so
+  teardown is clean and volume paths behave as expected.
+- The nested daemon's image cache and networks live inside the
+  devcontainer, so integration state does not diverge based on what
+  each developer has cached on their laptop.
+- Rootless (not privileged root) keeps the daemon capped at the
+  devcontainer user's privileges; `--privileged` is not an acceptable
+  default.
+
+Trade-offs: overlay-on-overlay storage is slower than sharing the host
+cache, rootless-in-rootless needs `/dev/fuse` and user-namespace
+config, and images built inside DinD are not visible to the host
+`docker` CLI.
+
+The integration-test fixture chmods the bind-mounted config directory
+to `0755` and `config.json` to `0644` so the container user (UID 1001,
+see `docker/Dockerfile.test`) can read it regardless of the host
+tmpdir's default mode or the host runner's UID.
+
+CI runners, where there is no host developer state to protect, can use
+whatever Docker the runner provides.
 
 ## Security
 

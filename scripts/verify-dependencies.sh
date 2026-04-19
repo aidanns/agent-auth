@@ -7,17 +7,21 @@
 
 set -euo pipefail
 
-# keep-sorted start
 REQUIRED_TOOLS=(
+  # keep-sorted start
+  keep-sorted
+  mdformat
   python3
-  shasum
+  ruff
   shellcheck
   shfmt
   systems-engineering
+  taplo
   task
+  uv
   yq
+  # keep-sorted end
 )
-# keep-sorted end
 
 missing=()
 for tool in "${REQUIRED_TOOLS[@]}"; do

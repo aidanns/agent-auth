@@ -65,6 +65,8 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/agent-auth/token/status":
             self._handle_status()
+        elif self.path == "/agent-auth/health":
+            self._handle_health()
         else:
             self._send_json(404, {"error": "not_found"})
 
@@ -298,6 +300,56 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
                 "scopes": family["scopes"],
             },
         )
+
+    HEALTH_SCOPE = "agent-auth:health"
+
+    def _handle_health(self):
+        auth_header = self.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            self._send_json(401, {"error": "missing_token"})
+            return
+
+        token_raw = auth_header[7:]
+        store: TokenStore = self._server.store
+        signing_key: SigningKey = self._server.signing_key
+
+        try:
+            prefix, token_id = verify_token(token_raw, signing_key)
+        except TokenInvalidError:
+            self._send_json(401, {"error": "invalid_token"})
+            return
+        if prefix != PREFIX_ACCESS:
+            self._send_json(401, {"error": "invalid_token"})
+            return
+
+        token_record = store.get_token(token_id)
+        if token_record is None:
+            self._send_json(401, {"error": "invalid_token"})
+            return
+
+        family = store.get_family(token_record["family_id"])
+        if family is None or family["revoked"]:
+            self._send_json(401, {"error": "invalid_token"})
+            return
+
+        now = datetime.now(UTC)
+        expires_at = datetime.fromisoformat(token_record["expires_at"])
+        if now >= expires_at:
+            self._send_json(401, {"error": "token_expired"})
+            return
+
+        try:
+            check_scope(self.HEALTH_SCOPE, family["scopes"])
+        except ScopeDeniedError:
+            self._send_json(403, {"error": "scope_denied"})
+            return
+
+        try:
+            store.ping()
+        except Exception:
+            self._send_json(503, {"status": "unhealthy"})
+            return
+        self._send_json(200, {"status": "ok"})
 
     def _handle_status(self):
         auth_header = self.headers.get("Authorization", "")

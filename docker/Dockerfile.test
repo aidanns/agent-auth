@@ -1,0 +1,44 @@
+# Integration-test image only — bundles keyrings.alt plaintext backend
+# so agent-auth starts unattended. Never publish; never use in production.
+
+FROM python:3.12-slim-bookworm
+
+# ``tests_support`` (always-approve / always-deny notification plugins)
+# is intentionally excluded from the ``agent-auth`` wheel so it can
+# never ship to production. The package files are copied into the image
+# below; pointing PYTHONPATH at ``/opt/tests-support`` lets
+# ``importlib.import_module("tests_support.always_*")`` resolve them
+# without a real installed distribution.
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HOME=/home/agent-auth \
+    XDG_CONFIG_HOME=/home/agent-auth/.config \
+    XDG_DATA_HOME=/home/agent-auth/.local/share \
+    XDG_STATE_HOME=/home/agent-auth/.local/state \
+    PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring \
+    PYTHONPATH=/opt/tests-support
+
+RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin agent-auth
+
+WORKDIR /src
+
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+
+RUN pip install --no-cache-dir . "keyrings.alt>=5.0" \
+ && mkdir -p /opt/tests-support \
+ && cp -r src/tests_support /opt/tests-support/tests_support
+
+RUN mkdir -p "$XDG_CONFIG_HOME/agent-auth" \
+             "$XDG_DATA_HOME/agent-auth" \
+             "$XDG_STATE_HOME/agent-auth" \
+             "$XDG_CONFIG_HOME/python_keyring" \
+    && chown -R agent-auth:agent-auth /home/agent-auth
+
+USER agent-auth
+
+EXPOSE 9100
+
+ENTRYPOINT ["agent-auth", "serve"]
