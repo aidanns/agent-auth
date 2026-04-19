@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-04-19
+
 ### Added
 
 - **agent-auth server and CLI** — HTTP validation server (`agent-auth serve`) with full
@@ -39,4 +41,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   needs your signing key; see `CONTRIBUTING.md` § "Non-interactive signing
   for `task release`" for gpg-agent / ssh-agent pre-warm instructions.
 
-[unreleased]: https://github.com/aidanns/agent-auth/compare/HEAD
+[0.1.0]: https://github.com/aidanns/agent-auth/releases/tag/v0.1.0
+[unreleased]: https://github.com/aidanns/agent-auth/compare/v0.1.0...HEAD
