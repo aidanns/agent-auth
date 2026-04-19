@@ -13,6 +13,7 @@ test image is rebuilt once per pytest run off the working tree.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -21,9 +22,9 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 import pytest
 from testcontainers.compose import DockerCompose
@@ -200,11 +201,23 @@ def _wait_until_server_ready(health_url: str) -> None:
 
 def _write_test_config(config_dir: Path, **overrides: object) -> None:
     """Copy the baseline ``config.test.json`` into ``config_dir/config.json``
-    with ``overrides`` applied on top."""
+    with ``overrides`` applied on top.
+
+    The directory and file are chmod'd world-readable because the config
+    is bind-mounted into a container that runs as UID 1001 (see
+    ``docker/Dockerfile.test``), while ``tmp_path_factory.mktemp`` on
+    Linux defaults to mode 0700 owned by the host test runner's UID. If
+    those UIDs disagree (common in devcontainers and some CI configs)
+    the container user cannot read ``config.json`` and ``agent-auth
+    serve`` fails on startup. No secrets live in the test config.
+    """
     with BASELINE_CONFIG.open() as f:
         config = json.load(f)
     config.update(overrides)
-    (config_dir / "config.json").write_text(json.dumps(config, indent=2))
+    config_path = config_dir / "config.json"
+    config_path.write_text(json.dumps(config, indent=2))
+    os.chmod(config_dir, 0o755)
+    os.chmod(config_path, 0o644)
 
 
 @pytest.fixture

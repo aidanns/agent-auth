@@ -212,6 +212,11 @@ cache, rootless-in-rootless needs `/dev/fuse` and user-namespace
 config, and images built inside DinD are not visible to the host
 `docker` CLI.
 
+The integration-test fixture chmods the bind-mounted config directory
+to `0755` and `config.json` to `0644` so the container user (UID 1001,
+see `docker/Dockerfile.test`) can read it regardless of the host
+tmpdir's default mode or the host runner's UID.
+
 CI runners, where there is no host developer state to protect, can use
 whatever Docker the runner provides.
 
