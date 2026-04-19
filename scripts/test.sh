@@ -8,7 +8,7 @@
 #   --all          both layers, unit first
 #
 # Extra arguments after the mode flag are passed straight through to
-# pytest.
+# pytest. In --all mode the same args are forwarded to both layers.
 
 set -euo pipefail
 
