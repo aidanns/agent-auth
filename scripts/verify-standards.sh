@@ -343,8 +343,6 @@ if [[ ! -f CONTRIBUTING.md ]]; then
     "CONTRIBUTING.md is missing from the repo root." \
     "Add CONTRIBUTING.md covering dev setup, testing, release, and commit signing."
 else
-  contributing_content="$(cat CONTRIBUTING.md)"
-
   # Parallel arrays (bash 3.2-compatible): section_names[i] pairs with section_patterns[i].
   section_names=(
     dev-setup
@@ -354,13 +352,16 @@ else
   )
   section_patterns=(
     "## Dev setup|## Development environment setup|## Getting started|## Setup"
+    # This project collapses testing and the task catalogue into one section
+    # ("## Running tasks"). Accept that heading as well as a dedicated testing
+    # section heading so the check stays valid if the two are split later.
     "## Running tasks|## Testing|## Running tests"
     "## Release"
     "## Commit signing"
   )
 
   for i in "${!section_names[@]}"; do
-    if ! grep -qE "${section_patterns[${i}]}" <<<"${contributing_content}"; then
+    if ! grep -qiE "${section_patterns[${i}]}" CONTRIBUTING.md; then
       fail_contributing_check \
         "CONTRIBUTING.md is missing a '${section_names[${i}]}' section." \
         "Add a section matching: ${section_patterns[${i}]}"
