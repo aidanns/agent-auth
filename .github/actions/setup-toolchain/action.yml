@@ -26,6 +26,9 @@ inputs:
   taplo-version:
     description: taplo version to install
     default: "0.10.0"
+  systems-engineering-ref:
+    description: Commit SHA or ref of aidanns/systems-engineering to install
+    default: "d8e664a5ad20c071d4ec1cd62377597f9404b6e9"
   github-token:
     description: GitHub token to avoid rate limits when installing go-task
     required: false
@@ -44,8 +47,10 @@ runs:
 
     - name: Install systems-engineering
       shell: bash
+      env:
+        SYSTEMS_ENGINEERING_REF: ${{ inputs.systems-engineering-ref }}
       run: |
-        curl -fsSL https://raw.githubusercontent.com/aidanns/systems-engineering/main/install.sh | bash
+        curl -fsSL "https://raw.githubusercontent.com/aidanns/systems-engineering/${SYSTEMS_ENGINEERING_REF}/install.sh" | bash
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - name: Install go-task
