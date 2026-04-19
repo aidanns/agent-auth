@@ -21,6 +21,10 @@ jobs:
           enable-cache: true
 
       - name: Run pip-audit
-        # --extra dev intentionally covers dev deps (e.g. testcontainers) —
-        # a vulnerable dev dep can still be exploited in CI.
-        run: uv run --extra dev pip-audit --strict --skip-editable
+        # Export all third-party deps (including dev, excluding the local
+        # project package) then audit them. --extra dev intentionally covers
+        # dev deps — a vulnerable dev dep can still be exploited in CI.
+        run: |
+          uv export --extra dev --no-emit-project --format requirements-txt --no-hashes \
+            > /tmp/requirements.txt
+          uvx pip-audit --strict -r /tmp/requirements.txt
