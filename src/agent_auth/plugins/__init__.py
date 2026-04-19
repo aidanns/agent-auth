@@ -12,6 +12,7 @@ class ApprovalResult:
     duration_minutes). Plugins surfacing a "for this session" choice
     should return grant_type="timed" with duration_minutes=60.
     """
+
     approved: bool
     grant_type: str = "once"
     duration_minutes: int | None = None
@@ -39,11 +40,8 @@ def load_plugin(name: str, config: dict | None = None) -> NotificationPlugin:
     Looks for the plugin in agent_auth.plugins.<name> or as a fully-qualified module path.
     The module must define a 'Plugin' class that inherits from NotificationPlugin.
     """
-    if "." not in name:
-        module_path = f"agent_auth.plugins.{name}"
-    else:
-        module_path = name
+    module_path = f"agent_auth.plugins.{name}" if "." not in name else name
 
     module = importlib.import_module(module_path)
-    plugin_class = getattr(module, "Plugin")
+    plugin_class = module.Plugin
     return plugin_class(config)

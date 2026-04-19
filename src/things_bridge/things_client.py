@@ -93,9 +93,7 @@ class ThingsSubprocessClient:
                 stdin=subprocess.DEVNULL,
             )
         except FileNotFoundError as exc:
-            raise ThingsError(
-                f"things client not found at {self._command[0]!r}"
-            ) from exc
+            raise ThingsError(f"things client not found at {self._command[0]!r}") from exc
         except subprocess.TimeoutExpired as exc:
             partial = (exc.stderr or "").strip()
             print(
@@ -129,9 +127,7 @@ class ThingsSubprocessClient:
 
 def _parse_payload(stdout: str, command: list[str], returncode: int) -> dict:
     if not stdout or stdout.isspace():
-        raise ThingsError(
-            f"things client {command[0]!r} emitted no JSON output (rc={returncode})"
-        )
+        raise ThingsError(f"things client {command[0]!r} emitted no JSON output (rc={returncode})")
     try:
         payload = json.loads(stdout)
     except json.JSONDecodeError as exc:

@@ -1,6 +1,7 @@
 # lefthook git hook manager configuration.
 # Install with `task install-hooks` (wraps `lefthook install`).
 # shfmt formatting options live in .editorconfig;
+# ruff formatting options live in pyproject.toml;
 # mdformat reads .mdformat.toml; taplo reads taplo.toml.
 
 pre-commit:
@@ -15,6 +16,12 @@ pre-commit:
     mdformat:
       glob: "*.md"
       run: mdformat --check {staged_files}
+    ruff-check:
+      glob: "*.py"
+      run: ruff check {staged_files}
+    ruff-format:
+      glob: "*.py"
+      run: ruff format --check {staged_files}
     shellcheck:
       glob: "*.sh"
       run: shellcheck {staged_files}

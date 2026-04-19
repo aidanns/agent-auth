@@ -25,7 +25,7 @@ subprocess contract has a single source of truth.
 import argparse
 import json
 import sys
-from typing import Callable
+from collections.abc import Callable
 
 from things_models.client import ThingsClient
 from things_models.errors import (
@@ -35,14 +35,15 @@ from things_models.errors import (
 )
 from things_models.status import VALID_STATUSES
 
-
 EXIT_OK = 0
 EXIT_NOT_FOUND = 4
 EXIT_PERMISSION_DENIED = 5
 EXIT_UNAVAILABLE = 6
 
 
-def add_read_commands(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+def add_read_commands(
+    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
+) -> None:
     """Attach the todos / projects / areas sub-commands to ``subparsers``.
 
     The applescript and fake CLIs each own the top-level parser (so they

@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import uuid
+from datetime import UTC
 
 from agent_auth.errors import TokenInvalidError
 from agent_auth.keys import SigningKey
@@ -19,7 +20,7 @@ def generate_token_id() -> str:
 
 def _compute_hmac(prefix: str, token_id: str, signing_key: SigningKey) -> str:
     """Compute HMAC-SHA256 over prefix + token_id, returning the hex digest."""
-    message = f"{prefix}_{token_id}".encode("utf-8")
+    message = f"{prefix}_{token_id}".encode()
     return hmac.new(signing_key, message, hashlib.sha256).hexdigest()
 
 
@@ -47,9 +48,9 @@ def parse_token(raw: str) -> tuple[str, str, str]:
 
 def create_token_pair(signing_key: SigningKey, store, family_id: str, config) -> tuple[str, str]:
     """Create an access + refresh token pair, persist both, return (access_token, refresh_token)."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     access_id = generate_token_id()
     access_token = sign_token(access_id, PREFIX_ACCESS, signing_key)

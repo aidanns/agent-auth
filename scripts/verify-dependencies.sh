@@ -12,6 +12,7 @@ REQUIRED_TOOLS=(
   keep-sorted
   mdformat
   python3
+  ruff
   shellcheck
   shfmt
   systems-engineering

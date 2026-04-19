@@ -22,13 +22,12 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterator
 
 import pytest
 from testcontainers.compose import DockerCompose
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKER_DIR = REPO_ROOT / "docker"
@@ -149,9 +148,12 @@ def _test_image_tag(_docker_required):
     tag = f"agent-auth-test:pytest-{uuid.uuid4().hex[:8]}"
     result = subprocess.run(
         [
-            "docker", "build",
-            "-f", str(DOCKERFILE),
-            "-t", tag,
+            "docker",
+            "build",
+            "-f",
+            str(DOCKERFILE),
+            "-t",
+            tag,
             str(REPO_ROOT),
         ],
         capture_output=True,
@@ -247,9 +249,7 @@ def _scoped_env(**values: str) -> Iterator[None]:
     ``inspect.signature``), so scoped env-var mutation is the only
     available lever.
     """
-    previous: dict[str, str | None] = {
-        key: os.environ.get(key) for key in values
-    }
+    previous: dict[str, str | None] = {key: os.environ.get(key) for key in values}
     os.environ.update(values)
     try:
         yield

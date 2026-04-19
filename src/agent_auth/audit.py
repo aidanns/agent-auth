@@ -2,7 +2,7 @@
 
 import json
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -23,7 +23,7 @@ class AuditLogger:
     def log(self, event: str, **details):
         """Write an audit log entry."""
         entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "event": event,
             **details,
         }

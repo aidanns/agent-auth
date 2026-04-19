@@ -66,3 +66,14 @@ pythonpath = ["src"]
 markers = [
     "covers_function(*names): declare which functional-decomposition leaf functions a test exercises (read by `systems-engineering function verify`)",
 ]
+
+[tool.ruff]
+src = ["src", "tests"]
+target-version = "py311"
+# 100-character soft limit. Ruff's default is 88; 100 better fits
+# descriptive error messages and SQL strings already common in this
+# codebase without forcing wraps that reduce readability.
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
