@@ -41,6 +41,10 @@ class FakeCliRunner:
         # ``--rm`` so the container is reaped immediately; ``--network none``
         # because the fake CLI never needs the network and dropping it
         # narrows the test's blast radius.
+        # ``--entrypoint python`` overrides the image's default
+        # ``["agent-auth", "serve"]`` ENTRYPOINT so the trailing argv is
+        # interpreted by Python (running the in-tree fake CLI module),
+        # not appended to ``agent-auth serve``.
         cmd = [
             "docker",
             "run",
@@ -51,8 +55,9 @@ class FakeCliRunner:
             f"things-client-fake-{uuid.uuid4().hex[:8]}",
             "-v",
             f"{self.fixtures_dir}:/srv/things-fixtures:ro",
-            self.image_tag,
+            "--entrypoint",
             "python",
+            self.image_tag,
             "-m",
             "tests.things_client_fake",
             "--fixtures",

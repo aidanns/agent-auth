@@ -56,6 +56,7 @@ class ThingsBridgeStack:
     bridge_env: dict[str, str]
     agent_auth: AgentAuthContainer
     fixtures_dir: Path
+    compose_file: str
 
     def url(self, path: str) -> str:
         """Return ``{base_url}/things-bridge/{path}``."""
@@ -196,6 +197,7 @@ def things_bridge_stack_factory(
                 bridge_env=compose_env,
                 agent_auth=agent_auth,
                 fixtures_dir=fixtures_dir,
+                compose_file=str(DOCKER_DIR / COMPOSE_FILE_NAME),
             )
 
     yield _factory

@@ -10,6 +10,7 @@ with credentials persisted to a per-test path inside the container.
 from __future__ import annotations
 
 import json
+import subprocess
 import uuid
 from dataclasses import dataclass
 
@@ -50,12 +51,22 @@ class ThingsCliInvoker:
     def run(self, *args: str) -> tuple[int, str, str]:
         """Run ``things-cli`` with the file-backed credential store.
 
-        Returns ``(exit_code, stdout, stderr)``. Does not raise on
-        non-zero exit so callers can assert on the failure shape.
+        Returns ``(exit_code, stdout, stderr)``. Calls ``docker compose
+        exec`` directly because ``testcontainers``'s ``exec_in_container``
+        wraps ``subprocess.run(check=True)`` and raises on non-zero exit
+        — which would prevent negative-path tests from inspecting the
+        CLI's ``BridgeForbiddenError``/``NotFoundError`` exit codes.
         """
         with scoped_env(**self.stack.bridge_env):
-            stdout, stderr, exit_code = self.stack.bridge_compose.exec_in_container(
+            result = subprocess.run(
                 [
+                    "docker",
+                    "compose",
+                    "-f",
+                    self.stack.compose_file,
+                    "exec",
+                    "-T",
+                    "things-bridge",
                     "things-cli",
                     "--credential-store",
                     "file",
@@ -63,9 +74,12 @@ class ThingsCliInvoker:
                     self.creds_path,
                     *args,
                 ],
-                service_name="things-bridge",
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
             )
-        return exit_code, stdout, stderr
+        return result.returncode, result.stdout, result.stderr
 
     def run_ok(self, *args: str) -> str:
         """Run ``things-cli`` and return stdout, raising on non-zero exit."""
