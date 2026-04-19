@@ -159,8 +159,9 @@ specific component of the current implementation:
 
 - **AC — Access Control**: the three-tier scope model (`allow`/`prompt`/`deny`)
   and the per-family scope set enforced in `src/agent_auth/scopes.py` and the
-  `validate_token_scope` function in
-  [`design/functional_decomposition.yaml`](design/functional_decomposition.yaml).
+  [Check Scope Authorization](design/functional_decomposition.yaml#L28) and
+  [Resolve Access Tier](design/functional_decomposition.yaml#L30) leaf
+  functions.
 - **AU — Audit and Accountability**: the append-only audit log in
   `src/agent_auth/audit.py`, fed by every token lifecycle event and
   authorization decision.
