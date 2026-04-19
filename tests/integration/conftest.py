@@ -220,6 +220,49 @@ def _write_test_config(config_dir: Path, **overrides: object) -> None:
     os.chmod(config_path, 0o644)
 
 
+@contextlib.contextmanager
+def _scoped_env(**values: str) -> Iterator[None]:
+    """Temporarily set env vars, restoring their prior values on exit.
+
+    The test fixture drives ``docker compose`` indirectly via
+    ``testcontainers``, which invokes ``docker compose`` as a subprocess
+    without an explicit ``env=`` argument — so the subprocess inherits
+    whatever is in ``os.environ`` at the moment the call is made. Both
+    ``compose.start()`` and ``compose.stop()`` rely on that inheritance
+    (e.g. for ``COMPOSE_PROJECT_NAME``), and both must see *this*
+    project's values, not whichever were last written by an unrelated
+    factory invocation. The installed testcontainers 4.x ``DockerCompose``
+    does not expose a ``project_name=`` constructor kwarg (verified via
+    ``inspect.signature``), so scoped env-var mutation is the only
+    available lever.
+    """
+    previous: dict[str, str | None] = {
+        key: os.environ.get(key) for key in values
+    }
+    os.environ.update(values)
+    try:
+        yield
+    finally:
+        for key, prior in previous.items():
+            if prior is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prior
+
+
+@dataclass
+class _StartedCompose:
+    """A running compose project plus the env vars its lifecycle needs.
+
+    ``env`` is reapplied (via ``_scoped_env``) around every subsequent
+    subprocess call on ``compose`` — notably ``stop()`` in teardown — so
+    the right ``COMPOSE_PROJECT_NAME`` always wins regardless of ordering.
+    """
+
+    compose: DockerCompose
+    env: dict[str, str] = field(default_factory=dict)
+
+
 @pytest.fixture
 def agent_auth_container_factory(
     _test_image_tag,
@@ -230,7 +273,7 @@ def agent_auth_container_factory(
     Each invocation starts a fresh Compose project. Teardown is registered
     on the fixture so every container is removed at the end of the test.
     """
-    started: list[DockerCompose] = []
+    started: list[_StartedCompose] = []
 
     def _factory(
         *,
@@ -253,13 +296,15 @@ def agent_auth_container_factory(
             notification_plugin=APPROVAL_PLUGINS[approval],
         )
 
-        # The compose subprocess inherits this process's environment, so
-        # setting the variables here is enough for Compose's
-        # interpolation (``${AGENT_AUTH_TEST_IMAGE}``,
-        # ``${AGENT_AUTH_TEST_CONFIG_DIR}``) and for per-test project
-        # isolation via ``COMPOSE_PROJECT_NAME``.
-        os.environ["AGENT_AUTH_TEST_CONFIG_DIR"] = str(config_dir)
-        os.environ["COMPOSE_PROJECT_NAME"] = project_name
+        # Per-project env that ``docker compose`` interpolates into the
+        # compose file (``${AGENT_AUTH_TEST_CONFIG_DIR}``) and uses for
+        # project isolation (``COMPOSE_PROJECT_NAME``). Pinned here so
+        # teardown can re-apply it regardless of any other factory call
+        # that has mutated ``os.environ`` in the meantime.
+        compose_env = {
+            "AGENT_AUTH_TEST_CONFIG_DIR": str(config_dir),
+            "COMPOSE_PROJECT_NAME": project_name,
+        }
 
         compose = DockerCompose(
             context=str(DOCKER_DIR),
@@ -268,20 +313,22 @@ def agent_auth_container_factory(
         # Register before start so a partial failure still tears resources
         # down (ports/volumes/networks can be created before up exits
         # non-zero).
-        started.append(compose)
-        compose.start()
+        started.append(_StartedCompose(compose=compose, env=compose_env))
+        with _scoped_env(**compose_env):
+            compose.start()
 
-        host = compose.get_service_host("agent-auth", 9100)
-        port = compose.get_service_port("agent-auth", 9100)
-        base_url = f"http://{host}:{port}"
-        _wait_until_server_ready(f"{base_url}/agent-auth/health")
-        return AgentAuthContainer(base_url=base_url, compose=compose)
+            host = compose.get_service_host("agent-auth", 9100)
+            port = compose.get_service_port("agent-auth", 9100)
+            base_url = f"http://{host}:{port}"
+            _wait_until_server_ready(f"{base_url}/agent-auth/health")
+            return AgentAuthContainer(base_url=base_url, compose=compose)
 
     yield _factory
 
-    for compose in started:
+    for entry in started:
         try:
-            compose.stop()
+            with _scoped_env(**entry.env):
+                entry.compose.stop()
         except Exception as e:
             print(f"warning: compose teardown failed: {e!r}")
 
