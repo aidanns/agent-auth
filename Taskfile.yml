@@ -19,10 +19,11 @@ tasks:
       - scripts/format.sh {{.CLI_ARGS}}
 
   check:
-    desc: Run all linters and assert every tracked file is formatted.
+    desc: Run all linters, assert formatting, and verify integration-test isolation.
     cmds:
       - scripts/lint.sh
       - scripts/format.sh --check
+      - scripts/verify-integration-isolation.sh
 
   verify-design:
     desc: Verify every leaf function in the functional decomposition is allocated in the product breakdown.

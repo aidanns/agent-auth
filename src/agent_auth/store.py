@@ -183,3 +183,7 @@ class TokenStore:
         )
         conn.commit()
         return cursor.rowcount > 0
+
+    def ping(self) -> None:
+        """Verify the database connection is usable. Raises on failure."""
+        self._get_conn().execute("SELECT 1").fetchone()

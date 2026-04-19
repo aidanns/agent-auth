@@ -168,6 +168,58 @@ things-cli areas show <area-id>
 things-cli logout
 ```
 
+## Development
+
+### Running tests
+
+Tests are split into two layers:
+
+- **Unit** (fast, in-process) — `scripts/test.sh --unit` (default).
+- **Integration** (Docker-backed) — `scripts/test.sh --integration`. Each
+  test spins up its own `agent-auth serve` container via Docker Compose
+  (one ephemeral Compose project per test), drives it over HTTP, and
+  uses `docker compose exec` to invoke the `agent-auth` CLI inside the
+  container. Requires Docker + Docker Compose on the host. Tests skip
+  automatically if Docker is not available.
+- **Both** — `scripts/test.sh --all`.
+
+See `design/decisions/0004-docker-integration-tests.md` for the design
+rationale.
+
+### Running integration tests from a devcontainer
+
+When running the integration tests inside a devcontainer, prefer
+**rootless Docker-in-Docker** over bind-mounting the host's Docker
+socket:
+
+- A mounted host socket lets any process inside the devcontainer mount
+  arbitrary host paths (`~/.ssh`, `~/.aws`, keyring-backed credentials),
+  which short-circuits agent-auth's token/scope contract. Rootless DinD
+  keeps the blast radius inside the devcontainer.
+- Socket-mount containers are siblings of the devcontainer on the host
+  (volumes resolve against host paths, they outlive the devcontainer,
+  they share networks with other host processes). DinD nests them so
+  teardown is clean and volume paths behave as expected.
+- The nested daemon's image cache and networks live inside the
+  devcontainer, so integration state does not diverge based on what
+  each developer has cached on their laptop.
+- Rootless (not privileged root) keeps the daemon capped at the
+  devcontainer user's privileges; `--privileged` is not an acceptable
+  default.
+
+Trade-offs: overlay-on-overlay storage is slower than sharing the host
+cache, rootless-in-rootless needs `/dev/fuse` and user-namespace
+config, and images built inside DinD are not visible to the host
+`docker` CLI.
+
+The integration-test fixture chmods the bind-mounted config directory
+to `0755` and `config.json` to `0644` so the container user (UID 1001,
+see `docker/Dockerfile.test`) can read it regardless of the host
+tmpdir's default mode or the host runner's UID.
+
+CI runners, where there is no host developer state to protect, can use
+whatever Docker the runner provides.
+
 ## Security
 
 - The server binds to `127.0.0.1` by default (localhost only, not network-accessible)

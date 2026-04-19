@@ -36,7 +36,7 @@ simplifying for "personal project" scope.
 
 ## Project-specific notes
 
-- Health endpoint: `GET /agent-auth/healthz`
+- Health endpoint: `GET /agent-auth/health`
 - Metrics endpoint: `GET /agent-auth/metrics`
 - End-to-end test lifecycle: create token -> validate for allow-tier scope ->
   refresh/rotate pair -> JIT approval for prompt-tier scope -> revoke ->
