@@ -21,7 +21,7 @@ DOCKER_DIR = REPO_ROOT / "docker"
 DOCKERFILE = DOCKER_DIR / "Dockerfile.test"
 COMPOSE_TEMPLATE = DOCKER_DIR / "docker-compose.yaml"
 COMPOSE_FILE_NAME = "docker-compose.yaml"
-_PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Z0-9_]+)\s*\}\}")
+_PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}")
 
 DOCKER_BUILD_TIMEOUT_SECONDS = 600.0
 READY_POLL_TIMEOUT_SECONDS = 30.0
