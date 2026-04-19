@@ -18,21 +18,19 @@ import os
 import subprocess
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 from testcontainers.compose import DockerCompose
 
 from tests.integration._support import (
-    COMPOSE_FILE_NAME,
     DOCKER_DIR,
     build_test_image,
     docker_compose_available,
-    scoped_env,
+    render_compose_file,
     seed_empty_fixtures_dir,
     wait_until_server_ready,
-    write_bridge_config,
 )
 
 BASELINE_CONFIG = DOCKER_DIR / "config.test.json"
@@ -51,18 +49,14 @@ APPROVAL_PLUGINS = {
 class AgentAuthContainer:
     """Handle for a running agent-auth integration-test container.
 
-    ``env`` is the per-project ``{AGENT_AUTH_TEST_CONFIG_DIR,
-    COMPOSE_PROJECT_NAME}`` pair this container was started with. It is
-    reapplied via ``scoped_env`` around every ``docker compose exec``
-    call because testcontainers invokes ``docker compose`` without an
-    explicit ``env=``, so each subprocess inherits whatever
-    ``os.environ`` holds at call time — and the compose file needs
-    ``${AGENT_AUTH_TEST_CONFIG_DIR}`` interpolated on every exec.
+    The compose file is rendered per-test (every placeholder is
+    substituted in Python before docker compose ever sees the file), so
+    no env-var inheritance is required around ``exec_in_container`` or
+    teardown calls.
     """
 
     base_url: str
     compose: DockerCompose
-    env: dict[str, str]
     service: str = "agent-auth"
 
     def url(self, path: str) -> str:
@@ -76,11 +70,10 @@ class AgentAuthContainer:
         exit so pytest tracebacks show *why* the CLI failed rather than an
         opaque ``CalledProcessError``.
         """
-        with scoped_env(**self.env):
-            stdout, stderr, exit_code = self.compose.exec_in_container(
-                ["agent-auth", *args],
-                service_name=self.service,
-            )
+        stdout, stderr, exit_code = self.compose.exec_in_container(
+            ["agent-auth", *args],
+            service_name=self.service,
+        )
         if exit_code != 0:
             raise RuntimeError(
                 f"`agent-auth {' '.join(args)}` failed: "
@@ -130,15 +123,9 @@ def _test_image_tag(_docker_required):
     """
     tag = f"agent-auth-test:pytest-{uuid.uuid4().hex[:8]}"
     build_test_image(tag)
-    previous = os.environ.get("AGENT_AUTH_TEST_IMAGE")
-    os.environ["AGENT_AUTH_TEST_IMAGE"] = tag
     try:
         yield tag
     finally:
-        if previous is None:
-            os.environ.pop("AGENT_AUTH_TEST_IMAGE", None)
-        else:
-            os.environ["AGENT_AUTH_TEST_IMAGE"] = previous
         subprocess.run(
             ["docker", "rmi", "-f", tag],
             capture_output=True,
@@ -168,19 +155,6 @@ def _write_test_config(config_dir: Path, **overrides: object) -> None:
     os.chmod(config_path, 0o644)
 
 
-@dataclass
-class _StartedCompose:
-    """A running compose project plus the env vars its lifecycle needs.
-
-    ``env`` is reapplied (via ``scoped_env``) around every subsequent
-    subprocess call on ``compose`` — notably ``stop()`` in teardown — so
-    the right ``COMPOSE_PROJECT_NAME`` always wins regardless of ordering.
-    """
-
-    compose: DockerCompose
-    env: dict[str, str] = field(default_factory=dict)
-
-
 @pytest.fixture
 def agent_auth_container_factory(
     _test_image_tag,
@@ -191,7 +165,7 @@ def agent_auth_container_factory(
     Each invocation starts a fresh Compose project. Teardown is registered
     on the fixture so every container is removed at the end of the test.
     """
-    started: list[_StartedCompose] = []
+    started: list[DockerCompose] = []
 
     def _factory(
         *,
@@ -215,53 +189,49 @@ def agent_auth_container_factory(
         )
 
         # The combined Compose file always starts the things-bridge
-        # container alongside agent-auth, so we must satisfy its bind
-        # mounts even for tests that never call the bridge. Provision
-        # the baseline bridge config and an empty fixtures dir; tests
-        # that exercise the bridge use the things_bridge_stack fixture
-        # which writes its own state.
-        bridge_config_dir = tmp_path_factory.mktemp(f"tb-cfg-{project_name}")
+        # container alongside agent-auth (its config is shipped inline
+        # by docker-compose.yaml), so we only need to satisfy the
+        # fixtures bind mount even when this test never drives the
+        # bridge. Tests that exercise the bridge use the
+        # things_bridge_stack fixture which writes its own fixture data.
         bridge_fixtures_dir = tmp_path_factory.mktemp(f"tb-fix-{project_name}")
-        write_bridge_config(bridge_config_dir)
         seed_empty_fixtures_dir(bridge_fixtures_dir)
 
-        compose_env = {
-            "AGENT_AUTH_TEST_CONFIG_DIR": str(config_dir),
-            "THINGS_BRIDGE_TEST_CONFIG_DIR": str(bridge_config_dir),
-            "THINGS_BRIDGE_TEST_FIXTURES_DIR": str(bridge_fixtures_dir),
-            "COMPOSE_PROJECT_NAME": project_name,
-        }
+        rendered_compose = render_compose_file(
+            tmp_path_factory.mktemp(f"compose-{project_name}"),
+            COMPOSE_PROJECT_NAME=project_name,
+            AGENT_AUTH_TEST_IMAGE=_test_image_tag,
+            AGENT_AUTH_TEST_CONFIG_DIR=str(config_dir),
+            THINGS_BRIDGE_TEST_FIXTURES_DIR=str(bridge_fixtures_dir),
+        )
 
         compose = DockerCompose(
-            context=str(DOCKER_DIR),
-            compose_file_name=COMPOSE_FILE_NAME,
+            context=str(rendered_compose.parent),
+            compose_file_name=rendered_compose.name,
         )
-        started.append(_StartedCompose(compose=compose, env=compose_env))
-        with scoped_env(**compose_env):
-            compose.start()
+        started.append(compose)
+        compose.start()
 
-            host = compose.get_service_host("agent-auth", 9100)
-            port = compose.get_service_port("agent-auth", 9100)
-            base_url = f"http://{host}:{port}"
-            # /agent-auth/health requires an ``agent-auth:health`` token,
-            # so an unauthenticated probe gets 401 (or 403 if the scope
-            # check ran). Either is a positive "server is up" signal.
-            wait_until_server_ready(
-                f"{base_url}/agent-auth/health",
-                accept_status=(401, 403),
-            )
-            return AgentAuthContainer(
-                base_url=base_url,
-                compose=compose,
-                env=compose_env,
-            )
+        host = compose.get_service_host("agent-auth", 9100)
+        port = compose.get_service_port("agent-auth", 9100)
+        base_url = f"http://{host}:{port}"
+        # /agent-auth/health requires an ``agent-auth:health`` token,
+        # so an unauthenticated probe gets 401 (or 403 if the scope
+        # check ran). Either is a positive "server is up" signal.
+        wait_until_server_ready(
+            f"{base_url}/agent-auth/health",
+            accept_status=(401, 403),
+        )
+        return AgentAuthContainer(
+            base_url=base_url,
+            compose=compose,
+        )
 
     yield _factory
 
-    for entry in started:
+    for compose in started:
         try:
-            with scoped_env(**entry.env):
-                entry.compose.stop()
+            compose.stop()
         except Exception as e:
             print(f"warning: compose teardown failed: {e!r}")
 

@@ -18,6 +18,7 @@ from things_bridge.errors import (
 from things_models.client import ThingsClient
 
 READ_SCOPE = "things:read"
+HEALTH_SCOPE = "things-bridge:health"
 
 # Upper bound on ids accepted from URL paths. Things ids are short; reject
 # anything excessive before it ever reaches AppleScript.
@@ -71,14 +72,14 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return None
         return header[7:].strip() or None
 
-    def _validate(self, token: str, description: str) -> bool:
+    def _validate(self, token: str, description: str, scope: str = READ_SCOPE) -> bool:
         """Delegate token validation to agent-auth.
 
         Returns ``True`` when ``authz.validate()`` completes without raising.
         On failure writes the error HTTP response and returns ``False``.
         """
         try:
-            self._bridge.authz.validate(token, READ_SCOPE, description=description)
+            self._bridge.authz.validate(token, scope, description=description)
             return True
         except AuthzTokenExpiredError:
             self._send_json(401, {"error": "token_expired"})
@@ -107,16 +108,23 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         path = url.path
         params = parse_qs(url.query)
 
-        # Health is unauthenticated and routed before bearer extraction
-        # so container readiness probes don't need a token. The bridge
-        # holds no secrets, so exposing "is the HTTP server up?" is safe.
-        if path == "/things-bridge/health":
-            self._send_json(200, {"status": "ok"})
-            return
-
         token = self._extract_bearer()
         if token is None:
             self._send_json(401, {"error": "unauthorized"})
+            return
+
+        # Health is authenticated under ``things-bridge:health`` to mirror
+        # ``agent-auth/health``. Readiness probes that need to keep working
+        # without a token can probe the 401 (server-is-up signal); the
+        # 200 path requires the scope.
+        if path == "/things-bridge/health":
+            if not self._validate(
+                token,
+                description="things-bridge health check",
+                scope=HEALTH_SCOPE,
+            ):
+                return
+            self._send_json(200, {"status": "ok"})
             return
 
         things: ThingsClient = self._bridge.things

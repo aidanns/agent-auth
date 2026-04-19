@@ -20,7 +20,7 @@ import json
 import os
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -28,12 +28,9 @@ import yaml
 from testcontainers.compose import DockerCompose
 
 from tests.integration._support import (
-    COMPOSE_FILE_NAME,
-    DOCKER_DIR,
-    scoped_env,
+    render_compose_file,
     seed_empty_fixtures_dir,
     wait_until_server_ready,
-    write_bridge_config,
 )
 from tests.integration.conftest import (
     APPROVAL_PLUGINS,
@@ -52,11 +49,15 @@ class ThingsBridgeStack:
     The stack is exposed to tests through the bridge's host-mapped
     loopback port. ``agent_auth`` is the in-container handle used to
     mint and revoke tokens.
+
+    ``compose_file`` is the per-test rendered compose file path; the
+    project name is baked into it (compose v2 ``name:`` field), so
+    callers that shell out to ``docker compose -f ...`` don't need any
+    env-var inheritance to address the right project.
     """
 
     base_url: str
     bridge_compose: DockerCompose
-    bridge_env: dict[str, str]
     agent_auth: AgentAuthContainer
     fixtures_dir: Path
     compose_file: str
@@ -98,12 +99,6 @@ def _write_agent_auth_config(
     os.chmod(config_path, 0o644)
 
 
-@dataclass
-class _StartedCompose:
-    compose: DockerCompose
-    env: dict[str, str] = field(default_factory=dict)
-
-
 @pytest.fixture
 def things_bridge_stack_factory(
     _test_image_tag,
@@ -115,7 +110,7 @@ def things_bridge_stack_factory(
     Teardown is registered on the fixture so every container is removed
     at the end of the test.
     """
-    started: list[_StartedCompose] = []
+    started: list[DockerCompose] = []
 
     def _factory(
         *,
@@ -131,7 +126,6 @@ def things_bridge_stack_factory(
 
         project_name = f"things-bridge-it-{uuid.uuid4().hex[:12]}"
         agent_auth_config_dir = tmp_path_factory.mktemp(f"aa-cfg-{project_name}")
-        bridge_config_dir = tmp_path_factory.mktemp(f"tb-cfg-{project_name}")
         fixtures_dir = tmp_path_factory.mktemp(f"tb-fix-{project_name}")
 
         _write_agent_auth_config(
@@ -140,60 +134,60 @@ def things_bridge_stack_factory(
             access_token_ttl_seconds=access_token_ttl_seconds,
             refresh_token_ttl_seconds=refresh_token_ttl_seconds,
         )
-        write_bridge_config(bridge_config_dir)
         # Seed an empty fixture so the fake CLI starts cleanly even
         # before a test writes its own data.
         seed_empty_fixtures_dir(fixtures_dir)
 
-        compose_env = {
-            "AGENT_AUTH_TEST_CONFIG_DIR": str(agent_auth_config_dir),
-            "THINGS_BRIDGE_TEST_CONFIG_DIR": str(bridge_config_dir),
-            "THINGS_BRIDGE_TEST_FIXTURES_DIR": str(fixtures_dir),
-            "COMPOSE_PROJECT_NAME": project_name,
-        }
+        rendered_compose = render_compose_file(
+            tmp_path_factory.mktemp(f"compose-{project_name}"),
+            COMPOSE_PROJECT_NAME=project_name,
+            AGENT_AUTH_TEST_IMAGE=_test_image_tag,
+            AGENT_AUTH_TEST_CONFIG_DIR=str(agent_auth_config_dir),
+            THINGS_BRIDGE_TEST_FIXTURES_DIR=str(fixtures_dir),
+        )
 
         compose = DockerCompose(
-            context=str(DOCKER_DIR),
-            compose_file_name=COMPOSE_FILE_NAME,
+            context=str(rendered_compose.parent),
+            compose_file_name=rendered_compose.name,
         )
-        started.append(_StartedCompose(compose=compose, env=compose_env))
-        with scoped_env(**compose_env):
-            compose.start()
+        started.append(compose)
+        compose.start()
 
-            bridge_host = compose.get_service_host("things-bridge", THINGS_BRIDGE_PORT)
-            bridge_port = compose.get_service_port("things-bridge", THINGS_BRIDGE_PORT)
-            base_url = f"http://{bridge_host}:{bridge_port}"
-            wait_until_server_ready(
-                f"{base_url}/things-bridge/health",
-                accept_status=(),
-            )
+        bridge_host = compose.get_service_host("things-bridge", THINGS_BRIDGE_PORT)
+        bridge_port = compose.get_service_port("things-bridge", THINGS_BRIDGE_PORT)
+        base_url = f"http://{bridge_host}:{bridge_port}"
+        # /things-bridge/health requires a ``things-bridge:health`` token;
+        # an unauthenticated probe gets 401 (or 403 if the scope check
+        # ran), which is a positive "server is up" signal — same pattern
+        # as the agent-auth probe.
+        wait_until_server_ready(
+            f"{base_url}/things-bridge/health",
+            accept_status=(401, 403),
+        )
 
-            # Build an AgentAuthContainer handle so tests can mint tokens
-            # via the in-container CLI. ``agent-auth`` is reached only
-            # over the internal Compose network; no host-port mapping
-            # for it is required.
-            agent_auth = AgentAuthContainer(
-                base_url="http://agent-auth:9100",  # internal only; CLI doesn't use it
-                compose=compose,
-                env=compose_env,
-                service="agent-auth",
-            )
+        # Build an AgentAuthContainer handle so tests can mint tokens
+        # via the in-container CLI. ``agent-auth`` is reached only
+        # over the internal Compose network; no host-port mapping
+        # for it is required.
+        agent_auth = AgentAuthContainer(
+            base_url="http://agent-auth:9100",  # internal only; CLI doesn't use it
+            compose=compose,
+            service="agent-auth",
+        )
 
-            return ThingsBridgeStack(
-                base_url=base_url,
-                bridge_compose=compose,
-                bridge_env=compose_env,
-                agent_auth=agent_auth,
-                fixtures_dir=fixtures_dir,
-                compose_file=str(DOCKER_DIR / COMPOSE_FILE_NAME),
-            )
+        return ThingsBridgeStack(
+            base_url=base_url,
+            bridge_compose=compose,
+            agent_auth=agent_auth,
+            fixtures_dir=fixtures_dir,
+            compose_file=str(rendered_compose),
+        )
 
     yield _factory
 
-    for entry in started:
+    for compose in started:
         try:
-            with scoped_env(**entry.env):
-                entry.compose.stop()
+            compose.stop()
         except Exception as e:
             print(f"warning: compose teardown failed: {e!r}")
 

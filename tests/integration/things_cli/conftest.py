@@ -16,8 +16,6 @@ from dataclasses import dataclass
 
 import pytest
 
-from tests.integration._support import scoped_env
-
 # Re-export the Compose stack fixtures from the sibling things_bridge
 # conftest. Sibling conftest.py modules don't share fixtures by default;
 # importing the fixture functions into this conftest's namespace makes
@@ -56,29 +54,33 @@ class ThingsCliInvoker:
         wraps ``subprocess.run(check=True)`` and raises on non-zero exit
         — which would prevent negative-path tests from inspecting the
         CLI's ``BridgeForbiddenError``/``NotFoundError`` exit codes.
+
+        ``-f stack.compose_file`` points at the rendered, per-test
+        compose file (which carries the project name via compose v2's
+        ``name:`` field), so docker compose addresses the right project
+        without any env-var inheritance.
         """
-        with scoped_env(**self.stack.bridge_env):
-            result = subprocess.run(
-                [
-                    "docker",
-                    "compose",
-                    "-f",
-                    self.stack.compose_file,
-                    "exec",
-                    "-T",
-                    "things-bridge",
-                    "things-cli",
-                    "--credential-store",
-                    "file",
-                    "--credentials-file",
-                    self.creds_path,
-                    *args,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
-            )
+        result = subprocess.run(
+            [
+                "docker",
+                "compose",
+                "-f",
+                self.stack.compose_file,
+                "exec",
+                "-T",
+                "things-bridge",
+                "things-cli",
+                "--credential-store",
+                "file",
+                "--credentials-file",
+                self.creds_path,
+                *args,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
         return result.returncode, result.stdout, result.stderr
 
     def run_ok(self, *args: str) -> str:

@@ -68,13 +68,16 @@ test image across all of them:
   the test-only modules out of any shipped artefact.
 - **Single shared Compose file at `docker/docker-compose.yaml`.** It
   declares the `agent-auth` + `things-bridge` pair on an internal
-  Compose network; both services publish loopback-only host ports. Every
-  per-service fixture spins this same file up under a per-test UUID
-  Compose project — the agent-auth-only fixture also starts the bridge
-  (and provisions a baseline bridge config plus an empty fixtures dir)
+  Compose network; both services publish loopback-only host ports. The
+  bridge's runtime config ships inline via a Compose `configs:` block
+  rather than a bind-mounted file, so the compose file is the single
+  source of truth for the integration topology *and* the bridge's
+  baseline config. Every per-service fixture spins this same file up
+  under a per-test UUID Compose project — the agent-auth-only fixture
+  also starts the bridge (with an empty fixtures dir bind-mounted in)
   so the topology is identical regardless of which service the test
   drives. The ~1 s of extra container time per agent-auth test is the
-  cost of having one source of truth for the integration topology.
+  cost of one source of truth for the integration topology.
 - **Per-service `tests/integration/<service>/conftest.py`.** Each
   fixture mints a per-test UUID Compose project, writes config and
   Things fixtures into per-test bind-mount dirs, and yields a service
@@ -90,10 +93,11 @@ test image across all of them:
   a one-shot stdin/stdout subprocess. The AppleScript-specific
   behaviour stays under the existing Darwin-gated suite — Linux only
   pins the wire protocol that `things-bridge` consumes.
-- **Add `GET /things-bridge/health`.** Unauthenticated, mirrors the
-  `service-design.md` requirement, and serves as the Compose
-  readiness probe. The bridge holds no secrets, so the endpoint is
-  safe to expose without a bearer token.
+- **Add `GET /things-bridge/health`.** Authenticated under a
+  `things-bridge:health` scope, mirroring the agent-auth health
+  endpoint pattern. The Compose readiness probe treats 401 (no token)
+  as a positive "server is up" signal — same indirection used for
+  `/agent-auth/health`.
 - **Retired in-process suites:**
   - `tests/test_things_bridge_e2e.py` — happy-path and authz-shape
     coverage moved to `tests/integration/things_bridge/test_bridge.py`;

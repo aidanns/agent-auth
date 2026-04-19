@@ -1,27 +1,27 @@
 """Shared helpers for the per-service Docker integration test fixtures.
 
 Each per-service ``conftest.py`` imports the helpers here so the
-container-readiness probe, scoped env-var management, and Docker
+compose template renderer, container-readiness probe, and Docker
 availability check have a single implementation.
 """
 
 from __future__ import annotations
 
-import contextlib
 import os
+import re
 import shutil
 import subprocess
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKER_DIR = REPO_ROOT / "docker"
 DOCKERFILE = DOCKER_DIR / "Dockerfile.test"
+COMPOSE_TEMPLATE = DOCKER_DIR / "docker-compose.yaml"
 COMPOSE_FILE_NAME = "docker-compose.yaml"
-BRIDGE_BASELINE_CONFIG = DOCKER_DIR / "config.test.things-bridge.yaml"
+_PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Z0-9_]+)\s*\}\}")
 
 DOCKER_BUILD_TIMEOUT_SECONDS = 600.0
 READY_POLL_TIMEOUT_SECONDS = 30.0
@@ -77,42 +77,33 @@ def wait_until_server_ready(
     )
 
 
-@contextlib.contextmanager
-def scoped_env(**values: str) -> Iterator[None]:
-    """Temporarily set env vars, restoring their prior values on exit.
+def render_compose_file(target_dir: Path, **substitutions: str) -> Path:
+    """Render ``docker-compose.yaml`` with ``{{ NAME }}`` placeholders
+    substituted, writing the result into ``target_dir`` and returning
+    the rendered path.
 
-    The fixtures drive ``docker compose`` indirectly via
-    ``testcontainers``, which invokes ``docker compose`` as a subprocess
-    without an explicit ``env=`` argument — so the subprocess inherits
-    whatever is in ``os.environ`` at the moment the call is made. Both
-    ``compose.start()`` and ``compose.stop()`` rely on that inheritance
-    (e.g. for ``COMPOSE_PROJECT_NAME``), and both must see *this*
-    project's values, not whichever were last written by an unrelated
-    factory invocation.
+    The compose template carries every test-specific value as a
+    ``{{ NAME }}`` placeholder so the rendered file is self-contained:
+    docker compose never has to inherit env vars from the test runner,
+    and there is no shared mutable state between concurrent fixture
+    invocations.
+
+    Raises ``KeyError`` if a substitution doesn't match any placeholder
+    in the template (typo guard) or if the rendered output still
+    contains an unsubstituted placeholder (forgotten value guard).
     """
-    previous: dict[str, str | None] = {key: os.environ.get(key) for key in values}
-    os.environ.update(values)
-    try:
-        yield
-    finally:
-        for key, prior in previous.items():
-            if prior is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = prior
-
-
-def write_bridge_config(config_dir: Path) -> None:
-    """Copy the baseline bridge config into ``config_dir/config.yaml``.
-
-    The config bind-mounts into the bridge container; mode bits must be
-    world-readable for the same UID-mismatch reason documented on the
-    agent-auth fixture.
-    """
-    target = config_dir / "config.yaml"
-    shutil.copyfile(BRIDGE_BASELINE_CONFIG, target)
-    os.chmod(config_dir, 0o755)
-    os.chmod(target, 0o644)
+    template = COMPOSE_TEMPLATE.read_text()
+    for key, value in substitutions.items():
+        placeholder = f"{{{{ {key} }}}}"
+        if placeholder not in template:
+            raise KeyError(f"placeholder {placeholder!r} not found in {COMPOSE_TEMPLATE.name}")
+        template = template.replace(placeholder, value)
+    leftover = sorted(set(_PLACEHOLDER_PATTERN.findall(template)))
+    if leftover:
+        raise KeyError(f"unsubstituted placeholders in {COMPOSE_TEMPLATE.name}: {leftover}")
+    target = target_dir / COMPOSE_FILE_NAME
+    target.write_text(template)
+    return target
 
 
 def seed_empty_fixtures_dir(fixtures_dir: Path) -> None:
