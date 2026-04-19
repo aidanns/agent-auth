@@ -37,10 +37,10 @@ def print_todo(todo: dict, *, as_json: bool = False) -> None:
     print(f"id:                 {todo['id']}")
     print(f"name:               {todo['name']}")
     print(f"status:             {todo['status']}")
-    print(f"project:            {todo.get('project_name') or '-'} "
-          f"({todo.get('project_id') or '-'})")
-    print(f"area:               {todo.get('area_name') or '-'} "
-          f"({todo.get('area_id') or '-'})")
+    print(
+        f"project:            {todo.get('project_name') or '-'} ({todo.get('project_id') or '-'})"
+    )
+    print(f"area:               {todo.get('area_name') or '-'} ({todo.get('area_id') or '-'})")
     print(f"tags:               {', '.join(todo.get('tag_names') or []) or '-'}")
     print(f"due date:           {todo.get('due_date') or '-'}")
     print(f"activation date:    {todo.get('activation_date') or '-'}")
@@ -79,8 +79,9 @@ def print_project(project: dict, *, as_json: bool = False) -> None:
     print(f"id:                 {project['id']}")
     print(f"name:               {project['name']}")
     print(f"status:             {project['status']}")
-    print(f"area:               {project.get('area_name') or '-'} "
-          f"({project.get('area_id') or '-'})")
+    print(
+        f"area:               {project.get('area_name') or '-'} ({project.get('area_id') or '-'})"
+    )
     print(f"tags:               {', '.join(project.get('tag_names') or []) or '-'}")
     print(f"due date:           {project.get('due_date') or '-'}")
     print(f"activation date:    {project.get('activation_date') or '-'}")

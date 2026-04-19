@@ -3,6 +3,7 @@
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import ClassVar
 
 import pytest
 
@@ -17,13 +18,13 @@ from things_bridge.errors import (
 
 class _Responder(BaseHTTPRequestHandler):
     status = 200
-    body: dict = {"valid": True}
+    body: ClassVar[dict] = {"valid": True}
     last_request_body: bytes | None = None
 
     def log_message(self, *args, **kwargs):
         pass
 
-    def do_POST(self):  # noqa: N802
+    def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         _Responder.last_request_body = self.rfile.read(length)
         body = json.dumps(_Responder.body).encode("utf-8")
@@ -44,7 +45,7 @@ def auth_server():
 
 
 def test_validate_allows_on_success(auth_server):
-    server, url = auth_server
+    _server, url = auth_server
     _Responder.status = 200
     _Responder.body = {"valid": True}
     client = AgentAuthClient(url, timeout_seconds=2.0)

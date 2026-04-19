@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 
 # Run every configured formatter over its tracked files: shfmt for
-# *.sh, mdformat for *.md, taplo for *.toml. shfmt reads formatting
-# options from .editorconfig; mdformat reads .mdformat.toml; taplo
-# reads taplo.toml.
+# *.sh, ruff format for *.py, mdformat for *.md, taplo for *.toml.
+# shfmt reads formatting options from .editorconfig; ruff reads them
+# from pyproject.toml; mdformat reads .mdformat.toml; taplo reads
+# taplo.toml.
 #
 # Pass --check to diff-only mode (CI uses this); default rewrites files
 # in place.
@@ -49,12 +50,15 @@ list_tracked() {
 
 require_tool shfmt \
   "Install from https://github.com/mvdan/sh/releases or 'brew install shfmt' (macOS), then re-run."
+require_tool ruff \
+  "Install via 'uv tool install ruff' or from https://github.com/astral-sh/ruff/releases, then re-run."
 require_tool mdformat \
   "Install via 'uv tool install mdformat --with mdformat-gfm --with mdformat-tables', then re-run."
 require_tool taplo \
   "Install from https://github.com/tamasfe/taplo/releases or 'brew install taplo' (macOS), then re-run."
 
 shell_files_raw="$(list_tracked '*.sh')"
+python_files_raw="$(list_tracked '*.py')"
 markdown_files_raw="$(list_tracked '*.md')"
 toml_files_raw="$(list_tracked '*.toml')"
 
@@ -73,10 +77,12 @@ format_group() {
 
 if [[ "${mode}" == "check" ]]; then
   format_group "*.sh" "${shell_files_raw}" shfmt -d
+  format_group "*.py" "${python_files_raw}" ruff format --check
   format_group "*.md" "${markdown_files_raw}" mdformat --check
   format_group "*.toml" "${toml_files_raw}" taplo format --check
 else
   format_group "*.sh" "${shell_files_raw}" shfmt -w
+  format_group "*.py" "${python_files_raw}" ruff format
   format_group "*.md" "${markdown_files_raw}" mdformat
   format_group "*.toml" "${toml_files_raw}" taplo format
 fi

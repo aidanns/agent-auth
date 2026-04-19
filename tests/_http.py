@@ -22,9 +22,7 @@ def post(
     raw: bytes | None = None,
 ) -> tuple[int, dict]:
     body = raw if raw is not None else json.dumps(data or {}).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=body, headers={"Content-Type": "application/json"}
-    )
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
     try:
         resp = urllib.request.urlopen(req)
         return resp.status, json.loads(resp.read())

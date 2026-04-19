@@ -32,11 +32,17 @@ def cli_mock_keyring():
             del store[(service, username)]
         else:
             from keyring.errors import PasswordDeleteError
+
             raise PasswordDeleteError("no such entry")
 
-    with patch("things_cli.credentials.keyring.get_password", side_effect=get_password), \
-         patch("things_cli.credentials.keyring.set_password", side_effect=set_password), \
-         patch("things_cli.credentials.keyring.delete_password", side_effect=delete_password):
+    with (
+        patch("things_cli.credentials.keyring.get_password", side_effect=get_password),
+        patch("things_cli.credentials.keyring.set_password", side_effect=set_password),
+        patch(
+            "things_cli.credentials.keyring.delete_password",
+            side_effect=delete_password,
+        ),
+    ):
         yield store
 
 
@@ -63,8 +69,10 @@ def test_keyring_store_load_without_save_raises(cli_mock_keyring):
 def test_keyring_store_clear_removes_all_entries(cli_mock_keyring):
     store = KeyringStore()
     creds = Credentials(
-        access_token="aa", refresh_token="rt",
-        bridge_url="http://x", auth_url="http://y",
+        access_token="aa",
+        refresh_token="rt",
+        bridge_url="http://x",
+        auth_url="http://y",
     )
     store.save(creds)
     assert store.exists()
@@ -76,8 +84,11 @@ def test_file_store_save_uses_0600_mode(tmp_path):
     path = str(tmp_path / "creds.json")
     store = FileStore(path)
     creds = Credentials(
-        access_token="aa", refresh_token="rt",
-        bridge_url="http://x", auth_url="http://y", family_id="fam-1",
+        access_token="aa",
+        refresh_token="rt",
+        bridge_url="http://x",
+        auth_url="http://y",
+        family_id="fam-1",
     )
     store.save(creds)
     assert os.path.exists(path)
@@ -93,8 +104,10 @@ def test_file_store_load_round_trip(tmp_path):
     path = str(tmp_path / "creds.json")
     store = FileStore(path)
     creds = Credentials(
-        access_token="aa", refresh_token="rt",
-        bridge_url="http://x", auth_url="http://y",
+        access_token="aa",
+        refresh_token="rt",
+        bridge_url="http://x",
+        auth_url="http://y",
     )
     store.save(creds)
     loaded = store.load()
@@ -129,10 +142,16 @@ def test_file_store_load_rejects_world_readable_file(tmp_path):
     # Credentials files with permissions looser than 0600 must be rejected
     # before reading, similar to how SSH refuses overly-permissive key files.
     path = tmp_path / "creds.yaml"
-    path.write_text(yaml.safe_dump({
-        "access_token": "aa", "refresh_token": "rt",
-        "bridge_url": "http://x", "auth_url": "http://y",
-    }))
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "access_token": "aa",
+                "refresh_token": "rt",
+                "bridge_url": "http://x",
+                "auth_url": "http://y",
+            }
+        )
+    )
     path.chmod(0o644)
     store = FileStore(str(path))
     with pytest.raises(CredentialsBackendError, match="too open"):

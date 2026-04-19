@@ -1,7 +1,7 @@
 """JIT approval manager with in-memory timed grants."""
 
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 
 from agent_auth.audit import AuditLogger
@@ -92,12 +92,12 @@ class ApprovalManager:
         if not result.duration_minutes:
             return
         with self._lock:
-            expires = datetime.now(timezone.utc) + timedelta(minutes=result.duration_minutes)
+            expires = datetime.now(UTC) + timedelta(minutes=result.duration_minutes)
             self._timed_grants[GrantKey(family_id, scope)] = expires
 
     def _expire_timed_grants(self):
         """Remove expired timed grants. Must be called with lock held."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expired = [key for key, exp in self._timed_grants.items() if exp <= now]
         for key in expired:
             del self._timed_grants[key]

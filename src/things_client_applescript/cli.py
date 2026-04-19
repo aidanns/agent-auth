@@ -18,7 +18,6 @@ from things_client_applescript.things import (
 from things_client_common.cli import add_read_commands, run_cli
 from things_models.client import ThingsClient
 
-
 _DEFAULT_OSASCRIPT_PATH = "/usr/bin/osascript"
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 

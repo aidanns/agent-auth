@@ -60,14 +60,23 @@ def test_list_todos_sends_full_argv(monkeypatch, client):
         tag="Urgent",
         status="open",
     )
-    assert recorded == [[
-        "fake-client", "todos", "list",
-        "--list", "TMTodayListSource",
-        "--project", "p1",
-        "--area", "a1",
-        "--tag", "Urgent",
-        "--status", "open",
-    ]]
+    assert recorded == [
+        [
+            "fake-client",
+            "todos",
+            "list",
+            "--list",
+            "TMTodayListSource",
+            "--project",
+            "p1",
+            "--area",
+            "a1",
+            "--tag",
+            "Urgent",
+            "--status",
+            "open",
+        ]
+    ]
 
 
 def test_list_todos_omits_unset_flags(monkeypatch, client):
@@ -77,32 +86,52 @@ def test_list_todos_omits_unset_flags(monkeypatch, client):
 
 
 def test_list_todos_parses_payload(monkeypatch, client):
-    payload = {"todos": [{
-        "id": "t1", "name": "X", "notes": "",
-        "status": "open",
-        "project_id": None, "project_name": None,
-        "area_id": None, "area_name": None,
-        "tag_names": [],
-        "due_date": None, "activation_date": None,
-        "completion_date": None, "cancellation_date": None,
-        "creation_date": None, "modification_date": None,
-    }]}
+    payload = {
+        "todos": [
+            {
+                "id": "t1",
+                "name": "X",
+                "notes": "",
+                "status": "open",
+                "project_id": None,
+                "project_name": None,
+                "area_id": None,
+                "area_name": None,
+                "tag_names": [],
+                "due_date": None,
+                "activation_date": None,
+                "completion_date": None,
+                "cancellation_date": None,
+                "creation_date": None,
+                "modification_date": None,
+            }
+        ]
+    }
     _patch_run(monkeypatch, _FakeCompleted(stdout=json.dumps(payload)))
     todos = client.list_todos()
     assert [t.id for t in todos] == ["t1"]
 
 
 def test_get_todo_argv_and_envelope(monkeypatch, client):
-    payload = {"todo": {
-        "id": "t2", "name": "Y", "notes": "",
-        "status": "open",
-        "project_id": None, "project_name": None,
-        "area_id": None, "area_name": None,
-        "tag_names": [],
-        "due_date": None, "activation_date": None,
-        "completion_date": None, "cancellation_date": None,
-        "creation_date": None, "modification_date": None,
-    }}
+    payload = {
+        "todo": {
+            "id": "t2",
+            "name": "Y",
+            "notes": "",
+            "status": "open",
+            "project_id": None,
+            "project_name": None,
+            "area_id": None,
+            "area_name": None,
+            "tag_names": [],
+            "due_date": None,
+            "activation_date": None,
+            "completion_date": None,
+            "cancellation_date": None,
+            "creation_date": None,
+            "modification_date": None,
+        }
+    }
     recorded = _patch_run(monkeypatch, _FakeCompleted(stdout=json.dumps(payload)))
     todo = client.get_todo("t2")
     assert recorded == [["fake-client", "todos", "show", "t2"]]
@@ -142,7 +171,10 @@ def test_not_found_error_mapped(monkeypatch, client):
 def test_permission_denied_error_mapped(monkeypatch, client):
     _patch_run(
         monkeypatch,
-        _FakeCompleted(stdout='{"error": "things_permission_denied", "detail": "grant access"}', returncode=5),
+        _FakeCompleted(
+            stdout='{"error": "things_permission_denied", "detail": "grant access"}',
+            returncode=5,
+        ),
     )
     with pytest.raises(ThingsPermissionError, match="grant access"):
         client.list_todos()

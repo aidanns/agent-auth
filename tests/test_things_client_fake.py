@@ -2,15 +2,15 @@
 
 import pytest
 
-from things_models.errors import ThingsError, ThingsNotFoundError
-from things_models.models import Area
-
-from tests.factories import make_project as _project, make_todo as _todo
+from tests.factories import make_project as _project
+from tests.factories import make_todo as _todo
 from tests.things_client_fake.store import (
     FakeThingsClient,
     FakeThingsStore,
     load_fake_store,
 )
+from things_models.errors import ThingsError, ThingsNotFoundError
+from things_models.models import Area
 
 
 def test_list_todos_returns_all_without_filters():
@@ -20,40 +20,48 @@ def test_list_todos_returns_all_without_filters():
 
 
 def test_list_todos_filters_by_project_id():
-    store = FakeThingsStore(todos=[
-        _todo(id="t1", project_id="p1"),
-        _todo(id="t2", project_id="p2"),
-        _todo(id="t3", project_id="p1"),
-    ])
+    store = FakeThingsStore(
+        todos=[
+            _todo(id="t1", project_id="p1"),
+            _todo(id="t2", project_id="p2"),
+            _todo(id="t3", project_id="p1"),
+        ]
+    )
     client = FakeThingsClient(store)
     assert [t.id for t in client.list_todos(project_id="p1")] == ["t1", "t3"]
 
 
 def test_list_todos_filters_by_area_id():
-    store = FakeThingsStore(todos=[
-        _todo(id="t1", area_id="a1"),
-        _todo(id="t2", area_id="a2"),
-    ])
+    store = FakeThingsStore(
+        todos=[
+            _todo(id="t1", area_id="a1"),
+            _todo(id="t2", area_id="a2"),
+        ]
+    )
     client = FakeThingsClient(store)
     assert [t.id for t in client.list_todos(area_id="a2")] == ["t2"]
 
 
 def test_list_todos_filters_by_tag():
-    store = FakeThingsStore(todos=[
-        _todo(id="t1", tag_names=["Errand", "Urgent"]),
-        _todo(id="t2", tag_names=["Deep"]),
-        _todo(id="t3", tag_names=["Errand"]),
-    ])
+    store = FakeThingsStore(
+        todos=[
+            _todo(id="t1", tag_names=["Errand", "Urgent"]),
+            _todo(id="t2", tag_names=["Deep"]),
+            _todo(id="t3", tag_names=["Errand"]),
+        ]
+    )
     client = FakeThingsClient(store)
     assert [t.id for t in client.list_todos(tag="Errand")] == ["t1", "t3"]
 
 
 def test_list_todos_filters_by_status():
-    store = FakeThingsStore(todos=[
-        _todo(id="t1", status="open"),
-        _todo(id="t2", status="completed"),
-        _todo(id="t3", status="canceled"),
-    ])
+    store = FakeThingsStore(
+        todos=[
+            _todo(id="t1", status="open"),
+            _todo(id="t2", status="completed"),
+            _todo(id="t3", status="canceled"),
+        ]
+    )
     client = FakeThingsClient(store)
     assert [t.id for t in client.list_todos(status="completed")] == ["t2"]
 
@@ -71,7 +79,10 @@ def test_list_todos_filters_by_list_id_via_memberships():
         list_memberships={"TMTodayListSource": {"t1", "t3"}},
     )
     client = FakeThingsClient(store)
-    assert {t.id for t in client.list_todos(list_id="TMTodayListSource")} == {"t1", "t3"}
+    assert {t.id for t in client.list_todos(list_id="TMTodayListSource")} == {
+        "t1",
+        "t3",
+    }
 
 
 def test_list_todos_list_id_without_membership_returns_empty():
@@ -81,11 +92,13 @@ def test_list_todos_list_id_without_membership_returns_empty():
 
 
 def test_list_todos_combines_filters():
-    store = FakeThingsStore(todos=[
-        _todo(id="t1", project_id="p1", status="open", tag_names=["A"]),
-        _todo(id="t2", project_id="p1", status="completed", tag_names=["A"]),
-        _todo(id="t3", project_id="p1", status="open", tag_names=["B"]),
-    ])
+    store = FakeThingsStore(
+        todos=[
+            _todo(id="t1", project_id="p1", status="open", tag_names=["A"]),
+            _todo(id="t2", project_id="p1", status="completed", tag_names=["A"]),
+            _todo(id="t3", project_id="p1", status="open", tag_names=["B"]),
+        ]
+    )
     client = FakeThingsClient(store)
     result = client.list_todos(project_id="p1", status="open", tag="A")
     assert [t.id for t in result] == ["t1"]
@@ -104,10 +117,12 @@ def test_get_todo_raises_on_miss():
 
 
 def test_list_projects_filters_by_area():
-    store = FakeThingsStore(projects=[
-        _project(id="p1", area_id="a1"),
-        _project(id="p2", area_id="a2"),
-    ])
+    store = FakeThingsStore(
+        projects=[
+            _project(id="p1", area_id="a1"),
+            _project(id="p2", area_id="a2"),
+        ]
+    )
     client = FakeThingsClient(store)
     assert [p.id for p in client.list_projects(area_id="a2")] == ["p2"]
 

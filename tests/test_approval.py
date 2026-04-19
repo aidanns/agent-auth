@@ -42,7 +42,7 @@ def test_approval_granted(tmp_dir, encryption_key):
 @pytest.mark.covers_function("Request Approval")
 def test_approval_denied(tmp_dir, encryption_key):
     result = ApprovalResult(approved=False)
-    manager, plugin = _make_manager(tmp_dir, encryption_key, result)
+    manager, _plugin = _make_manager(tmp_dir, encryption_key, result)
     resp = manager.request_approval("fam1", "things:write", "Complete todo")
     assert not resp.approved
 

@@ -8,6 +8,7 @@ without mocking internal classes.
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import ClassVar
 
 import pytest
 
@@ -20,19 +21,19 @@ from things_cli.errors import (
     BridgeUnavailableError,
 )
 
-
 # -- Fake bridge --
+
 
 class _BridgeHandler(BaseHTTPRequestHandler):
     """Driven by module-level config dict so tests can set responses per request."""
 
-    responses: list = []   # each entry: (status, body_dict, expect_token)
-    requests: list = []    # each entry: (method, path, token, body)
+    responses: ClassVar[list] = []  # each entry: (status, body_dict, expect_token)
+    requests: ClassVar[list] = []  # each entry: (method, path, token, body)
 
     def log_message(self, *args, **kwargs):
         pass
 
-    def do_GET(self):  # noqa: N802
+    def do_GET(self):
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length else b""
         token = self._bearer()
@@ -61,14 +62,14 @@ class _BridgeHandler(BaseHTTPRequestHandler):
 class _AuthHandler(BaseHTTPRequestHandler):
     """Simulates agent-auth token endpoints."""
 
-    refresh_responses: list = []   # each entry: (status, body_dict)
-    reissue_responses: list = []
-    requests: list = []
+    refresh_responses: ClassVar[list] = []  # each entry: (status, body_dict)
+    reissue_responses: ClassVar[list] = []
+    requests: ClassVar[list] = []
 
     def log_message(self, *args, **kwargs):
         pass
 
-    def do_POST(self):  # noqa: N802
+    def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length) if length else b""
         body = json.loads(raw) if raw else {}
@@ -135,7 +136,15 @@ def test_401_token_expired_triggers_refresh_and_retry(servers, tmp_path):
         (200, {"todos": [{"id": "t1"}]}, "aa_new"),
     ]
     _AuthHandler.refresh_responses = [
-        (200, {"access_token": "aa_new", "refresh_token": "rt_new", "expires_in": 900, "scopes": {}}),
+        (
+            200,
+            {
+                "access_token": "aa_new",
+                "refresh_token": "rt_new",
+                "expires_in": 900,
+                "scopes": {},
+            },
+        ),
     ]
     client, store = _make_client(servers, tmp_path)
     result = client.list_todos()
@@ -155,8 +164,15 @@ def test_refresh_expired_triggers_reissue_and_retry(servers, tmp_path):
         (401, {"error": "refresh_token_expired"}),
     ]
     _AuthHandler.reissue_responses = [
-        (200, {"access_token": "aa_reissued", "refresh_token": "rt_reissued",
-               "expires_in": 900, "scopes": {}}),
+        (
+            200,
+            {
+                "access_token": "aa_reissued",
+                "refresh_token": "rt_reissued",
+                "expires_in": 900,
+                "scopes": {},
+            },
+        ),
     ]
     client, store = _make_client(servers, tmp_path)
     result = client.list_todos()
@@ -218,8 +234,15 @@ def test_only_one_retry_on_persistent_401(servers, tmp_path):
         (401, {"error": "token_expired"}, "aa_new"),
     ]
     _AuthHandler.refresh_responses = [
-        (200, {"access_token": "aa_new", "refresh_token": "rt_new",
-               "expires_in": 900, "scopes": {}}),
+        (
+            200,
+            {
+                "access_token": "aa_new",
+                "refresh_token": "rt_new",
+                "expires_in": 900,
+                "scopes": {},
+            },
+        ),
     ]
     client, store = _make_client(servers, tmp_path)
     with pytest.raises(BridgeUnauthorizedError):

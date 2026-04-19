@@ -38,7 +38,10 @@ else
 fi
 
 conftest="tests/integration/conftest.py"
-if ! grep -qE '"docker",\s*"build"' "${conftest}" \
+# Collapse newlines so the regex matches even when ruff has split the
+# argv list across multiple lines.
+conftest_flat=$(tr '\n' ' ' <"${conftest}")
+if ! grep -qE '"docker",\s*"build"' <<<"${conftest_flat}" \
   || ! grep -qE 'Dockerfile\.test' "${conftest}"; then
   echo "FAIL: ${conftest} must invoke 'docker build' against docker/Dockerfile.test" >&2
   fail=1

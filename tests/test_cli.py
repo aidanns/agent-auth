@@ -7,6 +7,7 @@ detail the CLI may change without notice. If a behaviour is not observable
 through the CLI, it is not worth locking in with a test here.
 """
 
+import contextlib
 import json
 import sys
 from io import StringIO
@@ -32,13 +33,13 @@ def _run_cli(*args, config_dir=None):
 
     stdout = StringIO()
     stderr = StringIO()
-    with patch.object(sys, "argv", argv), \
-         patch.object(sys, "stdout", stdout), \
-         patch.object(sys, "stderr", stderr):
-        try:
-            main()
-        except SystemExit:
-            pass
+    with (
+        patch.object(sys, "argv", argv),
+        patch.object(sys, "stdout", stdout),
+        patch.object(sys, "stderr", stderr),
+        contextlib.suppress(SystemExit),
+    ):
+        main()
     return stdout.getvalue(), stderr.getvalue()
 
 
@@ -132,8 +133,12 @@ def test_token_modify(cli_env):
     family_id = json.loads(out1)["family_id"]
 
     _run_cli(
-        "--json", "token", "modify", family_id,
-        "--add-scope", "b:write=prompt",
+        "--json",
+        "token",
+        "modify",
+        family_id,
+        "--add-scope",
+        "b:write=prompt",
         config_dir=cli_env,
     )
 

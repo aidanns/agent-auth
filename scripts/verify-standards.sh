@@ -27,6 +27,8 @@
 #   5. uv is the sole Python resolver per .claude/instructions/python.md:
 #      uv.lock matches pyproject.toml, and no scripts/*.sh file invokes
 #      `pip install` to bootstrap a venv.
+#   6. ruff is configured in pyproject.toml, wired into treefmt and
+#      lefthook, and gated in CI per .claude/instructions/python.md.
 
 set -euo pipefail
 
@@ -273,3 +275,61 @@ if [[ ${#pip_install_offenders[@]} -gt 0 ]]; then
 fi
 
 echo "verify-standards: no scripts/*.sh file invokes 'pip install'."
+
+# Python tooling: ruff must be configured in pyproject.toml, wired into
+# treefmt, and gated in CI per .claude/instructions/python.md. The CI
+# gate is satisfied transitively by `task check`, which dispatches to
+# scripts/lint.sh and scripts/format.sh (both now invoke ruff).
+
+ruff_missing=0
+
+fail_ruff_check() {
+  echo "verify-standards: ruff is not wired into $1." >&2
+  echo "  $2" >&2
+  ruff_missing=1
+}
+
+pyproject_stripped=""
+[[ -f pyproject.toml ]] && pyproject_stripped="$(strip_comments pyproject.toml)"
+
+if ! grep -qE "^\\[tool\\.ruff" <<<"${pyproject_stripped}"; then
+  fail_ruff_check "pyproject.toml" \
+    "Add a [tool.ruff] configuration block to pyproject.toml."
+fi
+
+if ! grep -qE "^\\[formatter\\.ruff\\]" <<<"${treefmt_stripped}"; then
+  fail_ruff_check "treefmt.toml" \
+    "Add a [formatter.ruff] entry to treefmt.toml."
+fi
+
+if ! grep -qE "\\bruff\\b" <<<"${lefthook_stripped}"; then
+  fail_ruff_check "lefthook.yml" \
+    "Add pre-commit commands that invoke 'ruff check' and 'ruff format --check' to lefthook.yml."
+fi
+
+# A single `task check` invocation satisfies both the lint and format
+# gate (it dispatches through scripts/lint.sh and scripts/format.sh
+# --check, each of which invokes ruff). Accept direct `ruff check` +
+# `ruff format --check` as an equivalent alternative.
+if ! grep -qE "\\btask check\\b" <<<"${workflows_stripped}" \
+  && ! { grep -qE "\\bruff check\\b" <<<"${workflows_stripped}" \
+    && grep -qE "\\bruff format --check\\b" <<<"${workflows_stripped}"; }; then
+  fail_ruff_check ".github/workflows/*.yml" \
+    "Add a workflow step that runs 'task check' (or both 'ruff check' and 'ruff format --check' directly)."
+fi
+
+if [[ ${ruff_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: ruff is configured in pyproject.toml, wired into treefmt and lefthook, and gated in CI."
+
+# pip-audit must be wired into at least one CI workflow
+# (.claude/instructions/python.md Tooling).
+if ! grep -qE "\\bpip-audit\\b" <<<"${workflows_stripped}"; then
+  echo "verify-standards: 'pip-audit' is not invoked in any .github/workflows/*.yml file." >&2
+  echo "  Add a workflow step that runs 'pip-audit' (see .github/workflows/security.yml)." >&2
+  exit 1
+fi
+
+echo "verify-standards: pip-audit is wired into CI."

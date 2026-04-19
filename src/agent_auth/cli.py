@@ -38,13 +38,9 @@ def handle_token_create(args, config, signing_key, store, audit):
     family_id = generate_token_id()
     store.create_family(family_id, scopes)
 
-    access_token, refresh_token = create_token_pair(
-        signing_key, store, family_id, config
-    )
+    access_token, refresh_token = create_token_pair(signing_key, store, family_id, config)
 
-    audit.log_token_operation(
-        "token_created", family_id=family_id, scopes=scopes
-    )
+    audit.log_token_operation("token_created", family_id=family_id, scopes=scopes)
 
     result = {
         "family_id": family_id,
@@ -80,10 +76,10 @@ def handle_token_list(args, config, signing_key, store, audit):
 
     for family in families:
         status = "REVOKED" if family["revoked"] else "active"
-        scopes_str = ", ".join(
-            f"{name}={tier}" for name, tier in family["scopes"].items()
+        scopes_str = ", ".join(f"{name}={tier}" for name, tier in family["scopes"].items())
+        print(
+            f"  {family['id']}  [{status}]  scopes: {scopes_str}  created: {family['created_at']}"
         )
-        print(f"  {family['id']}  [{status}]  scopes: {scopes_str}  created: {family['created_at']}")
 
 
 def handle_token_modify(args, config, signing_key, store, audit):
@@ -98,24 +94,25 @@ def handle_token_modify(args, config, signing_key, store, audit):
 
     scopes = dict(family["scopes"])
 
-    for scope_arg in (args.add_scope or []):
+    for scope_arg in args.add_scope or []:
         name, tier = parse_scope_arg(scope_arg)
         scopes[name] = tier
 
-    for name in (args.remove_scope or []):
+    for name in args.remove_scope or []:
         scopes.pop(name, None)
 
-    for tier_arg in (args.set_tier or []):
+    for tier_arg in args.set_tier or []:
         name, tier = parse_scope_arg(tier_arg)
         if name in scopes:
             scopes[name] = tier
         else:
-            print(f"Warning: scope '{name}' not found on family, skipping --set-tier", file=sys.stderr)
+            print(
+                f"Warning: scope '{name}' not found on family, skipping --set-tier",
+                file=sys.stderr,
+            )
 
     store.update_family_scopes(args.family_id, scopes)
-    audit.log_token_operation(
-        "scopes_modified", family_id=args.family_id, scopes=scopes
-    )
+    audit.log_token_operation("scopes_modified", family_id=args.family_id, scopes=scopes)
 
     if args.json:
         print(json.dumps({"family_id": args.family_id, "scopes": scopes}, indent=2))
@@ -154,9 +151,7 @@ def handle_token_rotate(args, config, signing_key, store, audit):
     scopes = old_family["scopes"]
     store.create_family(new_family_id, scopes)
 
-    access_token, refresh_token = create_token_pair(
-        signing_key, store, new_family_id, config
-    )
+    access_token, refresh_token = create_token_pair(signing_key, store, new_family_id, config)
 
     audit.log_token_operation(
         "token_rotated",
@@ -190,6 +185,7 @@ def handle_token_rotate(args, config, signing_key, store, audit):
 def handle_serve(args, config, signing_key, store, audit):
     """Start the agent-auth HTTP server."""
     from agent_auth.server import run_server
+
     run_server(config, signing_key, store, audit)
 
 
@@ -210,7 +206,9 @@ def build_parser() -> argparse.ArgumentParser:
     # token create
     create_parser = token_sub.add_parser("create", help="Create a new token pair")
     create_parser.add_argument(
-        "--scope", action="append", required=True,
+        "--scope",
+        action="append",
+        required=True,
         help="Scope in format 'name' or 'name=tier' (e.g. things:read=allow)",
     )
 
@@ -220,9 +218,13 @@ def build_parser() -> argparse.ArgumentParser:
     # token modify
     modify_parser = token_sub.add_parser("modify", help="Modify token family scopes")
     modify_parser.add_argument("family_id", help="Token family ID")
-    modify_parser.add_argument("--add-scope", action="append", help="Add a scope (name or name=tier)")
+    modify_parser.add_argument(
+        "--add-scope", action="append", help="Add a scope (name or name=tier)"
+    )
     modify_parser.add_argument("--remove-scope", action="append", help="Remove a scope by name")
-    modify_parser.add_argument("--set-tier", action="append", help="Change tier on existing scope (name=tier)")
+    modify_parser.add_argument(
+        "--set-tier", action="append", help="Change tier on existing scope (name=tier)"
+    )
 
     # token revoke
     revoke_parser = token_sub.add_parser("revoke", help="Revoke a token family")
@@ -264,7 +266,10 @@ def main():
 
     if args.command == "token":
         if args.token_command is None:
-            print("Error: specify a token subcommand (create, list, modify, revoke, rotate)", file=sys.stderr)
+            print(
+                "Error: specify a token subcommand (create, list, modify, revoke, rotate)",
+                file=sys.stderr,
+            )
             sys.exit(1)
         handler = COMMAND_HANDLERS.get(args.token_command)
         if handler:
