@@ -62,7 +62,7 @@ tasks:
       - scripts/install-hooks.sh
 
   release:
-    desc: "Cut a release (version bump, tag, GitHub release, publish). Usage: task release -- X.Y.Z"
+    desc: "Cut a release. The version is set by the argument you pass (e.g. task release -- 1.2.3); it must match a ## [X.Y.Z] section in CHANGELOG.md. The script creates and pushes the tag vX.Y.Z and publishes the GitHub release."
     cmds:
       - scripts/release.sh {{.CLI_ARGS}}
 

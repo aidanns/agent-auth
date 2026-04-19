@@ -448,36 +448,28 @@ if [[ ! -f SECURITY.md ]]; then
     "SECURITY.md is missing from the repo root." \
     "Add SECURITY.md covering trust boundaries, threat model, key handling, revocation flow, audit surface, and vulnerability reporting."
 else
-  security_section_names=(
-    audit-surface
-    cybersecurity-standard
-    key-handling
-    revocation-flow
-    threat-model
-    trust-boundaries
-    vulnerability-reporting
-  )
-  security_section_patterns=(
-    "## Audit surface|## Audit log"
-    "## Cybersecurity standard|Cybersecurity standard"
-    "## Key handling"
-    "## Revocation flow"
-    "## Threat model"
-    "## Trust boundaries|## Trust boundary"
-    "## Vulnerability reporting|## Reporting vulnerabilities"
+  # Combined "name|pattern" entries kept sortable without parallel-array
+  # misalignment risk. keep-sorted maintains alphabetical order; the pipe
+  # delimiter separates the human-readable name from the grep pattern.
+  security_sections=(
+    # keep-sorted start
+    "audit-surface|## Audit surface|## Audit log"
+    "cybersecurity-standard|## Cybersecurity standard|Cybersecurity standard"
+    "key-handling|## Key handling"
+    "revocation-flow|## Revocation flow"
+    "threat-model|## Threat model"
+    "trust-boundaries|## Trust boundaries|## Trust boundary"
+    "vulnerability-reporting|## Vulnerability reporting|## Reporting vulnerabilities"
+    # keep-sorted end
   )
 
-  [[ ${#security_section_names[@]} -eq ${#security_section_patterns[@]} ]] \
-    || {
-      echo "BUG: security parallel arrays length mismatch" >&2
-      exit 1
-    }
-
-  for i in "${!security_section_names[@]}"; do
-    if ! grep -qiE "${security_section_patterns[${i}]}" SECURITY.md; then
+  for entry in "${security_sections[@]}"; do
+    section_name="${entry%%|*}"
+    section_pattern="${entry#*|}"
+    if ! grep -qiE "${section_pattern}" SECURITY.md; then
       fail_security_check \
-        "SECURITY.md is missing a '${security_section_names[${i}]}' section." \
-        "Add a section matching: ${security_section_patterns[${i}]}"
+        "SECURITY.md is missing a '${section_name}' section." \
+        "Add a section matching: ${section_pattern}"
     fi
   done
 fi

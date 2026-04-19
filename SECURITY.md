@@ -42,54 +42,66 @@ Trust boundary decisions:
 
 ## Threat model
 
-The following STRIDE analysis covers the agent-auth server, things-bridge, and
-things-cli. Threats are rated High / Medium / Low by impact × likelihood.
+Each threat is assessed using a qualitative risk matrix following
+**NIST SP 800-30 Rev 1** guidance. **Impact** and **Likelihood** are each rated
+High, Medium, or Low independently; the overall **Rating** is their product
+(High × Low = Medium, High × Medium = High, etc.). Each mitigation notes whether
+it targets Impact, Likelihood, or both, and links to the implementing function in
+the [functional decomposition](design/functional_decomposition.yaml) or to the
+tracking issue.
 
 ### Spoofing
 
-| Threat                                                             | Rating | Mitigation                                                                                                                                           |
-| ------------------------------------------------------------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Forged token presented to agent-auth `/validate`                   | High   | HMAC-SHA256 signature over `prefix + token-id` prevents forgery without the signing key.                                                             |
-| Cross-type token substitution (access token used as refresh token) | Medium | The token prefix (`aa_` vs `rt_`) is included in the HMAC input; a valid access-token signature does not verify for the refresh-token type.          |
-| Rogue process binding to 127.0.0.1:9100 before agent-auth          | Medium | Mitigated by user being the sole operator of the host machine. No cryptographic protection against a co-located rogue process winning the bind race. |
+| Threat                                                             | Impact | Likelihood | Rating | Mitigation                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------ | ------ | ---------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Forged token presented to agent-auth `/validate`                   | High   | Low        | Medium | HMAC-SHA256 signature over `prefix + token-id` prevents forgery without the signing key. Targets: **likelihood**. Implemented: [Verify Token Signature](design/functional_decomposition.yaml#L24), [Load Signing Key](design/functional_decomposition.yaml#L51) |
+| Cross-type token substitution (access token used as refresh token) | Medium | Low        | Low    | The token prefix (`aa_` vs `rt_`) is included in the HMAC input; a valid access-token signature does not verify for the refresh-token type. Targets: **likelihood**. Implemented: [Verify Token Signature](design/functional_decomposition.yaml#L24)            |
+| Rogue process binding to 127.0.0.1:9100 before agent-auth          | High   | Low        | Medium | Mitigated by user being the sole operator of the host machine. No cryptographic protection against a co-located rogue process winning the bind race. Targets: **neither** (accepted risk for a local-only single-user deployment).                              |
 
 ### Tampering
 
-| Threat                                               | Rating | Mitigation                                                                                                                                                             |
-| ---------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Direct modification of `tokens.db`                   | High   | Scope and HMAC-signature fields are AES-256-GCM encrypted at rest; modification without the key produces authentication-tag failures on read.                          |
-| Replay of a revoked token                            | High   | Revocation writes `revoked_at` to the token record; validation checks `revoked_at IS NULL` before accepting. Reuse of a refresh token triggers family-wide revocation. |
-| Tampering with the signing key in the system keyring | High   | Requires OS-level access to the keyring (macOS Keychain or libsecret). If the key is replaced, all previously issued tokens become invalid on next validation.         |
+| Threat                                               | Impact | Likelihood | Rating | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------------- | ------ | ---------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Direct modification of `tokens.db`                   | High   | Low        | Medium | Scope and HMAC-signature fields are AES-256-GCM encrypted at rest; modification without the key produces authentication-tag failures on read. Targets: **impact** (modification detected, scopes unreadable). Implemented: [Encrypt Field](design/functional_decomposition.yaml#L69), [Decrypt Field](design/functional_decomposition.yaml#L72), [Query Tokens](design/functional_decomposition.yaml#L67)            |
+| Replay of a revoked token                            | High   | Low        | Medium | Revocation writes `revoked_at` to the token record; validation checks `revoked_at IS NULL` before accepting. Reuse of a refresh token triggers family-wide revocation. Targets: **likelihood**. Implemented: [Mark Family Revoked](design/functional_decomposition.yaml#L65), [Detect Refresh Token Reuse](design/functional_decomposition.yaml#L19), [Check Token Expiry](design/functional_decomposition.yaml#L26) |
+| Tampering with the signing key in the system keyring | High   | Low        | Medium | Requires OS-level access to the keyring (macOS Keychain or libsecret). If the key is replaced, all previously issued tokens become invalid on next validation. Targets: **likelihood** (OS keyring restricts access). Implemented: [Load Signing Key](design/functional_decomposition.yaml#L51), [Generate Signing Key](design/functional_decomposition.yaml#L49)                                                    |
 
 ### Repudiation
 
-| Threat                                         | Rating | Mitigation                                                                                                 |
-| ---------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
-| Agent denies performing a privileged operation | Medium | All token operations and authorization decisions are written to the audit log before the response is sent. |
-| Audit log tampered post-hoc                    | Low    | Audit log is append-only in the current implementation; cryptographic chaining is a future hardening step. |
+| Threat                                         | Impact | Likelihood | Rating | Mitigation                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------- | ------ | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent denies performing a privileged operation | Medium | Low        | Low    | All token operations and authorization decisions are written to agent-auth's audit log before the response is sent. Targets: **likelihood** (comprehensive logging). Implemented: [Log Token Operation](design/functional_decomposition.yaml#L89), [Log Authorization Decision](design/functional_decomposition.yaml#L91) |
+| Audit log tampered post-hoc                    | High   | Low        | Medium | agent-auth's audit log is append-only in the current implementation. Targets: **likelihood** (append-only reduces accidental or casual tampering). Cryptographic chaining is tracked in [#103](https://github.com/aidanns/agent-auth/issues/103).                                                                         |
 
 ### Information disclosure
 
-| Threat                                  | Rating | Mitigation                                                                                                                   |
-| --------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| Token scopes exposed via database read  | Medium | Scope fields are AES-256-GCM encrypted at rest; plaintext is only available in-process after decryption.                     |
-| HMAC signing key extracted from keyring | High   | The key is held in the OS keyring (Keychain on macOS, libsecret on Linux). No in-memory caching beyond the process lifetime. |
-| Token value logged in plaintext         | Low    | Tokens are never written to logs. Audit records reference token family IDs only.                                             |
+| Threat                                  | Impact | Likelihood | Rating | Mitigation                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------------- | ------ | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Token scopes exposed via database read  | Medium | Low        | Low    | Scope fields are AES-256-GCM encrypted at rest; plaintext is only available in-process after decryption. Targets: **impact** (data unreadable without key). Implemented: [Encrypt Field](design/functional_decomposition.yaml#L69), [Query Tokens](design/functional_decomposition.yaml#L67)                                    |
+| HMAC signing key extracted from keyring | High   | Low        | Medium | The key is held in the OS keyring (Keychain on macOS, libsecret on Linux). No in-memory caching beyond the process lifetime. Targets: **likelihood** (OS keyring restricts access). Implemented: [Load Signing Key](design/functional_decomposition.yaml#L51), [Generate Signing Key](design/functional_decomposition.yaml#L49) |
+| Token value logged in plaintext         | High   | Low        | Low    | Tokens are never written to logs. Audit records reference token family IDs only. Targets: **likelihood**. Implemented: [Log Token Operation](design/functional_decomposition.yaml#L89), [Log Authorization Decision](design/functional_decomposition.yaml#L91)                                                                  |
 
 ### Denial of service
 
-| Threat                                       | Rating | Mitigation                                                                                                                                        |
-| -------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Oversized request body exhausting agent-auth | Medium | Request bodies are capped at 1 MiB.                                                                                                               |
-| Rapid token-creation filling `tokens.db`     | Low    | No rate limiting currently; the server is local-only so the attack requires code execution on the host. Rate limiting is a future hardening step. |
+| Threat                                       | Impact | Likelihood | Rating | Mitigation                                                                                                                                                                                                                              |
+| -------------------------------------------- | ------ | ---------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Oversized request body exhausting agent-auth | Low    | Medium     | Low    | Request bodies are capped at 1 MiB. Targets: **likelihood** (attacker cannot send arbitrarily large payloads). Implemented: [Serve Validate Endpoint](design/functional_decomposition.yaml#L76)                                         |
+| Rapid token-creation filling `tokens.db`     | Low    | Low        | Low    | No rate limiting currently; the server is local-only so the attack requires code execution on the host. Targets: **neither** (not yet mitigated). Rate limiting is tracked in [#102](https://github.com/aidanns/agent-auth/issues/102). |
 
 ### Elevation of privilege
 
-| Threat                                                                           | Rating | Mitigation                                                                                                                                              |
-| -------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AI agent escalates from `allow`-tier to `prompt`-tier scope without JIT approval | High   | Scope tier is validated server-side on every request; the agent cannot self-approve `prompt`-tier requests.                                             |
-| Malicious notification plugin runs in-process                                    | High   | Tracked in [#6](https://github.com/aidanns/agent-auth/issues/6). Current mitigation: only install plugins from trusted sources under your user account. |
-| things-bridge constructs arbitrary argv passed to things-client CLI              | Medium | things-bridge constructs the argv from validated, schema-matched request parameters, not from raw client input.                                         |
+Scope tiers define what approval a request requires: `allow` = immediately
+permitted if the token holds the scope; `prompt` = the operation is held pending
+real-time human approval via the JIT notification flow even if the token holds
+the scope. An AI agent cannot self-approve a `prompt`-tier request regardless of
+what scopes its token carries; a human must respond to the notification to
+unblock the operation.
+
+| Threat                                                                 | Impact | Likelihood | Rating | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------------------- | ------ | ---------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI agent invokes a `prompt`-tier scope without triggering JIT approval | High   | Low        | Medium | Scope tier is resolved server-side on every validation call; the agent cannot bypass the approval flow by presenting a token that holds the scope. Targets: **likelihood**. Implemented: [Check Scope Authorization](design/functional_decomposition.yaml#L28), [Resolve Access Tier](design/functional_decomposition.yaml#L30), [Request Approval](design/functional_decomposition.yaml#L35)                                    |
+| Malicious notification plugin runs in-process                          | High   | Low        | Medium | Plugin runs inside the agent-auth process that holds signing and encryption keys. Targets: **likelihood** (partial: user controls which plugin is installed). Current mitigation: only install plugins from trusted sources under your user account. Out-of-process migration tracked in [#6](https://github.com/aidanns/agent-auth/issues/6). Implemented: [Load Notification Plugin](design/functional_decomposition.yaml#L38) |
+| things-bridge constructs arbitrary argv passed to things-client CLI    | Medium | Low        | Low    | things-bridge constructs the argv from validated, schema-matched request parameters, not from raw client input. Targets: **likelihood**. Implemented: [Delegate Token Validation](design/functional_decomposition.yaml#L111), [Fetch Things Data](design/functional_decomposition.yaml#L113)                                                                                                                                     |
 
 ## Key handling
 
@@ -122,7 +134,10 @@ things-cli. Threats are rated High / Medium / Low by impact × likelihood.
 
 ## Audit surface
 
-The following events are written to the audit log (stderr + structured log):
+The following events are written to **agent-auth's** audit log (stderr +
+structured log). Consolidating audit events across all services (agent-auth,
+things-bridge) into a single structured JSON schema is tracked in
+[#100](https://github.com/aidanns/agent-auth/issues/100).
 
 - Token family created (family ID, scopes, tier, timestamp)
 - Token validated (family ID, scope checked, outcome, timestamp)
@@ -152,35 +167,28 @@ and its control catalog is machine-readable for automated compliance checking.
 
 ### Control families relevant to this project
 
-| Family                               | ID  | Selected controls                                                                                                              |
-| ------------------------------------ | --- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Access Control                       | AC  | AC-2 (Account Management), AC-3 (Access Enforcement), AC-6 (Least Privilege), AC-17 (Remote Access)                            |
-| Audit and Accountability             | AU  | AU-2 (Event Logging), AU-3 (Content of Audit Records), AU-9 (Protection of Audit Information), AU-12 (Audit Record Generation) |
-| Identification and Authentication    | IA  | IA-5 (Authenticator Management), IA-9 (Service Identification and Authentication)                                              |
-| System and Communications Protection | SC  | SC-8 (Transmission Confidentiality and Integrity) ¹, SC-28 (Protection of Information at Rest)                                 |
-| System and Information Integrity     | SI  | SI-10 (Information Input Validation), SI-12 (Information Management and Retention)                                             |
+The table below lists selected controls with their current implementation status.
+`Implemented` means the control is satisfied by a deployed function.
+`Partial` means the control is partially satisfied with a known gap.
+`Planned` means the control is selected but not yet implemented.
 
-¹ **SC-8 known gap**: In the devcontainer deployment scenario (see trust boundary
-diagram), `things-cli` communicates with `things-bridge` and `agent-auth` over a
-plain HTTP loopback connection that crosses a real network interface. SC-8 is
-not currently satisfied for this path. Mitigation: TLS between devcontainer and
-host services is tracked as a future hardening step; until then, this deployment
-is restricted to single-user local networks.
+| Family                               | ID  | Selected controls                                                                                                                                                                                                                                                                             | Status                                                                                                                                                                                                            |
+| ------------------------------------ | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Access Control                       | AC  | AC-3 (Access Enforcement) — scope-based token validation; AC-6 (Least Privilege) — scopes are narrowly granted per token family                                                                                                                                                               | Implemented                                                                                                                                                                                                       |
+| Audit and Accountability             | AU  | AU-2 (Event Logging) — token operations and authorization decisions logged; AU-3 (Content of Audit Records) — family ID, scope, outcome, timestamp per record; AU-9 (Protection of Audit Information) — append-only log; AU-12 (Audit Record Generation) — all token lifecycle events covered | Partial — AU-9 lacks cryptographic integrity ([#103](https://github.com/aidanns/agent-auth/issues/103)); AU-3 schema is not yet shared across services ([#100](https://github.com/aidanns/agent-auth/issues/100)) |
+| Identification and Authentication    | IA  | IA-5 (Authenticator Management) — HMAC-signed tokens with expiry and family-wide revocation; IA-9 (Service Identification and Authentication) — agent-auth is the sole token authority; bridges re-validate on every request                                                                  | Implemented                                                                                                                                                                                                       |
+| System and Communications Protection | SC  | SC-8 (Transmission Confidentiality and Integrity) — loopback-only deployment (host-to-host); SC-28 (Protection of Information at Rest) — AES-256-GCM encryption for sensitive DB columns                                                                                                      | Partial — SC-8 not satisfied for devcontainer-to-host traffic ([#101](https://github.com/aidanns/agent-auth/issues/101))                                                                                          |
+| System and Information Integrity     | SI  | SI-10 (Information Input Validation) — request body size cap (1 MiB); schema-validated parameters before subprocess argv construction; SI-12 (Information Management and Retention) — token expiry enforced; consumed refresh tokens marked and not reused                                    | Implemented                                                                                                                                                                                                       |
 
-Implementation plans for new features should verify compliance against the
-controls above that are in scope for the change. Control applicability
-assessments live in `design/decisions/` ADRs.
+Control applicability assessments for new features should be documented in
+`design/decisions/` ADRs at the time the feature is implemented.
 
 ## Vulnerability reporting
 
-This is a personal project with no published releases or user base beyond the
-author. If you find a security issue:
+This is a personal project. If you find a security issue:
 
 1. **Do not open a public GitHub issue.** Use
    [GitHub private vulnerability reporting](https://github.com/aidanns/agent-auth/security/advisories/new)
    to disclose the issue confidentially.
 2. Alternatively, email **aidanns@gmail.com** with the subject line
    `[agent-auth] Security vulnerability`.
-3. Expect acknowledgment within 7 days and a fix or mitigation within 30 days.
-
-There is no bug bounty program.
