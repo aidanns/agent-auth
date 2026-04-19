@@ -58,9 +58,13 @@ In scope:
   `things-bridge` and `things-cli`). Extend it to also place
   `tests/things_client_fake/` on `PYTHONPATH` so
   `python -m tests.things_client_fake` resolves inside the container.
-- Add `docker/compose.test.things-bridge.yaml` — a multi-service Compose
-  project that runs `agent-auth` + `things-bridge` together and bind-mounts
-  per-test config dirs into both services.
+- Consolidate the integration topology into a single
+  `docker/docker-compose.yaml` that runs `agent-auth` + `things-bridge`
+  together and bind-mounts per-test config dirs into both services.
+  Every per-service fixture spins up this same file (the agent-auth-only
+  fixture also provisions a baseline bridge config + empty fixtures dir
+  so the bridge container starts cleanly even when the test doesn't
+  drive it).
 - Add `docker/config.test.things-bridge.yaml` — baseline `things-bridge`
   config used by the per-test fixture (auth URL pointing at the
   in-network `agent-auth` service, fake Things client command, sane
@@ -139,9 +143,9 @@ The `tests_support` exclusion in `[tool.setuptools.packages.find]`
 already keeps both packages out of the production wheel; the same
 guarantee covers the fake client because it lives under `tests/`.
 
-### things-bridge stack
+### Shared compose stack
 
-`docker/compose.test.things-bridge.yaml` declares two services:
+`docker/docker-compose.yaml` declares two services:
 
 - `agent-auth` — same image, runs `agent-auth serve`, bind-mounts a
   per-test config dir to `/home/agent-auth/.config/agent-auth/`.
@@ -151,8 +155,9 @@ guarantee covers the fake client because it lives under `tests/`.
   (read-only) to a known path. Connects to `agent-auth` via the Compose
   network using `auth_url: http://agent-auth:9100`.
 
-The bridge port is exposed as `127.0.0.1::9200`; the agent-auth port is
-*not* exposed externally (tests reach it via the in-container CLI).
+Both services publish loopback-only ports (`127.0.0.1::9100`,
+`127.0.0.1::9200`) so any test in the tree can reach either surface
+without further wiring.
 
 ### Per-test fixture
 
@@ -200,7 +205,9 @@ path; the AppleScript-specific tests in
   per-service layout) plus the existing top-level files.
 - For each subdirectory, require that the local `conftest.py` (or one
   inherited from `tests/integration/conftest.py`) references
-  `docker/Dockerfile.test` and a `compose.test.*.yaml` file.
+  `docker/Dockerfile.test` and pins its container topology — either to
+  `docker/docker-compose.yaml`, a `compose.test.*.yaml` file, or a
+  direct `docker run` invocation.
 - Reject `127.0.0.1` / `0.0.0.0` literals in any subdirectory's test
   files (excluding `conftest.py`), preserving the existing rule.
 

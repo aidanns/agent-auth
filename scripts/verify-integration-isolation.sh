@@ -9,9 +9,12 @@
 # 2. The pytest layer must still build docker/Dockerfile.test so the
 #    container actually runs under test. A fixture stack that lost the
 #    docker build call would silently skip every integration test.
-# 3. Each per-service subdirectory under tests/integration/ must
-#    reference a compose.test.*.yaml file so a forgotten compose pin
-#    can't fall through to a stale default with no visible error.
+# 3. Each per-service subdirectory under tests/integration/ must pin
+#    its container topology to a tracked artefact so a forgotten compose
+#    pin can't fall through to a stale default with no visible error.
+#    Acceptable references: the shared docker/docker-compose.yaml file,
+#    a per-service docker/compose.test.*.yaml file, or a direct
+#    ``docker run`` invocation for one-shot CLI fixtures.
 
 set -euo pipefail
 
@@ -62,21 +65,18 @@ if [[ "${build_call_present}" -eq 0 ]]; then
   fail=1
 fi
 
-# Each per-service subdirectory must reference a compose file in
-# docker/. The agent-auth-only fixture lives at the top-level conftest
-# and uses compose.test.yaml; service subdirectories use named compose
-# files (compose.test.things-bridge.yaml, etc.).
-# Per-service conftests must pin their container topology to a tracked
-# artefact: either a compose.test.*.yaml file (multi-service stacks) or
-# a direct ``docker run`` invocation (one-shot CLI subprocess fixtures).
-# Either way, a forgotten reference can't fall through to a stale
-# default with no visible error. Newlines are collapsed so the regex
-# still matches when ruff has split the argv list across lines.
+# Each per-service subdirectory must pin its container topology to a
+# tracked artefact: the shared docker/docker-compose.yaml, a per-service
+# compose.test.*.yaml file, or a direct ``docker run`` invocation
+# (one-shot CLI subprocess fixtures). Either way, a forgotten reference
+# can't fall through to a stale default with no visible error. Newlines
+# are collapsed so the regex still matches when ruff has split the argv
+# list across lines.
 for service_conftest in tests/integration/*/conftest.py; do
   [[ -f "${service_conftest}" ]] || continue
   conftest_flat=$(tr '\n' ' ' <"${service_conftest}")
-  if ! grep -qE 'compose\.test\.[A-Za-z0-9_.-]*ya?ml|"docker",\s*"run"' <<<"${conftest_flat}"; then
-    echo "FAIL: ${service_conftest} must reference a docker/compose.test.*.ya?ml file or a 'docker run' invocation" >&2
+  if ! grep -qE 'docker-compose\.ya?ml|compose\.test\.[A-Za-z0-9_.-]*ya?ml|"docker",\s*"run"' <<<"${conftest_flat}"; then
+    echo "FAIL: ${service_conftest} must reference docker/docker-compose.yaml, a docker/compose.test.*.ya?ml file, or a 'docker run' invocation" >&2
     fail=1
   fi
 done

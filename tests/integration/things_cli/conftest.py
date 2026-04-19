@@ -30,8 +30,8 @@ from tests.integration.things_bridge.conftest import (  # noqa: F401
 )
 
 # Stack pinning: this fixture inherits its Compose topology from
-# ``docker/compose.test.things-bridge.yaml`` via the imported
-# ``ThingsBridgeStack`` — things-cli runs inside that bridge container.
+# ``docker/docker-compose.yaml`` via the imported ``ThingsBridgeStack``
+# — things-cli runs inside that bridge container.
 
 
 # Credential file lives inside the container so the test never has to

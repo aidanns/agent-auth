@@ -20,6 +20,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKER_DIR = REPO_ROOT / "docker"
 DOCKERFILE = DOCKER_DIR / "Dockerfile.test"
+COMPOSE_FILE_NAME = "docker-compose.yaml"
+BRIDGE_BASELINE_CONFIG = DOCKER_DIR / "config.test.things-bridge.yaml"
 
 DOCKER_BUILD_TIMEOUT_SECONDS = 600.0
 READY_POLL_TIMEOUT_SECONDS = 30.0
@@ -98,6 +100,32 @@ def scoped_env(**values: str) -> Iterator[None]:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = prior
+
+
+def write_bridge_config(config_dir: Path) -> None:
+    """Copy the baseline bridge config into ``config_dir/config.yaml``.
+
+    The config bind-mounts into the bridge container; mode bits must be
+    world-readable for the same UID-mismatch reason documented on the
+    agent-auth fixture.
+    """
+    target = config_dir / "config.yaml"
+    shutil.copyfile(BRIDGE_BASELINE_CONFIG, target)
+    os.chmod(config_dir, 0o755)
+    os.chmod(target, 0o644)
+
+
+def seed_empty_fixtures_dir(fixtures_dir: Path) -> None:
+    """Write an empty ``things.yaml`` into ``fixtures_dir``.
+
+    The combined Compose file always starts the things-bridge container
+    (even for agent-auth-only tests), and the bridge invokes the fake
+    Things CLI which expects a fixture file. Tests that exercise the
+    bridge overwrite this file via ``ThingsBridgeStack.write_fixture``.
+    """
+    fixtures_dir.joinpath("things.yaml").write_text("todos: []\n")
+    os.chmod(fixtures_dir, 0o755)
+    os.chmod(fixtures_dir / "things.yaml", 0o644)
 
 
 def build_test_image(tag: str) -> None:

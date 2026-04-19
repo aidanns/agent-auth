@@ -9,13 +9,15 @@ into a bind-mounted directory.
 Tests address the bridge through its host-mapped loopback port; the
 ``agent-auth`` service is reached only via the in-container ``agent-auth``
 CLI (used here to mint scoped tokens).
+
+Stack pinning: the topology lives in ``docker/docker-compose.yaml`` (the
+shared compose file used by every per-service fixture in this tree).
 """
 
 from __future__ import annotations
 
 import json
 import os
-import shutil
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -26,9 +28,12 @@ import yaml
 from testcontainers.compose import DockerCompose
 
 from tests.integration._support import (
+    COMPOSE_FILE_NAME,
     DOCKER_DIR,
     scoped_env,
+    seed_empty_fixtures_dir,
     wait_until_server_ready,
+    write_bridge_config,
 )
 from tests.integration.conftest import (
     APPROVAL_PLUGINS,
@@ -36,8 +41,6 @@ from tests.integration.conftest import (
     AgentAuthContainer,
 )
 
-COMPOSE_FILE_NAME = "compose.test.things-bridge.yaml"
-BRIDGE_BASELINE_CONFIG = DOCKER_DIR / "config.test.things-bridge.yaml"
 AGENT_AUTH_PORT = 9100
 THINGS_BRIDGE_PORT = 9200
 
@@ -95,19 +98,6 @@ def _write_agent_auth_config(
     os.chmod(config_path, 0o644)
 
 
-def _write_bridge_config(config_dir: Path) -> None:
-    """Copy the baseline bridge config into ``config_dir/config.yaml``.
-
-    The config bind-mounts into the bridge container; mode bits must be
-    world-readable for the same UID-mismatch reason documented on the
-    agent-auth fixture.
-    """
-    target = config_dir / "config.yaml"
-    shutil.copyfile(BRIDGE_BASELINE_CONFIG, target)
-    os.chmod(config_dir, 0o755)
-    os.chmod(target, 0o644)
-
-
 @dataclass
 class _StartedCompose:
     compose: DockerCompose
@@ -150,12 +140,10 @@ def things_bridge_stack_factory(
             access_token_ttl_seconds=access_token_ttl_seconds,
             refresh_token_ttl_seconds=refresh_token_ttl_seconds,
         )
-        _write_bridge_config(bridge_config_dir)
+        write_bridge_config(bridge_config_dir)
         # Seed an empty fixture so the fake CLI starts cleanly even
         # before a test writes its own data.
-        (fixtures_dir / "things.yaml").write_text("todos: []\n")
-        os.chmod(fixtures_dir, 0o755)
-        os.chmod(fixtures_dir / "things.yaml", 0o644)
+        seed_empty_fixtures_dir(fixtures_dir)
 
         compose_env = {
             "AGENT_AUTH_TEST_CONFIG_DIR": str(agent_auth_config_dir),

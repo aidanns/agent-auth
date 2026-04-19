@@ -66,11 +66,15 @@ test image across all of them:
   without an installed distribution. The exclusion of both
   `tests_support` and the `tests/` tree from the production wheel keeps
   the test-only modules out of any shipped artefact.
-- **Per-service Compose file under `docker/`.**
-  `compose.test.things-bridge.yaml` declares an `agent-auth` +
-  `things-bridge` pair on an internal Compose network. Only the bridge
-  publishes a host port; tests reach `agent-auth` through the
-  in-container CLI for token operations.
+- **Single shared Compose file at `docker/docker-compose.yaml`.** It
+  declares the `agent-auth` + `things-bridge` pair on an internal
+  Compose network; both services publish loopback-only host ports. Every
+  per-service fixture spins this same file up under a per-test UUID
+  Compose project — the agent-auth-only fixture also starts the bridge
+  (and provisions a baseline bridge config plus an empty fixtures dir)
+  so the topology is identical regardless of which service the test
+  drives. The ~1 s of extra container time per agent-auth test is the
+  cost of having one source of truth for the integration topology.
 - **Per-service `tests/integration/<service>/conftest.py`.** Each
   fixture mints a per-test UUID Compose project, writes config and
   Things fixtures into per-test bind-mount dirs, and yields a service
@@ -107,10 +111,11 @@ test image across all of them:
     decision logic that the integration layer does not duplicate.
 - **`scripts/verify-integration-isolation.sh` extended.** It now
   rejects raw loopback literals across every per-service subdirectory
-  and requires each per-service `conftest.py` to reference a
-  `docker/compose.test.*.yaml` file. The build-call check accepts
-  either the top-level conftest or the new
-  `tests/integration/_support.py` helper module.
+  and requires each per-service `conftest.py` to reference either
+  `docker/docker-compose.yaml`, a `docker/compose.test.*.yaml` file, or
+  a `docker run` invocation. The build-call check accepts either the
+  top-level conftest or the new `tests/integration/_support.py` helper
+  module.
 
 ## Consequences
 

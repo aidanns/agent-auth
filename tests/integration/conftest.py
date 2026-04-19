@@ -25,15 +25,17 @@ import pytest
 from testcontainers.compose import DockerCompose
 
 from tests.integration._support import (
+    COMPOSE_FILE_NAME,
     DOCKER_DIR,
     build_test_image,
     docker_compose_available,
     scoped_env,
+    seed_empty_fixtures_dir,
     wait_until_server_ready,
+    write_bridge_config,
 )
 
 BASELINE_CONFIG = DOCKER_DIR / "config.test.json"
-COMPOSE_FILE_NAME = "compose.test.yaml"
 
 # Maps the integration-test factory's human-readable ``approval`` knob
 # onto the fully-qualified notification-plugin module the container
@@ -212,8 +214,21 @@ def agent_auth_container_factory(
             notification_plugin=APPROVAL_PLUGINS[approval],
         )
 
+        # The combined Compose file always starts the things-bridge
+        # container alongside agent-auth, so we must satisfy its bind
+        # mounts even for tests that never call the bridge. Provision
+        # the baseline bridge config and an empty fixtures dir; tests
+        # that exercise the bridge use the things_bridge_stack fixture
+        # which writes its own state.
+        bridge_config_dir = tmp_path_factory.mktemp(f"tb-cfg-{project_name}")
+        bridge_fixtures_dir = tmp_path_factory.mktemp(f"tb-fix-{project_name}")
+        write_bridge_config(bridge_config_dir)
+        seed_empty_fixtures_dir(bridge_fixtures_dir)
+
         compose_env = {
             "AGENT_AUTH_TEST_CONFIG_DIR": str(config_dir),
+            "THINGS_BRIDGE_TEST_CONFIG_DIR": str(bridge_config_dir),
+            "THINGS_BRIDGE_TEST_FIXTURES_DIR": str(bridge_fixtures_dir),
             "COMPOSE_PROJECT_NAME": project_name,
         }
 
