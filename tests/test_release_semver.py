@@ -220,9 +220,7 @@ class TestApplyBump:
             ("v10.0.0", "major", "11.0.0"),
         ],
     )
-    def test_applies_correct_bump(
-        self, last_tag: str, bump: str, expected: str
-    ) -> None:
+    def test_applies_correct_bump(self, last_tag: str, bump: str, expected: str) -> None:
         assert _apply_bump(last_tag, bump) == expected
 
     def test_unknown_bump_returns_failure(self) -> None:
