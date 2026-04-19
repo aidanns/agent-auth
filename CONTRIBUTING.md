@@ -2,29 +2,36 @@
 
 ## Dev setup
 
-1. Install [uv](https://docs.astral.sh/uv/) — the project's canonical
-   Python package and environment manager (`brew install uv` on macOS,
-   `curl -LsSf https://astral.sh/uv/install.sh | sh` elsewhere).
-2. Install [go-task](https://taskfile.dev/installation/) — the project's
-   canonical task runner (`brew install go-task` on macOS,
-   `sh -c "$(curl -fsSL https://taskfile.dev/install.sh)" -- -d -b "$HOME/.local/bin"`
-   elsewhere).
-3. Install [shellcheck](https://www.shellcheck.net/) and
-   [shfmt](https://github.com/mvdan/sh) — required by `task lint` and
-   `task format` (and gated in CI). On macOS: `brew install shellcheck shfmt`. On Debian/Ubuntu: `apt-get install shellcheck` and download
-   `shfmt` from its [GitHub releases](https://github.com/mvdan/sh/releases).
-4. Install [mdformat](https://mdformat.readthedocs.io/) with its GFM and
-   tables plugins — required by `task format` for Markdown. Install as a
-   uv-managed tool: `uv tool install mdformat --with mdformat-gfm --with mdformat-tables`.
-5. Install [taplo](https://taplo.tamasfe.dev/) — required by
-   `task format` for TOML. On macOS: `brew install taplo`. Elsewhere:
-   download from [GitHub releases](https://github.com/tamasfe/taplo/releases).
-6. Install [keep-sorted](https://github.com/google/keep-sorted) — required
-   by `task lint` to verify annotated sorted blocks stay sorted. On macOS
-   / Linux: `go install github.com/google/keep-sorted@latest`, or download
-   from [GitHub releases](https://github.com/google/keep-sorted/releases).
-7. Clone the repo and `cd` into it.
-8. Run `task --list` to see every repeatable operation.
+01. Install [uv](https://docs.astral.sh/uv/) — the project's canonical
+    Python package and environment manager (`brew install uv` on macOS,
+    `curl -LsSf https://astral.sh/uv/install.sh | sh` elsewhere).
+02. Install [go-task](https://taskfile.dev/installation/) — the project's
+    canonical task runner (`brew install go-task` on macOS,
+    `sh -c "$(curl -fsSL https://taskfile.dev/install.sh)" -- -d -b "$HOME/.local/bin"`
+    elsewhere).
+03. Install [shellcheck](https://www.shellcheck.net/) and
+    [shfmt](https://github.com/mvdan/sh) — required by `task lint` and
+    `task format` (and gated in CI). On macOS: `brew install shellcheck shfmt`. On Debian/Ubuntu: `apt-get install shellcheck` and download
+    `shfmt` from its [GitHub releases](https://github.com/mvdan/sh/releases).
+04. Install [mdformat](https://mdformat.readthedocs.io/) with its GFM and
+    tables plugins — required by `task format` for Markdown. Install as a
+    uv-managed tool: `uv tool install mdformat --with mdformat-gfm --with mdformat-tables`.
+05. Install [taplo](https://taplo.tamasfe.dev/) — required by
+    `task format` for TOML. On macOS: `brew install taplo`. Elsewhere:
+    download from [GitHub releases](https://github.com/tamasfe/taplo/releases).
+06. Install [keep-sorted](https://github.com/google/keep-sorted) — required
+    by `task lint` to verify annotated sorted blocks stay sorted. On macOS
+    / Linux: `go install github.com/google/keep-sorted@latest`, or download
+    from [GitHub releases](https://github.com/google/keep-sorted/releases).
+07. Install [lefthook](https://lefthook.dev/) — runs the pre-commit
+    checks configured in `lefthook.yml` (shellcheck, shfmt, ruff,
+    mdformat, taplo, keep-sorted). On macOS: `brew install lefthook`.
+    Elsewhere: `go install github.com/evilmartians/lefthook@latest`.
+08. Clone the repo and `cd` into it.
+09. Run `task install-hooks` to install the pre-commit hook shim.
+    `task verify-standards` gates on this being installed so that
+    configured pre-commit checks actually fire on every commit.
+10. Run `task --list` to see every repeatable operation.
 
 The first time you run any venv-backed task (e.g. `task test`,
 `task build`, or a service task like `task agent-auth -- serve`), the
@@ -75,11 +82,54 @@ signing are sibling requirements, not the same thing.
 
 ## Release process
 
-`task release` is the release entrypoint. The underlying automation
-(version bump, tag, GitHub release, publish) is tracked in
-[#18](https://github.com/aidanns/agent-auth/issues/18) and is not yet
-implemented — running the task today exits non-zero to prevent manual
-releases that would skip the standard checks.
+### Before releasing
+
+For every user-facing PR, update `CHANGELOG.md` before merging:
+
+1. Add a bullet under `## [Unreleased]` describing the user-visible change.
+2. Keep the format consistent with the existing entries (present-tense action,
+   linked to relevant issues/PRs where helpful).
+
+### Cutting a release
+
+`task release` is the release entrypoint. It delegates to `scripts/release.sh`,
+which:
+
+1. Resolves the target version — either from the argument you pass, or by
+   deriving it from Conventional Commits since the last `v*` tag (see below).
+2. Validates the working tree is clean and local `main` matches `origin/main`.
+3. Checks that `CHANGELOG.md` contains a `## [X.Y.Z]` section with content for
+   the resolved version.
+4. Prompts for confirmation, then creates a signed git tag (`vX.Y.Z`).
+5. Pushes the tag to `origin`.
+6. Creates a GitHub release from the CHANGELOG entry for that version.
+
+#### Version resolution
+
+| Invocation              | Behaviour                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task release`          | Auto-detect. Finds the latest `vX.Y.Z` tag, walks commits since that tag, and applies the largest SemVer bump implied by their Conventional Commit types: any `<type>!:` subject or `BREAKING CHANGE:` / `BREAKING-CHANGE:` footer → **major**; any `feat:` → **minor**; any `fix:` → **patch**. Other types alone (docs, chore, refactor, ...) → no release. |
+| `task release -- 1.2.3` | Explicit override — use this for the very first release (before any `v*` tag exists) or to force a non-default bump (e.g. `1.0.0` graduation).                                                                                                                                                                                                                |
+
+While the current tag is in the `0.x` range, the public API is not
+considered stable (SemVer 2.0.0 §4). A BREAKING change that would
+normally map to a **major** bump is demoted to a **minor** bump until
+`v1.0.0` ships. Force the graduation to `1.0.0` with an explicit
+`task release -- 1.0.0` when the API is ready to stabilise.
+
+To cut a release:
+
+1. Move the entries under `## [Unreleased]` in `CHANGELOG.md` into a new
+   `## [X.Y.Z] - YYYY-MM-DD` section. If you don't know the version yet, run
+   `task release` once — it will print the auto-detected version (e.g.
+   `Auto-detected minor bump from commits since v0.1.0: v0.2.0`) then exit
+   asking you to update the CHANGELOG.
+2. Leave a fresh empty `## [Unreleased]` section above the new version.
+3. Commit and push: `git commit -m "chore: prepare release vX.Y.Z"`.
+4. Run `task release` (auto-detect) or `task release -- X.Y.Z` (explicit).
+
+The version string embedded in the distributed package is derived from the git
+tag at build time via `setuptools-scm`; no other version file needs updating.
 
 ## Commit signing
 

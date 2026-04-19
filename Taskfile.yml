@@ -62,9 +62,9 @@ tasks:
       - scripts/install-hooks.sh
 
   release:
-    desc: Cut a release (version bump, tag, GitHub release, publish).
+    desc: "Cut a release. With no args (task release), the next version is derived from conventional commits since the last v* tag (major/minor/patch from BREAKING/feat/fix). Pass an explicit version (task release -- 1.2.3) to override. The resolved version must match a ## [X.Y.Z] section in CHANGELOG.md. The script creates and pushes the tag vX.Y.Z and publishes the GitHub release."
     cmds:
-      - scripts/release.sh
+      - scripts/release.sh {{.CLI_ARGS}}
 
   agent-auth:
     desc: Run the agent-auth CLI (e.g. `task agent-auth -- serve`).
