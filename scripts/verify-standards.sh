@@ -470,7 +470,10 @@ else
   )
 
   [[ ${#security_section_names[@]} -eq ${#security_section_patterns[@]} ]] \
-    || { echo "BUG: security parallel arrays length mismatch" >&2; exit 1; }
+    || {
+      echo "BUG: security parallel arrays length mismatch" >&2
+      exit 1
+    }
 
   for i in "${!security_section_names[@]}"; do
     if ! grep -qiE "${security_section_patterns[${i}]}" SECURITY.md; then
