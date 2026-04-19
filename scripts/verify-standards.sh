@@ -29,6 +29,9 @@
 #      `pip install` to bootstrap a venv.
 #   6. ruff is configured in pyproject.toml, wired into treefmt and
 #      lefthook, and gated in CI per .claude/instructions/python.md.
+#   7. CONTRIBUTING.md exists at repo root and contains dev-setup, testing,
+#      release, and commit-signing sections per
+#      .claude/instructions/release-and-hygiene.md.
 
 set -euo pipefail
 
@@ -323,3 +326,50 @@ if [[ ${ruff_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: ruff is configured in pyproject.toml, wired into treefmt and lefthook, and gated in CI."
+
+# CONTRIBUTING.md must exist and contain the four required sections per
+# .claude/instructions/release-and-hygiene.md.
+
+contributing_missing=0
+
+fail_contributing_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  contributing_missing=1
+}
+
+if [[ ! -f CONTRIBUTING.md ]]; then
+  fail_contributing_check \
+    "CONTRIBUTING.md is missing from the repo root." \
+    "Add CONTRIBUTING.md covering dev setup, testing, release, and commit signing."
+else
+  contributing_content="$(cat CONTRIBUTING.md)"
+
+  # Parallel arrays (bash 3.2-compatible): section_names[i] pairs with section_patterns[i].
+  section_names=(
+    dev-setup
+    testing
+    release
+    commit-signing
+  )
+  section_patterns=(
+    "## Dev setup|## Development environment setup|## Getting started|## Setup"
+    "## Running tasks|## Testing|## Running tests"
+    "## Release"
+    "## Commit signing"
+  )
+
+  for i in "${!section_names[@]}"; do
+    if ! grep -qE "${section_patterns[${i}]}" <<<"${contributing_content}"; then
+      fail_contributing_check \
+        "CONTRIBUTING.md is missing a '${section_names[${i}]}' section." \
+        "Add a section matching: ${section_patterns[${i}]}"
+    fi
+  done
+fi
+
+if [[ ${contributing_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: CONTRIBUTING.md exists with dev-setup, testing, release, and commit-signing sections."

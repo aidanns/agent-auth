@@ -77,3 +77,23 @@ project [CLAUDE.md](CLAUDE.md) for the full working agreement.
 [#18](https://github.com/aidanns/agent-auth/issues/18) and is not yet
 implemented — running the task today exits non-zero to prevent manual
 releases that would skip the standard checks.
+
+## Commit signing
+
+Commits to `main` must be signed. Configure GPG or SSH signing in git:
+
+```bash
+# GPG (recommended)
+git config --global commit.gpgsign true
+git config --global user.signingkey <YOUR_KEY_ID>
+
+# SSH (alternative — set these instead of the GPG options above)
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/id_ed25519.pub
+```
+
+Verify signing is working:
+
+```bash
+git log --show-signature -1
+```
