@@ -30,6 +30,11 @@ components:
           - Serve Reissue Endpoint
           - Serve Status Endpoint
           - Serve Health Endpoint
+          - Serve Token Create Endpoint
+          - Serve Token List Endpoint
+          - Serve Token Modify Endpoint
+          - Serve Token Revoke Endpoint
+          - Serve Token Rotate Endpoint
           - Log Token Operation
           - Log Authorization Decision
           - Handle Token Create Command

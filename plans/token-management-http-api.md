@@ -7,36 +7,41 @@ programmatic clients can manage token lifecycle without SSH/local CLI access.
 
 ## New endpoints
 
-| Method | Path                        | CLI equivalent          |
-|--------|-----------------------------|-------------------------|
-| POST   | /agent-auth/token/create   | agent-auth token create |
-| GET    | /agent-auth/token/list     | agent-auth token list   |
-| POST   | /agent-auth/token/modify   | agent-auth token modify |
-| POST   | /agent-auth/token/revoke   | agent-auth token revoke |
-| POST   | /agent-auth/token/rotate   | agent-auth token rotate |
+| Method | Path                     | CLI equivalent          |
+| ------ | ------------------------ | ----------------------- |
+| POST   | /agent-auth/token/create | agent-auth token create |
+| GET    | /agent-auth/token/list   | agent-auth token list   |
+| POST   | /agent-auth/token/modify | agent-auth token modify |
+| POST   | /agent-auth/token/revoke | agent-auth token revoke |
+| POST   | /agent-auth/token/rotate | agent-auth token rotate |
 
 ## Request/response schemas
 
 ### POST /agent-auth/token/create
+
 Request: `{"scopes": {"<name>": "<tier>", ...}}`
 Response 200: `{"family_id": "...", "access_token": "...", "refresh_token": "...", "scopes": {...}, "expires_in": N}`
 Errors: 400 `malformed_request`, 400 `no_scopes`
 
 ### GET /agent-auth/token/list
+
 No body. Response 200: array of family objects (same shape as CLI JSON output).
 
 ### POST /agent-auth/token/modify
+
 Request: `{"family_id": "...", "add_scopes": {...}, "remove_scopes": [...], "set_tiers": {...}}`
 (All modification fields optional; at least one must be non-empty.)
 Response 200: `{"family_id": "...", "scopes": {...}}`
 Errors: 400 `malformed_request`, 400 `no_modifications`, 404 `family_not_found`, 409 `family_revoked`
 
 ### POST /agent-auth/token/revoke
+
 Request: `{"family_id": "..."}`
 Response 200: `{"family_id": "...", "revoked": true}` (idempotent for already-revoked families)
 Errors: 400 `malformed_request`, 404 `family_not_found`
 
 ### POST /agent-auth/token/rotate
+
 Request: `{"family_id": "..."}`
 Response 200: `{"old_family_id": "...", "new_family_id": "...", "access_token": "...", "refresh_token": "...", "scopes": {...}, "expires_in": N}`
 Errors: 400 `malformed_request`, 404 `family_not_found`, 409 `family_revoked`
@@ -62,6 +67,7 @@ Document in ADR 0006.
 ## Regression check design (verify-standards.sh)
 
 Inline Python script that:
+
 - Imports `COMMAND_HANDLERS` from `agent_auth.cli` to enumerate token subcommands
 - Inspects `AgentAuthHandler.do_POST` / `do_GET` source to find `/agent-auth/token/<cmd>` routes
 - Fails if any subcommand has no matching route

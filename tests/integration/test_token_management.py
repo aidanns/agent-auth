@@ -1,4 +1,4 @@
-"""Integration tests for the token management HTTP endpoints (create, list, modify, revoke, rotate)."""
+"""Integration tests for the token management HTTP endpoints."""
 
 import pytest
 
