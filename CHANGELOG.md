@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Community-health files to complete the GitHub Community Profile: Contributor
+  Covenant v2.1 Code of Conduct, issue templates (bug report, feature request,
+  security redirect), pull-request template, and SUPPORT.md. CoC and SUPPORT
+  are referenced from `README.md` and `CONTRIBUTING.md`.
+
 ## [0.1.0] - 2026-04-19
 
 ### Added
