@@ -87,9 +87,6 @@ For any given release:
   report).
 - ADR index `design/decisions/README.md` lists every file in
   `design/decisions/` (other than `README.md` / `TEMPLATE.md`).
-- Audit log retained on the host for at least one release cycle —
-  operator responsibility, not automated today (tracked as a
-  follow-up: add a rotation / retention policy).
 - `scripts/verify-standards.sh` passes, asserting portable project
   standards are met — including the QM/ASSURANCE gate that proves
   this file exists with the required sections.
