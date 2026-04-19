@@ -1,0 +1,23 @@
+# Baseline things-bridge config for the Docker integration tests.
+#
+# The pytest fixture copies this file into a per-test tmpdir, applies
+# overrides if needed, and bind-mounts the tmpdir read-only at
+# /home/agent-auth/.config/things-bridge inside the container.
+# 0.0.0.0 here is intra-container only — compose.test.things-bridge.yaml
+# pins the host-side publish to 127.0.0.1, so the bridge is never
+# reachable beyond loopback on the test machine.
+host: 0.0.0.0
+port: 9200
+# In-network address of the agent-auth service in compose.test.things-bridge.yaml.
+auth_url: http://agent-auth:9100
+# Run the in-tree fake things-client subprocess instead of the AppleScript
+# CLI (which can't run in Linux). The fixtures path is bind-mounted in
+# from the test runner; the per-test fixture writes the seeded YAML there
+# before the container starts.
+things_client_command:
+  - python
+  - -m
+  - tests.things_client_fake
+  - --fixtures
+  - /srv/things-fixtures/things.yaml
+request_timeout_seconds: 35.0

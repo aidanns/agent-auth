@@ -107,6 +107,13 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         path = url.path
         params = parse_qs(url.query)
 
+        # Health is unauthenticated and routed before bearer extraction
+        # so container readiness probes don't need a token. The bridge
+        # holds no secrets, so exposing "is the HTTP server up?" is safe.
+        if path == "/things-bridge/health":
+            self._send_json(200, {"status": "ok"})
+            return
+
         token = self._extract_bearer()
         if token is None:
             self._send_json(401, {"error": "unauthorized"})
