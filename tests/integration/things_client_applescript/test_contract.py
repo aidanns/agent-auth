@@ -19,7 +19,6 @@ import textwrap
 
 import pytest
 
-
 _FIXTURE = textwrap.dedent(
     """
     areas:

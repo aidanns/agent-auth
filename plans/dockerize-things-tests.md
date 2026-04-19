@@ -167,8 +167,7 @@ The bridge port is exposed as `127.0.0.1::9200`; the agent-auth port is
 3. Writes the Things fixture YAML the fake client should serve.
 4. Starts the Compose project, waits for both services to be reachable
    (agent-auth: existing `/health` poll; bridge: new `/things-bridge/health`).
-5. Mints a token via `agent-auth-container.exec_cli("token", "create",
-   "--scope", "things:read", ...)` and yields the bridge base URL,
+5. Mints a token via `agent-auth-container.exec_cli("token", "create", "--scope", "things:read", ...)` and yields the bridge base URL,
    bearer token, and helpers for revoking / re-fetching family state.
 
 ### things-cli fixture
@@ -179,16 +178,14 @@ The bridge port is exposed as `127.0.0.1::9200`; the agent-auth port is
 ergonomically — leaning toward `compose.exec` so credentials live in a
 named volume that the test can inspect). Provides helpers to:
 
-- Run `things-cli login --bridge-url … --auth-url … --access-token …
-  --refresh-token … --family-id …` inside the container, persisting
+- Run `things-cli login --bridge-url … --auth-url … --access-token … --refresh-token … --family-id …` inside the container, persisting
   credentials to a per-test path.
 - Run `things-cli todos list --json` and parse the output.
 
 ### things-client-cli-applescript contract test
 
 `tests/integration/things_client_applescript/test_contract.py` runs the
-fake CLI inside the test image via `compose.exec_in_container([
-"python", "-m", "tests.things_client_fake", "--fixtures", "…", …])`
+fake CLI inside the test image via `compose.exec_in_container([ "python", "-m", "tests.things_client_fake", "--fixtures", "…", …])`
 and re-asserts every shape the bridge depends on. This subsumes
 `tests/test_things_client_cli_contract.py` for the Linux container
 path; the AppleScript-specific tests in

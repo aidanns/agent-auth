@@ -41,7 +41,10 @@ class AgentAuthClient:
                     "POST",
                     "/agent-auth/validate",
                     body=body,
-                    headers={"Content-Type": "application/json", "Content-Length": str(len(body))},
+                    headers={
+                        "Content-Type": "application/json",
+                        "Content-Length": str(len(body)),
+                    },
                 )
                 response = conn.getresponse()
                 raw = response.read()

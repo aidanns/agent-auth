@@ -17,9 +17,9 @@ import json
 import os
 import shutil
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 import pytest
 import yaml
@@ -32,10 +32,9 @@ from tests.integration._support import (
 )
 from tests.integration.conftest import (
     APPROVAL_PLUGINS,
-    AgentAuthContainer,
     BASELINE_CONFIG,
+    AgentAuthContainer,
 )
-
 
 COMPOSE_FILE_NAME = "compose.test.things-bridge.yaml"
 BRIDGE_BASELINE_CONFIG = DOCKER_DIR / "config.test.things-bridge.yaml"

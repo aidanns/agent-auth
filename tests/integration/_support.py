@@ -14,9 +14,8 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKER_DIR = REPO_ROOT / "docker"
@@ -109,9 +108,12 @@ def build_test_image(tag: str) -> None:
     """
     result = subprocess.run(
         [
-            "docker", "build",
-            "-f", str(DOCKERFILE),
-            "-t", tag,
+            "docker",
+            "build",
+            "-f",
+            str(DOCKERFILE),
+            "-t",
+            tag,
             str(REPO_ROOT),
         ],
         capture_output=True,

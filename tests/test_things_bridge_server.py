@@ -2,13 +2,16 @@
 
 import json
 import threading
-import urllib.request
 import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
 import pytest
 
+from tests.factories import make_project as _project
+from tests.factories import make_todo as _todo
+from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
 from things_bridge.config import Config
 from things_bridge.errors import (
     AuthzScopeDeniedError,
@@ -20,10 +23,6 @@ from things_bridge.errors import (
 )
 from things_bridge.server import ThingsBridgeServer
 from things_models.models import Area
-
-from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
-
-from tests.factories import make_project as _project, make_todo as _todo
 
 
 @dataclass
@@ -144,7 +143,9 @@ def test_get_todos_delegates_to_authz_and_returns_list(bridge):
 
 
 def test_get_todos_forwards_filters(bridge):
-    _get(f"{bridge['url']}/things-bridge/todos?list=TMTodayListSource&project=p1&area=a1&tag=Urgent&status=open")
+    _get(
+        f"{bridge['url']}/things-bridge/todos?list=TMTodayListSource&project=p1&area=a1&tag=Urgent&status=open"
+    )
     kwargs = bridge["things"].last_list_todos_kwargs
     assert kwargs == {
         "list_id": "TMTodayListSource",
@@ -240,7 +241,7 @@ def test_get_area_by_id(bridge):
 
 
 def test_unknown_path_returns_404(bridge):
-    status, data = _get(f"{bridge['url']}/things-bridge/nope")
+    status, _data = _get(f"{bridge['url']}/things-bridge/nope")
     assert status == 404
 
 
@@ -278,7 +279,7 @@ def test_post_to_readonly_endpoint_returns_405(bridge):
     )
     try:
         urllib.request.urlopen(req, timeout=5)
-        assert False, "expected HTTPError"
+        raise AssertionError("expected HTTPError")
     except urllib.error.HTTPError as exc:
         assert exc.code == 405
         assert exc.headers.get("Allow") == "GET"
@@ -298,7 +299,7 @@ def test_non_get_methods_return_405(bridge, method):
     )
     try:
         urllib.request.urlopen(req, timeout=5)
-        assert False, "expected HTTPError"
+        raise AssertionError("expected HTTPError")
     except urllib.error.HTTPError as exc:
         assert exc.code == 405
         assert exc.headers.get("Allow") == "GET"

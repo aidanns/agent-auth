@@ -32,7 +32,7 @@ def test_wrong_key_fails(encryption_key):
     wrong_key = os.urandom(32)
     try:
         decrypt_field(ciphertext, wrong_key)
-        assert False, "Should have raised an exception"
+        raise AssertionError("Should have raised an exception")
     except Exception:
         pass
 

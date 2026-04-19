@@ -23,7 +23,6 @@ from pathlib import Path
 
 import pytest
 
-
 _FAKE_FIXTURE_PATH_IN_CONTAINER = "/srv/things-fixtures/things.yaml"
 
 
@@ -43,13 +42,21 @@ class FakeCliRunner:
         # because the fake CLI never needs the network and dropping it
         # narrows the test's blast radius.
         cmd = [
-            "docker", "run", "--rm",
-            "--network", "none",
-            "--name", f"things-client-fake-{uuid.uuid4().hex[:8]}",
-            "-v", f"{self.fixtures_dir}:/srv/things-fixtures:ro",
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--name",
+            f"things-client-fake-{uuid.uuid4().hex[:8]}",
+            "-v",
+            f"{self.fixtures_dir}:/srv/things-fixtures:ro",
             self.image_tag,
-            "python", "-m", "tests.things_client_fake",
-            "--fixtures", _FAKE_FIXTURE_PATH_IN_CONTAINER,
+            "python",
+            "-m",
+            "tests.things_client_fake",
+            "--fixtures",
+            _FAKE_FIXTURE_PATH_IN_CONTAINER,
             *args,
         ]
         return subprocess.run(

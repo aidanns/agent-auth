@@ -20,7 +20,6 @@ import urllib.request
 
 import pytest
 
-
 _SEEDED_FIXTURE = {
     "areas": [
         {"id": "a1", "name": "Personal", "tag_names": []},
@@ -31,17 +30,37 @@ _SEEDED_FIXTURE = {
         {"id": "p2", "name": "Home", "area_id": "a1", "area_name": "Personal"},
     ],
     "todos": [
-        {"id": "t1", "name": "Buy milk", "area_id": "a1", "area_name": "Personal",
-         "tag_names": ["Errand"]},
-        {"id": "t2", "name": "Write report",
-         "notes": "Include:\n\t- milestones\n\t- owners",
-         "project_id": "p1", "project_name": "Q2 Planning",
-         "area_id": "a2", "area_name": "Work",
-         "tag_names": ["planning", "deep-work"]},
-        {"id": "t3", "name": "Fix tap", "status": "completed",
-         "area_id": "a1", "area_name": "Personal"},
-        {"id": "t4", "name": "Dentist", "area_id": "a1", "area_name": "Personal",
-         "tag_names": ["Errand"]},
+        {
+            "id": "t1",
+            "name": "Buy milk",
+            "area_id": "a1",
+            "area_name": "Personal",
+            "tag_names": ["Errand"],
+        },
+        {
+            "id": "t2",
+            "name": "Write report",
+            "notes": "Include:\n\t- milestones\n\t- owners",
+            "project_id": "p1",
+            "project_name": "Q2 Planning",
+            "area_id": "a2",
+            "area_name": "Work",
+            "tag_names": ["planning", "deep-work"],
+        },
+        {
+            "id": "t3",
+            "name": "Fix tap",
+            "status": "completed",
+            "area_id": "a1",
+            "area_name": "Personal",
+        },
+        {
+            "id": "t4",
+            "name": "Dentist",
+            "area_id": "a1",
+            "area_name": "Personal",
+            "tag_names": ["Errand"],
+        },
     ],
     "list_memberships": {"TMTodayListSource": ["t1", "t2"]},
 }
@@ -115,9 +134,7 @@ def test_list_todos_filters_forwarded_through_fake(stack):
 
 @pytest.mark.covers_function("Serve Bridge HTTP API")
 def test_list_todos_list_filter_resolves_via_memberships(stack):
-    status, data = _get(
-        stack["stack"].url("todos?list=TMTodayListSource"), stack["token"]
-    )
+    status, data = _get(stack["stack"].url("todos?list=TMTodayListSource"), stack["token"])
     assert status == 200
     assert {t["id"] for t in data["todos"]} == {"t1", "t2"}
 

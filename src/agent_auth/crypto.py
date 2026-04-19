@@ -17,9 +17,7 @@ NONCE_SIZE = 12
 Ciphertext = NewType("Ciphertext", bytes)
 
 
-def encrypt_field(
-    plaintext: bytes, key: EncryptionKey, aesgcm: AESGCM | None = None
-) -> Ciphertext:
+def encrypt_field(plaintext: bytes, key: EncryptionKey, aesgcm: AESGCM | None = None) -> Ciphertext:
     """Encrypt plaintext using AES-256-GCM.
 
     Returns nonce (12 bytes) || ciphertext || tag (16 bytes).

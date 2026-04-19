@@ -1,5 +1,6 @@
 # treefmt formatter/linter multiplexer.
 # shfmt formatting options live in .editorconfig.
+# ruff formatting options live in pyproject.toml ([tool.ruff]).
 # mdformat reads .mdformat.toml; taplo reads taplo.toml.
 # The authoritative project gate is scripts/lint.sh + scripts/format.sh,
 # invoked directly by .github/workflows/check.yml and lefthook.yml.
@@ -7,6 +8,11 @@
 [formatter.mdformat]
 command = "mdformat"
 includes = ["*.md"]
+
+[formatter.ruff]
+command = "ruff"
+options = ["format"]
+includes = ["*.py"]
 
 [formatter.shellcheck]
 command = "shellcheck"

@@ -44,11 +44,14 @@ fi
 # The root conftest is responsible for building the test image once per
 # session. Either the conftest itself does it inline or it delegates
 # to a helper module under tests/integration/. Verify the build path is
-# still wired up by checking both candidate locations.
+# still wired up by checking both candidate locations. Newlines are
+# collapsed first so the regex still matches when ruff has split the
+# argv list across multiple lines.
 build_call_present=0
 for candidate in "tests/integration/conftest.py" "tests/integration/_support.py"; do
-  if [[ -f "${candidate}" ]] \
-    && grep -qE '"docker",[[:space:]]*"build"' "${candidate}" \
+  [[ -f "${candidate}" ]] || continue
+  candidate_flat=$(tr '\n' ' ' <"${candidate}")
+  if grep -qE '"docker",\s*"build"' <<<"${candidate_flat}" \
     && grep -qE 'Dockerfile\.test' "${candidate}"; then
     build_call_present=1
     break
@@ -67,10 +70,12 @@ fi
 # artefact: either a compose.test.*.yaml file (multi-service stacks) or
 # a direct ``docker run`` invocation (one-shot CLI subprocess fixtures).
 # Either way, a forgotten reference can't fall through to a stale
-# default with no visible error.
+# default with no visible error. Newlines are collapsed so the regex
+# still matches when ruff has split the argv list across lines.
 for service_conftest in tests/integration/*/conftest.py; do
   [[ -f "${service_conftest}" ]] || continue
-  if ! grep -qE 'compose\.test\.[A-Za-z0-9_.-]*ya?ml|"docker",[[:space:]]*"run"' "${service_conftest}"; then
+  conftest_flat=$(tr '\n' ' ' <"${service_conftest}")
+  if ! grep -qE 'compose\.test\.[A-Za-z0-9_.-]*ya?ml|"docker",\s*"run"' <<<"${conftest_flat}"; then
     echo "FAIL: ${service_conftest} must reference a docker/compose.test.*.ya?ml file or a 'docker run' invocation" >&2
     fail=1
   fi

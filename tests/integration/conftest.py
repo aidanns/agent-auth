@@ -17,9 +17,9 @@ import json
 import os
 import subprocess
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 import pytest
 from testcontainers.compose import DockerCompose
@@ -31,7 +31,6 @@ from tests.integration._support import (
     scoped_env,
     wait_until_server_ready,
 )
-
 
 BASELINE_CONFIG = DOCKER_DIR / "config.test.json"
 COMPOSE_FILE_NAME = "compose.test.yaml"

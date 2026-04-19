@@ -32,7 +32,9 @@ def test_login_and_status_roundtrip(things_cli_invoker):
 
 
 @pytest.mark.covers_function(
-    "Serve Bridge HTTP API", "Send Bridge Request", "Display Results",
+    "Serve Bridge HTTP API",
+    "Send Bridge Request",
+    "Display Results",
 )
 def test_todos_list_returns_seeded_todos(things_cli_logged_in):
     stdout = things_cli_logged_in.run_ok("--json", "todos", "list")
@@ -41,7 +43,9 @@ def test_todos_list_returns_seeded_todos(things_cli_logged_in):
 
 
 @pytest.mark.covers_function(
-    "Serve Bridge HTTP API", "Send Bridge Request", "Display Results",
+    "Serve Bridge HTTP API",
+    "Send Bridge Request",
+    "Display Results",
 )
 def test_todos_show_returns_single_todo(things_cli_logged_in):
     stdout = things_cli_logged_in.run_ok("--json", "todos", "show", "t1")
@@ -62,7 +66,9 @@ def test_wrong_scope_exits_with_forbidden_status(things_cli_invoker):
 @pytest.mark.covers_function("Serve Bridge HTTP API")
 def test_unknown_todo_exits_not_found(things_cli_logged_in):
     exit_code, _stdout, stderr = things_cli_logged_in.run(
-        "todos", "show", "does-not-exist",
+        "todos",
+        "show",
+        "does-not-exist",
     )
     # things-cli maps BridgeNotFoundError to exit code 4.
     assert exit_code == 4

@@ -121,25 +121,43 @@ on _statusText(s)
 end _statusText
 """
 
-_TAB_LIT = "\"\\t\""
-_LF_LIT = "\"\\n\""
+_TAB_LIT = '"\\t"'
+_LF_LIT = '"\\n"'
 
 # Columns emitted for each todo, in order.
 _TODO_FIELDS = [
-    "id", "name", "notes", "status",
-    "project_id", "project_name", "area_id", "area_name",
-    "tag_names", "due_date", "activation_date",
-    "completion_date", "cancellation_date",
-    "creation_date", "modification_date",
+    "id",
+    "name",
+    "notes",
+    "status",
+    "project_id",
+    "project_name",
+    "area_id",
+    "area_name",
+    "tag_names",
+    "due_date",
+    "activation_date",
+    "completion_date",
+    "cancellation_date",
+    "creation_date",
+    "modification_date",
 ]
 
 # Columns emitted for each project, in order.
 _PROJECT_FIELDS = [
-    "id", "name", "notes", "status",
-    "area_id", "area_name", "tag_names",
-    "due_date", "activation_date",
-    "completion_date", "cancellation_date",
-    "creation_date", "modification_date",
+    "id",
+    "name",
+    "notes",
+    "status",
+    "area_id",
+    "area_name",
+    "tag_names",
+    "due_date",
+    "activation_date",
+    "completion_date",
+    "cancellation_date",
+    "creation_date",
+    "modification_date",
 ]
 
 # Columns emitted for each area, in order.
@@ -221,10 +239,8 @@ def _every_form(plural: str, singular: str, scope: str) -> str:
         return f"every {singular}"
     prefix = f"{plural} of "
     if scope.startswith(prefix):
-        return f"every {singular} of " + scope[len(prefix):]
-    raise ThingsError(
-        f"Internal error: unsupported {singular} scope expression: {scope!r}"
-    )
+        return f"every {singular} of " + scope[len(prefix) :]
+    raise ThingsError(f"Internal error: unsupported {singular} scope expression: {scope!r}")
 
 
 def _todo_batch_applescript(scope: str, status_filter: str | None) -> str:
@@ -253,8 +269,7 @@ def _todo_batch_applescript(scope: str, status_filter: str | None) -> str:
 
     if status_filter is not None:
         status_guard_open = (
-            f"        if my _statusText(item _i of _statuses) "
-            f"is {_quote(status_filter)} then\n"
+            f"        if my _statusText(item _i of _statuses) is {_quote(status_filter)} then\n"
         )
         status_guard_close = "        end if\n"
     else:
@@ -476,14 +491,15 @@ def _parse_rows(output: str, expected_cols: int) -> list[list[str]]:
         parts = raw_line.split("\t")
         if len(parts) != expected_cols:
             raise ThingsError(
-                f"Unexpected column count from AppleScript: got {len(parts)}, expected {expected_cols}"
+                f"Unexpected column count from AppleScript: "
+                f"got {len(parts)}, expected {expected_cols}"
             )
         rows.append(parts)
     return rows
 
 
 def _row_to_todo(row: list[str]) -> Todo:
-    cols = dict(zip(_TODO_FIELDS, row))
+    cols = dict(zip(_TODO_FIELDS, row, strict=False))
     return Todo(
         id=_field(cols["id"]) or "",
         name=_field(cols["name"]) or "",
@@ -504,7 +520,7 @@ def _row_to_todo(row: list[str]) -> Todo:
 
 
 def _row_to_project(row: list[str]) -> Project:
-    cols = dict(zip(_PROJECT_FIELDS, row))
+    cols = dict(zip(_PROJECT_FIELDS, row, strict=False))
     return Project(
         id=_field(cols["id"]) or "",
         name=_field(cols["name"]) or "",
@@ -523,7 +539,7 @@ def _row_to_project(row: list[str]) -> Project:
 
 
 def _row_to_area(row: list[str]) -> Area:
-    cols = dict(zip(_AREA_FIELDS, row))
+    cols = dict(zip(_AREA_FIELDS, row, strict=False))
     return Area(
         id=_field(cols["id"]) or "",
         name=_field(cols["name"]) or "",
@@ -532,8 +548,12 @@ def _row_to_area(row: list[str]) -> Area:
 
 
 _FORBIDDEN_ID_CHARS = {
-    "\r", "\n", "\t", "\0",
-    TAB_PLACEHOLDER, NEWLINE_PLACEHOLDER,
+    "\r",
+    "\n",
+    "\t",
+    "\0",
+    TAB_PLACEHOLDER,
+    NEWLINE_PLACEHOLDER,
 }
 
 
@@ -586,8 +606,11 @@ class ThingsApplescriptClient:
         status: str | None = None,
     ) -> list[Todo]:
         flt = TodoFilter(
-            list_id=list_id, project_id=project_id, area_id=area_id,
-            tag=tag, status=validate_status(status),
+            list_id=list_id,
+            project_id=project_id,
+            area_id=area_id,
+            tag=tag,
+            status=validate_status(status),
         )
         source = _todo_source(flt)
         body = _todo_batch_applescript(source, flt.status)
@@ -625,10 +648,7 @@ end tell
         return _row_to_todo(rows[0])
 
     def list_projects(self, *, area_id: str | None = None) -> list[Project]:
-        if area_id is not None:
-            source = f"projects of area id {_quote(area_id)}"
-        else:
-            source = "projects"
+        source = f"projects of area id {_quote(area_id)}" if area_id is not None else "projects"
         body = _project_batch_applescript(source)
         script = f"""
 {_HELPERS}

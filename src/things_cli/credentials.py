@@ -11,8 +11,9 @@ Stored fields match the table in ``design/DESIGN.md``:
 ``access_token``, ``refresh_token``, ``family_id``, ``bridge_url``, ``auth_url``.
 """
 
+import contextlib
 import os
-from dataclasses import dataclass, asdict, fields
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 import keyring
@@ -167,10 +168,8 @@ class FileStore(CredentialStore):
         return Credentials(**{k: v for k, v in data.items() if k in known})
 
     def clear(self) -> None:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(self._path)
-        except FileNotFoundError:
-            pass
 
 
 def select_store(
@@ -215,6 +214,4 @@ def _keyring_available() -> bool:
         backend = keyring.get_keyring()
     except _KeyringBackendError:
         return False
-    if FailKeyring is not None and isinstance(backend, FailKeyring):
-        return False
-    return True
+    return not (FailKeyring is not None and isinstance(backend, FailKeyring))

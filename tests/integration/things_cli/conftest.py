@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import pytest
 
 from tests.integration._support import scoped_env
+
 # Re-export the Compose stack fixtures from the sibling things_bridge
 # conftest. Sibling conftest.py modules don't share fixtures by default;
 # importing the fixture functions into this conftest's namespace makes
@@ -56,8 +57,10 @@ class ThingsCliInvoker:
             stdout, stderr, exit_code = self.stack.bridge_compose.exec_in_container(
                 [
                     "things-cli",
-                    "--credential-store", "file",
-                    "--credentials-file", self.creds_path,
+                    "--credential-store",
+                    "file",
+                    "--credentials-file",
+                    self.creds_path,
                     *args,
                 ],
                 service_name="things-bridge",
@@ -82,16 +85,23 @@ class ThingsCliInvoker:
         # at the same things-bridge container we are exec'ing into.
         self.run_ok(
             "login",
-            "--bridge-url", "http://things-bridge:9200",
-            "--auth-url", "http://agent-auth:9100",
-            "--access-token", token_payload["access_token"],
-            "--refresh-token", token_payload["refresh_token"],
-            "--family-id", token_payload["family_id"],
+            "--bridge-url",
+            "http://things-bridge:9200",
+            "--auth-url",
+            "http://agent-auth:9100",
+            "--access-token",
+            token_payload["access_token"],
+            "--refresh-token",
+            token_payload["refresh_token"],
+            "--family-id",
+            token_payload["family_id"],
         )
 
 
 @pytest.fixture
-def things_cli_invoker(things_bridge_stack: ThingsBridgeStack) -> ThingsCliInvoker:
+def things_cli_invoker(
+    things_bridge_stack: ThingsBridgeStack,  # noqa: F811 — pytest re-export
+) -> ThingsCliInvoker:
     """Default invoker — fresh credential file per test."""
     creds_path = _CREDS_PATH_TEMPLATE.format(uuid.uuid4().hex[:8])
     return ThingsCliInvoker(stack=things_bridge_stack, creds_path=creds_path)
@@ -117,10 +127,20 @@ _DEFAULT_FIXTURE = {
     "areas": [{"id": "a1", "name": "Personal", "tag_names": []}],
     "projects": [{"id": "p1", "name": "Q2", "area_id": "a1", "area_name": "Personal"}],
     "todos": [
-        {"id": "t1", "name": "Buy milk", "area_id": "a1", "area_name": "Personal",
-         "tag_names": ["Errand"]},
-        {"id": "t2", "name": "Write report", "project_id": "p1",
-         "project_name": "Q2", "status": "open"},
+        {
+            "id": "t1",
+            "name": "Buy milk",
+            "area_id": "a1",
+            "area_name": "Personal",
+            "tag_names": ["Errand"],
+        },
+        {
+            "id": "t2",
+            "name": "Write report",
+            "project_id": "p1",
+            "project_name": "Q2",
+            "status": "open",
+        },
     ],
     "list_memberships": {},
 }
