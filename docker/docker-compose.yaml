@@ -1,0 +1,57 @@
+# Template — Python-style double-brace placeholders are substituted by
+# render_compose_file() in tests/integration/_support.py before docker
+# compose ever sees the file. Keeping the substitution surface in
+# Python (rather than $VAR interpolation handled by docker compose
+# itself) means the rendered, per-test file is self-contained and
+# docker compose never has to inherit env vars from the test process.
+name: {{ COMPOSE_PROJECT_NAME }}
+
+services:
+  agent-auth:
+    image: {{ AGENT_AUTH_TEST_IMAGE }}
+    # Bind only on loopback so the container is never reachable from the
+    # rest of the network.
+    ports:
+      - "127.0.0.1::9100"
+    volumes:
+      # Per-test tmpdir holding config.json. The fixture copies
+      # docker/config.test.json here and applies any per-test overrides
+      # (TTLs, notification plugin) before starting the container.
+      - {{ AGENT_AUTH_TEST_CONFIG_DIR }}:/home/agent-auth/.config/agent-auth:ro
+    stop_grace_period: 5s
+
+  things-bridge:
+    image: {{ AGENT_AUTH_TEST_IMAGE }}
+    entrypoint: ["things-bridge", "serve"]
+    # Bind only on loopback so the container is never reachable from
+    # the rest of the network.
+    ports:
+      - "127.0.0.1::9200"
+    volumes:
+      - {{ THINGS_BRIDGE_TEST_FIXTURES_DIR }}:/srv/things-fixtures:ro
+    configs:
+      - source: things_bridge_config
+        target: /home/agent-auth/.config/things-bridge/config.yaml
+        mode: 0644
+    depends_on:
+      - agent-auth
+    stop_grace_period: 5s
+
+# Bridge config is shipped inline rather than via a per-test bind mount.
+# No test currently overrides bridge config, so a single source of truth
+# wired through compose is simpler than a copied-tmpdir indirection.
+# 0.0.0.0 here is intra-container only — the host-side publish above
+# pins to 127.0.0.1, so the bridge is never reachable beyond loopback.
+configs:
+  things_bridge_config:
+    content: |
+      host: 0.0.0.0
+      port: 9200
+      auth_url: http://agent-auth:9100
+      things_client_command:
+        - python
+        - -m
+        - tests.things_client_fake
+        - --fixtures
+        - /srv/things-fixtures/things.yaml
+      request_timeout_seconds: 35.0

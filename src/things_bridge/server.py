@@ -18,6 +18,7 @@ from things_bridge.errors import (
 from things_models.client import ThingsClient
 
 READ_SCOPE = "things:read"
+HEALTH_SCOPE = "things-bridge:health"
 
 # Upper bound on ids accepted from URL paths. Things ids are short; reject
 # anything excessive before it ever reaches AppleScript.
@@ -71,14 +72,18 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return None
         return header[7:].strip() or None
 
-    def _validate(self, token: str, description: str) -> bool:
+    def _validate(self, token: str, scope: str, description: str) -> bool:
         """Delegate token validation to agent-auth.
+
+        ``scope`` is a required positional so every call site states its
+        intent explicitly — silently defaulting to a single scope makes
+        it easy to forget the override when adding a new endpoint.
 
         Returns ``True`` when ``authz.validate()`` completes without raising.
         On failure writes the error HTTP response and returns ``False``.
         """
         try:
-            self._bridge.authz.validate(token, READ_SCOPE, description=description)
+            self._bridge.authz.validate(token, scope, description=description)
             return True
         except AuthzTokenExpiredError:
             self._send_json(401, {"error": "token_expired"})
@@ -112,11 +117,21 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "unauthorized"})
             return
 
+        # Health is authenticated under ``things-bridge:health`` to mirror
+        # ``agent-auth/health``. Readiness probes that need to keep working
+        # without a token can probe the 401 (server-is-up signal); the
+        # 200 path requires the scope.
+        if path == "/things-bridge/health":
+            if not self._validate(token, HEALTH_SCOPE, "things-bridge health check"):
+                return
+            self._send_json(200, {"status": "ok"})
+            return
+
         things: ThingsClient = self._bridge.things
 
         # Routing: longest-prefix specific paths first.
         if path == "/things-bridge/todos":
-            if not self._validate(token, "List Things todos"):
+            if not self._validate(token, READ_SCOPE, "List Things todos"):
                 return
             try:
                 todos = things.list_todos(
@@ -137,7 +152,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             if todo_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
-            if not self._validate(token, f"Read Things todo {todo_id}"):
+            if not self._validate(token, READ_SCOPE, f"Read Things todo {todo_id}"):
                 return
             try:
                 todo = things.get_todo(todo_id)
@@ -148,7 +163,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/things-bridge/projects":
-            if not self._validate(token, "List Things projects"):
+            if not self._validate(token, READ_SCOPE, "List Things projects"):
                 return
             try:
                 projects = things.list_projects(area_id=_first(params, "area"))
@@ -163,7 +178,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             if project_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
-            if not self._validate(token, f"Read Things project {project_id}"):
+            if not self._validate(token, READ_SCOPE, f"Read Things project {project_id}"):
                 return
             try:
                 project = things.get_project(project_id)
@@ -174,7 +189,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/things-bridge/areas":
-            if not self._validate(token, "List Things areas"):
+            if not self._validate(token, READ_SCOPE, "List Things areas"):
                 return
             try:
                 areas = things.list_areas()
@@ -189,7 +204,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             if area_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
-            if not self._validate(token, f"Read Things area {area_id}"):
+            if not self._validate(token, READ_SCOPE, f"Read Things area {area_id}"):
                 return
             try:
                 area = things.get_area(area_id)

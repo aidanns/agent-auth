@@ -53,16 +53,17 @@ The Things-client surface (`list_todos`, `get_todo`, `list_projects`, `get_proje
 
 The subprocess contract is stable and publicly documented so the bridge can adopt alternative clients (a future persistent AppleScript host, a non-macOS Things client) without code changes. See `design/decisions/0003-things-client-cli-split.md` for the rationale; `design/decisions/0001-things-client-fake.md` for the client-level-fake history it supersedes.
 
-Read-only endpoints (all require the `things:read` scope on the presented bearer token):
+Read-only endpoints. Read endpoints require the `things:read` scope; the health endpoint requires `things-bridge:health` (mirroring the agent-auth health pattern — see `GET /agent-auth/health` below).
 
-| Method | Path                                                     | Description                                   |
-| ------ | -------------------------------------------------------- | --------------------------------------------- |
-| GET    | `/things-bridge/todos?list=&project=&area=&tag=&status=` | List todos, optionally filtered               |
-| GET    | `/things-bridge/todos/{id}`                              | Fetch one todo by Things id                   |
-| GET    | `/things-bridge/projects?area=`                          | List projects, optionally filtered by area id |
-| GET    | `/things-bridge/projects/{id}`                           | Fetch one project by Things id                |
-| GET    | `/things-bridge/areas`                                   | List all areas                                |
-| GET    | `/things-bridge/areas/{id}`                              | Fetch one area by Things id                   |
+| Method | Path                                                     | Scope                  | Description                                   |
+| ------ | -------------------------------------------------------- | ---------------------- | --------------------------------------------- |
+| GET    | `/things-bridge/todos?list=&project=&area=&tag=&status=` | `things:read`          | List todos, optionally filtered               |
+| GET    | `/things-bridge/todos/{id}`                              | `things:read`          | Fetch one todo by Things id                   |
+| GET    | `/things-bridge/projects?area=`                          | `things:read`          | List projects, optionally filtered by area id |
+| GET    | `/things-bridge/projects/{id}`                           | `things:read`          | Fetch one project by Things id                |
+| GET    | `/things-bridge/areas`                                   | `things:read`          | List all areas                                |
+| GET    | `/things-bridge/areas/{id}`                              | `things:read`          | Fetch one area by Things id                   |
+| GET    | `/things-bridge/health`                                  | `things-bridge:health` | Liveness / readiness probe                    |
 
 Error responses from the bridge:
 
