@@ -34,5 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tag is in the `0.x` range the API is not considered stable (SemVer 2.0.0 §4),
   so a detected major bump is demoted to a minor bump; pass an explicit
   `task release -- 1.0.0` to graduate.
+- **`task release -- -y` skips the confirmation prompt** so the release can
+  run hands-off (e.g. `task release -- -y 1.2.3`). The signed-tag step still
+  needs your signing key; see `CONTRIBUTING.md` § "Non-interactive signing
+  for `task release`" for gpg-agent / ssh-agent pre-warm instructions.
 
 [unreleased]: https://github.com/aidanns/agent-auth/compare/HEAD

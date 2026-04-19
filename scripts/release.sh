@@ -6,9 +6,10 @@
 # running. Version string is derived from VCS tags at build time via
 # setuptools-scm; this script creates the authoritative tag.
 #
-# Usage: scripts/release.sh [<version>]
+# Usage: scripts/release.sh [-y|--yes] [<version>]
 #   scripts/release.sh            # auto-detect from conventional commits since last tag
 #   scripts/release.sh 1.2.3      # override with an explicit version
+#   scripts/release.sh -y         # skip the "Proceed?" confirmation prompt
 #
 # When no version is passed, the next version is computed from the commits
 # between the latest v* tag and HEAD using Conventional Commits + SemVer:
@@ -34,10 +35,43 @@ source "${SCRIPT_DIR}/lib/semver.sh"
 
 cd "${REPO_ROOT}"
 
+usage() {
+  cat <<'EOF' >&2
+Usage: scripts/release.sh [-y|--yes] [<version>]
+  scripts/release.sh            # auto-detect from conventional commits
+  scripts/release.sh 1.2.3      # override with an explicit version
+  scripts/release.sh -y         # skip the "Proceed?" confirmation prompt
+EOF
+}
+
+ASSUME_YES=0
+while [[ $# -gt 0 ]]; do
+  case "${1}" in
+    -y | --yes)
+      ASSUME_YES=1
+      shift
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "release: unknown flag '${1}'" >&2
+      usage
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
 if [[ $# -gt 1 ]]; then
-  echo "Usage: scripts/release.sh [<version>]" >&2
-  echo "  scripts/release.sh            # auto-detect from conventional commits" >&2
-  echo "  scripts/release.sh 1.2.3      # override with an explicit version" >&2
+  usage
   exit 1
 fi
 
@@ -163,10 +197,14 @@ echo "------------------------------------------------------------------------"
 echo "${changelog_body}"
 echo "------------------------------------------------------------------------"
 echo ""
-read -r -p "Proceed? [y/N] " confirm
-if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
-  echo "release: aborted." >&2
-  exit 1
+if [[ "${ASSUME_YES}" -eq 1 ]]; then
+  echo "--yes supplied; skipping confirmation."
+else
+  read -r -p "Proceed? [y/N] " confirm
+  if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
+    echo "release: aborted." >&2
+    exit 1
+  fi
 fi
 
 echo "Creating tag ${TAG} ..."

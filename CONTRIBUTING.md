@@ -100,7 +100,8 @@ which:
 2. Validates the working tree is clean and local `main` matches `origin/main`.
 3. Checks that `CHANGELOG.md` contains a `## [X.Y.Z]` section with content for
    the resolved version.
-4. Prompts for confirmation, then creates a signed git tag (`vX.Y.Z`).
+4. Prompts for confirmation (pass `-y` / `--yes` to skip), then creates a
+   signed git tag (`vX.Y.Z`).
 5. Pushes the tag to `origin`.
 6. Creates a GitHub release from the CHANGELOG entry for that version.
 
@@ -127,6 +128,10 @@ To cut a release:
 2. Leave a fresh empty `## [Unreleased]` section above the new version.
 3. Commit and push: `git commit -m "chore: prepare release vX.Y.Z"`.
 4. Run `task release` (auto-detect) or `task release -- X.Y.Z` (explicit).
+   Add `-y` / `--yes` to skip the confirmation prompt
+   (e.g. `task release -- -y X.Y.Z`) when you want a hands-off run — the
+   signed-tag step still needs your signing key, so pre-warm `gpg-agent`
+   or `ssh-agent` first (see [Commit signing](#commit-signing)).
 
 The version string embedded in the distributed package is derived from the git
 tag at build time via `setuptools-scm`; no other version file needs updating.
@@ -152,4 +157,40 @@ Verify signing is working:
 
 ```bash
 git log --show-signature -1
+```
+
+### Non-interactive signing for `task release`
+
+`scripts/release.sh` creates a signed tag (`git tag -s`). If your signing
+key has a passphrase, the tag step pops a pinentry prompt — which blocks
+`task release -- -y` from running hands-off. Configure the agent so the
+passphrase is cached for the duration of the release.
+
+**GPG:** put a cache policy in `~/.gnupg/gpg-agent.conf` and pick a
+pinentry that doesn't require a graphical session if you're on a headless
+box:
+
+```text
+# ~/.gnupg/gpg-agent.conf
+default-cache-ttl 28800          # cache for 8 hours
+max-cache-ttl     86400          # but at most 24 hours
+pinentry-program  /usr/bin/pinentry-curses   # or pinentry-mac on macOS
+```
+
+Reload the agent and pre-warm the cache with a throwaway signature before
+running the release:
+
+```bash
+gpgconf --kill gpg-agent
+echo | gpg --clearsign > /dev/null   # enter passphrase once
+task release -- -y X.Y.Z             # runs hands-off from here
+```
+
+**SSH:** if signing with an SSH key, load it into `ssh-agent` once per
+session so `git tag -s` doesn't prompt:
+
+```bash
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519            # passphrase prompted once
+task release -- -y X.Y.Z
 ```
