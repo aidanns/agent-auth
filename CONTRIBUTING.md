@@ -70,6 +70,9 @@ Use conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`,
 is `main`; feature branches follow `aidanns/<feature-name>`. See the
 project [CLAUDE.md](CLAUDE.md) for the full working agreement.
 
+See also: [Commit signing](#commit-signing) — commit message format and GPG/SSH
+signing are sibling requirements, not the same thing.
+
 ## Release process
 
 `task release` is the release entrypoint. The underlying automation
@@ -77,3 +80,26 @@ project [CLAUDE.md](CLAUDE.md) for the full working agreement.
 [#18](https://github.com/aidanns/agent-auth/issues/18) and is not yet
 implemented — running the task today exits non-zero to prevent manual
 releases that would skip the standard checks.
+
+## Commit signing
+
+Commits to `main` must be signed. Enforcement via GitHub branch protection is
+not yet wired up (tracked in
+[#93](https://github.com/aidanns/agent-auth/issues/93)); until then this is an
+honour-system requirement. Configure GPG or SSH signing in git:
+
+```bash
+# GPG (recommended)
+git config --global commit.gpgsign true
+git config --global user.signingkey <YOUR_KEY_ID>
+
+# SSH (alternative — set these instead of the GPG options above)
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/id_ed25519.pub
+```
+
+Verify signing is working:
+
+```bash
+git log --show-signature -1
+```
