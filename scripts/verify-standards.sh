@@ -159,7 +159,7 @@ strip_comments() {
 # doesn't early-exit its upstream pipeline — `grep -q` exiting on first
 # match would otherwise SIGPIPE `sed`/`cat`, and `pipefail` turns that
 # into a whole-pipeline failure when the input is large enough to race.
-workflows_stripped="$(find .github/workflows -name '*.yml' -print0 2>/dev/null \
+workflows_stripped="$(find .github/workflows .github/actions -name '*.yml' -print0 2>/dev/null \
   | xargs -0 -r cat 2>/dev/null \
   | strip_comments)"
 treefmt_stripped=""
