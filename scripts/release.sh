@@ -29,6 +29,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# shellcheck source=lib/semver.sh
+source "${SCRIPT_DIR}/lib/semver.sh"
+
 cd "${REPO_ROOT}"
 
 if [[ $# -gt 1 ]]; then
@@ -44,78 +47,6 @@ for cmd in git gh; do
     exit 1
   fi
 done
-
-# Walk commits in <range> and emit the largest SemVer bump implied by the
-# Conventional Commit subjects/bodies: "major", "minor", "patch", or "none".
-# Only the four Conventional Commit types that map to SemVer levels count;
-# other types (docs, chore, refactor, style, test, ci, build, perf) do not
-# produce a release on their own, matching the Conventional Commits spec.
-compute_bump() {
-  local range="$1"
-  local bump="none"
-  local sha subject body
-  # Regexes live in variables because shellcheck can't parse `:` inside `[[ =~ ]]`
-  # patterns (SC1073). Quoting the RHS of `=~` would turn it into a literal match,
-  # so the variable-indirection trick is the shellcheck-safe way to keep them regex.
-  # Conventional Commits requires lowercase types, so match lowercase only and
-  # keep the three regexes symmetric.
-  local breaking_re='^[a-z]+(\([^)]+\))?!:'
-  local feat_re='^feat(\([^)]+\))?:'
-  local fix_re='^fix(\([^)]+\))?:'
-
-  while IFS= read -r sha; do
-    [[ -z "${sha}" ]] && continue
-    subject="$(git log -1 --format='%s' "${sha}")"
-    body="$(git log -1 --format='%b' "${sha}")"
-
-    # `<type>!:` subject OR `BREAKING CHANGE:` / `BREAKING-CHANGE:` footer → major.
-    if [[ "${subject}" =~ ${breaking_re} ]] \
-      || grep -qE '^BREAKING[ -]CHANGE:' <<<"${body}"; then
-      echo "major"
-      return 0
-    fi
-
-    if [[ "${subject}" =~ ${feat_re} ]]; then
-      [[ "${bump}" != "major" ]] && bump="minor"
-      continue
-    fi
-
-    if [[ "${subject}" =~ ${fix_re} ]]; then
-      [[ "${bump}" == "none" ]] && bump="patch"
-      continue
-    fi
-  done < <(git log --format='%H' "${range}")
-
-  echo "${bump}"
-}
-
-# Apply a SemVer bump ("major"/"minor"/"patch") to vX.Y.Z and print X.Y.Z.
-apply_bump() {
-  local last_tag="$1"
-  local bump="$2"
-  local last_version="${last_tag#v}"
-  local major minor patch
-  IFS='.' read -r major minor patch <<<"${last_version}"
-  case "${bump}" in
-    major)
-      major=$((major + 1))
-      minor=0
-      patch=0
-      ;;
-    minor)
-      minor=$((minor + 1))
-      patch=0
-      ;;
-    patch)
-      patch=$((patch + 1))
-      ;;
-    *)
-      echo "release: internal error — unknown bump '${bump}'." >&2
-      exit 1
-      ;;
-  esac
-  echo "${major}.${minor}.${patch}"
-}
 
 VERSION_AUTO_DETECTED=0
 if [[ $# -eq 1 ]]; then
