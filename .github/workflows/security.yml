@@ -21,6 +21,4 @@ jobs:
           enable-cache: true
 
       - name: Run pip-audit
-        # Audit all packages resolved from uv.lock (production + dev deps).
-        # pip-audit fails the step on any unignored advisory.
-        run: uv run --extra dev pip-audit
+        run: uv run --with pip-audit pip-audit

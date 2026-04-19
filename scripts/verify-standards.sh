@@ -276,12 +276,10 @@ echo "verify-standards: no scripts/*.sh file invokes 'pip install'."
 
 # pip-audit must be wired into at least one CI workflow
 # (.claude/instructions/python.md Tooling).
-if [[ -f pyproject.toml ]]; then
-  if ! grep -qE "\\bpip-audit\\b" <<<"${workflows_stripped}"; then
-    echo "verify-standards: 'pip-audit' is not invoked in any .github/workflows/*.yml file." >&2
-    echo "  Add a workflow step that runs 'pip-audit' (see .github/workflows/security.yml)." >&2
-    exit 1
-  fi
-
-  echo "verify-standards: pip-audit is wired into CI."
+if ! grep -qE "\\bpip-audit\\b" <<<"${workflows_stripped}"; then
+  echo "verify-standards: 'pip-audit' is not invoked in any .github/workflows/*.yml file." >&2
+  echo "  Add a workflow step that runs 'pip-audit' (see .github/workflows/security.yml)." >&2
+  exit 1
 fi
+
+echo "verify-standards: pip-audit is wired into CI."
