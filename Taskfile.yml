@@ -43,7 +43,7 @@ tasks:
   pip-audit:
     desc: Scan dependencies for known vulnerabilities using pip-audit.
     cmds:
-      - uv run --extra dev pip-audit
+      - uv run --extra dev pip-audit --strict
 
   verify-standards:
     desc: Verify Project Standards
