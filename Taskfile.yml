@@ -25,6 +25,11 @@ tasks:
       - scripts/format.sh --check
       - scripts/verify-integration-isolation.sh
 
+  typecheck:
+    desc: Run mypy + pyright on src/ and tests/.
+    cmds:
+      - scripts/typecheck.sh
+
   verify-design:
     desc: Verify every leaf function in the functional decomposition is allocated in the product breakdown.
     cmds:

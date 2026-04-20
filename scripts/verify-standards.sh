@@ -431,6 +431,144 @@ fi
 
 echo "verify-standards: pip-audit is wired into CI."
 
+# Type checking per .claude/instructions/python.md (Tooling: "mypy and
+# pyright — type checking. Run both in CI.") and the deterministic
+# regression check in issue #48:
+#
+#   - pyproject.toml declares [tool.mypy] with strict = true.
+#   - pyrightconfig.json exists at the repo root.
+#   - At least one CI workflow runs both mypy and pyright.
+#
+# Scoped to workflows_only_stripped + `run:` prefix (same pattern as the
+# treefmt/ripsecrets checks) so the tools appearing only in
+# dev-dependency installs can't satisfy the CI gate.
+
+typecheck_missing=0
+
+fail_typecheck_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  typecheck_missing=1
+}
+
+if ! grep -qE "^\\[tool\\.mypy\\]" <<<"${pyproject_stripped}"; then
+  fail_typecheck_check \
+    "pyproject.toml is missing a [tool.mypy] configuration block." \
+    "Add [tool.mypy] with strict = true (see .claude/instructions/python.md)."
+elif ! grep -qE "^strict[[:space:]]*=[[:space:]]*true" <<<"${pyproject_stripped}"; then
+  fail_typecheck_check \
+    "pyproject.toml's [tool.mypy] block does not set strict = true." \
+    "Add 'strict = true' to the [tool.mypy] block; relax individual modules via [[tool.mypy.overrides]] as needed."
+fi
+
+if [[ ! -f pyrightconfig.json ]]; then
+  fail_typecheck_check \
+    "pyrightconfig.json is missing from the repo root." \
+    "Create pyrightconfig.json with typeCheckingMode: \"strict\" (see .claude/instructions/python.md)."
+fi
+
+# Both mypy and pyright must appear on a workflow `run:` line. Using the
+# workflows_only_stripped corpus (workflows/*.yml, no actions/) keeps the
+# check honest — mypy/pyright also appear in dev-dependency install
+# steps, which don't count as "gated in CI".
+if ! grep -qE "run:[[:space:]]*[^\\n]*\\bmypy\\b" <<<"${workflows_only_stripped}" \
+  && ! grep -qE "run:[[:space:]]*task[[:space:]]+typecheck" <<<"${workflows_only_stripped}"; then
+  fail_typecheck_check \
+    "no .github/workflows/*.yml runs 'mypy' (or 'task typecheck')." \
+    "Add a workflow step that runs 'task typecheck' (see .github/workflows/typecheck.yml)."
+fi
+
+if ! grep -qE "run:[[:space:]]*[^\\n]*\\bpyright\\b" <<<"${workflows_only_stripped}" \
+  && ! grep -qE "run:[[:space:]]*task[[:space:]]+typecheck" <<<"${workflows_only_stripped}"; then
+  fail_typecheck_check \
+    "no .github/workflows/*.yml runs 'pyright' (or 'task typecheck')." \
+    "Add a workflow step that runs 'task typecheck' (see .github/workflows/typecheck.yml)."
+fi
+
+if [[ ${typecheck_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: mypy (strict) and pyright are configured and gated in CI."
+
+# Ratchet-list co-source check: every module relaxed in
+# pyproject.toml's [[tool.mypy.overrides]] with `ignore_errors = true`
+# must also appear in pyrightconfig.json's `ignore`, and vice versa.
+# Without this, a rename or delete that touches one file leaves the
+# other stale — the file silently returns to strict under the
+# un-synchronised checker (which may then report pre-existing errors
+# in a surprise PR) or stays relaxed forever (hiding regressions).
+# Mutual citation in the file comments makes the co-edit conventional;
+# this check makes it enforced.
+
+if [[ -f pyproject.toml && -f pyrightconfig.json ]]; then
+  ratchet_drift="$(
+    python3 - <<'PY'
+import json
+import pathlib
+import sys
+import tomllib
+
+with open("pyproject.toml", "rb") as f:
+    pyproject = tomllib.load(f)
+with open("pyrightconfig.json") as f:
+    pyright = json.load(f)
+
+mypy_modules: set[str] = set()
+for override in pyproject.get("tool", {}).get("mypy", {}).get("overrides", []):
+    if not override.get("ignore_errors", False):
+        continue
+    mods = override.get("module", [])
+    if isinstance(mods, str):
+        mods = [mods]
+    for m in mods:
+        mypy_modules.add(m.rstrip(".*").rstrip("."))
+
+
+def module_to_path(mod: str) -> str:
+    path = mod.replace(".", "/")
+    candidates = [
+        f"src/{path}.py",
+        f"src/{path}",
+        f"{path}",
+    ]
+    for c in candidates:
+        if pathlib.Path(c).exists():
+            return c
+    return f"src/{path}"
+
+
+expected_pyright = {module_to_path(m) for m in mypy_modules}
+actual_pyright = set(pyright.get("ignore", []))
+
+missing_from_pyright = expected_pyright - actual_pyright
+missing_from_mypy = actual_pyright - expected_pyright
+
+if missing_from_pyright:
+    print("missing_from_pyright:")
+    for p in sorted(missing_from_pyright):
+        print(f"  - {p}")
+if missing_from_mypy:
+    print("missing_from_mypy:")
+    for p in sorted(missing_from_mypy):
+        print(f"  - {p}")
+if missing_from_pyright or missing_from_mypy:
+    sys.exit(1)
+PY
+  )" || {
+    echo "verify-standards: mypy/pyright ratchet lists are out of sync." >&2
+    echo "  Every [[tool.mypy.overrides]] entry with ignore_errors = true in" >&2
+    echo "  pyproject.toml must have a corresponding entry in pyrightconfig.json's" >&2
+    echo "  'ignore' list, and vice versa. Drift:" >&2
+    while IFS= read -r line; do
+      echo "  ${line}" >&2
+    done <<<"${ratchet_drift}"
+    exit 1
+  }
+
+  echo "verify-standards: mypy and pyright ratchet lists are in sync."
+fi
+
 # CONTRIBUTING.md must exist and contain the four required sections per
 # .claude/instructions/release-and-hygiene.md.
 

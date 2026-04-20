@@ -1,0 +1,39 @@
+{
+  "include": [
+    "src",
+    "tests"
+  ],
+  "exclude": [
+    ".venv",
+    ".venv-*",
+    "build",
+    "dist",
+    "**/__pycache__",
+    "**/*.egg-info"
+  ],
+  "typeCheckingMode": "strict",
+  "pythonVersion": "3.11",
+  "reportMissingTypeStubs": "warning",
+  "ignore": [
+    "src/agent_auth/approval.py",
+    "src/agent_auth/audit.py",
+    "src/agent_auth/cli.py",
+    "src/agent_auth/config.py",
+    "src/agent_auth/plugins",
+    "src/agent_auth/server.py",
+    "src/agent_auth/store.py",
+    "src/agent_auth/tokens.py",
+    "src/things_bridge/cli.py",
+    "src/things_bridge/config.py",
+    "src/things_bridge/server.py",
+    "src/things_bridge/things_client.py",
+    "src/things_cli/cli.py",
+    "src/things_cli/client.py",
+    "src/things_cli/credentials.py",
+    "src/things_cli/output.py",
+    "src/things_client_common/cli.py",
+    "src/things_models/models.py",
+    "tests",
+    "src/tests_support"
+  ]
+}
