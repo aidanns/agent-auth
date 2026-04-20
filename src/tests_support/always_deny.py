@@ -5,7 +5,7 @@
 """Notification plugin that denies every request.
 
 Integration-test use only. Paired with ``always_approve`` so tests can
-pick a deterministic plugin in ``config.json`` rather than threading an
+pick a deterministic plugin in ``config.yaml`` rather than threading an
 env-var through the container.
 """
 

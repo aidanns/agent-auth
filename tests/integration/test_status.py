@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Integration tests for the /agent-auth/token/status endpoint."""
+"""Integration tests for the /agent-auth/v1/token/status endpoint."""
 
 import pytest
 

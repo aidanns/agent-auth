@@ -50,27 +50,27 @@ class BridgeClient:
 
     def list_todos(self, params: dict[str, str] | None = None) -> dict:
         """List todos from the bridge, optionally filtered by query params."""
-        return self._request("GET", "/things-bridge/todos", params=params)
+        return self._request("GET", "/things-bridge/v1/todos", params=params)
 
     def get_todo(self, todo_id: str) -> dict:
         """Get a single todo by id."""
-        return self._request("GET", f"/things-bridge/todos/{quote(todo_id, safe='')}")
+        return self._request("GET", f"/things-bridge/v1/todos/{quote(todo_id, safe='')}")
 
     def list_projects(self, params: dict[str, str] | None = None) -> dict:
         """List projects from the bridge, optionally filtered by query params."""
-        return self._request("GET", "/things-bridge/projects", params=params)
+        return self._request("GET", "/things-bridge/v1/projects", params=params)
 
     def get_project(self, project_id: str) -> dict:
         """Get a single project by id."""
-        return self._request("GET", f"/things-bridge/projects/{quote(project_id, safe='')}")
+        return self._request("GET", f"/things-bridge/v1/projects/{quote(project_id, safe='')}")
 
     def list_areas(self) -> dict:
         """List areas from the bridge."""
-        return self._request("GET", "/things-bridge/areas")
+        return self._request("GET", "/things-bridge/v1/areas")
 
     def get_area(self, area_id: str) -> dict:
         """Get a single area by id."""
-        return self._request("GET", f"/things-bridge/areas/{quote(area_id, safe='')}")
+        return self._request("GET", f"/things-bridge/v1/areas/{quote(area_id, safe='')}")
 
     # -- internal --
 
@@ -123,7 +123,7 @@ class BridgeClient:
         status, data = self._do_http(
             self._credentials.auth_url,
             "POST",
-            "/agent-auth/token/refresh",
+            "/agent-auth/v1/token/refresh",
             body={"refresh_token": self._credentials.refresh_token},
         )
         if status == 200 and data:
@@ -149,7 +149,7 @@ class BridgeClient:
         status, data = self._do_http(
             self._credentials.auth_url,
             "POST",
-            "/agent-auth/token/reissue",
+            "/agent-auth/v1/token/reissue",
             body={"family_id": self._credentials.family_id},
         )
         if status == 200 and data:

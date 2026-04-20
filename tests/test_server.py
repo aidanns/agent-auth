@@ -119,7 +119,7 @@ def test_unknown_post_route_returns_404(in_process_server):
 
 def test_malformed_json_returns_400(in_process_server):
     _, base, _ = in_process_server
-    status, body = post(f"{base}/agent-auth/validate", raw=b"{not json")
+    status, body = post(f"{base}/agent-auth/v1/validate", raw=b"{not json")
     assert status == 400
     assert body["error"] == "malformed_request"
 
@@ -127,7 +127,7 @@ def test_malformed_json_returns_400(in_process_server):
 def test_oversize_body_returns_400(in_process_server):
     _, base, _ = in_process_server
     payload = b'{"token":"' + b"x" * (AgentAuthHandler.MAX_BODY_SIZE + 1) + b'"}'
-    status, body = post(f"{base}/agent-auth/validate", raw=payload)
+    status, body = post(f"{base}/agent-auth/v1/validate", raw=payload)
     assert status == 400
     assert body["error"] == "malformed_request"
 
@@ -536,7 +536,7 @@ def test_token_revoke_marks_family_revoked(management_session):
     assert body == {"family_id": family_id, "revoked": True}
 
     validate_status, validate_body = post(
-        f"{base}/agent-auth/validate",
+        f"{base}/agent-auth/v1/validate",
         data={"token": access_token, "required_scope": "things:read"},
     )
     assert validate_status == 401
@@ -632,14 +632,14 @@ def test_token_rotate_revokes_old_and_creates_new_family(management_session):
     assert body["scopes"] == {"things:read": "allow"}
 
     old_validate_status, old_validate_body = post(
-        f"{base}/agent-auth/validate",
+        f"{base}/agent-auth/v1/validate",
         data={"token": old_access_token, "required_scope": "things:read"},
     )
     assert old_validate_status == 401
     assert old_validate_body["valid"] is False
 
     new_validate_status, new_validate_body = post(
-        f"{base}/agent-auth/validate",
+        f"{base}/agent-auth/v1/validate",
         data={"token": body["access_token"], "required_scope": "things:read"},
     )
     assert new_validate_status == 200

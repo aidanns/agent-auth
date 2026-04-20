@@ -6,7 +6,7 @@
 
 Integration-test use only. The production ``terminal`` plugin prompts
 the user; the tests swap this in via ``notification_plugin`` in the
-bind-mounted ``config.json`` when they need approvals to succeed.
+bind-mounted ``config.yaml`` when they need approvals to succeed.
 """
 
 from agent_auth.plugins import ApprovalResult, NotificationPlugin

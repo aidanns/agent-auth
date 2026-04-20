@@ -258,7 +258,7 @@ def build_parser() -> argparse.ArgumentParser:
     rotate_parser = token_sub.add_parser("rotate", help="Rotate a token family")
     rotate_parser.add_argument("family_id", help="Token family ID")
 
-    # serve subcommand — bind address/port are configured in config.json;
+    # serve subcommand — bind address/port are configured in config.yaml;
     # the CLI has no override flags to keep exactly one source of truth.
     subparsers.add_parser("serve", help="Start the HTTP server")
 

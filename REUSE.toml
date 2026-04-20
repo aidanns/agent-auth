@@ -26,7 +26,6 @@ SPDX-License-Identifier = "MIT"
 path = [
     ".release-please-config.json",
     ".release-please-manifest.json",
-    "docker/config.test.json",
 ]
 SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
 SPDX-License-Identifier = "MIT"

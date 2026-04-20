@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+host: 0.0.0.0
+port: 9100
+access_token_ttl_seconds: 900
+refresh_token_ttl_seconds: 28800
+notification_plugin: tests_support.always_deny
+notification_plugin_config: {}

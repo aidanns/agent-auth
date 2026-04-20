@@ -218,7 +218,7 @@ def test_expired_access_token_returns_401_token_expired(
 def test_health_endpoint_requires_token(things_bridge_stack):
     # Regression guard: dropping the bearer check would let any caller
     # probe service-internal state without authorization.
-    status, data = _get(things_bridge_stack.url("health"), token=None)
+    status, data = _get(things_bridge_stack.health_url(), token=None)
     assert status == 401
     assert data == {"error": "unauthorized"}
 
@@ -229,7 +229,7 @@ def test_health_endpoint_requires_health_scope(things_bridge_stack):
     # health endpoint — it pins the scope-check path on /health, mirroring
     # the agent-auth/health behaviour.
     payload = things_bridge_stack.agent_auth.create_token("things:read=allow")
-    status, data = _get(things_bridge_stack.url("health"), payload["access_token"])
+    status, data = _get(things_bridge_stack.health_url(), payload["access_token"])
     assert status == 403
     assert data == {"error": "scope_denied"}
 
@@ -237,6 +237,6 @@ def test_health_endpoint_requires_health_scope(things_bridge_stack):
 @pytest.mark.covers_function("Delegate Token Validation", "Serve Bridge HTTP API")
 def test_health_endpoint_returns_ok_with_health_scope(things_bridge_stack):
     payload = things_bridge_stack.agent_auth.create_token("things-bridge:health=allow")
-    status, data = _get(things_bridge_stack.url("health"), payload["access_token"])
+    status, data = _get(things_bridge_stack.health_url(), payload["access_token"])
     assert status == 200
     assert data == {"status": "ok"}

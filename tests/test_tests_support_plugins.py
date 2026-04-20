@@ -5,7 +5,7 @@
 """Unit tests for the always-approve / always-deny integration-test plugins.
 
 Verifies the loader honours the module names the integration fixture
-writes into ``config.json`` and that each plugin hard-codes the
+writes into ``config.yaml`` and that each plugin hard-codes the
 advertised decision regardless of the (scope, description, family_id)
 triple.
 """

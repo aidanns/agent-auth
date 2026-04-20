@@ -76,9 +76,9 @@ to drive the Compose lifecycle instead of hand-rolled subprocess calls.
   `/opt/tests-support/` and sets `PYTHONPATH=/opt/tests-support` so the
   running server can still `importlib.import_module` it. The
   `ENTRYPOINT` is just `agent-auth serve` — configuration is read from a
-  bind-mounted `config.json`, not rendered from env vars by a shell
+  bind-mounted `config.yaml`, not rendered from env vars by a shell
   entrypoint.
-- `docker/config.test.json` is the committed baseline test config
+- `docker/config.test.yaml` is the committed baseline test config
   (deny-by-default plugin, stock TTLs). The pytest fixture copies it
   into a per-test tmpdir, applies overrides (plugin choice, TTLs), and
   bind-mounts the tmpdir read-only at
@@ -97,7 +97,7 @@ to drive the Compose lifecycle instead of hand-rolled subprocess calls.
   when they need to create / revoke tokens or inspect family state.
 - Two explicit notification plugins —
   `tests_support.always_approve` and `tests_support.always_deny` — are
-  written into the per-test `config.json`. They replace the earlier
+  written into the per-test `config.yaml`. They replace the earlier
   env-var-driven plugin: tests now opt in to an approval outcome by
   name rather than by threading an env var through the container.
 - `scripts/verify-integration-isolation.sh` enforces that

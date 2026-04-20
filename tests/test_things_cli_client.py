@@ -78,9 +78,9 @@ class _AuthHandler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length) if length else b""
         body = json.loads(raw) if raw else {}
         _AuthHandler.requests.append((self.path, body))
-        if self.path == "/agent-auth/token/refresh":
+        if self.path == "/agent-auth/v1/token/refresh":
             status, resp = _AuthHandler.refresh_responses.pop(0)
-        elif self.path == "/agent-auth/token/reissue":
+        elif self.path == "/agent-auth/v1/token/reissue":
             status, resp = _AuthHandler.reissue_responses.pop(0)
         else:
             status, resp = 404, {"error": "not_found"}

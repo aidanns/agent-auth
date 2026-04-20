@@ -18,8 +18,8 @@ services:
     ports:
       - "127.0.0.1::9100"
     volumes:
-      # Per-test tmpdir holding config.json. The fixture copies
-      # docker/config.test.json here and applies any per-test overrides
+      # Per-test tmpdir holding config.yaml. The fixture copies
+      # docker/config.test.yaml here and applies any per-test overrides
       # (TTLs, notification plugin) before starting the container.
       - {{ AGENT_AUTH_TEST_CONFIG_DIR }}:/home/agent-auth/.config/agent-auth:ro
     stop_grace_period: 5s

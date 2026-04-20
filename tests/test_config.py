@@ -4,8 +4,9 @@
 
 """Tests for configuration loading."""
 
-import json
 import os
+
+import yaml
 
 from agent_auth.config import Config, load_config
 
@@ -19,7 +20,7 @@ def test_default_config_when_file_absent(tmp_dir):
     assert config.refresh_token_ttl_seconds == 28800
     assert config.notification_plugin == "terminal"
     # Defaults must not be persisted — the config file is optional.
-    assert not os.path.exists(os.path.join(tmp_dir, "config.json"))
+    assert not os.path.exists(os.path.join(tmp_dir, "config.yaml"))
 
 
 def test_default_config_dir_roots_paths_when_no_file(tmp_dir):
@@ -30,9 +31,9 @@ def test_default_config_dir_roots_paths_when_no_file(tmp_dir):
 
 
 def test_loads_existing_config(tmp_dir):
-    config_path = os.path.join(tmp_dir, "config.json")
+    config_path = os.path.join(tmp_dir, "config.yaml")
     with open(config_path, "w") as f:
-        json.dump({"port": 9999, "notification_plugin": "desktop"}, f)
+        yaml.dump({"port": 9999, "notification_plugin": "desktop"}, f)
 
     config = load_config(tmp_dir)
     assert config.port == 9999

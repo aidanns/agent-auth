@@ -20,7 +20,6 @@ shared compose file used by every per-service fixture in this tree).
 
 from __future__ import annotations
 
-import json
 import os
 import uuid
 from collections.abc import Callable
@@ -67,8 +66,12 @@ class ThingsBridgeStack:
     compose_file: str
 
     def url(self, path: str) -> str:
-        """Return ``{base_url}/things-bridge/{path}``."""
-        return f"{self.base_url}/things-bridge/{path.lstrip('/')}"
+        """Return ``{base_url}/things-bridge/v1/{path}``."""
+        return f"{self.base_url}/things-bridge/v1/{path.lstrip('/')}"
+
+    def health_url(self) -> str:
+        """Return the unversioned health endpoint URL."""
+        return f"{self.base_url}/things-bridge/health"
 
     def write_fixture(self, fixture: dict) -> None:
         """Write/replace ``things.yaml`` in the bind-mounted fixtures dir."""
@@ -93,12 +96,12 @@ def _write_agent_auth_config(
     default without touching the agent-auth-only fixture.
     """
     with BASELINE_CONFIG.open() as f:
-        config = json.load(f)
+        config = yaml.safe_load(f) or {}
     config["notification_plugin"] = APPROVAL_PLUGINS[approval]
     config["access_token_ttl_seconds"] = access_token_ttl_seconds
     config["refresh_token_ttl_seconds"] = refresh_token_ttl_seconds
-    config_path = config_dir / "config.json"
-    config_path.write_text(json.dumps(config, indent=2))
+    config_path = config_dir / "config.yaml"
+    config_path.write_text(yaml.dump(config, default_flow_style=False))
     os.chmod(config_dir, 0o755)
     os.chmod(config_path, 0o644)
 

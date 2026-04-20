@@ -24,6 +24,7 @@ class _Responder(BaseHTTPRequestHandler):
     status = 200
     body: ClassVar[dict] = {"valid": True}
     last_request_body: bytes | None = None
+    last_request_path: str | None = None
 
     def log_message(self, *args, **kwargs):
         pass
@@ -31,6 +32,7 @@ class _Responder(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         _Responder.last_request_body = self.rfile.read(length)
+        _Responder.last_request_path = self.path
         body = json.dumps(_Responder.body).encode("utf-8")
         self.send_response(_Responder.status)
         self.send_header("Content-Type", "application/json")
@@ -54,6 +56,7 @@ def test_validate_allows_on_success(auth_server):
     _Responder.body = {"valid": True}
     client = AgentAuthClient(url, timeout_seconds=2.0)
     client.validate("aa_xxx_yyy", "things:read", description="list todos")
+    assert _Responder.last_request_path == "/agent-auth/v1/validate"
     assert _Responder.last_request_body is not None
     sent = json.loads(_Responder.last_request_body)
     assert sent["token"] == "aa_xxx_yyy"

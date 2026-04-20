@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Integration tests for the /agent-auth/token/reissue endpoint.
+"""Integration tests for the /agent-auth/v1/token/reissue endpoint.
 
 These tests exercise the expired-refresh-token branch by running the
 container with a very short ``refresh_token_ttl_seconds`` and sleeping

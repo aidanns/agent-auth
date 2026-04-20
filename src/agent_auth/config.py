@@ -10,9 +10,10 @@ Paths follow the XDG Base Directory Specification:
 - State:  ``$XDG_STATE_HOME/agent-auth``  (default ``~/.local/state/agent-auth``)
 """
 
-import json
 import os
 from dataclasses import dataclass, field
+
+import yaml
 
 
 def _xdg_dir(env_var: str, fallback_segments: tuple[str, ...]) -> str:
@@ -62,12 +63,12 @@ def load_config(config_dir: str | None = None) -> Config:
     config, database, and logs. Otherwise XDG defaults apply.
     """
     base_dir = config_dir or _default_config_dir()
-    config_path = os.path.join(base_dir, "config.json")
+    config_path = os.path.join(base_dir, "config.yaml")
     valid_fields = set(Config.__dataclass_fields__)
 
     if os.path.exists(config_path):
         with open(config_path) as f:
-            data = json.load(f)
+            data = yaml.safe_load(f) or {}
         return Config(**{k: v for k, v in data.items() if k in valid_fields})
 
     if config_dir:
