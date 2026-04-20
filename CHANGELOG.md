@@ -13,6 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Covenant v3.0 Code of Conduct, issue templates (bug report, feature request,
   security redirect), pull-request template, and SUPPORT.md. CoC and SUPPORT
   are referenced from `README.md` and `CONTRIBUTING.md`.
+- `ripsecrets` secret-scanning pre-commit hook and matching CI step to block
+  accidental secret commits
+  ([#42](https://github.com/aidanns/agent-auth/issues/42)).
+- `treefmt --ci` CI gate to catch removal or misconfiguration of the
+  formatter multiplexer
+  ([#42](https://github.com/aidanns/agent-auth/issues/42)).
+- `scripts/test.sh --fast` mode for a curated sub-second smoke subset of
+  unit tests (tokens, scopes, crypto, keys); wired into `lefthook.yml`
+  pre-commit ([#42](https://github.com/aidanns/agent-auth/issues/42)).
+
+### Changed
+
+- `lefthook.yml` consolidates the per-language formatter checks (mdformat,
+  ruff format, shellcheck, shfmt, taplo) under a single
+  `treefmt --no-cache --fail-on-change` invocation; `ruff check` and
+  `keep-sorted` remain as dedicated commands
+  ([#42](https://github.com/aidanns/agent-auth/issues/42)).
 
 ## [0.1.0] - 2026-04-19
 
