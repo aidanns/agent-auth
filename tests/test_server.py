@@ -192,7 +192,7 @@ def management_session(in_process_server):
 @pytest.mark.covers_function("Serve Token Create Endpoint")
 def test_token_create_requires_management_auth(in_process_server):
     _, base, _ = in_process_server
-    status, body = post(f"{base}/agent-auth/token/create", data={"scopes": {"x": "allow"}})
+    status, body = post(f"{base}/agent-auth/v1/token/create", data={"scopes": {"x": "allow"}})
     assert status == 401
     assert body["error"] == "missing_token"
 
@@ -202,7 +202,7 @@ def test_token_create_returns_tokens_and_family(management_session):
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     status, body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
@@ -218,7 +218,7 @@ def test_token_create_returns_tokens_and_family(management_session):
 def test_token_create_rejects_empty_scopes(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {}},
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
@@ -230,7 +230,7 @@ def test_token_create_rejects_empty_scopes(management_session):
 def test_token_create_rejects_missing_scopes_field(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={},
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
@@ -242,7 +242,7 @@ def test_token_create_rejects_missing_scopes_field(management_session):
 def test_token_create_rejects_malformed_json(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         raw=b"{bad",
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
@@ -254,7 +254,7 @@ def test_token_create_rejects_malformed_json(management_session):
 def test_token_create_rejects_invalid_tier(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "banana"}},
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
@@ -268,7 +268,7 @@ def test_token_create_rejects_invalid_tier(management_session):
 @pytest.mark.covers_function("Serve Token List Endpoint")
 def test_token_list_requires_management_auth(in_process_server):
     _, base, _ = in_process_server
-    status, body = get(f"{base}/agent-auth/token/list")
+    status, body = get(f"{base}/agent-auth/v1/token/list")
     assert status == 401
     assert body["error"] == "missing_token"
 
@@ -276,7 +276,9 @@ def test_token_list_requires_management_auth(in_process_server):
 @pytest.mark.covers_function("Serve Token List Endpoint")
 def test_token_list_returns_empty_array_when_no_families(management_session):
     base, _, mgmt_token = management_session
-    status, body = get(f"{base}/agent-auth/token/list", {"Authorization": f"Bearer {mgmt_token}"})
+    status, body = get(
+        f"{base}/agent-auth/v1/token/list", {"Authorization": f"Bearer {mgmt_token}"}
+    )
     assert status == 200
     assert body == []
 
@@ -286,11 +288,11 @@ def test_token_list_returns_created_family(management_session):
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
-    status, body = get(f"{base}/agent-auth/token/list", auth)
+    status, body = get(f"{base}/agent-auth/v1/token/list", auth)
     assert status == 200
     assert len(body) == 1
     assert body[0]["scopes"] == {"things:read": "allow"}
@@ -301,14 +303,14 @@ def test_token_list_includes_revoked_families(management_session):
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     _, create_body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
     family_id = create_body["family_id"]
-    post(f"{base}/agent-auth/token/revoke", data={"family_id": family_id}, headers=auth)
+    post(f"{base}/agent-auth/v1/token/revoke", data={"family_id": family_id}, headers=auth)
 
-    status, body = get(f"{base}/agent-auth/token/list", auth)
+    status, body = get(f"{base}/agent-auth/v1/token/list", auth)
     assert status == 200
     assert any(f["id"] == family_id and f["revoked"] for f in body)
 
@@ -316,7 +318,9 @@ def test_token_list_includes_revoked_families(management_session):
 @pytest.mark.covers_function("Serve Token List Endpoint")
 def test_token_list_excludes_management_token_family(management_session):
     base, _, mgmt_token = management_session
-    status, body = get(f"{base}/agent-auth/token/list", {"Authorization": f"Bearer {mgmt_token}"})
+    status, body = get(
+        f"{base}/agent-auth/v1/token/list", {"Authorization": f"Bearer {mgmt_token}"}
+    )
     assert status == 200
     assert not any(MANAGEMENT_SCOPE in f.get("scopes", {}) for f in body)
 
@@ -328,7 +332,7 @@ def test_token_list_excludes_management_token_family(management_session):
 def test_token_modify_requires_management_auth(in_process_server):
     _, base, _ = in_process_server
     status, body = post(
-        f"{base}/agent-auth/token/modify",
+        f"{base}/agent-auth/v1/token/modify",
         data={"family_id": "x", "add_scopes": {"y": "allow"}},
     )
     assert status == 401
@@ -340,14 +344,14 @@ def test_token_modify_adds_scope(management_session):
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     _, create_body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
     family_id = create_body["family_id"]
 
     status, body = post(
-        f"{base}/agent-auth/token/modify",
+        f"{base}/agent-auth/v1/token/modify",
         data={"family_id": family_id, "add_scopes": {"things:write": "prompt"}},
         headers=auth,
     )
@@ -360,14 +364,14 @@ def test_token_modify_removes_scope(management_session):
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     _, create_body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow", "things:write": "prompt"}},
         headers=auth,
     )
     family_id = create_body["family_id"]
 
     status, body = post(
-        f"{base}/agent-auth/token/modify",
+        f"{base}/agent-auth/v1/token/modify",
         data={"family_id": family_id, "remove_scopes": ["things:write"]},
         headers=auth,
     )
@@ -379,7 +383,7 @@ def test_token_modify_removes_scope(management_session):
 def test_token_modify_returns_404_for_unknown_family(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/modify",
+        f"{base}/agent-auth/v1/token/modify",
         data={"family_id": "no-such-family", "add_scopes": {"x": "allow"}},
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
@@ -392,15 +396,15 @@ def test_token_modify_returns_409_for_revoked_family(management_session):
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     _, create_body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
     family_id = create_body["family_id"]
-    post(f"{base}/agent-auth/token/revoke", data={"family_id": family_id}, headers=auth)
+    post(f"{base}/agent-auth/v1/token/revoke", data={"family_id": family_id}, headers=auth)
 
     status, body = post(
-        f"{base}/agent-auth/token/modify",
+        f"{base}/agent-auth/v1/token/modify",
         data={"family_id": family_id, "add_scopes": {"x": "allow"}},
         headers=auth,
     )
@@ -413,12 +417,12 @@ def test_token_modify_returns_400_when_no_modifications_provided(management_sess
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     _, create_body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
     status, body = post(
-        f"{base}/agent-auth/token/modify",
+        f"{base}/agent-auth/v1/token/modify",
         data={"family_id": create_body["family_id"]},
         headers=auth,
     )
@@ -431,12 +435,12 @@ def test_token_modify_rejects_invalid_tier_in_add_scopes(management_session):
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     _, create_body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
     status, body = post(
-        f"{base}/agent-auth/token/modify",
+        f"{base}/agent-auth/v1/token/modify",
         data={"family_id": create_body["family_id"], "add_scopes": {"things:write": "banana"}},
         headers=auth,
     )
@@ -449,14 +453,14 @@ def test_token_modify_set_tiers_silently_skips_unknown_scope(management_session)
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     _, create_body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
     family_id = create_body["family_id"]
 
     status, body = post(
-        f"{base}/agent-auth/token/modify",
+        f"{base}/agent-auth/v1/token/modify",
         data={"family_id": family_id, "set_tiers": {"no-such-scope": "prompt"}},
         headers=auth,
     )
@@ -468,7 +472,7 @@ def test_token_modify_set_tiers_silently_skips_unknown_scope(management_session)
 def test_token_modify_rejects_malformed_json(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/modify",
+        f"{base}/agent-auth/v1/token/modify",
         raw=b"{bad",
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
@@ -480,7 +484,7 @@ def test_token_modify_rejects_malformed_json(management_session):
 def test_token_modify_rejects_missing_family_id(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/modify",
+        f"{base}/agent-auth/v1/token/modify",
         data={"add_scopes": {"x": "allow"}},
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
@@ -493,12 +497,12 @@ def test_token_modify_rejects_wrong_type_for_add_scopes(management_session):
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     _, create_body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
     status, body = post(
-        f"{base}/agent-auth/token/modify",
+        f"{base}/agent-auth/v1/token/modify",
         data={"family_id": create_body["family_id"], "add_scopes": "not-a-dict"},
         headers=auth,
     )
@@ -512,7 +516,7 @@ def test_token_modify_rejects_wrong_type_for_add_scopes(management_session):
 @pytest.mark.covers_function("Serve Token Revoke Endpoint")
 def test_token_revoke_requires_management_auth(in_process_server):
     _, base, _ = in_process_server
-    status, body = post(f"{base}/agent-auth/token/revoke", data={"family_id": "x"})
+    status, body = post(f"{base}/agent-auth/v1/token/revoke", data={"family_id": "x"})
     assert status == 401
     assert body["error"] == "missing_token"
 
@@ -522,7 +526,7 @@ def test_token_revoke_marks_family_revoked(management_session):
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     _, create_body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
@@ -530,7 +534,7 @@ def test_token_revoke_marks_family_revoked(management_session):
     access_token = create_body["access_token"]
 
     status, body = post(
-        f"{base}/agent-auth/token/revoke", data={"family_id": family_id}, headers=auth
+        f"{base}/agent-auth/v1/token/revoke", data={"family_id": family_id}, headers=auth
     )
     assert status == 200
     assert body == {"family_id": family_id, "revoked": True}
@@ -548,15 +552,15 @@ def test_token_revoke_is_idempotent_on_already_revoked_family(management_session
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     _, create_body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
     family_id = create_body["family_id"]
-    post(f"{base}/agent-auth/token/revoke", data={"family_id": family_id}, headers=auth)
+    post(f"{base}/agent-auth/v1/token/revoke", data={"family_id": family_id}, headers=auth)
 
     status, body = post(
-        f"{base}/agent-auth/token/revoke", data={"family_id": family_id}, headers=auth
+        f"{base}/agent-auth/v1/token/revoke", data={"family_id": family_id}, headers=auth
     )
     assert status == 200
     assert body["revoked"] is True
@@ -566,7 +570,7 @@ def test_token_revoke_is_idempotent_on_already_revoked_family(management_session
 def test_token_revoke_returns_404_for_unknown_family(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/revoke",
+        f"{base}/agent-auth/v1/token/revoke",
         data={"family_id": "no-such"},
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
@@ -578,7 +582,7 @@ def test_token_revoke_returns_404_for_unknown_family(management_session):
 def test_token_revoke_rejects_malformed_json(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/revoke",
+        f"{base}/agent-auth/v1/token/revoke",
         raw=b"{bad",
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
@@ -590,7 +594,7 @@ def test_token_revoke_rejects_malformed_json(management_session):
 def test_token_revoke_rejects_missing_family_id(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/revoke",
+        f"{base}/agent-auth/v1/token/revoke",
         data={},
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
@@ -604,7 +608,7 @@ def test_token_revoke_rejects_missing_family_id(management_session):
 @pytest.mark.covers_function("Serve Token Rotate Endpoint")
 def test_token_rotate_requires_management_auth(in_process_server):
     _, base, _ = in_process_server
-    status, body = post(f"{base}/agent-auth/token/rotate", data={"family_id": "x"})
+    status, body = post(f"{base}/agent-auth/v1/token/rotate", data={"family_id": "x"})
     assert status == 401
     assert body["error"] == "missing_token"
 
@@ -614,7 +618,7 @@ def test_token_rotate_revokes_old_and_creates_new_family(management_session):
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     _, create_body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
@@ -622,7 +626,7 @@ def test_token_rotate_revokes_old_and_creates_new_family(management_session):
     old_access_token = create_body["access_token"]
 
     status, body = post(
-        f"{base}/agent-auth/token/rotate", data={"family_id": old_family_id}, headers=auth
+        f"{base}/agent-auth/v1/token/rotate", data={"family_id": old_family_id}, headers=auth
     )
     assert status == 200
     assert body["old_family_id"] == old_family_id
@@ -650,7 +654,7 @@ def test_token_rotate_revokes_old_and_creates_new_family(management_session):
 def test_token_rotate_returns_404_for_unknown_family(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/rotate",
+        f"{base}/agent-auth/v1/token/rotate",
         data={"family_id": "no-such"},
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
@@ -663,15 +667,15 @@ def test_token_rotate_returns_409_for_revoked_family(management_session):
     base, _, mgmt_token = management_session
     auth = {"Authorization": f"Bearer {mgmt_token}"}
     _, create_body = post(
-        f"{base}/agent-auth/token/create",
+        f"{base}/agent-auth/v1/token/create",
         data={"scopes": {"things:read": "allow"}},
         headers=auth,
     )
     family_id = create_body["family_id"]
-    post(f"{base}/agent-auth/token/revoke", data={"family_id": family_id}, headers=auth)
+    post(f"{base}/agent-auth/v1/token/revoke", data={"family_id": family_id}, headers=auth)
 
     status, body = post(
-        f"{base}/agent-auth/token/rotate", data={"family_id": family_id}, headers=auth
+        f"{base}/agent-auth/v1/token/rotate", data={"family_id": family_id}, headers=auth
     )
     assert status == 409
     assert body["error"] == "family_revoked"
@@ -681,7 +685,7 @@ def test_token_rotate_returns_409_for_revoked_family(management_session):
 def test_token_rotate_rejects_malformed_json(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/rotate",
+        f"{base}/agent-auth/v1/token/rotate",
         raw=b"{bad",
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
@@ -693,7 +697,7 @@ def test_token_rotate_rejects_malformed_json(management_session):
 def test_token_rotate_rejects_missing_family_id(management_session):
     base, _, mgmt_token = management_session
     status, body = post(
-        f"{base}/agent-auth/token/rotate",
+        f"{base}/agent-auth/v1/token/rotate",
         data={},
         headers={"Authorization": f"Bearer {mgmt_token}"},
     )
