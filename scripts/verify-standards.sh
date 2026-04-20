@@ -176,6 +176,13 @@ strip_comments() {
 workflows_stripped="$(find .github/workflows .github/actions -name '*.yml' -print0 2>/dev/null \
   | xargs -0 -r cat 2>/dev/null \
   | strip_comments)"
+# Narrower scan: only CI workflow files, excluding composite-action
+# definitions under .github/actions/. Lets checks distinguish "tool
+# invoked by CI" from "tool installed by a setup action" — a tool that
+# only appears in an install step is not actually gated.
+workflows_only_stripped="$(find .github/workflows -name '*.yml' -print0 2>/dev/null \
+  | xargs -0 -r cat 2>/dev/null \
+  | strip_comments)"
 treefmt_stripped=""
 [[ -f treefmt.toml ]] && treefmt_stripped="$(strip_comments treefmt.toml)"
 lefthook_stripped=""
@@ -292,19 +299,25 @@ else
 fi
 
 # Accept either the explicit '--ci' shorthand or the equivalent expansion
-# ('--no-cache' AND '--fail-on-change'), both of which run treefmt in
-# write-suppressed check mode suitable for CI.
-if ! grep -qE "treefmt --ci" <<<"${workflows_stripped}" \
-  && ! { grep -qE "treefmt[^\\n]*--no-cache" <<<"${workflows_stripped}" \
-    && grep -qE "treefmt[^\\n]*--fail-on-change" <<<"${workflows_stripped}"; }; then
+# ('--no-cache' AND '--fail-on-change') on a workflow `run:` line — both
+# run treefmt in write-suppressed check mode. Scoped to
+# workflows_only_stripped and prefixed with `run:` so the install step
+# in .github/actions/setup-toolchain/action.yml (which shells
+# `ripsecrets --version` / `treefmt --version` for smoke checks) can't
+# satisfy the gate.
+if ! grep -qE "run:[[:space:]]*treefmt[^\\n]*--ci" <<<"${workflows_only_stripped}" \
+  && ! grep -qE "run:[[:space:]]*treefmt[^\\n]*--no-cache[^\\n]*--fail-on-change" <<<"${workflows_only_stripped}"; then
   fail_orchestration_check \
     "no .github/workflows/*.yml runs 'treefmt --ci' (or '--no-cache --fail-on-change')." \
     "Add a workflow step that runs 'treefmt --ci' (see .github/workflows/check.yml)."
 fi
 
-if ! grep -qE "\\bripsecrets\\b" <<<"${workflows_stripped}"; then
+# Match `run: ripsecrets` (single-line) to distinguish a real CI
+# invocation from a setup-action install step's `ripsecrets --version`
+# smoke test. Scoped to workflows_only_stripped for the same reason.
+if ! grep -qE "run:[[:space:]]*ripsecrets([[:space:]]|$)" <<<"${workflows_only_stripped}"; then
   fail_orchestration_check \
-    "no .github/workflows/*.yml invokes 'ripsecrets'." \
+    "no .github/workflows/*.yml invokes 'ripsecrets' as a CI step." \
     "Add a workflow step that runs 'ripsecrets' against the tree (see .github/workflows/check.yml)."
 fi
 
