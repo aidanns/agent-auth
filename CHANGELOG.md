@@ -30,9 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `treefmt --no-cache --fail-on-change` invocation; `ruff check` and
   `keep-sorted` remain as dedicated commands
   ([#42](https://github.com/aidanns/agent-auth/issues/42)).
-
-### Changed
-
 - **Token management HTTP routes moved under `/v1/`.**
   `POST /agent-auth/token/{create,modify,revoke,rotate}` and
   `GET /agent-auth/token/list` are now served at `/agent-auth/v1/token/...`.
