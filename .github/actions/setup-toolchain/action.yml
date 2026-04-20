@@ -20,6 +20,9 @@ inputs:
   shellcheck-version:
     description: shellcheck version to install
     default: "0.10.0"
+  ripsecrets-version:
+    description: ripsecrets version to install
+    default: "0.1.11"
   ruff-version:
     description: ruff version to install
     default: "0.6.9"
@@ -29,6 +32,9 @@ inputs:
   taplo-version:
     description: taplo version to install
     default: "0.10.0"
+  treefmt-version:
+    description: treefmt version to install
+    default: "2.5.0"
   systems-engineering-ref:
     description: Commit SHA or ref of aidanns/systems-engineering to install
     default: "d8e664a5ad20c071d4ec1cd62377597f9404b6e9"
@@ -127,6 +133,28 @@ runs:
           "https://github.com/google/keep-sorted/releases/download/v${KEEP_SORTED_VERSION}/keep-sorted_linux"
         sudo install -m0755 /tmp/keep-sorted /usr/local/bin/keep-sorted
         keep-sorted --version
+
+    - name: Install ripsecrets
+      shell: bash
+      env:
+        RIPSECRETS_VERSION: ${{ inputs.ripsecrets-version }}
+      run: |
+        curl -fsSL -o /tmp/ripsecrets.tar.gz \
+          "https://github.com/sirwart/ripsecrets/releases/download/v${RIPSECRETS_VERSION}/ripsecrets-${RIPSECRETS_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+        tar -xzf /tmp/ripsecrets.tar.gz -C /tmp
+        sudo install -m0755 "/tmp/ripsecrets-${RIPSECRETS_VERSION}-x86_64-unknown-linux-gnu/ripsecrets" /usr/local/bin/ripsecrets
+        ripsecrets --version
+
+    - name: Install treefmt
+      shell: bash
+      env:
+        TREEFMT_VERSION: ${{ inputs.treefmt-version }}
+      run: |
+        curl -fsSL -o /tmp/treefmt.tar.gz \
+          "https://github.com/numtide/treefmt/releases/download/v${TREEFMT_VERSION}/treefmt_${TREEFMT_VERSION}_linux_amd64.tar.gz"
+        tar -xzf /tmp/treefmt.tar.gz -C /tmp
+        sudo install -m0755 /tmp/treefmt /usr/local/bin/treefmt
+        treefmt --version
 
     - name: Verify Required Tooling
       shell: bash

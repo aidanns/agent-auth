@@ -1,4 +1,4 @@
-# ADR 0015 — Adopt OpenTelemetry semantic conventions for metrics and logs
+# ADR 0016 — Adopt OpenTelemetry semantic conventions for metrics and logs
 
 ## Status
 

@@ -18,3 +18,19 @@ jobs:
 
       - name: Run lint + format --check
         run: task check
+
+      - name: Run treefmt --ci
+        # `task check` invokes the per-language formatters directly via
+        # scripts/lint.sh + scripts/format.sh, so it doesn't exercise
+        # treefmt.toml itself. This step catches a broken or stale
+        # treefmt.toml (missing formatter entry, wrong includes, drift
+        # from the per-tool configs) that the direct path would miss.
+        run: treefmt --ci
+
+      - name: Run ripsecrets
+        # Scan the full tree for committed secrets. Lefthook only catches
+        # staged content; this gate catches anything that lands on a branch
+        # by some other path (force-push, web edit, merge from a fork).
+        # `.secretsignore` excludes generated SVGs whose embedded base64
+        # font data trips the high-entropy heuristic.
+        run: ripsecrets

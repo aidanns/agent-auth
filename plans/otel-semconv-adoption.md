@@ -44,7 +44,7 @@ against it.
 
 ## Deliverables
 
-1. **ADR `design/decisions/0015-opentelemetry-semantic-conventions.md`**
+1. **ADR `design/decisions/0016-opentelemetry-semantic-conventions.md`**
    — commits to OTel semconv as the naming source for HTTP-server
    metrics and HTTP-attribute log fields, pins a specific version
    (`v1.40.0`, released 2026-02-19 — the latest stable at the time

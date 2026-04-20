@@ -28,15 +28,26 @@ governed by the [Code of Conduct](.github/CODE_OF_CONDUCT.md). See
     by `task lint` to verify annotated sorted blocks stay sorted. On macOS
     / Linux: `go install github.com/google/keep-sorted@latest`, or download
     from [GitHub releases](https://github.com/google/keep-sorted/releases).
-07. Install [lefthook](https://lefthook.dev/) — runs the pre-commit
-    checks configured in `lefthook.yml` (shellcheck, shfmt, ruff,
-    mdformat, taplo, keep-sorted). On macOS: `brew install lefthook`.
+07. Install [treefmt](https://treefmt.com/) — the formatter
+    multiplexer that drives the per-language formatters (mdformat, ruff
+    format, shellcheck, shfmt, taplo) configured in `treefmt.toml`. On
+    macOS: `brew install treefmt`. Elsewhere: download from
+    [GitHub releases](https://github.com/numtide/treefmt/releases).
+08. Install [ripsecrets](https://github.com/sirwart/ripsecrets) — the
+    secret-scanning pre-commit hook. On macOS: `brew install ripsecrets`.
+    Linux x86_64: download from
+    [GitHub releases](https://github.com/sirwart/ripsecrets/releases).
+    Other platforms: `cargo install ripsecrets`.
+09. Install [lefthook](https://lefthook.dev/) — runs the pre-commit
+    checks configured in `lefthook.yml` (ripsecrets, treefmt, ruff
+    check, keep-sorted). On macOS: `brew install lefthook`.
     Elsewhere: `go install github.com/evilmartians/lefthook@latest`.
-08. Clone the repo and `cd` into it.
-09. Run `task install-hooks` to install the pre-commit hook shim.
-    `task verify-standards` gates on this being installed so that
-    configured pre-commit checks actually fire on every commit.
-10. Run `task --list` to see every repeatable operation.
+10. Clone the repo and `cd` into it.
+11. Run `task install-hooks` to install the pre-commit hook shim
+    (wraps `lefthook install`). `task verify-standards` gates on this
+    being installed so that configured pre-commit checks actually fire
+    on every commit.
+12. Run `task --list` to see every repeatable operation.
 
 The first time you run any venv-backed task (e.g. `task test`,
 `task build`, or a service task like `task agent-auth -- serve`), the
@@ -56,9 +67,9 @@ Every repeatable operation is exposed through the task runner. Run
 
 | Task                                       | Description                                                                                                                                               |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task test`                                | Run the pytest suite.                                                                                                                                     |
-| `task lint`                                | Run all configured linters (shellcheck, keep-sorted).                                                                                                     |
-| `task format`                              | Run all configured formatters (shfmt, mdformat, taplo). Pass `-- --check` for diff-only mode (CI uses this).                                              |
+| `task test`                                | Run the pytest suite (unit by default; pass `-- --fast`, `-- --integration`, or `-- --all`).                                                              |
+| `task lint`                                | Run all configured linters (shellcheck, ruff check, keep-sorted).                                                                                         |
+| `task format`                              | Run all configured formatters (shfmt, ruff format, mdformat, taplo). Pass `-- --check` for diff-only mode (CI uses this).                                 |
 | `task build`                               | Build sdist and wheel distributions into `dist/`.                                                                                                         |
 | `task install-hooks`                       | Install project git hooks (lefthook).                                                                                                                     |
 | `task verify-design`                       | Verify every leaf function in the functional decomposition is allocated in the product breakdown.                                                         |

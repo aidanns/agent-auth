@@ -744,7 +744,7 @@ edge cases (malformed JSON, unknown routes, oversize bodies, the
 
 ### Integration tests
 
-`tests/integration/test_*.py` drive a containerised `agent-auth serve`
+`tests/integration/agent_auth/test_*.py` drive a containerised `agent-auth serve`
 end-to-end over HTTP. Each test gets its own Docker Compose project
 (named by a uuid), its own ephemeral host port, its own SQLite file,
 and its own keyring — so concurrent test runs on the same host cannot
@@ -768,7 +768,7 @@ pinned to
 [v1.40.0](https://github.com/open-telemetry/semantic-conventions/releases/tag/v1.40.0),
 for HTTP-server metric names and HTTP-attribute log keys. The
 rationale and deviations are recorded in
-`design/decisions/0015-opentelemetry-semantic-conventions.md`. The
+`design/decisions/0016-opentelemetry-semantic-conventions.md`. The
 pin refers to semconv attribute names only; the project emits
 Prometheus text and JSON-lines directly and does not depend on the
 OpenTelemetry SDK or OTLP transport.
