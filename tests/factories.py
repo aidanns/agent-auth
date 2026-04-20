@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Shared test factories for Things model fixtures."""
 
 from typing import Any

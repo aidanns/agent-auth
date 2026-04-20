@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -13,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Covenant v3.0 Code of Conduct, issue templates (bug report, feature request,
   security redirect), pull-request template, and SUPPORT.md. CoC and SUPPORT
   are referenced from `README.md` and `CONTRIBUTING.md`.
+- Release Please autorelease workflow that maintains a release PR on every
+  push to `main` and pushes a `vX.Y.Z` tag when the PR is merged.
+- Tag-triggered publish workflow that builds the sdist and wheel, generates
+  an SPDX 2.3 SBOM per artifact with Syft, signs every file (artifact and
+  SBOM) with keyless Sigstore cosign, and uploads the bundle to the GitHub
+  release. Verification recipe documented in `SECURITY.md`.
+- REUSE 3.3 compliance: every tracked file carries an SPDX header (or is
+  covered by `REUSE.toml`), a `reuse lint` CI workflow gates PRs, and the
+  README renders the REUSE status badge.
 
 ## [0.1.0] - 2026-04-19
 

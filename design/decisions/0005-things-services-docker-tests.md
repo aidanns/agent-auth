@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # ADR 0005 — Per-service Docker integration tests for the things-\* surface
 
 ## Status

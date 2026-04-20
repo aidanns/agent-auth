@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          # RELEASE_PLEASE_TOKEN must be a PAT or GitHub App token. Tags
+          # and releases created by the default GITHUB_TOKEN do not fire
+          # downstream workflow triggers, which would silently break the
+          # release-publish chain. See CONTRIBUTING.md § Release process.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json

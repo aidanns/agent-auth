@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Install git hooks via lefthook. Lefthook configuration is not yet committed
 # (tracked as a separate tooling-and-ci item). This script is a placeholder
 # so the task surface stays stable; it will run `lefthook install` once a

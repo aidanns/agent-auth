@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Tests for the things-cli BridgeClient HTTP flow.
 
 Uses a dual-handler test server: one port simulates the bridge, another simulates

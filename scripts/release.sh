@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Cut a release: validate clean working tree, extract the CHANGELOG entry for
 # the requested version, create and push the git tag, then publish the GitHub
 # release. Requires CHANGELOG.md to be updated with the version section before

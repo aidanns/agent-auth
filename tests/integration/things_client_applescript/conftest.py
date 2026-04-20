@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Docker-backed fixtures for the things-client-cli contract tests.
 
 The things-client-cli-applescript binary is macOS-only — its osascript

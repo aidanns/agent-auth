@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Install or upgrade agent-auth, things-bridge, things-cli, and
 # things-client-cli-applescript from a GitHub release into a uv-managed tool
 # environment. Optionally uninstall with --uninstall.

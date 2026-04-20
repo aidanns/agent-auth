@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Unit tests for scripts/lib/semver.sh.
 
 These tests exercise `compute_bump` and `apply_bump` via `bash -c 'source lib;

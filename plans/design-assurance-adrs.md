@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Plan: ASSURANCE.md + ADR template, index, and backfill
 
 Issues: [#21](https://github.com/aidanns/agent-auth/issues/21),

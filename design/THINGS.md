@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Things 3 AppleScript API Reference
 
 This document describes the complete AppleScript interface exposed by Things 3 (by Cultured Code). It is intended to allow an implementer with no direct access to a Mac running Things to write an application that reads from and writes to a Things database via AppleScript (e.g. by shelling out to `osascript`, or by using a language binding like JXA, Scripting Bridge, or PyObjC).

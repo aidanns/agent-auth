@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Docker-backed fixtures for agent-auth integration tests.
 
 Each test that requests the fixture gets a fresh Compose project (named

@@ -1,4 +1,12 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # agent-auth
+
+[![REUSE status](https://api.reuse.software/badge/github.com/aidanns/agent-auth)](https://api.reuse.software/info/github.com/aidanns/agent-auth)
 
 Token-based authorization system for gating AI agent access to host applications.
 
@@ -243,6 +251,11 @@ whatever Docker the runner provides.
 - Sensitive fields (scopes, HMAC signatures) are encrypted at rest with AES-256-GCM
 - Refresh token reuse triggers automatic family-wide revocation
 - Request body size is capped at 1 MiB
+
+Every GitHub release ships an SPDX SBOM and keyless Sigstore cosign signatures
+for each artifact and SBOM. See
+[SECURITY.md § Supply-chain artifacts](SECURITY.md#supply-chain-artifacts) for
+the verification recipe.
 
 See [SECURITY.md](SECURITY.md) for the full threat model, trust boundaries, key
 handling, revocation flow, audit surface, vulnerability reporting, and the chosen

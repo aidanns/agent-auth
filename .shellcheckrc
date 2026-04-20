@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Allow shellcheck to follow `source` directives (e.g.
 # `# shellcheck source=./_bootstrap_venv.sh`) across files so SC1091 does
 # not fire on intentional shared helpers sourced via a variable path.

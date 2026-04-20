@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Sample fixture file for `things-bridge serve --fake-things=<path>`.
 #
 # Used to stand up the full agent-auth + things-bridge + things-cli stack in

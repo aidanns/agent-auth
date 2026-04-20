@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Shared domain models for Things 3 objects and error taxonomy.
 
 Imported by ``things-bridge``, ``things-client-cli-applescript`` and

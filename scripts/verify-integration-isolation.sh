@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Guard against regressions on the Docker-based integration test layer:
 # 1. Files under tests/integration/ must not bind to or connect to raw
 #    127.0.0.1 / 0.0.0.0 literals. Tests address containers via the

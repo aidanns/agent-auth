@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Minimal urllib-based HTTP helpers shared across the test suite."""
 
 from __future__ import annotations

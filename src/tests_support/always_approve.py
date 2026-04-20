@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Notification plugin that approves every request.
 
 Integration-test use only. The production ``terminal`` plugin prompts

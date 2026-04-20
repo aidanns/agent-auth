@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Verification recipe: see SECURITY.md § Supply-chain artifacts.
+
+name: Release Publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Generate SPDX SBOM for sdist
+        uses: anchore/sbom-action@v0
+        with:
+          file: dist/*.tar.gz
+          format: spdx-json
+          output-file: dist/sdist.spdx.json
+          upload-release-assets: false
+          upload-artifact: false
+
+      - name: Generate SPDX SBOM for wheel
+        uses: anchore/sbom-action@v0
+        with:
+          file: dist/*.whl
+          format: spdx-json
+          output-file: dist/wheel.spdx.json
+          upload-release-assets: false
+          upload-artifact: false
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign artifacts and SBOMs (keyless)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # failglob: a category with zero matches is a broken build,
+          # not a reason to silently skip signing.
+          shopt -s failglob
+          for f in dist/*.tar.gz dist/*.whl dist/*.spdx.json; do
+            cosign sign-blob --yes --bundle "${f}.sig.bundle" "${f}"
+          done
+
+      - name: Upload artifacts to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: gh release upload "${TAG}" dist/* --clobber

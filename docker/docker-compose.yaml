@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Template — Python-style double-brace placeholders are substituted by
 # render_compose_file() in tests/integration/_support.py before docker
 # compose ever sees the file. Keeping the substitution surface in

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Architecture Decision Records
 
 Short records of the significant design decisions made on this project.
@@ -41,3 +47,5 @@ is linked from this index.
   — config under `$XDG_CONFIG_HOME`, data under `$XDG_DATA_HOME`, state under `$XDG_STATE_HOME`.
 - [ADR 0013 — AppleScript-based Things bridge](0013-applescript-things-bridge.md)
   — accept in-process AppleScript for now; out-of-process split is staged via the `ThingsClient` subprocess contract.
+- [ADR 0014 — Release supply chain: Release Please + keyless cosign + SPDX SBOM + REUSE](0014-release-supply-chain.md)
+  — autorelease via Release Please; keyless cosign signatures and per-artefact SPDX SBOMs on every release; REUSE per-file licensing across the source tree.

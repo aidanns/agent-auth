@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Docker-backed fixtures for things-bridge integration tests.
 
 Each test gets its own multi-service Compose project (an ``agent-auth``

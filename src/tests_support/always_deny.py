@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Notification plugin that denies every request.
 
 Integration-test use only. Paired with ``always_approve`` so tests can

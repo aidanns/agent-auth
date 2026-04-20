@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Subprocess-backed :class:`ThingsClient` used by things-bridge.
 
 The bridge no longer embeds Things 3 logic. Each request is translated

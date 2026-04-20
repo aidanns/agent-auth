@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 [build-system]
 requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
@@ -21,6 +25,7 @@ dev = [
     "build>=1.0",
     "pip-audit>=2.7",
     "pytest>=8.0",
+    "reuse>=4.0",
     "testcontainers[compose]>=4",
     # keep-sorted end
 ]

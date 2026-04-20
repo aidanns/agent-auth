@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+# SPDX-License-Identifier: MIT
+#
+# Licensing overrides for files that cannot carry an inline SPDX header —
+# binary assets, generated diagrams, the LICENSE text itself, and JSON
+# configs. See https://reuse.software/spec/.
+
+version = 1
+
+[[annotations]]
+path = "LICENSE.md"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = [
+    "design/**.csv",
+    "design/**.png",
+    "design/**.svg",
+]
+SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = [
+    ".release-please-config.json",
+    ".release-please-manifest.json",
+    "docker/config.test.json",
+]
+SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "uv.lock"
+SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
+SPDX-License-Identifier = "MIT"

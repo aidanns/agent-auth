@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Run every configured formatter over its tracked files: shfmt for
 # *.sh, ruff format for *.py, mdformat for *.md, taplo for *.toml.
 # shfmt reads formatting options from .editorconfig; ruff reads them

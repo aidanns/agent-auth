@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """HTTP client for the things-bridge with automatic token refresh and re-issuance."""
 
 import json

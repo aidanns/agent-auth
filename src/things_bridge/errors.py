@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Exception hierarchy for things-bridge.
 
 Things-related errors live in :mod:`things_models.errors` since they

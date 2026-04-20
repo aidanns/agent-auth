@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Run every configured linter: shellcheck over every tracked *.sh file,
 # ruff check over every tracked *.py file, and keep-sorted (lint mode)
 # over every tracked file to verify that annotated sorted blocks have

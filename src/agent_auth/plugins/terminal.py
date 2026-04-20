@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Terminal-based notification plugin for JIT approval.
 
 Prompts the user on the server's stdin/stdout for approval decisions.

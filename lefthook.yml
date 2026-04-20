@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # lefthook git hook manager configuration.
 # Install with `task install-hooks` (wraps `lefthook install`).
 # shfmt formatting options live in .editorconfig;
