@@ -17,6 +17,7 @@ SERVICE_NAME = "agent-auth"
 # they are the names under which we store each key inside our service entry.
 SIGNING_KEY_NAME = "signing-key"
 ENCRYPTION_KEY_NAME = "encryption-key"
+MANAGEMENT_REFRESH_TOKEN_NAME = "management-refresh-token"
 KEY_SIZE_BYTES = 32
 
 # Distinguish the two 32-byte secrets at the type level so a signing key
@@ -58,3 +59,17 @@ class KeyManager:
     def get_or_create_encryption_key(self) -> EncryptionKey:
         """Return the AES-256-GCM encryption key, generating it on first use."""
         return EncryptionKey(self._get_or_create_key(ENCRYPTION_KEY_NAME))
+
+    def get_management_refresh_token(self) -> str | None:
+        """Return the stored management refresh token, or None if not yet bootstrapped."""
+        try:
+            return keyring.get_password(self._service, MANAGEMENT_REFRESH_TOKEN_NAME)
+        except Exception as e:
+            raise KeyringError(f"Failed to read management refresh token from keyring: {e}") from e
+
+    def set_management_refresh_token(self, token: str) -> None:
+        """Persist the management refresh token to the keyring."""
+        try:
+            keyring.set_password(self._service, MANAGEMENT_REFRESH_TOKEN_NAME, token)
+        except Exception as e:
+            raise KeyringError(f"Failed to store management refresh token in keyring: {e}") from e

@@ -20,6 +20,7 @@ from unittest.mock import patch
 import pytest
 
 from agent_auth.cli import main
+from agent_auth.errors import KeyringError
 
 
 @pytest.fixture
@@ -129,6 +130,18 @@ def test_token_rotate(cli_env):
     assert families[old_family_id]["revoked"] is True
     assert families[data["new_family_id"]]["revoked"] is False
     assert families[data["new_family_id"]]["scopes"] == {"a:read": "allow"}
+
+
+@pytest.mark.covers_function("Handle Management Token Show Command")
+def test_management_token_show_keyring_error(cli_env):
+    """A keyring backend failure surfaces as a clean error, not a traceback."""
+    with patch(
+        "agent_auth.keys.KeyManager.get_management_refresh_token",
+        side_effect=KeyringError("keyring backend unavailable"),
+    ):
+        out, err = _run_cli("management-token", "show", config_dir=cli_env)
+    assert out == ""
+    assert "keyring backend unavailable" in err
 
 
 @pytest.mark.covers_function("Handle Token Modify Command", "Modify Token Family Scopes")

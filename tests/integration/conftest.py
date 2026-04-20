@@ -22,12 +22,13 @@ import os
 import subprocess
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 from testcontainers.compose import DockerCompose
 
+from tests._http import post
 from tests.integration._support import (
     DOCKER_DIR,
     build_test_image,
@@ -62,10 +63,19 @@ class AgentAuthContainer:
     base_url: str
     compose: DockerCompose
     service: str = "agent-auth"
+    _mgmt_token_cache: str | None = field(default=None, init=False, repr=False, compare=False)
 
     def url(self, path: str) -> str:
         """Return ``{base_url}/agent-auth/{path}``."""
         return f"{self.base_url}/agent-auth/{path.lstrip('/')}"
+
+    def management_token(self) -> str:
+        """Return a valid management access token, refreshed from keyring on first call."""
+        if self._mgmt_token_cache is None:
+            result = json.loads(self.exec_cli("--json", "management-token", "show"))
+            _, body = post(self.url("token/refresh"), {"refresh_token": result["refresh_token"]})
+            self._mgmt_token_cache = body["access_token"]
+        return self._mgmt_token_cache
 
     def exec_cli(self, *args: str) -> str:
         """Run ``agent-auth <args>`` inside the container and return stdout.

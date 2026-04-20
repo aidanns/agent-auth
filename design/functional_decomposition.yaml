@@ -87,6 +87,18 @@ functions:
         description: Handle GET /agent-auth/token/status requests for token introspection.
       - name: Serve Health Endpoint
         description: Handle GET /agent-auth/health liveness / readiness probes; require an access token carrying the agent-auth:health scope, return 200 when the token store is reachable, 401 / 403 on missing / unscoped tokens, and 503 when the store is unreachable.
+      - name: Serve Token Create Endpoint
+        description: Handle POST /agent-auth/token/create requests to create a new token family and return an access/refresh token pair.
+      - name: Serve Token List Endpoint
+        description: Handle GET /agent-auth/token/list requests to return all token families and their scopes.
+      - name: Serve Token Modify Endpoint
+        description: Handle POST /agent-auth/token/modify requests to add, remove, or change tiers on scopes of an existing token family.
+      - name: Serve Token Revoke Endpoint
+        description: Handle POST /agent-auth/token/revoke requests to revoke a token family, invalidating all its tokens.
+      - name: Serve Token Rotate Endpoint
+        description: Handle POST /agent-auth/token/rotate requests to revoke an existing token family and create a new one with the same scopes.
+      - name: Bootstrap Management Token
+        description: On server startup, check the OS keyring for a management refresh token; if absent or revoked, create a new agent-auth:manage=allow token family directly via the store and persist the refresh token to the keyring.
   - name: Audit Logging
     description: Record all token operations and authorization decisions for security review.
     functions:
@@ -109,6 +121,8 @@ functions:
         description: Parse arguments and invoke token family rotation.
       - name: Handle Serve Command
         description: Start the agent-auth HTTP server.
+      - name: Handle Management Token Show Command
+        description: Retrieve the management refresh token from the OS keyring and print it (or surface a clean error and non-zero exit if the keyring is unavailable).
   - name: Things Bridge
     description: Expose authenticated Things 3 read operations over HTTP to the CLI client, delegating authorization to agent-auth.
     functions:

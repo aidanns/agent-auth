@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 <!-- REUSE-IgnoreStart -->
 
-# ADR 0014 — Release supply chain: Release Please + keyless cosign + SPDX SBOM + REUSE
+# ADR 0015 — Release supply chain: Release Please + keyless cosign + SPDX SBOM + REUSE
 
 ## Status
 
