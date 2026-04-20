@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Unit tests for pure helpers in ``tests.integration._support``.
 
 The module's docker-driving helpers require a live daemon and are
