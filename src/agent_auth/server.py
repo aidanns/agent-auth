@@ -62,13 +62,13 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             self._handle_refresh()
         elif self.path == "/agent-auth/v1/token/reissue":
             self._handle_reissue()
-        elif self.path == "/agent-auth/token/create":
+        elif self.path == "/agent-auth/v1/token/create":
             self._handle_token_create()
-        elif self.path == "/agent-auth/token/modify":
+        elif self.path == "/agent-auth/v1/token/modify":
             self._handle_token_modify()
-        elif self.path == "/agent-auth/token/revoke":
+        elif self.path == "/agent-auth/v1/token/revoke":
             self._handle_token_revoke()
-        elif self.path == "/agent-auth/token/rotate":
+        elif self.path == "/agent-auth/v1/token/rotate":
             self._handle_token_rotate()
         else:
             self._send_json(404, {"error": "not_found"})
@@ -78,7 +78,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             self._handle_status()
         elif self.path == "/agent-auth/health":
             self._handle_health()
-        elif self.path == "/agent-auth/token/list":
+        elif self.path == "/agent-auth/v1/token/list":
             self._handle_token_list()
         else:
             self._send_json(404, {"error": "not_found"})

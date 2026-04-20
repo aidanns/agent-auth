@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OWASP ASVS (#112), and SLSA / cosign / SBOM (#109 / #110 / #111).
   `scripts/verify-standards.sh` gates the new section.
 
+### Changed
+
+- **Token management HTTP routes moved under `/v1/`.**
+  `POST /agent-auth/token/{create,modify,revoke,rotate}` and
+  `GET /agent-auth/token/list` are now served at `/agent-auth/v1/token/...`.
+  Completes the `/v1/` API namespace migration so every non-health route is
+  versioned (enforced by `scripts/verify-standards.sh`).
+
 ## [0.1.0] - 2026-04-19
 
 ### Added

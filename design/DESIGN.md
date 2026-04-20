@@ -604,13 +604,13 @@ where the access token's family has `agent-auth:manage=allow` in its scopes.
 On first startup, the server creates this management token family automatically
 and stores the refresh token in the OS keyring. Retrieve the refresh token via
 `agent-auth management-token show`, then exchange it for an access token via
-`POST /agent-auth/token/refresh` before calling management endpoints. See
+`POST /agent-auth/v1/token/refresh` before calling management endpoints. See
 [ADR 0014](decisions/0014-management-endpoint-auth.md) for the rationale.
 
 Errors returned when auth is missing or invalid: `401 missing_token`,
 `401 invalid_token`, `401 token_expired`, `403 scope_denied`.
 
-### POST /agent-auth/token/create
+### POST /agent-auth/v1/token/create
 
 Create a new token family and return an access/refresh token pair.
 
@@ -636,7 +636,7 @@ Errors: `400 no_scopes` (empty or missing scopes), `400 invalid_tier` (tier not 
 
 No authentication required. Trust boundary is the server's bind address (127.0.0.1 by default — see ADR 0006).
 
-### GET /agent-auth/token/list
+### GET /agent-auth/v1/token/list
 
 Return all token families, including revoked ones.
 
@@ -650,7 +650,7 @@ Response (200): JSON array of family objects.
 
 No authentication required.
 
-### POST /agent-auth/token/modify
+### POST /agent-auth/v1/token/modify
 
 Modify the scopes on an existing token family. Takes effect on the next `/validate` call — no new tokens are issued.
 
@@ -675,7 +675,7 @@ Response (200):
 
 Errors: `400 no_modifications`, `400 invalid_tier`, `400 malformed_request`, `404 family_not_found`, `409 family_revoked`. No authentication required.
 
-### POST /agent-auth/token/revoke
+### POST /agent-auth/v1/token/revoke
 
 Revoke a token family, invalidating all its tokens. Idempotent: revoking an already-revoked family returns 200.
 
@@ -693,7 +693,7 @@ Response (200):
 
 Errors: `400 malformed_request`, `404 family_not_found`. No authentication required.
 
-### POST /agent-auth/token/rotate
+### POST /agent-auth/v1/token/rotate
 
 Revoke an existing token family and create a new one with the same scopes.
 
