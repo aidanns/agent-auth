@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# Shared across every integration-* job: the composite build action and
+# the pytest session resolve the pre-built image through this tag, so
+# they must agree.
+env:
+  AGENT_AUTH_TEST_IMAGE_TAG: agent-auth-test:ci
+
 jobs:
   unit:
     runs-on: ubuntu-latest
@@ -21,8 +27,6 @@ jobs:
 
   integration-agent-auth:
     runs-on: ubuntu-latest
-    env:
-      AGENT_AUTH_TEST_IMAGE_TAG: agent-auth-test:ci
     steps:
       - uses: actions/checkout@v6
 
@@ -39,8 +43,6 @@ jobs:
 
   integration-things-bridge:
     runs-on: ubuntu-latest
-    env:
-      AGENT_AUTH_TEST_IMAGE_TAG: agent-auth-test:ci
     steps:
       - uses: actions/checkout@v6
 
@@ -57,8 +59,6 @@ jobs:
 
   integration-things-cli:
     runs-on: ubuntu-latest
-    env:
-      AGENT_AUTH_TEST_IMAGE_TAG: agent-auth-test:ci
     steps:
       - uses: actions/checkout@v6
 
@@ -75,8 +75,6 @@ jobs:
 
   integration-things-client-applescript:
     runs-on: ubuntu-latest
-    env:
-      AGENT_AUTH_TEST_IMAGE_TAG: agent-auth-test:ci
     steps:
       - uses: actions/checkout@v6
 

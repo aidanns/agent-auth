@@ -14,6 +14,7 @@ test image is rebuilt once per pytest run off the working tree.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import uuid
@@ -35,6 +36,15 @@ from tests.integration._support import (
     seed_empty_fixtures_dir,
     wait_until_server_ready,
 )
+
+# The integration runner enables ``log_cli_level=INFO`` so the
+# ``integration.timing`` phase logs stream live. The HTTP / docker
+# plumbing libraries log at INFO too, which drowns the phase rows
+# under noise unrelated to timing. Raise their floors to WARNING so
+# the CI log stays grep-friendly. Done unconditionally because this
+# module is only imported when the integration suite runs.
+for _noisy_logger in ("docker", "urllib3", "testcontainers", "asyncio"):
+    logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 
 BASELINE_CONFIG = DOCKER_DIR / "config.test.yaml"
 
