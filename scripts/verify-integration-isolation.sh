@@ -65,21 +65,34 @@ if [[ "${build_call_present}" -eq 0 ]]; then
   fail=1
 fi
 
-# Each per-service subdirectory must pin its container topology to a
-# tracked artefact: the shared docker/docker-compose.yaml, a per-service
-# compose.test.*.yaml file, or a direct ``docker run`` invocation
-# (one-shot CLI subprocess fixtures). Either way, a forgotten reference
-# can't fall through to a stale default with no visible error. Newlines
-# are collapsed so the regex still matches when ruff has split the argv
-# list across lines.
-for service_conftest in tests/integration/*/conftest.py; do
-  [[ -f "${service_conftest}" ]] || continue
+# Each per-service subdirectory must carry a conftest.py that pins its
+# container topology to a tracked artefact: the shared
+# docker/docker-compose.yaml, a per-service compose.test.*.yaml file,
+# or a direct ``docker run`` invocation (one-shot CLI subprocess
+# fixtures). A subdir with no conftest at all is rejected outright so a
+# new service can't silently fall through to stale defaults. Newlines
+# are collapsed so the regex still matches when ruff has split the
+# argv list across lines.
+shopt -s nullglob
+for service_dir in tests/integration/*/; do
+  [[ -d "${service_dir}" ]] || continue
+  # Skip pytest's bytecode caches and any other dunder directory.
+  case "${service_dir}" in
+    */__*__/) continue ;;
+  esac
+  service_conftest="${service_dir}conftest.py"
+  if [[ ! -f "${service_conftest}" ]]; then
+    echo "FAIL: ${service_dir} must contain a conftest.py pinning container topology" >&2
+    fail=1
+    continue
+  fi
   conftest_flat=$(tr '\n' ' ' <"${service_conftest}")
   if ! grep -qE 'docker-compose\.ya?ml|compose\.test\.[A-Za-z0-9_.-]*ya?ml|"docker",\s*"run"' <<<"${conftest_flat}"; then
     echo "FAIL: ${service_conftest} must reference docker/docker-compose.yaml, a docker/compose.test.*.ya?ml file, or a 'docker run' invocation" >&2
     fail=1
   fi
 done
+shopt -u nullglob
 
 if [[ "${fail}" -ne 0 ]]; then
   exit 1
