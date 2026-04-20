@@ -57,6 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (things_cli / things_client_common / things_models), and
   [#148](https://github.com/aidanns/agent-auth/issues/148) (tests).
   Closes [#48](https://github.com/aidanns/agent-auth/issues/48).
+- **OpenTelemetry semantic conventions adopted for observability naming.** New
+  ADR 0017 pins the project to OTel semconv
+  [v1.40.0](https://github.com/open-telemetry/semantic-conventions/releases/tag/v1.40.0)
+  for HTTP-server metric names and HTTP-attribute audit-log keys. A new
+  `## Observability` section in `design/DESIGN.md` documents the mapping and
+  the domain fields that keep their existing names. No code changes; this
+  lands the standard that #26 (metrics endpoint), #20 (audit schema pinning),
+  and #33 (observability design) build on.
 
 ### Changed
 
