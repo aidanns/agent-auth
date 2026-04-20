@@ -137,27 +137,35 @@ def _docker_required():
         )
 
 
-@pytest.fixture(scope="session")
-def _test_image_tag(_docker_required):
-    """Resolve the integration-test image tag for this session.
+def _resolve_test_image_tag() -> tuple[str, bool]:
+    """Resolve the image tag to use this session and whether to own it.
 
-    If ``AGENT_AUTH_TEST_IMAGE_TAG`` is set the fixture trusts the
-    caller (typically a CI step that ran ``docker build`` itself so the
-    build cost is visible separately) and reuses that tag without
-    building or removing the image. Otherwise it builds the image once
-    per pytest session under a session-unique tag and removes it on
-    teardown.
+    Returns ``(tag, managed)``. ``managed`` is ``True`` when the caller
+    must build and clean up the image, ``False`` when the tag was
+    supplied externally (typically via ``AGENT_AUTH_TEST_IMAGE_TAG`` set
+    by a CI step that ran ``docker build`` itself) and the caller must
+    not build or remove it.
 
-    A unique tag prevents parallel sessions (two worktrees, two CI jobs
-    sharing a runner) from clobbering each other's image under a shared
-    mutable tag — without which one session could boot another's image
-    while still using its own Compose project.
+    A session-unique tag in the managed case prevents parallel sessions
+    (two worktrees, two CI jobs sharing a runner) from clobbering each
+    other's image under a shared mutable tag — without which one
+    session could boot another's image while still using its own
+    Compose project.
     """
     prebuilt = os.environ.get("AGENT_AUTH_TEST_IMAGE_TAG")
     if prebuilt:
-        yield prebuilt
+        return prebuilt, False
+    return f"agent-auth-test:pytest-{uuid.uuid4().hex[:8]}", True
+
+
+@pytest.fixture(scope="session")
+def _test_image_tag(_docker_required):
+    """Yield the integration-test image tag for this session, building
+    and cleaning it up when the fixture owns the image."""
+    tag, managed = _resolve_test_image_tag()
+    if not managed:
+        yield tag
         return
-    tag = f"agent-auth-test:pytest-{uuid.uuid4().hex[:8]}"
     build_test_image(tag)
     try:
         yield tag
