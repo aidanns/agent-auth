@@ -32,6 +32,17 @@
 #   7. CONTRIBUTING.md exists at repo root and contains dev-setup, testing,
 #      release, and commit-signing sections per
 #      .claude/instructions/release-and-hygiene.md.
+#   8. Every file under design/decisions/ (other than README.md and
+#      TEMPLATE.md) contains Context / Decision / Consequences sections
+#      and is linked from design/decisions/README.md, per
+#      .claude/instructions/design.md "Architecture Decision Records".
+#   9. design/ASSURANCE.md exists, declares a QM or SIL level, and lists
+#      the required activities and evidence for that level, per
+#      .claude/instructions/design.md "Quality management / safety
+#      integrity level".
+#  10. lefthook pre-commit hook is installed in the local clone when
+#      lefthook.yml is present (skipped under CI=true, since CI enforces
+#      the same gates via explicit workflow steps).
 
 set -euo pipefail
 
@@ -385,48 +396,287 @@ fi
 
 echo "verify-standards: CONTRIBUTING.md exists with dev-setup, testing, release, and commit-signing sections."
 
-# Verify every `agent-auth token *` CLI subcommand has a corresponding HTTP
-# route registered in the server. This prevents adding a new CLI subcommand
-# without exposing it over HTTP (or vice versa).
+# ADR discipline per .claude/instructions/design.md. Every file under
+# design/decisions/ other than README.md / TEMPLATE.md must:
+#   - contain ## Context, ## Decision, and ## Consequences sections
+#     (case-insensitive, anchored to start of line),
+#   - be linked from design/decisions/README.md (filename appears as a
+#     markdown link target).
 
-if [[ -f pyproject.toml ]] && command -v uv >/dev/null 2>&1; then
-  cli_http_check_output="$(
-    uv run python3 - <<'PY'
-import inspect
-import sys
+adr_missing=0
 
-try:
-    from agent_auth.cli import COMMAND_HANDLERS
-    from agent_auth.server import AgentAuthHandler
-except ImportError as e:
-    print(f"verify-standards: could not import agent_auth modules: {e}", file=sys.stderr)
-    sys.exit(1)
+fail_adr_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  adr_missing=1
+}
 
-routing_source = (
-    inspect.getsource(AgentAuthHandler.do_POST)
-    + inspect.getsource(AgentAuthHandler.do_GET)
-)
+ADR_DIR="design/decisions"
+ADR_INDEX="${ADR_DIR}/README.md"
 
-missing = []
-for cmd in sorted(COMMAND_HANDLERS):
-    method = f"_handle_token_{cmd}"
-    route = f"/agent-auth/token/{cmd}"
-    if not hasattr(AgentAuthHandler, method):
-        missing.append(f"  token {cmd!r}: no handler method {method!r}")
-    elif route not in routing_source:
-        missing.append(f"  token {cmd!r}: method exists but route {route!r} is not wired in do_POST/do_GET")
+if [[ ! -d "${ADR_DIR}" ]]; then
+  fail_adr_check \
+    "${ADR_DIR}/ is missing." \
+    "Create ${ADR_DIR}/ with README.md, TEMPLATE.md, and at least one ADR."
+elif [[ ! -f "${ADR_INDEX}" ]]; then
+  fail_adr_check \
+    "${ADR_INDEX} is missing." \
+    "Create ${ADR_INDEX} listing every ADR by filename link."
+else
+  index_content="$(cat "${ADR_INDEX}")"
+  while IFS= read -r adr; do
+    [[ -f "${adr}" ]] || continue
+    base="$(basename "${adr}")"
+    [[ "${base}" == "README.md" || "${base}" == "TEMPLATE.md" ]] && continue
 
-if missing:
-    print("verify-standards: agent-auth token subcommands missing HTTP routes:", file=sys.stderr)
-    for line in missing:
-        print(line, file=sys.stderr)
-    sys.exit(1)
-PY
-  )"
-  cli_http_exit=$?
-  if [[ ${cli_http_exit} -ne 0 ]]; then
-    [[ -n "${cli_http_check_output}" ]] && echo "${cli_http_check_output}" >&2
+    # strip_comments eats Markdown headings (they start with `#`), so the
+    # ADR gate reads the raw file. The required sections are unambiguous
+    # — no code-block fencing concern inside an ADR section heading.
+    for section in Context Decision Consequences; do
+      if ! grep -qiE "^##[[:space:]]+${section}([[:space:]]|$)" "${adr}"; then
+        fail_adr_check \
+          "${adr} is missing a '## ${section}' section." \
+          "Add a '## ${section}' heading (see ${ADR_DIR}/TEMPLATE.md)."
+      fi
+    done
+
+    # Match as a Markdown link target `](filename)` rather than a bare
+    # substring so a filename mentioned in prose doesn't spuriously
+    # satisfy the check, and a filename that happens to be a suffix of
+    # another entry can't substring-match it.
+    escaped_base="${base//./\\.}"
+    if ! grep -qE "\]\(${escaped_base}\)" <<<"${index_content}"; then
+      fail_adr_check \
+        "${adr} is not linked from ${ADR_INDEX}." \
+        "Add an entry to ${ADR_INDEX} with a Markdown link to ${base}."
+    fi
+  done < <(find "${ADR_DIR}" -type f -name '*.md' -print)
+fi
+
+if [[ ${adr_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: ADRs under ${ADR_DIR}/ all have Context/Decision/Consequences sections and are linked from ${ADR_INDEX}."
+
+# QM / SIL declaration per .claude/instructions/design.md. design/ASSURANCE.md
+# must exist, declare at least one of QM / SIL, and list required activities
+# and evidence.
+
+assurance_missing=0
+
+fail_assurance_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  assurance_missing=1
+}
+
+ASSURANCE_FILE="design/ASSURANCE.md"
+
+if [[ ! -f "${ASSURANCE_FILE}" ]]; then
+  fail_assurance_check \
+    "${ASSURANCE_FILE} is missing." \
+    "Create ${ASSURANCE_FILE} declaring a QM (ISO 9000) or SIL (IEC 61508) level."
+else
+  # strip_comments eats Markdown headings (they start with `#`), so the
+  # ASSURANCE gate reads the raw file.
+  if ! grep -qE "\\b(QM|SIL)\\b" "${ASSURANCE_FILE}"; then
+    fail_assurance_check \
+      "${ASSURANCE_FILE} does not declare a QM or SIL level." \
+      "Name the chosen level (QM or SIL N) in a top-level heading or paragraph."
+  fi
+
+  if ! grep -qiE "^##[[:space:]]+Required activities" "${ASSURANCE_FILE}"; then
+    fail_assurance_check \
+      "${ASSURANCE_FILE} is missing a '## Required activities' section." \
+      "List the activities required by the declared level."
+  fi
+
+  if ! grep -qiE "^##[[:space:]]+Required evidence" "${ASSURANCE_FILE}"; then
+    fail_assurance_check \
+      "${ASSURANCE_FILE} is missing a '## Required evidence' section." \
+      "List the evidence that demonstrates conformance to the declared level."
+  fi
+fi
+
+if [[ ${assurance_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: ${ASSURANCE_FILE} declares a QM/SIL level with required activities and evidence."
+
+# CHANGELOG.md must exist and contain a ## [Unreleased] section per
+# .claude/instructions/release-and-hygiene.md (Keep-a-Changelog format).
+
+if [[ ! -f CHANGELOG.md ]]; then
+  echo "verify-standards: CHANGELOG.md is missing from the repo root." >&2
+  echo "  Add CHANGELOG.md following the Keep-a-Changelog format." >&2
+  exit 1
+fi
+
+if ! grep -qE "^## \\[Unreleased\\]" CHANGELOG.md; then
+  echo "verify-standards: CHANGELOG.md does not contain a '## [Unreleased]' section." >&2
+  echo "  Add '## [Unreleased]' as the topmost version section in CHANGELOG.md." >&2
+  exit 1
+fi
+
+echo "verify-standards: CHANGELOG.md exists with a [Unreleased] section."
+
+# LICENSE.md must exist and README.md must link to it from a ## License section
+# per .claude/instructions/release-and-hygiene.md.
+
+license_missing=0
+
+if [[ ! -f LICENSE.md ]]; then
+  echo "verify-standards: LICENSE.md is missing from the repo root." >&2
+  echo "  Add LICENSE.md (default: MIT) at the repo root." >&2
+  license_missing=1
+fi
+
+if [[ ! -f README.md ]]; then
+  echo "verify-standards: README.md is missing from the repo root." >&2
+  license_missing=1
+elif ! grep -qE "^## License" README.md; then
+  echo "verify-standards: README.md does not contain a '## License' section." >&2
+  echo "  Add a '## License' section to README.md linking to LICENSE.md." >&2
+  license_missing=1
+elif ! grep -qiE "\\[.*\\]\\(LICENSE\\.md\\)" README.md; then
+  echo "verify-standards: README.md '## License' section does not link to LICENSE.md." >&2
+  echo "  Add a markdown link to LICENSE.md in the '## License' section of README.md." >&2
+  license_missing=1
+fi
+
+if [[ ${license_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: LICENSE.md exists and README.md links to it from a License section."
+
+# SECURITY.md must exist and contain the required sections per
+# .claude/instructions/release-and-hygiene.md and .claude/instructions/design.md.
+
+security_missing=0
+
+fail_security_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  security_missing=1
+}
+
+if [[ ! -f SECURITY.md ]]; then
+  fail_security_check \
+    "SECURITY.md is missing from the repo root." \
+    "Add SECURITY.md covering trust boundaries, threat model, key handling, revocation flow, audit surface, and vulnerability reporting."
+else
+  # Combined "name|pattern" entries kept sortable without parallel-array
+  # misalignment risk. keep-sorted maintains alphabetical order; the pipe
+  # delimiter separates the human-readable name from the grep pattern.
+  security_sections=(
+    # keep-sorted start
+    "audit-surface|## Audit surface|## Audit log"
+    "cybersecurity-standard|## Cybersecurity standard|Cybersecurity standard"
+    "key-handling|## Key handling"
+    "revocation-flow|## Revocation flow"
+    "threat-model|## Threat model"
+    "trust-boundaries|## Trust boundaries|## Trust boundary"
+    "vulnerability-reporting|## Vulnerability reporting|## Reporting vulnerabilities"
+    # keep-sorted end
+  )
+
+  for entry in "${security_sections[@]}"; do
+    section_name="${entry%%|*}"
+    section_pattern="${entry#*|}"
+    if ! grep -qiE "${section_pattern}" SECURITY.md; then
+      fail_security_check \
+        "SECURITY.md is missing a '${section_name}' section." \
+        "Add a section matching: ${section_pattern}"
+    fi
+  done
+fi
+
+if [[ ${security_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: SECURITY.md exists with all required sections including the cybersecurity standard."
+
+# install.sh must exist at the repo root and be executable per
+# .claude/instructions/release-and-hygiene.md.
+
+if [[ ! -f install.sh ]]; then
+  echo "verify-standards: install.sh is missing from the repo root." >&2
+  echo "  Add install.sh following the bash script conventions in .claude/instructions/bash.md." >&2
+  exit 1
+fi
+
+if [[ ! -x install.sh ]]; then
+  echo "verify-standards: install.sh exists but is not executable." >&2
+  echo "  Run 'chmod +x install.sh' and commit the mode change." >&2
+  exit 1
+fi
+
+echo "verify-standards: install.sh exists and is executable."
+
+# lefthook hooks must be installed locally so the pre-commit commands
+# configured in lefthook.yml actually fire. Skipped when CI=true — CI
+# gates the same checks explicitly via workflow steps, so a fresh
+# checkout doesn't need the local hook shim. A local clone with
+# lefthook.yml present but no pre-commit shim is a silent failure mode
+# (commits land without the configured checks), which this gate catches.
+
+if [[ -f lefthook.yml && -z "${CI:-}" ]]; then
+  hooks_dir="$(git rev-parse --git-path hooks)"
+  pre_commit_hook="${hooks_dir}/pre-commit"
+  if [[ ! -f "${pre_commit_hook}" ]] || ! grep -q lefthook "${pre_commit_hook}"; then
+    echo "verify-standards: lefthook hooks are not installed in this clone." >&2
+    echo "  lefthook.yml is present but ${pre_commit_hook} is missing or is not a lefthook shim." >&2
+    echo "  Run 'task install-hooks' to install them." >&2
     exit 1
   fi
-  echo "verify-standards: every 'agent-auth token *' subcommand has a matching HTTP route."
+  echo "verify-standards: lefthook pre-commit hook is installed."
+fi
+
+# GitHub repository About metadata must be populated per
+# .claude/instructions/release-and-hygiene.md. Skipped when 'gh' is not
+# available or not authenticated (e.g. local dev without credentials).
+
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  repo_meta="$(gh repo view --json description,homepageUrl,repositoryTopics 2>/dev/null || true)"
+  if [[ -n "${repo_meta}" ]]; then
+    mapfile -t _gh_fields < <(
+      python3 -c "
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get('description', ''))
+print(d.get('homepageUrl', ''))
+print(len(d.get('repositoryTopics', [])))
+" "${repo_meta}"
+    )
+    repo_description="${_gh_fields[0]:-}"
+    repo_homepage="${_gh_fields[1]:-}"
+    repo_topics="${_gh_fields[2]:-0}"
+
+    gh_meta_missing=0
+    if [[ -z "${repo_description}" ]]; then
+      echo "verify-standards: GitHub repo 'About' description is empty." >&2
+      echo "  Set it via 'gh repo edit --description \"...\"'." >&2
+      gh_meta_missing=1
+    fi
+    if [[ -z "${repo_homepage}" ]]; then
+      echo "verify-standards: GitHub repo 'About' homepage is empty." >&2
+      echo "  Set it via 'gh repo edit --homepage \"...\"'." >&2
+      gh_meta_missing=1
+    fi
+    if [[ "${repo_topics}" -eq 0 ]]; then
+      echo "verify-standards: GitHub repo has no topics set." >&2
+      echo "  Set them via 'gh repo edit --add-topic <topic>'." >&2
+      gh_meta_missing=1
+    fi
+    if [[ ${gh_meta_missing} -ne 0 ]]; then
+      exit 1
+    fi
+    echo "verify-standards: GitHub repo About metadata (description, homepage, topics) is populated."
+  fi
+else
+  echo "verify-standards: 'gh' not available or not authenticated; skipping GitHub metadata check."
 fi

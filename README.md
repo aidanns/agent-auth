@@ -16,6 +16,21 @@ agent-auth provides a local authorization layer between AI agents (e.g. Claude C
 
 ## Installation
 
+### One-line install
+
+Requires [uv](https://docs.astral.sh/uv/) (`brew install uv` on macOS, or
+`curl -LsSf https://astral.sh/uv/install.sh | sh`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aidanns/agent-auth/main/install.sh | bash
+```
+
+This installs `agent-auth`, `things-bridge`, `things-cli`, and
+`things-client-cli-applescript` into a uv-managed tool environment and adds
+them to your PATH.
+
+### From source (development)
+
 Requires:
 
 - [uv](https://docs.astral.sh/uv/) — Python package and environment manager. Install via `brew install uv` (macOS) or `curl -LsSf https://astral.sh/uv/install.sh | sh` (Linux). uv reads `requires-python` from `pyproject.toml` and installs a matching CPython automatically, so Python 3.11+ does not need to be pre-installed.
@@ -228,6 +243,23 @@ whatever Docker the runner provides.
 - Sensitive fields (scopes, HMAC signatures) are encrypted at rest with AES-256-GCM
 - Refresh token reuse triggers automatic family-wide revocation
 - Request body size is capped at 1 MiB
+
+See [SECURITY.md](SECURITY.md) for the full threat model, trust boundaries, key
+handling, revocation flow, audit surface, vulnerability reporting, and the chosen
+cybersecurity standard (NIST SP 800-53 Rev 5).
+
+## Contributing
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup,
+task runner usage, commit conventions, and the release process. Participation
+is governed by the project
+[Code of Conduct](.github/CODE_OF_CONDUCT.md).
+[SUPPORT.md](.github/SUPPORT.md) covers where to ask questions, file bugs, and
+report vulnerabilities.
+
+## License
+
+[MIT](LICENSE.md)
 
 ## Author
 

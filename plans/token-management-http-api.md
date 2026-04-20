@@ -60,8 +60,8 @@ Document in ADR 0006.
 2. `design/functional_decomposition.yaml` — add 5 leaf functions under HTTP API
 3. `tests/test_server.py` — unit tests for each new endpoint (happy path + errors)
 4. `tests/integration/test_token_management.py` — Docker integration tests
-5. `scripts/verify-standards.sh` — CLI→HTTP route mapping regression check
-6. `design/decisions/0006-management-endpoint-no-auth.md` — ADR for auth decision
+5. `scripts/verify-token-cli-http-parity.sh` — CLI→HTTP route mapping regression check (project-specific)
+6. `design/decisions/0014-management-endpoint-auth.md` — ADR for auth decision
 7. `design/DESIGN.md` — document new endpoints
 
 ## Regression check design (verify-standards.sh)

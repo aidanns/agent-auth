@@ -77,6 +77,12 @@ components:
       - name: things-client-cli-applescript
         description: Read-only CLI shipped with the distribution that answers todos / projects / areas sub-commands by running AppleScript via osascript. The bridge's default things_client_command.
         functions: []
+  - name: install.sh
+    description: One-line installer script that installs all user-facing CLIs (agent-auth, things-bridge, things-cli, things-client-cli-applescript) into a uv-managed tool environment.
+    configuration_items:
+      - name: install.sh
+        description: Shell script at the repo root; invoked via curl | bash. Checks for uv, then runs uv tool install to fetch and install the package from GitHub.
+        functions: []
   - name: things-cli
     description: Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer.
     configuration_items:

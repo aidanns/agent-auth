@@ -1,4 +1,4 @@
-# ADR 0006: Management Endpoints Require a Management Bearer Token
+# ADR 0014: Management Endpoints Require a Management Bearer Token
 
 ## Context
 

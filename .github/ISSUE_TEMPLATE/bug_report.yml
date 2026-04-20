@@ -1,0 +1,52 @@
+name: Bug report
+description: Report something that doesn't work the way the docs or CLI say it should.
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. For security vulnerabilities, see
+        [SECURITY.md](https://github.com/aidanns/agent-auth/blob/main/SECURITY.md) —
+        do not file publicly.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `agent-auth --version` (or the commit SHA for a source checkout).
+      placeholder: e.g. 0.1.0 or 0f3fe31
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: OS + architecture (e.g. macOS 14.4 arm64, Ubuntu 22.04 x86_64, devcontainer).
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Exact commands or HTTP requests that trigger the bug, in order.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the full error message and stack trace if any.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Logs, config, screenshots — anything else that helps.
