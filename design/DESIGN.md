@@ -727,6 +727,91 @@ Run modes:
   Docker.
 - `scripts/test.sh --all` — both layers.
 
+## Observability
+
+The project follows the
+[OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/),
+pinned to
+[v1.40.0](https://github.com/open-telemetry/semantic-conventions/releases/tag/v1.40.0),
+for HTTP-server metric names and HTTP-attribute log keys. The
+rationale and deviations are recorded in
+`design/decisions/0015-opentelemetry-semantic-conventions.md`. The
+pin refers to semconv attribute names only; the project emits
+Prometheus text and JSON-lines directly and does not depend on the
+OpenTelemetry SDK or OTLP transport.
+
+`GET /agent-auth/metrics` and `GET /things-bridge/metrics` are not
+yet implemented (tracked in #26). The audit log schema is not yet
+pinned by contract tests (tracked in #20). Log-level policy and
+retention policy are deferred to the dedicated observability design
+document (tracked in #33), which will also hold the full metrics
+catalogue. This section pins the naming standard those efforts
+build against; it does not yet satisfy
+`.claude/instructions/service-design.md`'s Observability-design
+standard in full — the missing log-level and retention pieces are
+deliberately scoped to #33.
+
+### HTTP server metrics
+
+Emitted on `/metrics` once #26 lands. Metric names follow OTel
+semconv; Prometheus exposition replaces `.` with `_` and appends
+units per the Prometheus convention.
+
+| OTel metric name               | Prometheus name                        | Instrument (Prometheus type) | Attributes / labels                                                                                                                                         |
+| ------------------------------ | -------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `http.server.request.duration` | `http_server_request_duration_seconds` | Histogram (histogram)        | `http.request.method`, `http.route`, `url.scheme`, `http.response.status_code` (on non-error), `error.type` (on error)                                      |
+| `http.server.active_requests`  | `http_server_active_requests`          | UpDownCounter (gauge)        | `http.request.method`, `url.scheme` (required); `server.address`, `server.port` (opt-in per semconv; emitted because local bind address varies per service) |
+
+Domain counters (no OTel equivalent) use project-namespaced names:
+
+| Metric                                               | Type    | Description                                                                 |
+| ---------------------------------------------------- | ------- | --------------------------------------------------------------------------- |
+| `agent_auth_validations_total{result, reason, tier}` | counter | `POST /agent-auth/validate` outcomes — `allowed` / `denied` + denial reason |
+| `agent_auth_token_operations_total{operation}`       | counter | `created`, `refreshed`, `reissued`, `revoked`, `modified`                   |
+| `agent_auth_approvals_total{outcome, grant_type}`    | counter | JIT approval outcomes when a `prompt`-tier scope is requested               |
+
+### Audit log fields
+
+The audit log at `$XDG_STATE_HOME/agent-auth/audit.log` is JSON-lines.
+Fields fall into two groups:
+
+**HTTP attributes (OTel semconv keys)** — populated on events that
+originated from an HTTP request. Names and types follow semconv:
+
+| Field                       | Type   | Source                                                                                                     |
+| --------------------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
+| `http.request.method`       | string | e.g. `POST`                                                                                                |
+| `http.route`                | string | templated path, e.g. `/agent-auth/token/modify` (metrics-safe, low cardinality)                            |
+| `url.path`                  | string | actual request path with concrete IDs, e.g. `/agent-auth/token/modify` (forensics-useful for audit trails) |
+| `http.response.status_code` | int    | HTTP response status                                                                                       |
+| `url.scheme`                | string | `http` or `https`                                                                                          |
+| `client.address`            | string | remote peer IP                                                                                             |
+| `user_agent.original`       | string | verbatim `User-Agent` header                                                                               |
+| `network.protocol.version`  | string | e.g. `1.1` or `2`; lets audits distinguish HTTP/1.1 from HTTP/2 sessions                                   |
+| `server.address`            | string | local bind address                                                                                         |
+| `server.port`               | int    | local bind port                                                                                            |
+| `service.name`              | string | `agent-auth` or `things-bridge`                                                                            |
+| `service.version`           | string | PEP 440 release version                                                                                    |
+
+**Domain fields (project-namespaced)** — describe authorization
+state, not HTTP mechanics. No OTel equivalent exists; these keep
+their existing names:
+
+| Field        | Type   | Description                                                                                                                                                            |
+| ------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timestamp`  | string | ISO 8601 UTC emit time. Kept as `timestamp` (flat JSON, not an OTel LogRecord envelope).                                                                               |
+| `event`      | string | Discriminator — `validation_allowed`, `validation_denied`, `token_created`, `token_refreshed`, `token_reissued`, `token_revoked`, `scopes_modified`, `reissue_denied`. |
+| `token_id`   | string | Opaque token identifier.                                                                                                                                               |
+| `family_id`  | string | Opaque token-family identifier.                                                                                                                                        |
+| `scope`      | string | The single requested scope.                                                                                                                                            |
+| `scopes`     | list   | Scopes on a family (on create / modify events).                                                                                                                        |
+| `tier`       | string | `allow`, `prompt`, or `deny`.                                                                                                                                          |
+| `grant_type` | string | JIT grant flavour on a `prompt`-tier approval.                                                                                                                         |
+| `reason`     | string | Denial reason code on `validation_denied` / `reissue_denied`.                                                                                                          |
+
+Contract tests pinning the schema (#20) and the dedicated
+observability design (#33) extend this mapping.
+
 ## Security Considerations
 
 - The signing key is stored in the system keyring (macOS Keychain or libsecret/gnome-keyring), never as a plaintext file. Only agent-auth reads it.
