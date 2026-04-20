@@ -120,7 +120,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         # Health is authenticated under ``things-bridge:health`` to mirror
         # ``agent-auth/health``. Readiness probes that need to keep working
         # without a token can probe the 401 (server-is-up signal); the
-        # 200 path requires the scope.
+        # 200 path requires the scope. Health remains unversioned by convention.
         if path == "/things-bridge/health":
             if not self._validate(token, HEALTH_SCOPE, "things-bridge health check"):
                 return
@@ -130,7 +130,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         things: ThingsClient = self._bridge.things
 
         # Routing: longest-prefix specific paths first.
-        if path == "/things-bridge/todos":
+        if path == "/things-bridge/v1/todos":
             if not self._validate(token, READ_SCOPE, "List Things todos"):
                 return
             try:
@@ -147,8 +147,8 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"todos": [t.to_json() for t in todos]})
             return
 
-        if path.startswith("/things-bridge/todos/"):
-            todo_id = _safe_id(path[len("/things-bridge/todos/") :])
+        if path.startswith("/things-bridge/v1/todos/"):
+            todo_id = _safe_id(path[len("/things-bridge/v1/todos/") :])
             if todo_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
@@ -162,7 +162,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"todo": todo.to_json()})
             return
 
-        if path == "/things-bridge/projects":
+        if path == "/things-bridge/v1/projects":
             if not self._validate(token, READ_SCOPE, "List Things projects"):
                 return
             try:
@@ -173,8 +173,8 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"projects": [p.to_json() for p in projects]})
             return
 
-        if path.startswith("/things-bridge/projects/"):
-            project_id = _safe_id(path[len("/things-bridge/projects/") :])
+        if path.startswith("/things-bridge/v1/projects/"):
+            project_id = _safe_id(path[len("/things-bridge/v1/projects/") :])
             if project_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
@@ -188,7 +188,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"project": project.to_json()})
             return
 
-        if path == "/things-bridge/areas":
+        if path == "/things-bridge/v1/areas":
             if not self._validate(token, READ_SCOPE, "List Things areas"):
                 return
             try:
@@ -199,8 +199,8 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"areas": [a.to_json() for a in areas]})
             return
 
-        if path.startswith("/things-bridge/areas/"):
-            area_id = _safe_id(path[len("/things-bridge/areas/") :])
+        if path.startswith("/things-bridge/v1/areas/"):
+            area_id = _safe_id(path[len("/things-bridge/v1/areas/") :])
             if area_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
