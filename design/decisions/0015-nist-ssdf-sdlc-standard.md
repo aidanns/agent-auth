@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # ADR 0015 — Adopt NIST SSDF (SP 800-218) as the SDLC standard
 
 ## Status

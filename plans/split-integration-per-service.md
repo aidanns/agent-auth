@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Plan: Split integration tests into per-service workflow jobs
 
 Issue: [#138](https://github.com/aidanns/agent-auth/issues/138).

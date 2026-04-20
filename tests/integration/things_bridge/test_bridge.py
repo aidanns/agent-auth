@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """End-to-end Docker integration tests for things-bridge.
 
 Drives the full read path through real HTTP: a client sends a request

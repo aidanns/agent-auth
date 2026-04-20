@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Test-only Things client backed by an in-memory YAML store.
 
 Packaged under ``tests/`` so it is never shipped in the production

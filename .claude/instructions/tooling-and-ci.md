@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Tooling and CI
 
 Standard tools to adopt and wire into CI and git hooks. When adding a new

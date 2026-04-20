@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Configuration loading for things-bridge.
 
 Paths follow the XDG Base Directory Specification:

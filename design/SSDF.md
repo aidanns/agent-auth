@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # SSDF Conformance
 
 agent-auth adopts [NIST SP 800-218 v1.1 — Secure Software Development

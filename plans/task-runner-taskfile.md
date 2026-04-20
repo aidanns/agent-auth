@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Plan: Add `Taskfile.yml` (go-task) as Unified Task Runner
 
 Issue: [#43](https://github.com/aidanns/agent-auth/issues/43).

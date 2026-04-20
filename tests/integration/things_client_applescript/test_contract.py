@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Docker contract tests for the things-client CLI protocol.
 
 The bridge reasons about any ``things-client-cli-*`` purely through the

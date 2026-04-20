@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Unit tests for :class:`things_bridge.things_client.ThingsSubprocessClient`.
 
 Verifies the subprocess protocol the bridge speaks to any configured

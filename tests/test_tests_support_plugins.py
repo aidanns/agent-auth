@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Unit tests for the always-approve / always-deny integration-test plugins.
 
 Verifies the loader honours the module names the integration fixture

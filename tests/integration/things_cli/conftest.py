@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Docker-backed fixtures for things-cli integration tests.
 
 Reuses the ``things_bridge_stack`` fixture (multi-service Compose
