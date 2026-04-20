@@ -72,7 +72,7 @@ to drive the Compose lifecycle instead of hand-rolled subprocess calls.
   `ENTRYPOINT` is just `agent-auth serve` — configuration is read from a
   bind-mounted `config.yaml`, not rendered from env vars by a shell
   entrypoint.
-- `docker/config.test.json` is the committed baseline test config
+- `docker/config.test.yaml` is the committed baseline test config
   (deny-by-default plugin, stock TTLs). The pytest fixture copies it
   into a per-test tmpdir, applies overrides (plugin choice, TTLs), and
   bind-mounts the tmpdir read-only at

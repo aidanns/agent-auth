@@ -702,7 +702,11 @@ echo "verify-standards: config files use YAML (no config.json or json.load in co
 # API versioning: every registered HTTP route (outside /health) must match
 # ^/(agent-auth|things-bridge)/v[0-9]+/
 # (.claude/instructions/service-design.md — URL-versioned APIs).
-unversioned_routes=$(grep -rn 'self\.path ==' src/agent_auth/server.py src/things_bridge/server.py 2>/dev/null \
+# agent-auth/server.py uses `self.path ==`; things_bridge/server.py uses
+# bare `path ==` / `path.startswith` — both patterns are checked.
+unversioned_routes=$(grep -En \
+  '(self\.path|[^_]path) (==|\.startswith\() "/' \
+  src/agent_auth/server.py src/things_bridge/server.py 2>/dev/null \
   | grep -v '/health' \
   | grep -v '/v[0-9]\+/' \
   | grep -v '# unversioned' || true)
