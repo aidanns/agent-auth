@@ -36,8 +36,10 @@ jobs:
     needs: [unit, integration]
     if: always()
     steps:
-      - name: Fail if any upstream job did not succeed
-        if: needs.unit.result != 'success' || needs.integration.result != 'success'
+      - name: Aggregate unit and integration results
         run: |
-          echo "unit=${{ needs.unit.result }} integration=${{ needs.integration.result }}"
-          exit 1
+          if [[ "${{ needs.unit.result }}" != "success" \
+             || "${{ needs.integration.result }}" != "success" ]]; then
+            echo "unit=${{ needs.unit.result }} integration=${{ needs.integration.result }}"
+            exit 1
+          fi
