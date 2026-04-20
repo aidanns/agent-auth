@@ -40,7 +40,7 @@ routing_source = (
 missing = []
 for cmd in sorted(COMMAND_HANDLERS):
     method = f"_handle_token_{cmd}"
-    route = f"/agent-auth/token/{cmd}"
+    route = f"/agent-auth/v1/token/{cmd}"
     if not hasattr(AgentAuthHandler, method):
         missing.append(f"  token {cmd!r}: no handler method {method!r}")
     elif route not in routing_source:
