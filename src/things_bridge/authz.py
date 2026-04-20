@@ -13,7 +13,7 @@ from things_bridge.errors import (
 
 
 class AgentAuthClient:
-    """Validates bearer tokens against agent-auth's ``/agent-auth/validate`` endpoint."""
+    """Validates bearer tokens against agent-auth's ``/agent-auth/v1/validate`` endpoint."""
 
     def __init__(self, auth_url: str, *, timeout_seconds: float = 30.0):
         parsed = urlparse(auth_url)
@@ -39,7 +39,7 @@ class AgentAuthClient:
             try:
                 conn.request(
                     "POST",
-                    "/agent-auth/validate",
+                    "/agent-auth/v1/validate",
                     body=body,
                     headers={
                         "Content-Type": "application/json",

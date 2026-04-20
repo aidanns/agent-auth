@@ -20,7 +20,7 @@ feature plans can verify their SDLC posture against it.
 2. Name SSDF in `SECURITY.md` under a new `## SDLC standard`
    section, mirroring the existing `## Cybersecurity standard`
    section for NIST SP 800-53.
-3. Backfill ADR 0014 explaining the SDLC / application-controls /
+3. Backfill ADR 0015 explaining the SDLC / application-controls /
    build-provenance split (SSDF / ASVS-#112 / SLSA-#109) and why
    SSDF is the right SDLC-side anchor for a solo-maintainer,
    local-only auth project.
@@ -58,7 +58,7 @@ feature plans can verify their SDLC posture against it.
    naming the four practice groups and their scope; one sentence
    recording that ASVS (#112) and SLSA (#109) are the
    application-controls and build-provenance companions.
-3. **`design/decisions/0014-nist-ssdf-sdlc-standard.md`** — ADR
+3. **`design/decisions/0015-nist-ssdf-sdlc-standard.md`** — ADR
    backfilling the decision. Status `Accepted — 2026-04-20`.
    Context captures the SDLC-vs-application-vs-supply-chain
    split. Considered alternatives covers (a) BSIMM (rejected —
@@ -70,7 +70,7 @@ feature plans can verify their SDLC posture against it.
    Consequences note the pairing with #112 / #109 / #110 / #111
    and the per-plan SDLC walk that now becomes possible.
 4. **`design/decisions/README.md`** — adds entry linking ADR
-   0014\.
+   0015\.
 5. **`scripts/verify-standards.sh`** — adds a new
    `sdlc-standard` entry to `security_sections`, enforcing that
    `SECURITY.md` contains a heading matching
@@ -115,7 +115,7 @@ Keep the section short — details live in `design/SSDF.md`. The
 section's existence is gated by `verify-standards.sh`; its
 content is not.
 
-**Write ADR 0014 third.** Follow `design/decisions/TEMPLATE.md`
+**Write ADR 0015 third.** Follow `design/decisions/TEMPLATE.md`
 exactly. Keep the ADR under one page of prose.
 
 **Wire the gate last.** Extend `security_sections` in
@@ -139,7 +139,7 @@ anchor or similar).
   Planned and file the gap.
 - **Threat model** — no new security-relevant behaviour. No
   `SECURITY.md` threat-model rows added. Skip.
-- **Architecture Decision Records** — ADR 0014 *is* the design
+- **Architecture Decision Records** — ADR 0015 *is* the design
   decision for this change. No other decisions fall out.
 - **Cybersecurity standard compliance** — this change records
   the SDLC-side standard that pairs with NIST SP 800-53. Walk the

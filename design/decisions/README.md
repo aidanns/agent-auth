@@ -41,5 +41,7 @@ is linked from this index.
   — config under `$XDG_CONFIG_HOME`, data under `$XDG_DATA_HOME`, state under `$XDG_STATE_HOME`.
 - [ADR 0013 — AppleScript-based Things bridge](0013-applescript-things-bridge.md)
   — accept in-process AppleScript for now; out-of-process split is staged via the `ThingsClient` subprocess contract.
-- [ADR 0014 — Adopt NIST SSDF (SP 800-218) as the SDLC standard](0014-nist-ssdf-sdlc-standard.md)
+- [ADR 0014 — Management endpoints require a management bearer token](0014-management-endpoint-auth.md)
+  — `agent-auth:manage=allow` scope gates create/list/modify/revoke/rotate; bootstrapped at server startup into the OS keyring.
+- [ADR 0015 — Adopt NIST SSDF (SP 800-218) as the SDLC standard](0015-nist-ssdf-sdlc-standard.md)
   — SSDF is the SDLC-practices companion to the existing NIST SP 800-53 cybersecurity standard; conformance tracked in `design/SSDF.md`.

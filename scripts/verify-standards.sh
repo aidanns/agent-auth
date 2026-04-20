@@ -681,3 +681,99 @@ print(len(d.get('repositoryTopics', [])))
 else
   echo "verify-standards: 'gh' not available or not authenticated; skipping GitHub metadata check."
 fi
+
+# config format: config.py files must not reference config.json or use json.load
+# (.claude/instructions/service-design.md — YAML config).
+config_json_bad=0
+for cfg_file in src/agent_auth/config.py src/things_bridge/config.py; do
+  if [[ -f "${cfg_file}" ]]; then
+    if grep -qE "config\.json|json\.load" "${cfg_file}"; then
+      echo "verify-standards: ${cfg_file} references 'config.json' or uses json.load." >&2
+      echo "  Config must be loaded from config.yaml via yaml.safe_load." >&2
+      config_json_bad=1
+    fi
+  fi
+done
+if [[ ${config_json_bad} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: config files use YAML (no config.json or json.load in config.py)."
+
+# API versioning: every registered HTTP route (outside /health) must match
+# ^/(agent-auth|things-bridge)/v[0-9]+/
+# (.claude/instructions/service-design.md — URL-versioned APIs).
+# agent-auth/server.py uses `self.path ==`; things_bridge/server.py uses
+# bare `path ==` / `path.startswith` — both patterns are checked.
+unversioned_routes=$(grep -En \
+  '(self\.path|[^_]path) (==|\.startswith\() "/' \
+  src/agent_auth/server.py src/things_bridge/server.py 2>/dev/null \
+  | grep -v '/health' \
+  | grep -v '/v[0-9]\+/' \
+  | grep -v '# unversioned' || true)
+if [[ -n "${unversioned_routes}" ]]; then
+  echo "verify-standards: unversioned HTTP routes found in server files:" >&2
+  echo "${unversioned_routes}" >&2
+  echo "  All endpoints (except /health) must use the /v1/ namespace." >&2
+  exit 1
+fi
+
+echo "verify-standards: all non-health HTTP routes are versioned (/v1/)."
+
+# Audit schema contract tests: tests/test_audit_schema.py must exist and
+# reference each documented event kind
+# (.claude/instructions/release-and-hygiene.md — structured output schemas).
+audit_schema_file="tests/test_audit_schema.py"
+if [[ ! -f "${audit_schema_file}" ]]; then
+  echo "verify-standards: ${audit_schema_file} does not exist." >&2
+  echo "  Create schema-contract tests for every documented audit event kind." >&2
+  exit 1
+fi
+
+audit_events=(
+  token_created token_refreshed token_reissued token_revoked token_rotated
+  scopes_modified reissue_denied validation_allowed validation_denied
+  approval_granted approval_denied
+)
+audit_missing=0
+for event in "${audit_events[@]}"; do
+  if ! grep -q "\"${event}\"" "${audit_schema_file}"; then
+    echo "verify-standards: audit event '${event}' not referenced in ${audit_schema_file}." >&2
+    audit_missing=1
+  fi
+done
+if [[ ${audit_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: ${audit_schema_file} exists and references all documented audit event kinds."
+
+# Error taxonomy contract tests: tests/test_error_taxonomy.py must exist and
+# reference each documented error code
+# (.claude/instructions/service-design.md — stable error taxonomy).
+error_taxonomy_file="tests/test_error_taxonomy.py"
+if [[ ! -f "${error_taxonomy_file}" ]]; then
+  echo "verify-standards: ${error_taxonomy_file} does not exist." >&2
+  echo "  Create contract tests for every documented error code in design/error-codes.md." >&2
+  exit 1
+fi
+
+error_codes=(
+  malformed_request invalid_token token_expired token_revoked scope_denied
+  family_revoked refresh_token_expired refresh_token_reuse_detected
+  refresh_token_still_valid reissue_denied missing_token not_found
+  unauthorized authz_unavailable things_permission_denied things_unavailable
+  method_not_allowed
+)
+error_missing=0
+for code in "${error_codes[@]}"; do
+  if ! grep -q "\"${code}\"" "${error_taxonomy_file}"; then
+    echo "verify-standards: error code '${code}' not referenced in ${error_taxonomy_file}." >&2
+    error_missing=1
+  fi
+done
+if [[ ${error_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: ${error_taxonomy_file} exists and references all documented error codes."

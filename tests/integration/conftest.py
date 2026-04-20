@@ -18,12 +18,14 @@ import os
 import subprocess
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
+import yaml
 from testcontainers.compose import DockerCompose
 
+from tests._http import post
 from tests.integration._support import (
     DOCKER_DIR,
     build_test_image,
@@ -33,12 +35,12 @@ from tests.integration._support import (
     wait_until_server_ready,
 )
 
-BASELINE_CONFIG = DOCKER_DIR / "config.test.json"
+BASELINE_CONFIG = DOCKER_DIR / "config.test.yaml"
 
 # Maps the integration-test factory's human-readable ``approval`` knob
 # onto the fully-qualified notification-plugin module the container
 # should load. Tests pass ``approve`` / ``deny``; the plugin name is
-# written into the per-test config.json.
+# written into the per-test config.yaml.
 APPROVAL_PLUGINS = {
     "approve": "tests_support.always_approve",
     "deny": "tests_support.always_deny",
@@ -58,10 +60,23 @@ class AgentAuthContainer:
     base_url: str
     compose: DockerCompose
     service: str = "agent-auth"
+    _mgmt_token_cache: str | None = field(default=None, init=False, repr=False, compare=False)
 
     def url(self, path: str) -> str:
-        """Return ``{base_url}/agent-auth/{path}``."""
-        return f"{self.base_url}/agent-auth/{path.lstrip('/')}"
+        """Return ``{base_url}/agent-auth/v1/{path}``."""
+        return f"{self.base_url}/agent-auth/v1/{path.lstrip('/')}"
+
+    def health_url(self) -> str:
+        """Return the unversioned health endpoint URL."""
+        return f"{self.base_url}/agent-auth/health"
+
+    def management_token(self) -> str:
+        """Return a valid management access token, refreshed from keyring on first call."""
+        if self._mgmt_token_cache is None:
+            result = json.loads(self.exec_cli("--json", "management-token", "show"))
+            _, body = post(self.url("token/refresh"), {"refresh_token": result["refresh_token"]})
+            self._mgmt_token_cache = body["access_token"]
+        return self._mgmt_token_cache
 
     def exec_cli(self, *args: str) -> str:
         """Run ``agent-auth <args>`` inside the container and return stdout.
@@ -135,7 +150,7 @@ def _test_image_tag(_docker_required):
 
 
 def _write_test_config(config_dir: Path, **overrides: object) -> None:
-    """Copy the baseline ``config.test.json`` into ``config_dir/config.json``
+    """Copy the baseline ``config.test.yaml`` into ``config_dir/config.yaml``
     with ``overrides`` applied on top.
 
     The directory and file are chmod'd world-readable because the config
@@ -143,14 +158,14 @@ def _write_test_config(config_dir: Path, **overrides: object) -> None:
     ``docker/Dockerfile.test``), while ``tmp_path_factory.mktemp`` on
     Linux defaults to mode 0700 owned by the host test runner's UID. If
     those UIDs disagree (common in devcontainers and some CI configs)
-    the container user cannot read ``config.json`` and ``agent-auth
+    the container user cannot read ``config.yaml`` and ``agent-auth
     serve`` fails on startup. No secrets live in the test config.
     """
     with BASELINE_CONFIG.open() as f:
-        config = json.load(f)
+        config = yaml.safe_load(f) or {}
     config.update(overrides)
-    config_path = config_dir / "config.json"
-    config_path.write_text(json.dumps(config, indent=2))
+    config_path = config_dir / "config.yaml"
+    config_path.write_text(yaml.dump(config, default_flow_style=False))
     os.chmod(config_dir, 0o755)
     os.chmod(config_path, 0o644)
 
