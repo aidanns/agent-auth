@@ -117,6 +117,8 @@ functions:
         description: Parse arguments and invoke token family rotation.
       - name: Handle Serve Command
         description: Start the agent-auth HTTP server.
+      - name: Handle Management Token Show Command
+        description: Retrieve the management refresh token from the OS keyring and print it (or surface a clean error and non-zero exit if the keyring is unavailable).
   - name: Things Bridge
     description: Expose authenticated Things 3 read operations over HTTP to the CLI client, delegating authorization to agent-auth.
     functions:

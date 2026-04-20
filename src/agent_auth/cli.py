@@ -6,6 +6,7 @@ import sys
 
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config, load_config
+from agent_auth.errors import KeyringError
 from agent_auth.keys import KeyManager, SigningKey
 from agent_auth.scopes import parse_scope_arg
 from agent_auth.store import TokenStore
@@ -191,7 +192,11 @@ def handle_serve(args, config, signing_key, store, audit, key_manager):
 
 def handle_management_token_show(args, config, signing_key, store, audit, key_manager):
     """Print the management refresh token from the keyring."""
-    refresh_token = key_manager.get_management_refresh_token()
+    try:
+        refresh_token = key_manager.get_management_refresh_token()
+    except KeyringError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
     if refresh_token is None:
         print(
             "Error: no management token found. Start the server at least once first.",

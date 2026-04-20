@@ -658,13 +658,16 @@ def _bootstrap_management_token(
     if existing_refresh is not None:
         try:
             _prefix, token_id = verify_token(existing_refresh, signing_key)
+        except TokenInvalidError:
+            # Signing key was rotated (or the keyring entry is corrupt); fall
+            # through to regenerate. DB errors below intentionally propagate.
+            pass
+        else:
             token_record = store.get_token(token_id)
             if token_record is not None:
                 family = store.get_family(token_record["family_id"])
                 if family is not None and not family["revoked"]:
                     return
-        except Exception:
-            pass
 
     family_id = generate_token_id()
     store.create_family(family_id, {MANAGEMENT_SCOPE: "allow"})

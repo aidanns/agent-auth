@@ -2,14 +2,21 @@
 
 import os
 import threading
+from unittest.mock import Mock
 
 import pytest
 
 from agent_auth.approval import ApprovalManager
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
+from agent_auth.keys import KeyManager
 from agent_auth.plugins import ApprovalResult, NotificationPlugin
-from agent_auth.server import MANAGEMENT_SCOPE, AgentAuthHandler, AgentAuthServer
+from agent_auth.server import (
+    MANAGEMENT_SCOPE,
+    AgentAuthHandler,
+    AgentAuthServer,
+    _bootstrap_management_token,
+)
 from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair
 from tests._http import get, post
@@ -119,6 +126,51 @@ def test_oversize_body_returns_400(in_process_server):
     status, body = post(f"{base}/agent-auth/validate", raw=payload)
     assert status == 400
     assert body["error"] == "malformed_request"
+
+
+# --- management-token bootstrap ---
+
+
+def _fake_key_manager(initial_refresh=None):
+    km = Mock(spec=KeyManager)
+    km.get_management_refresh_token.return_value = initial_refresh
+    return km
+
+
+@pytest.mark.covers_function("Bootstrap Management Token")
+def test_bootstrap_creates_fresh_family_when_keyring_token_is_malformed(
+    test_config, signing_key, store
+):
+    """A corrupt/stale token in the keyring must not block recreation of the management family."""
+    km = _fake_key_manager(initial_refresh="rt_garbage_not-a-real-signature")
+    _bootstrap_management_token(store, signing_key, test_config, km)
+    km.set_management_refresh_token.assert_called_once()
+    # The new refresh token's family must be active and carry the management scope.
+    families = store.list_families()
+    assert len(families) == 1
+    assert families[0]["scopes"] == {MANAGEMENT_SCOPE: "allow"}
+    assert families[0]["revoked"] is False
+
+
+@pytest.mark.covers_function("Bootstrap Management Token")
+def test_bootstrap_propagates_store_errors_instead_of_creating_duplicate_family(
+    test_config, signing_key, store
+):
+    """DB errors during the validity check must propagate rather than being swallowed.
+
+    Swallowing them would silently create a second management family on top of the
+    existing one, orphaning the keyring-persisted refresh token.
+    """
+    # Seed a valid management token so get_token would succeed if reached.
+    fam = "fam-preexisting"
+    store.create_family(fam, {MANAGEMENT_SCOPE: "allow"})
+    _, refresh = create_token_pair(signing_key, store, fam, test_config)
+    km = _fake_key_manager(initial_refresh=refresh)
+    broken_store = Mock(wraps=store)
+    broken_store.get_token.side_effect = RuntimeError("db locked")
+    with pytest.raises(RuntimeError, match="db locked"):
+        _bootstrap_management_token(broken_store, signing_key, test_config, km)
+    km.set_management_refresh_token.assert_not_called()
 
 
 @pytest.fixture
