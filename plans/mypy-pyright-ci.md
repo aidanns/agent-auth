@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Wire mypy + pyright into CI (#48)
 
 ## Context

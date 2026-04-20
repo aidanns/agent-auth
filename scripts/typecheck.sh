@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Run the Python type checkers (mypy + pyright) against src/ and tests/.
 # Both ship as dev dependencies and are invoked through uv so the
 # project venv is used.
