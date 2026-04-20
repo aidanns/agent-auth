@@ -76,6 +76,7 @@ Every repeatable operation is exposed through the task runner. Run
 | `task test`                                | Run the pytest suite (unit by default; pass `-- --fast`, `-- --integration`, or `-- --all`).                                                              |
 | `task lint`                                | Run all configured linters (shellcheck, ruff check, keep-sorted).                                                                                         |
 | `task format`                              | Run all configured formatters (shfmt, ruff format, mdformat, taplo). Pass `-- --check` for diff-only mode (CI uses this).                                 |
+| `task typecheck`                           | Run mypy + pyright (strict) on `src/` and `tests/`.                                                                                                       |
 | `task build`                               | Build sdist and wheel distributions into `dist/`.                                                                                                         |
 | `task install-hooks`                       | Install project git hooks (lefthook).                                                                                                                     |
 | `task verify-design`                       | Verify every leaf function in the functional decomposition is allocated in the product breakdown.                                                         |

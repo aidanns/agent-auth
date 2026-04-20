@@ -23,7 +23,9 @@ dependencies = [
 dev = [
     # keep-sorted start
     "build>=1.0",
+    "mypy>=1.20",
     "pip-audit>=2.7",
+    "pyright>=1.1.408",
     "pytest>=8.0",
     "reuse>=4.0",
     "testcontainers[compose]>=4",
@@ -82,3 +84,91 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+# Type-checking configuration. Two checkers run in CI (see
+# .claude/instructions/python.md): mypy for Python-standard semantics,
+# pyright for a second implementation catching disjoint issues. The
+# project-wide default is strict; modules that existed before strict
+# was introduced are relaxed below via `ignore_errors = true` and
+# paired with a ratcheting follow-up issue.
+#
+# Every module listed with `ignore_errors = true` below must also
+# appear as a path in pyrightconfig.json's `ignore` list. Renames and
+# deletions MUST touch both files. scripts/verify-standards.sh asserts
+# the two lists agree.
+[tool.mypy]
+python_version = "3.11"
+strict = true
+# Point mypy at both trees. CLI invocation stays `mypy src tests`.
+files = ["src", "tests"]
+
+# Third-party imports without type stubs. These are separately
+# addressed by pulling in types-* packages as they become available;
+# tracked in the ratchet issues.
+[[tool.mypy.overrides]]
+module = [
+    # keep-sorted start
+    "keyring",
+    "keyring.*",
+    "testcontainers",
+    "testcontainers.*",
+    "yaml",
+    # keep-sorted end
+]
+ignore_missing_imports = true
+
+# Ratchet targets — agent_auth/*. Each listed module currently fails
+# strict mode; see #145 for the per-module fix list.
+[[tool.mypy.overrides]]
+module = [
+    # keep-sorted start
+    "agent_auth.approval",
+    "agent_auth.audit",
+    "agent_auth.cli",
+    "agent_auth.config",
+    "agent_auth.plugins",
+    "agent_auth.server",
+    "agent_auth.store",
+    "agent_auth.tokens",
+    # keep-sorted end
+]
+ignore_errors = true
+
+# Ratchet targets — things_bridge/*. See #146.
+[[tool.mypy.overrides]]
+module = [
+    # keep-sorted start
+    "things_bridge.cli",
+    "things_bridge.config",
+    "things_bridge.server",
+    "things_bridge.things_client",
+    # keep-sorted end
+]
+ignore_errors = true
+
+# Ratchet targets — things_cli/* + things_client_common/* +
+# things_models/*. See #147.
+[[tool.mypy.overrides]]
+module = [
+    # keep-sorted start
+    "things_cli.cli",
+    "things_cli.client",
+    "things_cli.credentials",
+    "things_cli.output",
+    "things_client_common.cli",
+    "things_models.models",
+    # keep-sorted end
+]
+ignore_errors = true
+
+# Tests use pytest fixture magic and parametrize decorators heavily;
+# `disallow_untyped_defs` in particular produces a large amount of
+# low-value noise on test functions. Tracked for ratcheting in #148.
+[[tool.mypy.overrides]]
+module = [
+    # keep-sorted start
+    "tests.*",
+    "tests_support.*",
+    # keep-sorted end
+]
+ignore_errors = true

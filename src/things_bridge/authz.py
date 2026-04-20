@@ -6,6 +6,7 @@
 
 import json
 from http.client import HTTPConnection, HTTPSConnection
+from typing import Any
 from urllib.parse import urlparse
 
 from things_bridge.errors import (
@@ -58,7 +59,7 @@ class AgentAuthClient:
             conn.close()
 
         try:
-            data = json.loads(raw) if raw else {}
+            data: dict[str, Any] = json.loads(raw) if raw else {}
         except json.JSONDecodeError as exc:
             raise AuthzUnavailableError(
                 f"agent-auth returned non-JSON response (status {response.status})"
@@ -67,7 +68,7 @@ class AgentAuthClient:
         if response.status == 200 and data.get("valid") is True:
             return
 
-        error_code = data.get("error", "")
+        error_code = str(data.get("error") or "")
         if response.status == 401:
             if error_code == "token_expired":
                 raise AuthzTokenExpiredError(error_code)

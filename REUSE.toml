@@ -26,6 +26,7 @@ SPDX-License-Identifier = "MIT"
 path = [
     ".release-please-config.json",
     ".release-please-manifest.json",
+    "pyrightconfig.json",
 ]
 SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
 SPDX-License-Identifier = "MIT"

@@ -44,6 +44,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rationale and the pairing with NIST SP 800-53 (cybersecurity),
   OWASP ASVS (#112), and SLSA / cosign / SBOM (#109 / #110 / #111).
   `scripts/verify-standards.sh` gates the new section.
+- **mypy + pyright type-checking**. Both run in CI under
+  `task typecheck` (new `.github/workflows/typecheck.yml`). `pyproject.toml`
+  declares `[tool.mypy]` with `strict = true` as the default;
+  `pyrightconfig.json` uses `typeCheckingMode: "strict"`. Modules that
+  failed at foundation time are relaxed per-module and tracked for
+  ratcheting in [#145](https://github.com/aidanns/agent-auth/issues/145)
+  (agent_auth),
+  [#146](https://github.com/aidanns/agent-auth/issues/146)
+  (things_bridge),
+  [#147](https://github.com/aidanns/agent-auth/issues/147)
+  (things_cli / things_client_common / things_models), and
+  [#148](https://github.com/aidanns/agent-auth/issues/148) (tests).
+  Closes [#48](https://github.com/aidanns/agent-auth/issues/48).
 - **OpenTelemetry semantic conventions adopted for observability naming.** New
   ADR 0017 pins the project to OTel semconv
   [v1.40.0](https://github.com/open-telemetry/semantic-conventions/releases/tag/v1.40.0)
