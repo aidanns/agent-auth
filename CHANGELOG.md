@@ -28,9 +28,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - REUSE 3.3 compliance: every tracked file carries an SPDX header (or is
   covered by `REUSE.toml`), a `reuse lint` CI workflow gates PRs, and the
   README renders the REUSE status badge.
+- `ripsecrets` secret-scanning pre-commit hook and matching CI step to block
+  accidental secret commits
+  ([#42](https://github.com/aidanns/agent-auth/issues/42)).
+- `treefmt --ci` CI gate to catch removal or misconfiguration of the
+  formatter multiplexer
+  ([#42](https://github.com/aidanns/agent-auth/issues/42)).
+- `scripts/test.sh --fast` mode for a curated sub-second smoke subset of
+  unit tests (tokens, scopes, crypto, keys); wired into `lefthook.yml`
+  pre-commit ([#42](https://github.com/aidanns/agent-auth/issues/42)).
+- NIST SSDF (SP 800-218 v1.1) adopted as the project's SDLC
+  standard. `design/SSDF.md` records per-practice conformance for
+  the PO / PS / PW / RV practice groups; `SECURITY.md` gains an
+  `## SDLC standard` section linking the audit; ADR 0015 records
+  the rationale and the pairing with NIST SP 800-53 (cybersecurity),
+  OWASP ASVS (#112), and SLSA / cosign / SBOM (#109 / #110 / #111).
+  `scripts/verify-standards.sh` gates the new section.
 
 ### Changed
 
+- `lefthook.yml` consolidates the per-language formatter checks (mdformat,
+  ruff format, shellcheck, shfmt, taplo) under a single
+  `treefmt --no-cache --fail-on-change` invocation; `ruff check` and
+  `keep-sorted` remain as dedicated commands
+  ([#42](https://github.com/aidanns/agent-auth/issues/42)).
 - **Token management HTTP routes moved under `/v1/`.**
   `POST /agent-auth/token/{create,modify,revoke,rotate}` and
   `GET /agent-auth/token/list` are now served at `/agent-auth/v1/token/...`.

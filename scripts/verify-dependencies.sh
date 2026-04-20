@@ -16,12 +16,14 @@ REQUIRED_TOOLS=(
   keep-sorted
   mdformat
   python3
+  ripsecrets
   ruff
   shellcheck
   shfmt
   systems-engineering
   taplo
   task
+  treefmt
   uv
   yq
   # keep-sorted end

@@ -750,7 +750,7 @@ edge cases (malformed JSON, unknown routes, oversize bodies, the
 
 ### Integration tests
 
-`tests/integration/test_*.py` drive a containerised `agent-auth serve`
+`tests/integration/agent_auth/test_*.py` drive a containerised `agent-auth serve`
 end-to-end over HTTP. Each test gets its own Docker Compose project
 (named by a uuid), its own ephemeral host port, its own SQLite file,
 and its own keyring — so concurrent test runs on the same host cannot

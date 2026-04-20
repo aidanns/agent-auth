@@ -203,7 +203,9 @@ Tests are split into two layers:
   (one ephemeral Compose project per test), drives it over HTTP, and
   uses `docker compose exec` to invoke the `agent-auth` CLI inside the
   container. Requires Docker + Docker Compose on the host. Tests skip
-  automatically if Docker is not available.
+  automatically if Docker is not available. Pass a service name to run
+  only that slice: `scripts/test.sh --integration agent-auth`
+  (also `things-bridge`, `things-cli`, `things-client-applescript`).
 - **Both** — `scripts/test.sh --all`.
 
 See `design/decisions/0004-docker-integration-tests.md` for the design

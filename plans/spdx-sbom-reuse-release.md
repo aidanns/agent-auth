@@ -101,7 +101,7 @@ Concretely, after this PR:
 
 ### Documentation
 
-11. ADR `design/decisions/0015-release-supply-chain.md` covering
+11. ADR `design/decisions/0016-release-supply-chain.md` covering
     the bundled decision (Release Please + cosign + SPDX SBOM +
     REUSE). Records the `release-type: simple` and keyless-cosign
     choices.
@@ -132,7 +132,7 @@ Per `.claude/instructions/plan-template.md`:
   the supply-chain trust boundary (runner identity, OIDC, Sigstore
   transparency log) and the residual risks (compromised GitHub
   runner, compromised Sigstore CA).
-- **Architecture Decision Records** — one ADR (0015) for the
+- **Architecture Decision Records** — one ADR (0016) for the
   bundled decision; sub-decisions (release-type=simple, keyless
   cosign, SPDX over CycloneDX) are recorded inside it rather than
   spun into separate ADRs.
@@ -177,7 +177,7 @@ Per `.claude/instructions/plan-template.md`:
    steps; single-job is simpler and enough for the first
    iteration). Must declare `permissions: { contents: write, id-token: write }` at the workflow level and `packages: read`
    as needed.
-6. **Documentation** — ADR 0015, SECURITY.md section, CONTRIBUTING
+6. **Documentation** — ADR 0016, SECURITY.md section, CONTRIBUTING
    update, README badge, CHANGELOG `[Unreleased]` entry.
 7. **Taskfile wiring** — add `reuse-lint` task. No other
    task changes.
@@ -220,6 +220,6 @@ Specifically verify:
   in `SECURITY.md`.
 - **`python.md`** — no Python-code changes other than a dev-dep
   addition.
-- **`design.md`** — ADR 0015 added.
+- **`design.md`** — ADR 0016 added.
 
 <!-- REUSE-IgnoreEnd -->

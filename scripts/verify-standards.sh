@@ -180,6 +180,13 @@ strip_comments() {
 workflows_stripped="$(find .github/workflows .github/actions -name '*.yml' -print0 2>/dev/null \
   | xargs -0 -r cat 2>/dev/null \
   | strip_comments)"
+# Narrower scan: only CI workflow files, excluding composite-action
+# definitions under .github/actions/. Lets checks distinguish "tool
+# invoked by CI" from "tool installed by a setup action" — a tool that
+# only appears in an install step is not actually gated.
+workflows_only_stripped="$(find .github/workflows -name '*.yml' -print0 2>/dev/null \
+  | xargs -0 -r cat 2>/dev/null \
+  | strip_comments)"
 treefmt_stripped=""
 [[ -f treefmt.toml ]] && treefmt_stripped="$(strip_comments treefmt.toml)"
 lefthook_stripped=""
@@ -199,9 +206,13 @@ for tool in shellcheck shfmt; do
       "Add a [formatter.${tool}] entry to treefmt.toml."
   fi
 
-  if ! grep -qE "\\b${tool}\\b" <<<"${lefthook_stripped}"; then
+  # lefthook is satisfied either by a direct invocation of the tool or by
+  # invoking treefmt — treefmt runs the tool transitively via its
+  # [formatter.${tool}] entry (asserted above).
+  if ! grep -qE "\\b${tool}\\b" <<<"${lefthook_stripped}" \
+    && ! grep -qE "\\btreefmt\\b" <<<"${lefthook_stripped}"; then
     fail_bash_check "${tool}" "lefthook.yml" \
-      "Add a pre-commit command that invokes '${tool}' to lefthook.yml."
+      "Add a pre-commit command that invokes '${tool}' (or 'treefmt') to lefthook.yml."
   fi
 done
 
@@ -247,6 +258,78 @@ if [[ ${doc_tool_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: mdformat + taplo are wired into treefmt, and keep-sorted is configured."
+
+# treefmt + lefthook + ripsecrets standard per
+# .claude/instructions/tooling-and-ci.md (Orchestration, Security) and
+# the deterministic regression check in issue #42:
+#
+#   - treefmt.toml exists at the repo root.
+#   - lefthook.yml exists at the repo root.
+#   - lefthook.yml pre-commit stage invokes 'ripsecrets' and 'treefmt'.
+#   - At least one CI workflow runs 'treefmt --ci' (or equivalent
+#     check-mode invocation: --no-cache + --fail-on-change).
+#   - At least one CI workflow runs 'ripsecrets'.
+
+orchestration_missing=0
+
+fail_orchestration_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  orchestration_missing=1
+}
+
+if [[ ! -f treefmt.toml ]]; then
+  fail_orchestration_check \
+    "treefmt.toml is missing from the repo root." \
+    "Create treefmt.toml registering every formatter (see .claude/instructions/tooling-and-ci.md)."
+fi
+
+if [[ ! -f lefthook.yml ]]; then
+  fail_orchestration_check \
+    "lefthook.yml is missing from the repo root." \
+    "Create lefthook.yml with pre-commit commands that run ripsecrets and treefmt."
+else
+  if ! grep -qE "\\bripsecrets\\b" <<<"${lefthook_stripped}"; then
+    fail_orchestration_check \
+      "lefthook.yml does not invoke 'ripsecrets' on pre-commit." \
+      "Add a pre-commit command that runs 'ripsecrets {staged_files}'."
+  fi
+
+  if ! grep -qE "\\btreefmt\\b" <<<"${lefthook_stripped}"; then
+    fail_orchestration_check \
+      "lefthook.yml does not invoke 'treefmt' on pre-commit." \
+      "Add a pre-commit command that runs 'treefmt --no-cache --fail-on-change {staged_files}'."
+  fi
+fi
+
+# Accept either the explicit '--ci' shorthand or the equivalent expansion
+# ('--no-cache' AND '--fail-on-change') on a workflow `run:` line — both
+# run treefmt in write-suppressed check mode. Scoped to
+# workflows_only_stripped and prefixed with `run:` so the install step
+# in .github/actions/setup-toolchain/action.yml (which shells
+# `ripsecrets --version` / `treefmt --version` for smoke checks) can't
+# satisfy the gate.
+if ! grep -qE "run:[[:space:]]*treefmt[^\\n]*--ci" <<<"${workflows_only_stripped}" \
+  && ! grep -qE "run:[[:space:]]*treefmt[^\\n]*--no-cache[^\\n]*--fail-on-change" <<<"${workflows_only_stripped}"; then
+  fail_orchestration_check \
+    "no .github/workflows/*.yml runs 'treefmt --ci' (or '--no-cache --fail-on-change')." \
+    "Add a workflow step that runs 'treefmt --ci' (see .github/workflows/check.yml)."
+fi
+
+# Match `run: ripsecrets` (single-line) to distinguish a real CI
+# invocation from a setup-action install step's `ripsecrets --version`
+# smoke test. Scoped to workflows_only_stripped for the same reason.
+if ! grep -qE "run:[[:space:]]*ripsecrets([[:space:]]|$)" <<<"${workflows_only_stripped}"; then
+  fail_orchestration_check \
+    "no .github/workflows/*.yml invokes 'ripsecrets' as a CI step." \
+    "Add a workflow step that runs 'ripsecrets' against the tree (see .github/workflows/check.yml)."
+fi
+
+if [[ ${orchestration_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: treefmt.toml + lefthook.yml exist, lefthook runs ripsecrets + treefmt, and CI runs treefmt --ci + ripsecrets."
 
 # uv is the project-standard Python resolver (.claude/instructions/python.md).
 # Two invariants:
@@ -581,6 +664,7 @@ else
     "cybersecurity-standard|## Cybersecurity standard|Cybersecurity standard"
     "key-handling|## Key handling"
     "revocation-flow|## Revocation flow"
+    "sdlc-standard|## SDLC standard|SDLC standard"
     "threat-model|## Threat model"
     "trust-boundaries|## Trust boundaries|## Trust boundary"
     "vulnerability-reporting|## Vulnerability reporting|## Reporting vulnerabilities"
