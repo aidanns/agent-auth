@@ -9,7 +9,7 @@ Accepted — 2026-04-19.
 ADR `0004-docker-integration-tests.md` migrated `agent-auth`'s HTTP
 integration tests onto a per-test Compose pattern (one
 `testcontainers.compose.DockerCompose` project per test, ephemeral
-loopback port, bind-mounted `config.json`). The remaining services in
+loopback port, bind-mounted `config.yaml`). The remaining services in
 this repo —
 `things-bridge`, `things-cli`, and `things-client-cli-applescript` —
 still ran in-process, sharing host SQLite/keyring state and using

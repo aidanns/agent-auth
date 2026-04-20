@@ -1,4 +1,4 @@
-"""Integration tests for the /agent-auth/validate endpoint."""
+"""Integration tests for the /agent-auth/v1/validate endpoint."""
 
 import pytest
 

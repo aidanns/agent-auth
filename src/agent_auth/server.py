@@ -53,17 +53,17 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         pass
 
     def do_POST(self):
-        if self.path == "/agent-auth/validate":
+        if self.path == "/agent-auth/v1/validate":
             self._handle_validate()
-        elif self.path == "/agent-auth/token/refresh":
+        elif self.path == "/agent-auth/v1/token/refresh":
             self._handle_refresh()
-        elif self.path == "/agent-auth/token/reissue":
+        elif self.path == "/agent-auth/v1/token/reissue":
             self._handle_reissue()
         else:
             self._send_json(404, {"error": "not_found"})
 
     def do_GET(self):
-        if self.path == "/agent-auth/token/status":
+        if self.path == "/agent-auth/v1/token/status":
             self._handle_status()
         elif self.path == "/agent-auth/health":
             self._handle_health()
