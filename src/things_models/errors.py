@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Error hierarchy for Things 3 interactions.
 
 These errors are raised by the Things client CLIs and re-raised by the

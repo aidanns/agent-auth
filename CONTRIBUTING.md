@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Contributing
 
 Participation in this project — issues, pull requests, discussions — is
@@ -99,7 +105,29 @@ signing are sibling requirements, not the same thing.
 
 ## Release process
 
-### Before releasing
+Two release paths exist:
+
+- **Default — Release Please (CI)**: on every push to `main` the
+  `Release Please` workflow parses Conventional Commits and keeps a
+  single open release PR. Merging that PR pushes a `vX.Y.Z` tag, which
+  triggers the `Release Publish` workflow. The publish workflow
+  builds the sdist and wheel with `uv build`, generates an SPDX SBOM
+  per artifact with Syft, signs each artifact and SBOM with keyless
+  cosign (Sigstore OIDC), and attaches everything to the GitHub
+  release. Verification recipe: see
+  [`SECURITY.md` → Supply-chain artifacts](SECURITY.md#supply-chain-artifacts).
+- **Break-glass — `task release` (local)**: runs `scripts/release.sh`
+  on your laptop. Use when CI is unavailable or a release has to be
+  cut without waiting for the runner. The tag push uses your own git
+  credential (not `GITHUB_TOKEN`), so it **does** fire
+  `release-publish.yml` — the release will accrue its SBOMs and
+  `.sig.bundle` signatures asynchronously once the runner completes.
+  The difference from the default path is timing: `gh release create`
+  publishes the release up front, so downstream consumers may briefly
+  see a release whose assets are still being uploaded. Documented
+  below.
+
+### Before releasing (both paths)
 
 For every user-facing PR, update `CHANGELOG.md` before merging:
 
@@ -107,10 +135,32 @@ For every user-facing PR, update `CHANGELOG.md` before merging:
 2. Keep the format consistent with the existing entries (present-tense action,
    linked to relevant issues/PRs where helpful).
 
-### Cutting a release
+### Default path: Release Please
 
-`task release` is the release entrypoint. It delegates to `scripts/release.sh`,
-which:
+One-time setup: create a **fine-grained personal access token** (or
+GitHub App installation token) with `contents: write` and
+`pull-requests: write` permission on this repository, and save it as
+the `RELEASE_PLEASE_TOKEN` repository secret. This is required
+because tags created by the default `GITHUB_TOKEN` do **not** fire
+downstream `on: push: tags:` workflows — without a PAT, the chain
+from the Release Please merge to the signed-artefact publish
+silently breaks. A GitHub App token is the lower-blast-radius option
+if you're willing to spin one up.
+
+1. Land PRs on `main` using Conventional Commits.
+2. The `Release Please` workflow opens or updates the release PR
+   automatically.
+3. **Review the release PR like any other change** — this is the
+   pre-1.0 guardrail. Release Please does not auto-merge; a human
+   must click merge. Check the derived version and the generated
+   CHANGELOG entry before merging.
+4. Merge the release PR. Release Please creates the `vX.Y.Z` tag and
+   a GitHub release. The tag push triggers `Release Publish`, which
+   attaches the sdist, wheel, SBOMs, and `.sig.bundle` signatures.
+
+### Break-glass path: `task release`
+
+`task release` delegates to `scripts/release.sh`, which:
 
 1. Resolves the target version — either from the argument you pass, or by
    deriving it from Conventional Commits since the last `v*` tag (see below).

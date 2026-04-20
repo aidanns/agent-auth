@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """End-to-end Docker integration tests for things-cli.
 
 Drives ``things-cli`` inside the ``things-bridge`` container against the

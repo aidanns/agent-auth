@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """CLI entrypoint for ``things-client-cli-applescript``.
 
 Reads Things 3 via ``osascript`` and prints JSON on stdout. Configured

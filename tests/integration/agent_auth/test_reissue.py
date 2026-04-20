@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Integration tests for the /agent-auth/v1/token/reissue endpoint.
 
 These tests exercise the expired-refresh-token branch by running the

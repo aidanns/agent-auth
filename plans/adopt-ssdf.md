@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Plan: Adopt NIST SSDF (SP 800-218) as SDLC standard
 
 Issue: [#113](https://github.com/aidanns/agent-auth/issues/113).

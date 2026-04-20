@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Plan: Split CI unit and integration tests into parallel jobs
 
 Issue: [#104](https://github.com/aidanns/agent-auth/issues/104).

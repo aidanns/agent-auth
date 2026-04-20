@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Shared CLI runner for Things client CLIs.
 
 Both client CLIs build their own ``ThingsClient`` from their own config,

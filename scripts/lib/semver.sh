@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Pure SemVer + Conventional Commits helpers used by scripts/release.sh.
 # Sourced — not executed — so it avoids `set` side effects on the caller.
 

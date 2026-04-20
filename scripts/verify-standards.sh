@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Verify generic, portable project standards mandated by
 # .claude/instructions/. This script intentionally does NOT assert on
 # anything project-specific (service names, repo-specific CLI entry

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """AppleScript runner and high-level Things client.
 
 The runner shells out to ``osascript`` to execute AppleScript against Things 3.

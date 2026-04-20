@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Dataclass models for Things 3 objects returned by the client CLIs.
 
 Shared between the bridge (which parses subprocess JSON back into these

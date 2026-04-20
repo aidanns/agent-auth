@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Plan: API Stability Issues #20, #24, #27, #28
 
 Closes #20, #24, #27, #28 (all `1.0/api-stability`).

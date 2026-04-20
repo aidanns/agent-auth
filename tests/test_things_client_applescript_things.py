@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Tests for AppleScript runner and ThingsApplescriptClient.
 
 Most tests avoid shelling out to osascript — they substitute a deterministic

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Shared argparse surface and JSON contract for Things client CLIs.
 
 Both ``things-client-cli-applescript`` and ``tests/things_client_fake``

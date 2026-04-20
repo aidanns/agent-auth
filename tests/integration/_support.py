@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Shared helpers for the per-service Docker integration test fixtures.
 
 Each per-service ``conftest.py`` imports the helpers here so the

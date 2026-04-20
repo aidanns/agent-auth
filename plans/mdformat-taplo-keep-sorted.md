@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Plan: Adopt mdformat, taplo, and keep-sorted
 
 Issue: [#45](https://github.com/aidanns/agent-auth/issues/45).

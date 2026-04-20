@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Contract tests for the error-code taxonomy.
 
 Every error code documented in ``design/error-codes.md`` is exercised here.

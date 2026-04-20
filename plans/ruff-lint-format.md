@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Plan: Configure ruff lint + format and gate in CI
 
 Issue: [#47](https://github.com/aidanns/agent-auth/issues/47).

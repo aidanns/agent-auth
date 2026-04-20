@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """In-process handler-edge-case tests; HTTP lifecycle lives in tests/integration/."""
 
 import os

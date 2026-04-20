@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Run `task --list` to see every repeatable operation. See CONTRIBUTING.md.
 
 version: "3"
@@ -50,6 +54,11 @@ tasks:
     cmds:
       - uv export --extra dev --no-emit-project --format requirements-txt --no-hashes > /tmp/requirements.txt
       - uvx pip-audit --strict -r /tmp/requirements.txt
+
+  reuse-lint:
+    desc: Verify every tracked file carries SPDX licensing metadata (REUSE spec).
+    cmds:
+      - scripts/reuse-lint.sh
 
   verify-standards:
     desc: Verify Project Standards

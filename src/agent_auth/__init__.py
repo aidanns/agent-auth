@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """agent-auth: Token-based authorization for AI agent access to host applications."""
 
 from importlib.metadata import PackageNotFoundError

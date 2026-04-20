@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Implementation Plan: Dockerize things-bridge / things-cli / things-client e2e tests
 
 Addresses [#78](https://github.com/aidanns/agent-auth/issues/78). Extends

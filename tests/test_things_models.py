@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Tests for the shared Things dataclass models."""
 
 from things_models.models import Area, Project, Todo

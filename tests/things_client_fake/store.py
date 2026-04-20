@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """In-memory ``ThingsClient`` implementation backed by YAML fixtures.
 
 Kept under ``tests/`` (not ``src/``) so it is never shipped in the

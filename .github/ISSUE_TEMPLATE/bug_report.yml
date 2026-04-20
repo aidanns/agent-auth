@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 name: Bug report
 description: Report something that doesn't work the way the docs or CLI say it should.
 labels:
