@@ -6,6 +6,7 @@ import sys
 
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config, load_config
+from agent_auth.errors import KeyringError
 from agent_auth.keys import KeyManager, SigningKey
 from agent_auth.scopes import parse_scope_arg
 from agent_auth.store import TokenStore
@@ -14,14 +15,14 @@ from agent_auth.tokens import create_token_pair, generate_token_id
 
 def _init_services(
     config_dir: str | None = None,
-) -> tuple[Config, SigningKey, TokenStore, AuditLogger]:
+) -> tuple[Config, SigningKey, TokenStore, AuditLogger, KeyManager]:
     config = load_config(config_dir)
     key_manager = KeyManager()
     signing_key = key_manager.get_or_create_signing_key()
     encryption_key = key_manager.get_or_create_encryption_key()
     store = TokenStore(config.db_path, encryption_key)
     audit = AuditLogger(config.log_path)
-    return config, signing_key, store, audit
+    return config, signing_key, store, audit, key_manager
 
 
 def handle_token_create(args, config, signing_key, store, audit):
@@ -182,11 +183,30 @@ def handle_token_rotate(args, config, signing_key, store, audit):
         print("WARNING: Tokens are displayed only once. Store them securely.")
 
 
-def handle_serve(args, config, signing_key, store, audit):
+def handle_serve(args, config, signing_key, store, audit, key_manager):
     """Start the agent-auth HTTP server."""
     from agent_auth.server import run_server
 
-    run_server(config, signing_key, store, audit)
+    run_server(config, signing_key, store, audit, key_manager)
+
+
+def handle_management_token_show(args, config, signing_key, store, audit, key_manager):
+    """Print the management refresh token from the keyring."""
+    try:
+        refresh_token = key_manager.get_management_refresh_token()
+    except KeyringError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    if refresh_token is None:
+        print(
+            "Error: no management token found. Start the server at least once first.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if args.json:
+        print(json.dumps({"refresh_token": refresh_token}))
+    else:
+        print(refresh_token)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -238,6 +258,13 @@ def build_parser() -> argparse.ArgumentParser:
     # the CLI has no override flags to keep exactly one source of truth.
     subparsers.add_parser("serve", help="Start the HTTP server")
 
+    # management-token subcommand
+    mgmt_parser = subparsers.add_parser(
+        "management-token", help="Manage the HTTP management credential"
+    )
+    mgmt_sub = mgmt_parser.add_subparsers(dest="management_token_command")
+    mgmt_sub.add_parser("show", help="Print the management refresh token")
+
     return parser
 
 
@@ -258,10 +285,10 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    config, signing_key, store, audit = _init_services(args.config_dir)
+    config, signing_key, store, audit, key_manager = _init_services(args.config_dir)
 
     if args.command == "serve":
-        handle_serve(args, config, signing_key, store, audit)
+        handle_serve(args, config, signing_key, store, audit, key_manager)
         return
 
     if args.command == "token":
@@ -276,6 +303,17 @@ def main():
             handler(args, config, signing_key, store, audit)
         else:
             print(f"Error: unknown token command '{args.token_command}'", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.command == "management-token":
+        if args.management_token_command == "show":
+            handle_management_token_show(args, config, signing_key, store, audit, key_manager)
+        else:
+            print(
+                "Error: specify a management-token subcommand (show)",
+                file=sys.stderr,
+            )
             sys.exit(1)
         return
 
