@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/test.sh --fast` mode for a curated sub-second smoke subset of
   unit tests (tokens, scopes, crypto, keys); wired into `lefthook.yml`
   pre-commit ([#42](https://github.com/aidanns/agent-auth/issues/42)).
+- NIST SSDF (SP 800-218 v1.1) adopted as the project's SDLC
+  standard. `design/SSDF.md` records per-practice conformance for
+  the PO / PS / PW / RV practice groups; `SECURITY.md` gains an
+  `## SDLC standard` section linking the audit; ADR 0015 records
+  the rationale and the pairing with NIST SP 800-53 (cybersecurity),
+  OWASP ASVS (#112), and SLSA / cosign / SBOM (#109 / #110 / #111).
+  `scripts/verify-standards.sh` gates the new section.
 
 ### Changed
 
