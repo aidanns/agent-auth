@@ -30,6 +30,7 @@ from tests.integration._support import (
     DOCKER_DIR,
     build_test_image,
     docker_compose_available,
+    phase_timer,
     render_compose_file,
     seed_empty_fixtures_dir,
     wait_until_server_ready,
@@ -128,14 +129,24 @@ def _docker_required():
 
 @pytest.fixture(scope="session")
 def _test_image_tag(_docker_required):
-    """Build the integration-test image once per pytest session under a
-    session-unique tag, then clean it up on teardown.
+    """Resolve the integration-test image tag for this session.
+
+    If ``AGENT_AUTH_TEST_IMAGE_TAG`` is set the fixture trusts the
+    caller (typically a CI step that ran ``docker build`` itself so the
+    build cost is visible separately) and reuses that tag without
+    building or removing the image. Otherwise it builds the image once
+    per pytest session under a session-unique tag and removes it on
+    teardown.
 
     A unique tag prevents parallel sessions (two worktrees, two CI jobs
     sharing a runner) from clobbering each other's image under a shared
     mutable tag — without which one session could boot another's image
     while still using its own Compose project.
     """
+    prebuilt = os.environ.get("AGENT_AUTH_TEST_IMAGE_TAG")
+    if prebuilt:
+        yield prebuilt
+        return
     tag = f"agent-auth-test:pytest-{uuid.uuid4().hex[:8]}"
     build_test_image(tag)
     try:
@@ -180,7 +191,7 @@ def agent_auth_container_factory(
     Each invocation starts a fresh Compose project. Teardown is registered
     on the fixture so every container is removed at the end of the test.
     """
-    started: list[DockerCompose] = []
+    started: list[tuple[str, DockerCompose]] = []
 
     def _factory(
         *,
@@ -224,8 +235,9 @@ def agent_auth_container_factory(
             context=str(rendered_compose.parent),
             compose_file_name=rendered_compose.name,
         )
-        started.append(compose)
-        compose.start()
+        started.append((project_name, compose))
+        with phase_timer("compose_start", project=project_name, service="agent-auth"):
+            compose.start()
 
         host = compose.get_service_host("agent-auth", 9100)
         port = compose.get_service_port("agent-auth", 9100)
@@ -244,9 +256,10 @@ def agent_auth_container_factory(
 
     yield _factory
 
-    for compose in started:
+    for project_name, compose in started:
         try:
-            compose.stop()
+            with phase_timer("compose_stop", project=project_name, service="agent-auth"):
+                compose.stop()
         except Exception as e:
             print(f"warning: compose teardown failed: {e!r}")
 

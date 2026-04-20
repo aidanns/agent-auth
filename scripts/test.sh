@@ -66,6 +66,21 @@ FAST_TESTS=(
   # keep-sorted end
 )
 
+# Integration tests are slow enough that knowing where the time goes
+# matters in CI. ``--durations=0 --durations-min=0.1`` reports every
+# setup/call/teardown phase >100ms (so per-test container start/stop
+# costs are visible), and ``log_cli`` streams the
+# ``integration.timing`` phase logs (compose start/stop, image build,
+# health-wait) live instead of burying them in pytest's per-test
+# capture.
+INTEGRATION_TIMING_OPTS=(
+  --durations=0
+  --durations-min=0.1
+  -o log_cli=true
+  -o log_cli_level=INFO
+  -o "log_cli_format=%(asctime)s %(levelname)s %(name)s %(message)s"
+)
+
 case "${mode}" in
   unit)
     exec uv run --no-sync pytest tests/ --ignore=tests/integration "$@"
@@ -78,10 +93,10 @@ case "${mode}" in
     if [[ -n "${service}" ]]; then
       integration_path="${SERVICE_PATHS[${service}]}"
     fi
-    exec uv run --no-sync pytest "${integration_path}" "$@"
+    exec uv run --no-sync pytest "${INTEGRATION_TIMING_OPTS[@]}" "${integration_path}" "$@"
     ;;
   all)
     uv run --no-sync pytest tests/ --ignore=tests/integration "$@"
-    exec uv run --no-sync pytest tests/integration/ "$@"
+    exec uv run --no-sync pytest "${INTEGRATION_TIMING_OPTS[@]}" tests/integration/ "$@"
     ;;
 esac

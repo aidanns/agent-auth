@@ -21,48 +21,72 @@ jobs:
 
   integration-agent-auth:
     runs-on: ubuntu-latest
+    env:
+      AGENT_AUTH_TEST_IMAGE_TAG: agent-auth-test:ci
     steps:
       - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-toolchain
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/build-integration-test-image
+        with:
+          tag: ${{ env.AGENT_AUTH_TEST_IMAGE_TAG }}
 
       - name: Run agent-auth integration tests
         run: task test -- --integration agent-auth
 
   integration-things-bridge:
     runs-on: ubuntu-latest
+    env:
+      AGENT_AUTH_TEST_IMAGE_TAG: agent-auth-test:ci
     steps:
       - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-toolchain
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/build-integration-test-image
+        with:
+          tag: ${{ env.AGENT_AUTH_TEST_IMAGE_TAG }}
 
       - name: Run things-bridge integration tests
         run: task test -- --integration things-bridge
 
   integration-things-cli:
     runs-on: ubuntu-latest
+    env:
+      AGENT_AUTH_TEST_IMAGE_TAG: agent-auth-test:ci
     steps:
       - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-toolchain
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/build-integration-test-image
+        with:
+          tag: ${{ env.AGENT_AUTH_TEST_IMAGE_TAG }}
 
       - name: Run things-cli integration tests
         run: task test -- --integration things-cli
 
   integration-things-client-applescript:
     runs-on: ubuntu-latest
+    env:
+      AGENT_AUTH_TEST_IMAGE_TAG: agent-auth-test:ci
     steps:
       - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-toolchain
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/build-integration-test-image
+        with:
+          tag: ${{ env.AGENT_AUTH_TEST_IMAGE_TAG }}
 
       - name: Run things-client-applescript integration tests
         run: task test -- --integration things-client-applescript

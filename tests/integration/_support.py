@@ -7,6 +7,7 @@ availability check have a single implementation.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -14,6 +15,8 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -26,6 +29,29 @@ _PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}")
 DOCKER_BUILD_TIMEOUT_SECONDS = 600.0
 READY_POLL_TIMEOUT_SECONDS = 30.0
 READY_POLL_INTERVAL_SECONDS = 0.2
+
+# Phase timings are emitted as INFO logs on the ``integration.timing``
+# logger so CI can surface them with ``-o log_cli=true``. The
+# structured ``phase=<name> elapsed_seconds=<n>`` shape is grep-friendly
+# and survives pytest's per-test capture.
+_timing_log = logging.getLogger("integration.timing")
+
+
+@contextmanager
+def phase_timer(phase: str, **fields: object) -> Iterator[None]:
+    """Log wall-clock time spent inside the ``with`` block.
+
+    Extra ``fields`` are appended as ``key=value`` pairs so callers can
+    correlate phases (e.g. compose project name, image tag) without
+    parsing test ids.
+    """
+    start = time.monotonic()
+    try:
+        yield
+    finally:
+        elapsed = time.monotonic() - start
+        suffix = "".join(f" {k}={v}" for k, v in fields.items())
+        _timing_log.info("phase=%s elapsed_seconds=%.3f%s", phase, elapsed, suffix)
 
 
 def docker_compose_available() -> bool:
@@ -57,24 +83,25 @@ def wait_until_server_ready(
     along with ``403`` (valid shape, scope missing) — as a positive
     "server is up" signal.
     """
-    deadline = time.monotonic() + READY_POLL_TIMEOUT_SECONDS
-    last_error: Exception | None = None
-    while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen(health_url, timeout=2) as resp:
-                if 200 <= resp.status < 300:
+    with phase_timer("wait_until_server_ready", url=health_url):
+        deadline = time.monotonic() + READY_POLL_TIMEOUT_SECONDS
+        last_error: Exception | None = None
+        while time.monotonic() < deadline:
+            try:
+                with urllib.request.urlopen(health_url, timeout=2) as resp:
+                    if 200 <= resp.status < 300:
+                        return
+            except urllib.error.HTTPError as exc:
+                if exc.code in accept_status:
                     return
-        except urllib.error.HTTPError as exc:
-            if exc.code in accept_status:
-                return
-            last_error = exc
-        except (urllib.error.URLError, ConnectionError, TimeoutError) as exc:
-            last_error = exc
-        time.sleep(READY_POLL_INTERVAL_SECONDS)
-    raise RuntimeError(
-        f"Service never became reachable at {health_url} within "
-        f"{READY_POLL_TIMEOUT_SECONDS}s (last error: {last_error!r})"
-    )
+                last_error = exc
+            except (urllib.error.URLError, ConnectionError, TimeoutError) as exc:
+                last_error = exc
+            time.sleep(READY_POLL_INTERVAL_SECONDS)
+        raise RuntimeError(
+            f"Service never became reachable at {health_url} within "
+            f"{READY_POLL_TIMEOUT_SECONDS}s (last error: {last_error!r})"
+        )
 
 
 def render_compose_file(target_dir: Path, **substitutions: str) -> Path:
@@ -134,21 +161,22 @@ def build_test_image(tag: str) -> None:
     Raises ``RuntimeError`` with build output on a non-zero exit so
     pytest tracebacks show why the build failed.
     """
-    result = subprocess.run(
-        [
-            "docker",
-            "build",
-            "-f",
-            str(DOCKERFILE),
-            "-t",
-            tag,
-            str(REPO_ROOT),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=DOCKER_BUILD_TIMEOUT_SECONDS,
-    )
+    with phase_timer("build_test_image", tag=tag):
+        result = subprocess.run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(DOCKERFILE),
+                "-t",
+                tag,
+                str(REPO_ROOT),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=DOCKER_BUILD_TIMEOUT_SECONDS,
+        )
     if result.returncode != 0:
         raise RuntimeError(
             f"`docker build` failed for {tag}: "
