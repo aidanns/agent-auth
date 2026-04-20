@@ -44,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rationale and the pairing with NIST SP 800-53 (cybersecurity),
   OWASP ASVS (#112), and SLSA / cosign / SBOM (#109 / #110 / #111).
   `scripts/verify-standards.sh` gates the new section.
+- **OpenTelemetry semantic conventions adopted for observability naming.** New
+  ADR 0017 pins the project to OTel semconv
+  [v1.40.0](https://github.com/open-telemetry/semantic-conventions/releases/tag/v1.40.0)
+  for HTTP-server metric names and HTTP-attribute audit-log keys. A new
+  `## Observability` section in `design/DESIGN.md` documents the mapping and
+  the domain fields that keep their existing names. No code changes; this
+  lands the standard that #26 (metrics endpoint), #20 (audit schema pinning),
+  and #33 (observability design) build on.
 
 ### Changed
 

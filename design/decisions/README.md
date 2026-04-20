@@ -53,3 +53,5 @@ is linked from this index.
   — SSDF is the SDLC-practices companion to the existing NIST SP 800-53 cybersecurity standard; conformance tracked in `design/SSDF.md`.
 - [ADR 0016 — Release supply chain: Release Please + keyless cosign + SPDX SBOM + REUSE](0016-release-supply-chain.md)
   — autorelease via Release Please; keyless cosign signatures and per-artefact SPDX SBOMs on every release; REUSE per-file licensing across the source tree.
+- [ADR 0017 — Adopt OpenTelemetry semantic conventions for metrics and logs](0017-opentelemetry-semantic-conventions.md)
+  — HTTP-server metric and log attribute names follow OTel semconv v1.40.0; domain fields keep their existing names.
