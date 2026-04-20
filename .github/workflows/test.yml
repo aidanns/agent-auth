@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -16,5 +16,28 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run tests
-        run: task test -- --all
+      - name: Run unit tests
+        run: task test -- --unit
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run integration tests
+        run: task test -- --integration
+
+  tests:
+    runs-on: ubuntu-latest
+    needs: [unit, integration]
+    if: always()
+    steps:
+      - name: Fail if any upstream job did not succeed
+        if: needs.unit.result != 'success' || needs.integration.result != 'success'
+        run: |
+          echo "unit=${{ needs.unit.result }} integration=${{ needs.integration.result }}"
+          exit 1
