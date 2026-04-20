@@ -105,18 +105,18 @@ agent-auth serve --host 127.0.0.1 --port 8080
 
 ```bash
 # Validate a token against a required scope
-curl -X POST http://127.0.0.1:9100/agent-auth/validate \
+curl -X POST http://127.0.0.1:9100/agent-auth/v1/validate \
   -H "Content-Type: application/json" \
   -d '{"token": "aa_<id>_<sig>", "required_scope": "things:read"}'
 
 # Refresh a token pair
-curl -X POST http://127.0.0.1:9100/agent-auth/token/refresh \
+curl -X POST http://127.0.0.1:9100/agent-auth/v1/token/refresh \
   -H "Content-Type: application/json" \
   -d '{"refresh_token": "rt_<id>_<sig>"}'
 
 # Check token status
 curl -H "Authorization: Bearer aa_<id>_<sig>" \
-  http://127.0.0.1:9100/agent-auth/token/status
+  http://127.0.0.1:9100/agent-auth/v1/token/status
 ```
 
 ### things-bridge (macOS host)
@@ -228,7 +228,7 @@ config, and images built inside DinD are not visible to the host
 `docker` CLI.
 
 The integration-test fixture chmods the bind-mounted config directory
-to `0755` and `config.json` to `0644` so the container user (UID 1001,
+to `0755` and `config.yaml` to `0644` so the container user (UID 1001,
 see `docker/Dockerfile.test`) can read it regardless of the host
 tmpdir's default mode or the host runner's UID.
 

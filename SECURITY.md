@@ -40,6 +40,26 @@ Trust boundary decisions:
   Migration to an out-of-process plugin boundary is tracked in
   [#6](https://github.com/aidanns/agent-auth/issues/6).
 
+## Token management endpoints
+
+The management endpoints (`POST /agent-auth/v1/token/create`,
+`GET /agent-auth/v1/token/list`, `POST /agent-auth/v1/token/modify`,
+`POST /agent-auth/v1/token/revoke`, `POST /agent-auth/v1/token/rotate`) require
+`Authorization: Bearer <token>` where the token's family carries
+`agent-auth:manage=allow` in its scopes.
+
+On first startup the server creates this management token family directly via
+the store and stores the refresh token in the OS keyring. Operators retrieve
+it with `agent-auth management-token show` and exchange it for an access
+token via `POST /agent-auth/v1/token/refresh`. External clients must refresh
+before each management session (access tokens expire after 900 s by default).
+
+The `agent-auth:manage` scope is reserved. The management token family is
+excluded from `GET /agent-auth/v1/token/list` responses. If the management family is rotated
+or revoked, the server recreates it automatically on the next restart. See
+[ADR 0014](design/decisions/0014-management-endpoint-auth.md) for the full
+rationale.
+
 ## Threat model
 
 Each threat is assessed using a qualitative risk matrix following

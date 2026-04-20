@@ -55,15 +55,15 @@ The subprocess contract is stable and publicly documented so the bridge can adop
 
 Read-only endpoints. Read endpoints require the `things:read` scope; the health endpoint requires `things-bridge:health` (mirroring the agent-auth health pattern — see `GET /agent-auth/health` below).
 
-| Method | Path                                                     | Scope                  | Description                                   |
-| ------ | -------------------------------------------------------- | ---------------------- | --------------------------------------------- |
-| GET    | `/things-bridge/todos?list=&project=&area=&tag=&status=` | `things:read`          | List todos, optionally filtered               |
-| GET    | `/things-bridge/todos/{id}`                              | `things:read`          | Fetch one todo by Things id                   |
-| GET    | `/things-bridge/projects?area=`                          | `things:read`          | List projects, optionally filtered by area id |
-| GET    | `/things-bridge/projects/{id}`                           | `things:read`          | Fetch one project by Things id                |
-| GET    | `/things-bridge/areas`                                   | `things:read`          | List all areas                                |
-| GET    | `/things-bridge/areas/{id}`                              | `things:read`          | Fetch one area by Things id                   |
-| GET    | `/things-bridge/health`                                  | `things-bridge:health` | Liveness / readiness probe                    |
+| Method | Path                                                        | Scope                  | Description                                   |
+| ------ | ----------------------------------------------------------- | ---------------------- | --------------------------------------------- |
+| GET    | `/things-bridge/v1/todos?list=&project=&area=&tag=&status=` | `things:read`          | List todos, optionally filtered               |
+| GET    | `/things-bridge/v1/todos/{id}`                              | `things:read`          | Fetch one todo by Things id                   |
+| GET    | `/things-bridge/v1/projects?area=`                          | `things:read`          | List projects, optionally filtered by area id |
+| GET    | `/things-bridge/v1/projects/{id}`                           | `things:read`          | Fetch one project by Things id                |
+| GET    | `/things-bridge/v1/areas`                                   | `things:read`          | List all areas                                |
+| GET    | `/things-bridge/v1/areas/{id}`                              | `things:read`          | Fetch one area by Things id                   |
+| GET    | `/things-bridge/health`                                     | `things-bridge:health` | Liveness / readiness probe                    |
 
 Error responses from the bridge:
 
@@ -150,7 +150,7 @@ Both tokens are displayed once. The user configures the CLI client with these cr
 **Refresh:**
 
 ```
-POST /agent-auth/token/refresh
+POST /agent-auth/v1/token/refresh
 {"refresh_token": "rt_xxx_yyy"}
 → old refresh token revoked
 ← {"access_token": "aa_zzz_www", "refresh_token": "rt_zzz_www", "expires_in": 900}
@@ -189,7 +189,7 @@ agent-auth token revoke <token-id>
 When a CLI attempts to refresh and receives a `refresh_token_expired` error, it can request re-issuance of a new token pair for the same token family. This requires JIT approval from the user on the host.
 
 ```
-POST /agent-auth/token/reissue
+POST /agent-auth/v1/token/reissue
 {"family_id": "fff"}
 ← blocks — agent-auth triggers JIT approval via configured notification plugin
 ← {"access_token": "aa_zzz_www", "refresh_token": "rt_zzz_www", "expires_in": 900}
@@ -289,7 +289,7 @@ app-cli inbox
     Authorization: Bearer aa_xxx_yyy
 
   app-bridge:
-    → POST http://localhost:9100/agent-auth/validate
+    → POST http://localhost:9100/agent-auth/v1/validate
       {"token": "aa_xxx_yyy", "required_scope": "app:read"}
     ← {"valid": true, "tier": "allow"}
     → interacts with external system
@@ -305,7 +305,7 @@ app-cli inbox
   ← 401 Unauthorized
 
   app-cli:
-    → POST http://host:9100/agent-auth/token/refresh
+    → POST http://host:9100/agent-auth/v1/token/refresh
       {"refresh_token": "rt_xxx_yyy"}
     ← {"access_token": "aa_zzz_www", "refresh_token": "rt_zzz_www", "expires_in": 900}
     → saves new credentials
@@ -324,11 +324,11 @@ app-cli inbox
   ← 401 Unauthorized
 
   app-cli:
-    → POST http://host:9100/agent-auth/token/refresh
+    → POST http://host:9100/agent-auth/v1/token/refresh
       {"refresh_token": "rt_xxx_yyy"}
     ← 401 {"error": "refresh_token_expired"}
 
-    → POST http://host:9100/agent-auth/token/reissue
+    → POST http://host:9100/agent-auth/v1/token/reissue
       {"family_id": "fff"}
     ← blocks — agent-auth triggers JIT approval on the host
     ← {"access_token": "aa_zzz_www", "refresh_token": "rt_zzz_www", "expires_in": 900}
@@ -347,7 +347,7 @@ app-cli complete <id>
     Authorization: Bearer aa_xxx_yyy
 
   app-bridge:
-    → POST http://localhost:9100/agent-auth/validate
+    → POST http://localhost:9100/agent-auth/v1/validate
       {"token": "aa_xxx_yyy", "required_scope": "app:write", "description": "Complete todo: Buy milk"}
     ← blocks — agent-auth triggers notification via configured plugin and waits for user response
     ← {"valid": true}
@@ -391,11 +391,44 @@ Encrypted columns are marked with (E) in the table definitions below.
 
 Approval grants are held in memory on the agent-auth server (see the approval flow above) and have no persistent table.
 
+## API Versioning Policy
+
+All HTTP endpoints (both agent-auth and things-bridge) are versioned under a
+`/v1/` path segment. This allows breaking changes to be introduced under `/v2/`
+while existing clients continue to use `/v1/`.
+
+Health endpoints (`/agent-auth/health`, `/things-bridge/health`) are unversioned
+by convention — probes and monitoring tools should always be able to reach them
+regardless of API version.
+
+**What constitutes a breaking change (requires `/v2/`):**
+
+- Removing a field from a response body
+- Renaming a field or error code
+- Changing the meaning of a status code or field value
+- Removing an endpoint
+
+**Non-breaking changes (stay on current version):**
+
+- Adding new optional request fields
+- Adding new response fields (clients must ignore unknown fields)
+- Adding new endpoints
+- Adding new error codes
+
+**Deprecation window:** When a breaking change is required, the old version
+remains supported for 30 days before removal. The deprecation is announced
+via changelog and a `Sunset` response header.
+
+Error codes and audit-log event schemas are also part of the public API
+surface; see `design/error-codes.md` for the full error taxonomy.
+
 ## agent-auth HTTP API
 
-All endpoints are prefixed with `/agent-auth/` to allow hosting behind a shared reverse proxy alongside bridge servers.
+All endpoints are prefixed with `/agent-auth/v1/` to allow hosting behind a
+shared reverse proxy alongside bridge servers. The health endpoint is unversioned
+(see versioning policy above).
 
-### POST /agent-auth/validate
+### POST /agent-auth/v1/validate
 
 Validate a token and check scope authorization.
 
@@ -431,7 +464,7 @@ Response (403 — scope denied or JIT approval denied):
 {"valid": false, "error": "scope_denied"}
 ```
 
-### POST /agent-auth/token/refresh
+### POST /agent-auth/v1/token/refresh
 
 Exchange a refresh token for a new access/refresh token pair.
 
@@ -464,7 +497,7 @@ Response (401 — token consumed, family revoked):
 {"error": "refresh_token_reuse_detected", "detail": "Token family revoked"}
 ```
 
-### POST /agent-auth/token/reissue
+### POST /agent-auth/v1/token/reissue
 
 Request a new access/refresh token pair for a token family whose refresh token has expired. Requires JIT approval from the user on the host.
 
@@ -541,7 +574,7 @@ The integration-test fixture polls for *any* HTTP response (including
 401\) as its container-readiness signal, then issues a properly-scoped
 token for the actual health assertion.
 
-### GET /agent-auth/token/status
+### GET /agent-auth/v1/token/status
 
 Introspect a token (read-only, for debugging).
 
@@ -563,6 +596,127 @@ Response (200):
   "expires_in": 732
 }
 ```
+
+### Management endpoint authentication
+
+All five management endpoints require `Authorization: Bearer <access_token>`
+where the access token's family has `agent-auth:manage=allow` in its scopes.
+On first startup, the server creates this management token family automatically
+and stores the refresh token in the OS keyring. Retrieve the refresh token via
+`agent-auth management-token show`, then exchange it for an access token via
+`POST /agent-auth/v1/token/refresh` before calling management endpoints. See
+[ADR 0014](decisions/0014-management-endpoint-auth.md) for the rationale.
+
+Errors returned when auth is missing or invalid: `401 missing_token`,
+`401 invalid_token`, `401 token_expired`, `403 scope_denied`.
+
+### POST /agent-auth/v1/token/create
+
+Create a new token family and return an access/refresh token pair.
+
+Request:
+
+```json
+{"scopes": {"things:read": "allow", "things:write": "prompt"}}
+```
+
+Response (200):
+
+```json
+{
+  "family_id": "fff",
+  "access_token": "aa_xxx_yyy",
+  "refresh_token": "rt_xxx_yyy",
+  "scopes": {"things:read": "allow", "things:write": "prompt"},
+  "expires_in": 900
+}
+```
+
+Errors: `400 no_scopes` (empty or missing scopes), `400 invalid_tier` (tier not in `allow`/`prompt`/`deny`), `400 malformed_request`.
+
+No authentication required. Trust boundary is the server's bind address (127.0.0.1 by default — see ADR 0006).
+
+### GET /agent-auth/v1/token/list
+
+Return all token families, including revoked ones.
+
+Response (200): JSON array of family objects.
+
+```json
+[
+  {"id": "fff", "scopes": {"things:read": "allow"}, "created_at": "2026-04-19T10:00:00Z", "revoked": false}
+]
+```
+
+No authentication required.
+
+### POST /agent-auth/v1/token/modify
+
+Modify the scopes on an existing token family. Takes effect on the next `/validate` call — no new tokens are issued.
+
+Request:
+
+```json
+{
+  "family_id": "fff",
+  "add_scopes": {"things:write": "allow"},
+  "remove_scopes": ["things:read"],
+  "set_tiers": {"things:write": "prompt"}
+}
+```
+
+All modification fields are optional; at least one must be non-empty. `set_tiers` silently skips scope names that do not exist on the family.
+
+Response (200):
+
+```json
+{"family_id": "fff", "scopes": {"things:write": "prompt"}}
+```
+
+Errors: `400 no_modifications`, `400 invalid_tier`, `400 malformed_request`, `404 family_not_found`, `409 family_revoked`. No authentication required.
+
+### POST /agent-auth/v1/token/revoke
+
+Revoke a token family, invalidating all its tokens. Idempotent: revoking an already-revoked family returns 200.
+
+Request:
+
+```json
+{"family_id": "fff"}
+```
+
+Response (200):
+
+```json
+{"family_id": "fff", "revoked": true}
+```
+
+Errors: `400 malformed_request`, `404 family_not_found`. No authentication required.
+
+### POST /agent-auth/v1/token/rotate
+
+Revoke an existing token family and create a new one with the same scopes.
+
+Request:
+
+```json
+{"family_id": "fff"}
+```
+
+Response (200):
+
+```json
+{
+  "old_family_id": "fff",
+  "new_family_id": "ggg",
+  "access_token": "aa_xxx_yyy",
+  "refresh_token": "rt_xxx_yyy",
+  "scopes": {"things:read": "allow"},
+  "expires_in": 900
+}
+```
+
+Errors: `400 malformed_request`, `404 family_not_found`, `409 family_revoked`. No authentication required.
 
 ## Network Configuration
 
