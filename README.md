@@ -248,6 +248,15 @@ See [SECURITY.md](SECURITY.md) for the full threat model, trust boundaries, key
 handling, revocation flow, audit surface, vulnerability reporting, and the chosen
 cybersecurity standard (NIST SP 800-53 Rev 5).
 
+## Contributing
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup,
+task runner usage, commit conventions, and the release process. Participation
+is governed by the project
+[Code of Conduct](.github/CODE_OF_CONDUCT.md).
+[SUPPORT.md](.github/SUPPORT.md) covers where to ask questions, file bugs, and
+report vulnerabilities.
+
 ## License
 
 [MIT](LICENSE.md)

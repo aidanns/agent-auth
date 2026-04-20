@@ -1,5 +1,10 @@
 # Contributing
 
+Participation in this project — issues, pull requests, discussions — is
+governed by the [Code of Conduct](.github/CODE_OF_CONDUCT.md). See
+[SECURITY.md](SECURITY.md) for vulnerability reporting and
+[SUPPORT.md](.github/SUPPORT.md) for where to ask questions or file bugs.
+
 ## Dev setup
 
 01. Install [uv](https://docs.astral.sh/uv/) — the project's canonical
