@@ -98,7 +98,13 @@ the per-file licensing convention.
   bundle to the release.
 - **REUSE 3.3** is adopted across the source tree. Every file
   carries an `SPDX-License-Identifier: MIT` header or is covered by
-  `REUSE.toml`; `fsfe/reuse-action@v5` gates PRs.
+  `REUSE.toml`. CI runs `task reuse-lint` (which dispatches to
+  `scripts/reuse-lint.sh` → `uv run reuse lint`), so the local
+  command and the CI gate run the same `reuse` version pinned by
+  `uv.lock`. `fsfe/reuse-action@v5` was considered and rejected
+  because it would pin a separate `reuse` version from the local
+  `task reuse-lint` entrypoint, inviting drift between the two
+  paths.
 - **Pre-1.0 guardrail** is reviewer discipline on the release PR —
   no workflow-level manual gate.
 - **`scripts/release.sh`** is retained as the documented break-glass

@@ -244,38 +244,57 @@ wheel:
 ### Verification recipe
 
 ```bash
-# Download the artifact, its SBOM, and both signature bundles from the release.
-# Filenames use PEP 625 normalization (underscore, not hyphen) — that is the
-# form uv build emits.
+# Download the artefact, its SBOM, and both signature bundles from the release.
+# Filenames use PEP 625 normalisation (underscore, not hyphen) — that is the
+# form `uv build` emits. Each SBOM lives next to its artefact as
+# `<artefact>.spdx.json`.
 : "${TAG:?set TAG=vX.Y.Z to the release tag you downloaded}"
 
-for f in agent_auth-${TAG#v}.tar.gz agent_auth-${TAG#v}-py3-none-any.whl \
-         sdist.spdx.json wheel.spdx.json; do
+VERSION="${TAG#v}"
+SDIST="agent_auth-${VERSION}.tar.gz"
+WHEEL="agent_auth-${VERSION}-py3-none-any.whl"
+IDENTITY="https://github.com/aidanns/agent-auth/.github/workflows/release-publish.yml@refs/tags/${TAG}"
+
+for f in "${SDIST}" "${WHEEL}" "${SDIST}.spdx.json" "${WHEEL}.spdx.json"; do
   cosign verify-blob \
     --bundle "${f}.sig.bundle" \
-    --certificate-identity-regexp "^https://github\.com/aidanns/agent-auth/\.github/workflows/release-publish\.yml@refs/tags/${TAG}$" \
+    --certificate-identity "${IDENTITY}" \
     --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
     "${f}"
 done
 ```
 
-The `--certificate-identity-regexp` pins the signature to the
+The `--certificate-identity` pins the signature to the
 `release-publish.yml` workflow running on the `v*` tag that cut the
 release; a signature produced by any other workflow or branch fails
-verification.
+verification. Exact-match is used instead of `--certificate-identity-regexp`
+so that unescaped `.` characters in the tag cannot widen the accepted
+identity set.
 
-### Trust boundary
+### Trust boundary and residual risks
 
 The supply-chain trust boundary ends at the GitHub-hosted runner:
 
-- Artifacts, SBOM, and signatures are produced in the same
-  ephemeral job; a compromised runner could produce a consistently
-  signed malicious bundle. Residual risk accepted.
-- Sigstore's transparency log (Rekor) records every signature; a
-  signature that is not present in Rekor is a detection signal.
-- Long-lived signing keys are **not** used — cosign consumes the
-  runner's OIDC token per-release, so there is no key to steal or
-  revoke out-of-band.
+- **Compromised GitHub-hosted runner.** Artefacts, SBOM, and
+  signatures are produced in the same ephemeral job; a compromised
+  runner could produce a consistently signed malicious bundle.
+  Residual risk accepted; Rekor transparency-log inclusion is the
+  detection signal.
+- **Rekor availability.** `cosign verify-blob --bundle` requires
+  the transparency-log entry embedded in the bundle to be
+  verifiable against Rekor's current state. If Rekor is
+  unreachable at verification time, or if an entry has been
+  withheld, verification fails closed — the verifier cannot
+  distinguish a censored entry from a forged one without an
+  alternate log mirror.
+- **Fulcio CA compromise.** The keyless signing model trusts the
+  Sigstore PKI (Fulcio root). A compromised Fulcio could mint a
+  certificate against any OIDC identity, including the runner's.
+  Rekor transparency bounds the detection window but does not
+  prevent a successful forgery within it.
+- **No long-lived signing keys.** Cosign consumes the runner's
+  OIDC token per-release, so there is no key to steal or revoke
+  out-of-band. The trade-off is accepting the three risks above.
 
 SLSA build provenance is tracked separately in
 [#109](https://github.com/aidanns/agent-auth/issues/109).

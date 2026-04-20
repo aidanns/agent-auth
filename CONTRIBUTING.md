@@ -106,9 +106,14 @@ Two release paths exist:
   [`SECURITY.md` → Supply-chain artifacts](SECURITY.md#supply-chain-artifacts).
 - **Break-glass — `task release` (local)**: runs `scripts/release.sh`
   on your laptop. Use when CI is unavailable or a release has to be
-  cut without waiting for the runner. Produces the tag and GitHub
-  release but **not** the SBOM or cosign signatures — those only come
-  from the CI path. Documented below.
+  cut without waiting for the runner. The tag push uses your own git
+  credential (not `GITHUB_TOKEN`), so it **does** fire
+  `release-publish.yml` — the release will accrue its SBOMs and
+  `.sig.bundle` signatures asynchronously once the runner completes.
+  The difference from the default path is timing: `gh release create`
+  publishes the release up front, so downstream consumers may briefly
+  see a release whose assets are still being uploaded. Documented
+  below.
 
 ### Before releasing (both paths)
 
