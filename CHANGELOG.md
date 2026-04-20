@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Covenant v3.0 Code of Conduct, issue templates (bug report, feature request,
   security redirect), pull-request template, and SUPPORT.md. CoC and SUPPORT
   are referenced from `README.md` and `CONTRIBUTING.md`.
+- NIST SSDF (SP 800-218 v1.1) adopted as the project's SDLC
+  standard. `design/SSDF.md` records per-practice conformance for
+  the PO / PS / PW / RV practice groups; `SECURITY.md` gains an
+  `## SDLC standard` section linking the audit; ADR 0014 records
+  the rationale and the pairing with NIST SP 800-53 (cybersecurity),
+  OWASP ASVS (#112), and SLSA / cosign / SBOM (#109 / #110 / #111).
+  `scripts/verify-standards.sh` gates the new section.
 
 ## [0.1.0] - 2026-04-19
 

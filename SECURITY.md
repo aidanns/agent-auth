@@ -201,6 +201,35 @@ The table below lists selected controls with their current implementation status
 Control applicability assessments for new features should be documented in
 `design/decisions/` ADRs at the time the feature is implemented.
 
+## SDLC standard
+
+This project adopts **NIST SP 800-218 v1.1 — Secure Software Development
+Framework (SSDF)** as the reference standard for SDLC-side practices.
+Per-practice conformance is tracked in [`design/SSDF.md`](design/SSDF.md),
+covering the four SSDF practice groups:
+
+- **PO — Prepare the Organization**: security requirements, toolchain
+  selection, and per-PR security-check criteria.
+- **PS — Protect the Software**: source-code protection, release
+  integrity verification, and provenance archival.
+- **PW — Produce Well-Secured Software**: threat modelling, secure
+  design reviews, dependency hygiene, secure coding, code review,
+  testing, and secure-by-default configuration.
+- **RV — Respond to Vulnerabilities**: vulnerability intake, scanning,
+  disclosure policy, and remediation.
+
+SSDF pairs with NIST SP 800-53 (the cybersecurity standard named above):
+SSDF specifies *how the project builds* the software, SP 800-53 specifies
+*what the running system does*. Application-level verification under OWASP
+ASVS is tracked in [#112](https://github.com/aidanns/agent-auth/issues/112);
+build-provenance mechanisms (SLSA, Sigstore/cosign, SBOM) that SSDF's PS
+group references are tracked in
+[#109](https://github.com/aidanns/agent-auth/issues/109),
+[#110](https://github.com/aidanns/agent-auth/issues/110), and
+[#111](https://github.com/aidanns/agent-auth/issues/111). The rationale
+for selecting SSDF is recorded in
+[`design/decisions/0014-nist-ssdf-sdlc-standard.md`](design/decisions/0014-nist-ssdf-sdlc-standard.md).
+
 ## Vulnerability reporting
 
 This is a personal project. If you find a security issue, **do not open a

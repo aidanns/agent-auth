@@ -577,6 +577,7 @@ else
     "cybersecurity-standard|## Cybersecurity standard|Cybersecurity standard"
     "key-handling|## Key handling"
     "revocation-flow|## Revocation flow"
+    "sdlc-standard|## SDLC standard|SDLC standard"
     "threat-model|## Threat model"
     "trust-boundaries|## Trust boundaries|## Trust boundary"
     "vulnerability-reporting|## Vulnerability reporting|## Reporting vulnerabilities"
