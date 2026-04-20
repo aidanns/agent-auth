@@ -105,18 +105,18 @@ agent-auth serve --host 127.0.0.1 --port 8080
 
 ```bash
 # Validate a token against a required scope
-curl -X POST http://127.0.0.1:9100/agent-auth/validate \
+curl -X POST http://127.0.0.1:9100/agent-auth/v1/validate \
   -H "Content-Type: application/json" \
   -d '{"token": "aa_<id>_<sig>", "required_scope": "things:read"}'
 
 # Refresh a token pair
-curl -X POST http://127.0.0.1:9100/agent-auth/token/refresh \
+curl -X POST http://127.0.0.1:9100/agent-auth/v1/token/refresh \
   -H "Content-Type: application/json" \
   -d '{"refresh_token": "rt_<id>_<sig>"}'
 
 # Check token status
 curl -H "Authorization: Bearer aa_<id>_<sig>" \
-  http://127.0.0.1:9100/agent-auth/token/status
+  http://127.0.0.1:9100/agent-auth/v1/token/status
 ```
 
 ### things-bridge (macOS host)
