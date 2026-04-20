@@ -183,8 +183,9 @@ Documented in the ADR:
 - [#26](https://github.com/aidanns/agent-auth/issues/26) — metrics
   endpoint implementation, must use the names in this plan.
 - [#20](https://github.com/aidanns/agent-auth/issues/20) — audit log
-  schema pinning, must rename HTTP-attribute fields per this plan
-  when it adds them.
+  schema pinning, must introduce HTTP-attribute fields per this
+  plan when it adds them (no HTTP-attribute fields are emitted
+  today, so there is nothing to rename).
 - [#33](https://github.com/aidanns/agent-auth/issues/33) —
   observability design document, supersedes the DESIGN.md summary
   added here by folding it into a dedicated doc.

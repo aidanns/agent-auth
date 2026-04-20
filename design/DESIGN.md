@@ -762,21 +762,21 @@ units per the Prometheus convention.
 | `http.server.request.duration` | `http_server_request_duration_seconds` | Histogram (histogram)        | `http.request.method`, `http.route`, `url.scheme`, `http.response.status_code` (on non-error), `error.type` (on error)                                      |
 | `http.server.active_requests`  | `http_server_active_requests`          | UpDownCounter (gauge)        | `http.request.method`, `url.scheme` (required); `server.address`, `server.port` (opt-in per semconv; emitted because local bind address varies per service) |
 
-Domain counters (no OTel equivalent) use project-namespaced names:
-
-| Metric                                               | Type    | Description                                                                 |
-| ---------------------------------------------------- | ------- | --------------------------------------------------------------------------- |
-| `agent_auth_validations_total{result, reason, tier}` | counter | `POST /agent-auth/validate` outcomes — `allowed` / `denied` + denial reason |
-| `agent_auth_token_operations_total{operation}`       | counter | `created`, `refreshed`, `reissued`, `revoked`, `modified`                   |
-| `agent_auth_approvals_total{outcome, grant_type}`    | counter | JIT approval outcomes when a `prompt`-tier scope is requested               |
+Domain counters for validation outcomes, token operations, and JIT
+approval outcomes have no OTel equivalent and will use
+project-namespaced names (e.g. prefixed `agent_auth_` /
+`things_bridge_`). The specific metric names and label sets are
+designed with #26 when the metrics endpoint lands; this section
+only pins that they stay outside the OTel namespace.
 
 ### Audit log fields
 
 The audit log at `$XDG_STATE_HOME/agent-auth/audit.log` is JSON-lines.
 Fields fall into two groups:
 
-**HTTP attributes (OTel semconv keys)** — populated on events that
-originated from an HTTP request. Names and types follow semconv:
+**HTTP request attributes (OTel HTTP semconv keys)** — populated on
+events that originated from an HTTP request. Names and types follow
+the semconv HTTP conventions:
 
 | Field                       | Type   | Source                                                                                                     |
 | --------------------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
@@ -790,8 +790,15 @@ originated from an HTTP request. Names and types follow semconv:
 | `network.protocol.version`  | string | e.g. `1.1` or `2`; lets audits distinguish HTTP/1.1 from HTTP/2 sessions                                   |
 | `server.address`            | string | local bind address                                                                                         |
 | `server.port`               | int    | local bind port                                                                                            |
-| `service.name`              | string | `agent-auth` or `things-bridge`                                                                            |
-| `service.version`           | string | PEP 440 release version                                                                                    |
+
+**Resource attributes (OTel resource semconv keys)** — identify the
+emitter itself, not the request. Included on every line so audit
+trails can be joined across services:
+
+| Field             | Type   | Source                          |
+| ----------------- | ------ | ------------------------------- |
+| `service.name`    | string | `agent-auth` or `things-bridge` |
+| `service.version` | string | PEP 440 release version         |
 
 **Domain fields (project-namespaced)** — describe authorization
 state, not HTTP mechanics. No OTel equivalent exists; these keep

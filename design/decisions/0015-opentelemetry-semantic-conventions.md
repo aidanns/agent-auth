@@ -88,25 +88,35 @@ Concretely:
    mapped to Prometheus exposition names per the OTel → Prometheus
    mapping spec (`.` → `_`, unit suffix). The duration histogram
    carries `http.request.method`, `http.route`, `url.scheme`,
-   `http.response.status_code` (on non-error), and `error.type`
-   (on error) as attributes. The active-requests UpDownCounter
-   carries `http.request.method` and `url.scheme` as its required
-   attributes; `server.address` / `server.port` are opt-in per
-   semconv and this project emits them (localhost binds vary per
-   service).
-2. Audit log fields that capture HTTP request metadata use semconv
+   `http.response.status_code` (conditionally required whenever a
+   status was received/sent), and `error.type` (conditionally
+   required whenever the request ended with an error — including
+   5xx responses, where both attributes apply). The active-requests
+   UpDownCounter carries `http.request.method` and `url.scheme` as
+   its required attributes; `server.address` / `server.port` are
+   opt-in per semconv and this project emits them (localhost binds
+   vary per service).
+2. Audit log HTTP request metadata uses semconv HTTP attribute
    keys: `http.request.method`, `http.route`, `url.path`,
    `http.response.status_code`, `url.scheme`, `client.address`,
    `user_agent.original`, `network.protocol.version`,
-   `server.address`, `server.port`, `service.name`,
-   `service.version`. `http.route` is the templated path (metrics-
-   safe, low cardinality); `url.path` is the actual path with
-   concrete IDs (forensics-useful). #20 enforces this via the audit
-   schema contract tests.
-3. Domain-specific counters and domain-specific audit fields (those
-   describing tokens, scopes, tiers, approval outcomes) keep their
-   existing project-namespaced names. They have no OTel equivalent
-   and inventing semconv extensions for them is out of scope.
+   `server.address`, `server.port`. `http.route` is the templated
+   path (metrics-safe, low cardinality); `url.path` is the actual
+   path with concrete IDs (forensics-useful). Emitter identity uses
+   semconv **resource** attributes (a distinct namespace in semconv):
+   `service.name` and `service.version`. #20 enforces all of this
+   via the audit schema contract tests.
+3. Domain-specific metrics (validation outcomes, token operations,
+   JIT approval outcomes) and domain-specific audit fields (those
+   describing tokens, scopes, tiers, approval outcomes) use
+   project-namespaced names outside the OTel semconv namespace —
+   they have no OTel equivalent and inventing semconv extensions
+   for them is out of scope. The concrete metric names and label
+   sets are designed with #26 (metrics endpoint); this ADR only
+   fixes the namespace, not the schema. The existing audit-log
+   domain fields (`event`, `token_id`, `family_id`, `scope`,
+   `scopes`, `tier`, `grant_type`, `reason`) keep their current
+   names.
 4. The version pin is declared in `design/DESIGN.md` and revisited
    when a semconv change would affect an attribute the project
    already emits. Bumping the pin is itself an ADR-worthy decision
@@ -137,11 +147,13 @@ the reference.
   The project emits flat JSON objects, not OTel LogRecord envelopes,
   so the field is not an OTel attribute — it is the line's emit
   time.
-- The pin is conservative: semconv attributes the project emits are
-  drawn from areas that have been Stable since before v1.40.0 (HTTP
-  semconv became Stable in v1.23.0). A bump is only forced by a
-  breaking rename in a Stable area, which OTel's stability policy
-  makes rare.
+- The pin is mostly conservative: HTTP semconv reached Stable in
+  v1.23.0 and the attributes this project adopts sit inside that
+  stable surface. One exception worth flagging: in v1.40.0 the
+  `http.server.active_requests` metric still carries the Development
+  stability badge (only `http.server.request.duration` is Stable),
+  so #26 must accept that the metric's name or shape may change
+  before it stabilises. The ADR is renewed if that rename lands.
 
 ## Follow-ups
 
