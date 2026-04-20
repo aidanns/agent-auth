@@ -74,25 +74,25 @@ functions:
     description: Expose agent-auth functionality over HTTP for use by app bridges and CLIs. All endpoints are prefixed with /agent-auth/.
     functions:
       - name: Serve Validate Endpoint
-        description: Handle POST /agent-auth/validate requests from app bridges, including blocking for JIT approval on prompt-tier scopes.
+        description: Handle POST /agent-auth/v1/validate requests from app bridges, including blocking for JIT approval on prompt-tier scopes.
       - name: Serve Refresh Endpoint
-        description: Handle POST /agent-auth/token/refresh requests from CLIs.
+        description: Handle POST /agent-auth/v1/token/refresh requests from CLIs.
       - name: Serve Reissue Endpoint
-        description: Handle POST /agent-auth/token/reissue requests from CLIs when the refresh token has expired. Triggers JIT approval via the configured notification plugin.
+        description: Handle POST /agent-auth/v1/token/reissue requests from CLIs when the refresh token has expired. Triggers JIT approval via the configured notification plugin.
       - name: Serve Status Endpoint
-        description: Handle GET /agent-auth/token/status requests for token introspection.
+        description: Handle GET /agent-auth/v1/token/status requests for token introspection.
       - name: Serve Health Endpoint
         description: Handle GET /agent-auth/health liveness / readiness probes; require an access token carrying the agent-auth:health scope, return 200 when the token store is reachable, 401 / 403 on missing / unscoped tokens, and 503 when the store is unreachable.
       - name: Serve Token Create Endpoint
-        description: Handle POST /agent-auth/token/create requests to create a new token family and return an access/refresh token pair.
+        description: Handle POST /agent-auth/v1/token/create requests to create a new token family and return an access/refresh token pair.
       - name: Serve Token List Endpoint
-        description: Handle GET /agent-auth/token/list requests to return all token families and their scopes.
+        description: Handle GET /agent-auth/v1/token/list requests to return all token families and their scopes.
       - name: Serve Token Modify Endpoint
-        description: Handle POST /agent-auth/token/modify requests to add, remove, or change tiers on scopes of an existing token family.
+        description: Handle POST /agent-auth/v1/token/modify requests to add, remove, or change tiers on scopes of an existing token family.
       - name: Serve Token Revoke Endpoint
-        description: Handle POST /agent-auth/token/revoke requests to revoke a token family, invalidating all its tokens.
+        description: Handle POST /agent-auth/v1/token/revoke requests to revoke a token family, invalidating all its tokens.
       - name: Serve Token Rotate Endpoint
-        description: Handle POST /agent-auth/token/rotate requests to revoke an existing token family and create a new one with the same scopes.
+        description: Handle POST /agent-auth/v1/token/rotate requests to revoke an existing token family and create a new one with the same scopes.
       - name: Bootstrap Management Token
         description: On server startup, check the OS keyring for a management refresh token; if absent or revoked, create a new agent-auth:manage=allow token family directly via the store and persist the refresh token to the keyring.
   - name: Audit Logging

@@ -19,10 +19,10 @@ class BridgeClient:
     Handles the token lifecycle automatically:
 
     1. Attaches ``Authorization: Bearer <access_token>`` from the credential store.
-    2. On ``401 {"error": "token_expired"}`` calls ``/agent-auth/token/refresh``,
+    2. On ``401 {"error": "token_expired"}`` calls ``/agent-auth/v1/token/refresh``,
        persists the new tokens, and retries the original request once.
     3. If the refresh token has itself expired (``401 refresh_token_expired``),
-       calls ``/agent-auth/token/reissue`` (which blocks on host-side JIT approval)
+       calls ``/agent-auth/v1/token/reissue`` (which blocks on host-side JIT approval)
        and retries once.
     4. Any further 401 surfaces as :class:`BridgeUnauthorizedError`.
     """
