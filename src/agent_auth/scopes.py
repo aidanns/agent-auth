@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Scope parsing and access tier resolution."""
 
 from agent_auth.errors import ScopeDeniedError

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+SPDX-License-Identifier: MIT
+-->
+
 # Plan: Adopt OpenTelemetry semantic conventions for metrics and logs
 
 Issue: [#118](https://github.com/aidanns/agent-auth/issues/118).
@@ -44,7 +49,7 @@ against it.
 
 ## Deliverables
 
-1. **ADR `design/decisions/0016-opentelemetry-semantic-conventions.md`**
+1. **ADR `design/decisions/0017-opentelemetry-semantic-conventions.md`**
    — commits to OTel semconv as the naming source for HTTP-server
    metrics and HTTP-attribute log fields, pins a specific version
    (`v1.40.0`, released 2026-02-19 — the latest stable at the time

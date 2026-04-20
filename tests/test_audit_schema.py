@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Contract tests for the audit-log schema.
 
 Every documented audit event kind is exercised here. Each test writes one

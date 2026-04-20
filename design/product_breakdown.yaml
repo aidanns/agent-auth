@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 name: agent-auth
 description: Token-based authorization system for gating AI agent access to host applications.
 components:

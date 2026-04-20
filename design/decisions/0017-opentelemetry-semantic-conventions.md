@@ -1,4 +1,9 @@
-# ADR 0016 — Adopt OpenTelemetry semantic conventions for metrics and logs
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+SPDX-License-Identifier: MIT
+-->
+
+# ADR 0017 — Adopt OpenTelemetry semantic conventions for metrics and logs
 
 ## Status
 

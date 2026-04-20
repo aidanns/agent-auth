@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Implementation Plan: Speed up `list_todos` to avoid 30s osascript timeout
 
 ## Context

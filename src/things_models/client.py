@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Protocol defining the read-only Things 3 client surface.
 
 Shared between the two client CLIs (which implement it) and the

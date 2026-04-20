@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 ## Summary
 
 <!-- 1-3 bullets describing what changes and why. Link related issues with `Closes #<n>` where applicable. -->

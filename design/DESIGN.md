@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # agent-auth Design
 
 ## Overview
@@ -768,7 +774,7 @@ pinned to
 [v1.40.0](https://github.com/open-telemetry/semantic-conventions/releases/tag/v1.40.0),
 for HTTP-server metric names and HTTP-attribute log keys. The
 rationale and deviations are recorded in
-`design/decisions/0016-opentelemetry-semantic-conventions.md`. The
+`design/decisions/0017-opentelemetry-semantic-conventions.md`. The
 pin refers to semconv attribute names only; the project emits
 Prometheus text and JSON-lines directly and does not depend on the
 OpenTelemetry SDK or OTLP transport.

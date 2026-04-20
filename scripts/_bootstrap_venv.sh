@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Ensure the per-OS/arch project virtualenv exists and reflects the
 # current pyproject.toml / uv.lock. Designed to be sourced (not
 # executed) so the caller can then exec the installed entry point in

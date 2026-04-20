@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Shared status-value validation for Things 3 todos and projects."""
 
 from things_models.errors import ThingsError

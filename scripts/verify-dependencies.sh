@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Verify that the external CLI tools required to run this project's
 # Taskfile targets are available on PATH. Intended as a pre-flight check
 # — run it locally before `task test`, `task verify-standards`, etc. to

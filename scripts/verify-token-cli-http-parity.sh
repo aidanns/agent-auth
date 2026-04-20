@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Verify every `agent-auth token *` CLI subcommand has a corresponding HTTP
 # route registered on AgentAuthHandler. Prevents adding a new CLI subcommand
 # without exposing it over HTTP (or vice versa).

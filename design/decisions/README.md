@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Architecture Decision Records
 
 Short records of the significant design decisions made on this project.
@@ -45,5 +51,7 @@ is linked from this index.
   — `agent-auth:manage=allow` scope gates create/list/modify/revoke/rotate; bootstrapped at server startup into the OS keyring.
 - [ADR 0015 — Adopt NIST SSDF (SP 800-218) as the SDLC standard](0015-nist-ssdf-sdlc-standard.md)
   — SSDF is the SDLC-practices companion to the existing NIST SP 800-53 cybersecurity standard; conformance tracked in `design/SSDF.md`.
-- [ADR 0016 — Adopt OpenTelemetry semantic conventions for metrics and logs](0016-opentelemetry-semantic-conventions.md)
+- [ADR 0016 — Release supply chain: Release Please + keyless cosign + SPDX SBOM + REUSE](0016-release-supply-chain.md)
+  — autorelease via Release Please; keyless cosign signatures and per-artefact SPDX SBOMs on every release; REUSE per-file licensing across the source tree.
+- [ADR 0017 — Adopt OpenTelemetry semantic conventions for metrics and logs](0017-opentelemetry-semantic-conventions.md)
   — HTTP-server metric and log attribute names follow OTel semconv v1.40.0; domain fields keep their existing names.

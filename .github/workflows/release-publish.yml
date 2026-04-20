@@ -1,0 +1,100 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Verification recipe: see SECURITY.md § Supply-chain artifacts.
+
+name: Release Publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Resolve artefact filenames
+        id: artefacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s failglob
+          sdist=(dist/*.tar.gz)
+          wheel=(dist/*.whl)
+          echo "sdist=${sdist[0]}" >> "${GITHUB_OUTPUT}"
+          echo "wheel=${wheel[0]}" >> "${GITHUB_OUTPUT}"
+          echo "sdist_sbom=${sdist[0]}.spdx.json" >> "${GITHUB_OUTPUT}"
+          echo "wheel_sbom=${wheel[0]}.spdx.json" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate SPDX SBOM for sdist
+        uses: anchore/sbom-action@v0
+        with:
+          file: ${{ steps.artefacts.outputs.sdist }}
+          format: spdx-json
+          output-file: ${{ steps.artefacts.outputs.sdist_sbom }}
+          upload-release-assets: false
+          upload-artifact: false
+
+      - name: Generate SPDX SBOM for wheel
+        uses: anchore/sbom-action@v0
+        with:
+          file: ${{ steps.artefacts.outputs.wheel }}
+          format: spdx-json
+          output-file: ${{ steps.artefacts.outputs.wheel_sbom }}
+          upload-release-assets: false
+          upload-artifact: false
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign artefacts and SBOMs (keyless)
+        shell: bash
+        env:
+          SDIST: ${{ steps.artefacts.outputs.sdist }}
+          WHEEL: ${{ steps.artefacts.outputs.wheel }}
+          SDIST_SBOM: ${{ steps.artefacts.outputs.sdist_sbom }}
+          WHEEL_SBOM: ${{ steps.artefacts.outputs.wheel_sbom }}
+        run: |
+          set -euo pipefail
+          for f in "${SDIST}" "${WHEEL}" "${SDIST_SBOM}" "${WHEEL_SBOM}"; do
+            cosign sign-blob --yes --bundle "${f}.sig.bundle" "${f}"
+          done
+
+      - name: Upload artefacts to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          SDIST: ${{ steps.artefacts.outputs.sdist }}
+          WHEEL: ${{ steps.artefacts.outputs.wheel }}
+          SDIST_SBOM: ${{ steps.artefacts.outputs.sdist_sbom }}
+          WHEEL_SBOM: ${{ steps.artefacts.outputs.wheel_sbom }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "${TAG}" \
+            "${SDIST}" "${SDIST}.sig.bundle" \
+            "${WHEEL}" "${WHEEL}.sig.bundle" \
+            "${SDIST_SBOM}" "${SDIST_SBOM}.sig.bundle" \
+            "${WHEEL_SBOM}" "${WHEEL_SBOM}.sig.bundle" \
+            --clobber

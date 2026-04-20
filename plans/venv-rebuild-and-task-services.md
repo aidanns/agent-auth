@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Plan: Fix Stale Venv in `scripts/*.sh` Wrappers + Run Services via Taskfile
 
 Issue: [#60](https://github.com/aidanns/agent-auth/issues/60).

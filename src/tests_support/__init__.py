@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """Test-support package for agent-auth integration tests.
 
 Packaged alongside ``agent-auth`` so it can be installed into the same

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Plan: Migrate Tooling from pip/venv to uv
 
 Issue: [#49](https://github.com/aidanns/agent-auth/issues/49).

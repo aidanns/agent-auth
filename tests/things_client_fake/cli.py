@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 """CLI entrypoint for ``tests.things_client_fake``.
 
 Reads a YAML fixture from ``--fixtures`` (or ``THINGS_CLIENT_FIXTURES``)
