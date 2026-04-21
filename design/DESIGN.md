@@ -403,9 +403,10 @@ All HTTP endpoints (both agent-auth and things-bridge) are versioned under a
 `/v1/` path segment. This allows breaking changes to be introduced under `/v2/`
 while existing clients continue to use `/v1/`.
 
-Health endpoints (`/agent-auth/health`, `/things-bridge/health`) are unversioned
-by convention — probes and monitoring tools should always be able to reach them
-regardless of API version.
+Health and metrics endpoints (`/agent-auth/health`, `/things-bridge/health`,
+and the future `/agent-auth/metrics` / `/things-bridge/metrics` — tracked in
+#26) are unversioned by convention — probes, monitoring tools, and Prometheus
+scrapes should always be able to reach them regardless of API version.
 
 **What constitutes a breaking change (requires `/v2/`):**
 

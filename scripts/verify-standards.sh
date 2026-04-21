@@ -968,25 +968,29 @@ fi
 
 echo "verify-standards: config files use YAML (no config.json or json.load in config.py)."
 
-# API versioning: every registered HTTP route (outside /health) must match
-# ^/(agent-auth|things-bridge)/v[0-9]+/
-# (.claude/instructions/service-design.md — URL-versioned APIs).
+# API versioning: every registered HTTP route (outside /health and /metrics)
+# must match ^/(agent-auth|things-bridge)/v[0-9]+/
+# (.claude/instructions/service-design.md — URL-versioned APIs; see
+# design/DESIGN.md "API Versioning Policy" for the health/metrics
+# convention). /metrics is unimplemented today (#26) but is pre-excluded
+# so the check stays honest once the endpoint lands.
 # agent-auth/server.py uses `self.path ==`; things_bridge/server.py uses
 # bare `path ==` / `path.startswith` — both patterns are checked.
 unversioned_routes=$(grep -En \
   '(self\.path|[^_]path) (==|\.startswith\() "/' \
   src/agent_auth/server.py src/things_bridge/server.py 2>/dev/null \
   | grep -v '/health' \
+  | grep -v '/metrics' \
   | grep -v '/v[0-9]\+/' \
   | grep -v '# unversioned' || true)
 if [[ -n "${unversioned_routes}" ]]; then
   echo "verify-standards: unversioned HTTP routes found in server files:" >&2
   echo "${unversioned_routes}" >&2
-  echo "  All endpoints (except /health) must use the /v1/ namespace." >&2
+  echo "  All endpoints (except /health and /metrics) must use the /v1/ namespace." >&2
   exit 1
 fi
 
-echo "verify-standards: all non-health HTTP routes are versioned (/v1/)."
+echo "verify-standards: all non-health/metrics HTTP routes are versioned (/v1/)."
 
 # Audit schema contract tests: tests/test_audit_schema.py must exist and
 # reference each documented event kind
