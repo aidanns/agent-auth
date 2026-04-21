@@ -297,10 +297,9 @@ tag at build time via `setuptools-scm`; no other version file needs updating.
 
 ## Commit signing
 
-Commits to `main` must be signed. Enforcement via GitHub branch protection is
-not yet wired up (tracked in
-[#93](https://github.com/aidanns/agent-auth/issues/93)); until then this is an
-honour-system requirement. Configure GPG or SSH signing in git:
+Commits to `main` must be signed. This is enforced by the repository
+ruleset named `main` — pushes carrying unsigned commits are rejected by
+GitHub. Configure GPG or SSH signing in git:
 
 ```bash
 # GPG (recommended)

@@ -265,9 +265,8 @@ compromise would not by itself defeat it:
 ### Development pipeline
 
 - **Conventional Commits + signed commits.** Every commit to
-  `main` must be signed (honour-system today; branch-protection
-  enforcement tracked in
-  [#93](https://github.com/aidanns/agent-auth/issues/93)).
+  `main` must be signed, enforced by a GitHub repository ruleset
+  targeting the default branch with the `required_signatures` rule.
   Contributor instructions in
   [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 - **Gated CI checks.**
