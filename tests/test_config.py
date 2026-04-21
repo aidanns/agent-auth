@@ -6,6 +6,7 @@
 
 import os
 
+import pytest
 import yaml
 
 from agent_auth.config import Config, load_config
@@ -38,6 +39,30 @@ def test_loads_existing_config(tmp_dir):
     config = load_config(tmp_dir)
     assert config.port == 9999
     assert config.notification_plugin == "desktop"
+
+
+def test_non_mapping_yaml_root_raises_value_error(tmp_dir):
+    # A config file whose YAML root is not a mapping (list, scalar, ...)
+    # must fail loudly with the offending type rather than silently
+    # falling through to defaults — a silent fallthrough would hide a
+    # typo'd config file that users expect to take effect.
+    config_path = os.path.join(tmp_dir, "config.yaml")
+    with open(config_path, "w") as f:
+        f.write("- port: 9999\n- notification_plugin: desktop\n")
+
+    with pytest.raises(ValueError, match="YAML mapping"):
+        load_config(tmp_dir)
+
+
+def test_empty_yaml_file_falls_back_to_defaults(tmp_dir):
+    # An empty ``config.yaml`` parses to ``None`` — treat it the same as
+    # a missing file so operators can leave a placeholder in place.
+    config_path = os.path.join(tmp_dir, "config.yaml")
+    with open(config_path, "w"):
+        pass
+
+    config = load_config(tmp_dir)
+    assert config.port == 9100
 
 
 def test_config_post_init_xdg_defaults(monkeypatch, tmp_path):

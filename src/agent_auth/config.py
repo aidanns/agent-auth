@@ -41,7 +41,7 @@ class Config:
     access_token_ttl_seconds: int = 900
     refresh_token_ttl_seconds: int = 28800
     notification_plugin: str = "terminal"
-    notification_plugin_config: dict[str, Any] = field(default_factory=lambda: {})
+    notification_plugin_config: dict[str, Any] = field(default_factory=dict[str, Any])
     db_path: str = ""
     log_path: str = ""
 

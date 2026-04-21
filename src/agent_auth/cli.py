@@ -37,9 +37,10 @@ def handle_token_create(
     audit: AuditLogger,
 ) -> None:
     """Create a new token family with a token pair."""
+    scope_args: list[str] = list(args.scope)
     scopes: dict[str, str] = {}
-    for scope_arg in args.scope:
-        name, tier = parse_scope_arg(str(scope_arg))
+    for scope_arg in scope_args:
+        name, tier = parse_scope_arg(scope_arg)
         scopes[name] = tier
 
     if not scopes:
