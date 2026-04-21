@@ -55,6 +55,17 @@ language: `python.md`, `bash.md`.
   `scripts/test.sh`) so the full test suite runs with one command.
 - **Wire all check scripts into CI** — every repeatable check script must
   have a CI workflow.
+- **Pin sha256 for tool binary downloads** — any CI step that downloads a
+  CLI binary directly (curl/wget from a release CDN) must verify the
+  artefact against a sha256 pinned in the repository before extracting or
+  installing it. Pair the version input with a sibling `<tool>-sha256`
+  input so version bumps and hash updates travel together. Verify with
+  `echo "<sha256>  <path>" | sha256sum -c -` immediately after download
+  and before any `tar`/`install`/`gunzip` step. A failed check must abort
+  the action — never fall back to the unverified binary. Pinning in-repo
+  is preferred over fetching an upstream `checksums.txt`, because the
+  checksum file would travel over the same TLS channel as the artefact
+  it claims to verify.
 
 ## IDE
 

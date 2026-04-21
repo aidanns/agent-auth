@@ -12,6 +12,9 @@ inputs:
   keep-sorted-version:
     description: keep-sorted version to install
     default: "0.8.0"
+  keep-sorted-sha256:
+    description: sha256 of the keep-sorted linux x86_64 binary
+    default: "0d9801785ac354232ea754bbfd8cc204a5e255905e14bcbff5fe8733e4dbd85c"
   mdformat-version:
     description: mdformat version to install
     default: "0.7.22"
@@ -24,21 +27,39 @@ inputs:
   shellcheck-version:
     description: shellcheck version to install
     default: "0.10.0"
+  shellcheck-sha256:
+    description: sha256 of the shellcheck linux x86_64 tarball
+    default: "6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87"
   ripsecrets-version:
     description: ripsecrets version to install
     default: "0.1.11"
+  ripsecrets-sha256:
+    description: sha256 of the ripsecrets linux x86_64 tarball
+    default: "9daf017dfdea242a58f672450a2526f0406211afe9e872c740adc49b42feccf5"
   ruff-version:
     description: ruff version to install
     default: "0.6.9"
+  ruff-sha256:
+    description: sha256 of the ruff linux x86_64 tarball
+    default: "ed8ba4cac0c6dfc1c0e9c6c720daa5ea404a3bff0497a95d6e25293a7910e903"
   shfmt-version:
     description: shfmt version to install
     default: "3.8.0"
+  shfmt-sha256:
+    description: sha256 of the shfmt linux x86_64 binary
+    default: "27b3c6f9d9592fc5b4856c341d1ff2c88856709b9e76469313642a1d7b558fe0"
   taplo-version:
     description: taplo version to install
     default: "0.10.0"
+  taplo-sha256:
+    description: sha256 of the taplo linux x86_64 gzipped binary
+    default: "8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156"
   treefmt-version:
     description: treefmt version to install
     default: "2.5.0"
+  treefmt-sha256:
+    description: sha256 of the treefmt linux x86_64 tarball
+    default: "95f707bf9666d08b50888b116768fd77f042ad5af92aa3b795f063160e72758f"
   systems-engineering-ref:
     description: Commit SHA or ref of aidanns/systems-engineering to install
     default: "d8e664a5ad20c071d4ec1cd62377597f9404b6e9"
@@ -76,9 +97,11 @@ runs:
       shell: bash
       env:
         SHELLCHECK_VERSION: ${{ inputs.shellcheck-version }}
+        SHELLCHECK_SHA256: ${{ inputs.shellcheck-sha256 }}
       run: |
         curl -fsSL -o /tmp/shellcheck.tar.xz \
           "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+        echo "${SHELLCHECK_SHA256}  /tmp/shellcheck.tar.xz" | sha256sum -c -
         tar -xJf /tmp/shellcheck.tar.xz -C /tmp
         sudo install -m0755 "/tmp/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
         shellcheck --version
@@ -87,9 +110,11 @@ runs:
       shell: bash
       env:
         SHFMT_VERSION: ${{ inputs.shfmt-version }}
+        SHFMT_SHA256: ${{ inputs.shfmt-sha256 }}
       run: |
         curl -fsSL -o /tmp/shfmt \
           "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64"
+        echo "${SHFMT_SHA256}  /tmp/shfmt" | sha256sum -c -
         sudo install -m0755 /tmp/shfmt /usr/local/bin/shfmt
         shfmt --version
 
@@ -97,9 +122,11 @@ runs:
       shell: bash
       env:
         RUFF_VERSION: ${{ inputs.ruff-version }}
+        RUFF_SHA256: ${{ inputs.ruff-sha256 }}
       run: |
         curl -fsSL -o /tmp/ruff.tar.gz \
           "https://github.com/astral-sh/ruff/releases/download/${RUFF_VERSION}/ruff-x86_64-unknown-linux-gnu.tar.gz"
+        echo "${RUFF_SHA256}  /tmp/ruff.tar.gz" | sha256sum -c -
         tar -xzf /tmp/ruff.tar.gz -C /tmp
         sudo install -m0755 /tmp/ruff-x86_64-unknown-linux-gnu/ruff /usr/local/bin/ruff
         ruff --version
@@ -121,9 +148,11 @@ runs:
       shell: bash
       env:
         TAPLO_VERSION: ${{ inputs.taplo-version }}
+        TAPLO_SHA256: ${{ inputs.taplo-sha256 }}
       run: |
         curl -fsSL -o /tmp/taplo.gz \
           "https://github.com/tamasfe/taplo/releases/download/${TAPLO_VERSION}/taplo-linux-x86_64.gz"
+        echo "${TAPLO_SHA256}  /tmp/taplo.gz" | sha256sum -c -
         gunzip -f /tmp/taplo.gz
         sudo install -m0755 /tmp/taplo /usr/local/bin/taplo
         taplo --version
@@ -132,9 +161,11 @@ runs:
       shell: bash
       env:
         KEEP_SORTED_VERSION: ${{ inputs.keep-sorted-version }}
+        KEEP_SORTED_SHA256: ${{ inputs.keep-sorted-sha256 }}
       run: |
         curl -fsSL -o /tmp/keep-sorted \
           "https://github.com/google/keep-sorted/releases/download/v${KEEP_SORTED_VERSION}/keep-sorted_linux"
+        echo "${KEEP_SORTED_SHA256}  /tmp/keep-sorted" | sha256sum -c -
         sudo install -m0755 /tmp/keep-sorted /usr/local/bin/keep-sorted
         keep-sorted --version
 
@@ -142,9 +173,11 @@ runs:
       shell: bash
       env:
         RIPSECRETS_VERSION: ${{ inputs.ripsecrets-version }}
+        RIPSECRETS_SHA256: ${{ inputs.ripsecrets-sha256 }}
       run: |
         curl -fsSL -o /tmp/ripsecrets.tar.gz \
           "https://github.com/sirwart/ripsecrets/releases/download/v${RIPSECRETS_VERSION}/ripsecrets-${RIPSECRETS_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+        echo "${RIPSECRETS_SHA256}  /tmp/ripsecrets.tar.gz" | sha256sum -c -
         tar -xzf /tmp/ripsecrets.tar.gz -C /tmp
         sudo install -m0755 "/tmp/ripsecrets-${RIPSECRETS_VERSION}-x86_64-unknown-linux-gnu/ripsecrets" /usr/local/bin/ripsecrets
         ripsecrets --version
@@ -153,9 +186,11 @@ runs:
       shell: bash
       env:
         TREEFMT_VERSION: ${{ inputs.treefmt-version }}
+        TREEFMT_SHA256: ${{ inputs.treefmt-sha256 }}
       run: |
         curl -fsSL -o /tmp/treefmt.tar.gz \
           "https://github.com/numtide/treefmt/releases/download/v${TREEFMT_VERSION}/treefmt_${TREEFMT_VERSION}_linux_amd64.tar.gz"
+        echo "${TREEFMT_SHA256}  /tmp/treefmt.tar.gz" | sha256sum -c -
         tar -xzf /tmp/treefmt.tar.gz -C /tmp
         sudo install -m0755 /tmp/treefmt /usr/local/bin/treefmt
         treefmt --version
