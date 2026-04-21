@@ -15,6 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Published OpenAPI 3.1 specs for both HTTP surfaces:
+  `openapi/agent-auth.v1.yaml` and `openapi/things-bridge.v1.yaml`.
+  A contract test in `tests/test_openapi_spec.py` (1) validates both
+  specs through `openapi-spec-validator`, (2) reflects on the
+  server handlers and asserts every registered route has a matching
+  spec path (catching both missing and stale entries), and (3)
+  asserts every error code in the spec is documented in
+  `design/error-codes.md`. `scripts/verify-standards.sh` gates
+  existence of both spec files plus the contract test. README
+  links the rendered specs
+  ([#117](https://github.com/aidanns/agent-auth/issues/117)).
+- Error taxonomy (`design/error-codes.md`) expanded to cover the
+  agent-auth management endpoints (`token/create`, `token/modify`,
+  `token/revoke`, `token/rotate`, `token/list`). Previously only the
+  validation/refresh/reissue/health surfaces were enumerated.
 - Audit-log `schema_version` field (currently `1`) emitted on every
   entry, with a documented stability policy in
   `design/DESIGN.md` "Audit log fields" and a contract test that
