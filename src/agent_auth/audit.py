@@ -10,14 +10,24 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+# Audit log schema version. Emitted on every entry so downstream consumers
+# (SIEM, compliance, forensics) can detect the schema at parse time.
+#
+# Stability policy (see design/DESIGN.md "Audit log fields"):
+#   - Adding a new optional field is non-breaking; version stays the same.
+#   - Adding a new `event` kind is non-breaking; version stays the same.
+#   - Renaming, removing, or re-typing an existing field is a breaking
+#     change; bump SCHEMA_VERSION and announce in CHANGELOG.md.
+SCHEMA_VERSION = 1
+
 
 class AuditLogger:
     """Writes JSON-lines audit log entries to a file.
 
     The on-disk format is part of the project's public surface: one JSON
-    object per line with at minimum ``timestamp`` (ISO 8601 UTC) and
-    ``event`` keys, plus any event-specific fields. See
-    ``tests/test_audit.py`` for the contract.
+    object per line with at minimum ``timestamp`` (ISO 8601 UTC),
+    ``schema_version`` (int), and ``event`` keys, plus any event-specific
+    fields. See ``tests/test_audit_schema.py`` for the contract.
     """
 
     def __init__(self, log_path: str):
@@ -29,6 +39,7 @@ class AuditLogger:
         """Write an audit log entry."""
         entry = {
             "timestamp": datetime.now(UTC).isoformat(),
+            "schema_version": SCHEMA_VERSION,
             "event": event,
             **details,
         }

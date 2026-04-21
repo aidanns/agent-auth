@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Audit-log `schema_version` field (currently `1`) emitted on every
+  entry, with a documented stability policy in
+  `design/DESIGN.md` "Audit log fields" and a contract test that
+  fails if the version changes
+  ([#20](https://github.com/aidanns/agent-auth/issues/20)).
 - Community-health files to complete the GitHub Community Profile: Contributor
   Covenant v3.0 Code of Conduct, issue templates (bug report, feature request,
   security redirect), pull-request template, and SUPPORT.md. CoC and SUPPORT
