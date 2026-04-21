@@ -11,6 +11,7 @@ import sys
 import threading
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any, cast
 
 from agent_auth.approval import ApprovalManager
 from agent_auth.audit import AuditLogger
@@ -35,12 +36,12 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
     """HTTP request handler for agent-auth API endpoints."""
 
     @property
-    def _server(self):
-        return self.server
+    def _server(self) -> "AgentAuthServer":
+        return cast("AgentAuthServer", self.server)
 
     MAX_BODY_SIZE = 1_048_576  # 1 MiB
 
-    def _read_json(self) -> dict | None:
+    def _read_json(self) -> dict[str, Any] | None:
         length = int(self.headers.get("Content-Length", 0))
         if length == 0:
             return {}
@@ -48,11 +49,14 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             return None
         body = self.rfile.read(length)
         try:
-            return json.loads(body)
+            parsed = json.loads(body)
         except (json.JSONDecodeError, UnicodeDecodeError):
             return None
+        if not isinstance(parsed, dict):
+            return None
+        return cast(dict[str, Any], parsed)
 
-    def _send_json(self, status: int, data: dict):
+    def _send_json(self, status: int, data: dict[str, Any] | list[dict[str, Any]]) -> None:
         body = json.dumps(data).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -60,10 +64,10 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, format, *args):
+    def log_message(self, format: str, *args: Any) -> None:
         pass
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         if self.path == "/agent-auth/v1/validate":
             self._handle_validate()
         elif self.path == "/agent-auth/v1/token/refresh":
@@ -81,7 +85,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         else:
             self._send_json(404, {"error": "not_found"})
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         if self.path == "/agent-auth/v1/token/status":
             self._handle_status()
         elif self.path == "/agent-auth/health":
@@ -91,7 +95,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         else:
             self._send_json(404, {"error": "not_found"})
 
-    def _handle_validate(self):
+    def _handle_validate(self) -> None:
         data = self._read_json()
         if data is None:
             self._send_json(400, {"error": "malformed_request"})
@@ -195,7 +199,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
                 self._send_json(403, {"valid": False, "error": "scope_denied"})
             return
 
-    def _handle_refresh(self):
+    def _handle_refresh(self) -> None:
         data = self._read_json()
         if data is None:
             self._send_json(400, {"error": "malformed_request"})
@@ -265,7 +269,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             },
         )
 
-    def _handle_reissue(self):
+    def _handle_reissue(self) -> None:
         data = self._read_json()
         if data is None:
             self._send_json(400, {"error": "malformed_request"})
@@ -364,7 +368,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
 
         return True
 
-    def _get_active_family(self, store: TokenStore, family_id: str) -> dict | None:
+    def _get_active_family(self, store: TokenStore, family_id: str) -> dict[str, Any] | None:
         """Return family if it exists and is not revoked; send 404/409 and return None otherwise."""
         family = store.get_family(family_id)
         if family is None:
@@ -375,17 +379,18 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             return None
         return family
 
-    def _handle_token_create(self):
+    def _handle_token_create(self) -> None:
         if not self._require_management_auth():
             return
         data = self._read_json()
         if data is None:
             self._send_json(400, {"error": "malformed_request"})
             return
-        scopes = data.get("scopes")
-        if not isinstance(scopes, dict) or not scopes:
+        scopes_raw = data.get("scopes")
+        if not isinstance(scopes_raw, dict) or not scopes_raw:
             self._send_json(400, {"error": "no_scopes"})
             return
+        scopes: dict[str, str] = cast(dict[str, str], scopes_raw)
         invalid_tiers = {k: v for k, v in scopes.items() if v not in VALID_TIERS}
         if invalid_tiers:
             self._send_json(400, {"error": "invalid_tier", "detail": invalid_tiers})
@@ -412,14 +417,14 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             },
         )
 
-    def _handle_token_list(self):
+    def _handle_token_list(self) -> None:
         if not self._require_management_auth():
             return
         store: TokenStore = self._server.store
         families = [f for f in store.list_families() if MANAGEMENT_SCOPE not in f.get("scopes", {})]
         self._send_json(200, families)
 
-    def _handle_token_modify(self):
+    def _handle_token_modify(self) -> None:
         if not self._require_management_auth():
             return
         data = self._read_json()
@@ -430,16 +435,25 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         if not isinstance(family_id, str) or not family_id:
             self._send_json(400, {"error": "malformed_request"})
             return
-        add_scopes = data.get("add_scopes") or {}
-        remove_scopes = data.get("remove_scopes") or []
-        set_tiers = data.get("set_tiers") or {}
+        add_scopes_raw: object = data.get("add_scopes")
+        remove_scopes_raw: object = data.get("remove_scopes")
+        set_tiers_raw: object = data.get("set_tiers")
+        if add_scopes_raw is None:
+            add_scopes_raw = {}
+        if remove_scopes_raw is None:
+            remove_scopes_raw = []
+        if set_tiers_raw is None:
+            set_tiers_raw = {}
         if (
-            not isinstance(add_scopes, dict)
-            or not isinstance(set_tiers, dict)
-            or not isinstance(remove_scopes, list)
+            not isinstance(add_scopes_raw, dict)
+            or not isinstance(set_tiers_raw, dict)
+            or not isinstance(remove_scopes_raw, list)
         ):
             self._send_json(400, {"error": "malformed_request"})
             return
+        add_scopes: dict[str, str] = cast(dict[str, str], add_scopes_raw)
+        remove_scopes: list[str] = cast(list[str], remove_scopes_raw)
+        set_tiers: dict[str, str] = cast(dict[str, str], set_tiers_raw)
 
         if not add_scopes and not remove_scopes and not set_tiers:
             self._send_json(400, {"error": "no_modifications"})
@@ -471,7 +485,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
 
         self._send_json(200, {"family_id": family_id, "scopes": scopes})
 
-    def _handle_token_revoke(self):
+    def _handle_token_revoke(self) -> None:
         if not self._require_management_auth():
             return
         data = self._read_json()
@@ -496,7 +510,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
 
         self._send_json(200, {"family_id": family_id, "revoked": True})
 
-    def _handle_token_rotate(self):
+    def _handle_token_rotate(self) -> None:
         if not self._require_management_auth():
             return
         data = self._read_json()
@@ -544,7 +558,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
 
     HEALTH_SCOPE = "agent-auth:health"
 
-    def _handle_health(self):
+    def _handle_health(self) -> None:
         auth_header = self.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             self._send_json(401, {"error": "missing_token"})
@@ -592,7 +606,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             return
         self._send_json(200, {"status": "ok"})
 
-    def _handle_status(self):
+    def _handle_status(self) -> None:
         auth_header = self.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             self._send_json(401, {"error": "missing_token"})

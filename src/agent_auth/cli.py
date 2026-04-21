@@ -29,10 +29,17 @@ def _init_services(
     return config, signing_key, store, audit, key_manager
 
 
-def handle_token_create(args, config, signing_key, store, audit):
+def handle_token_create(
+    args: argparse.Namespace,
+    config: Config,
+    signing_key: SigningKey,
+    store: TokenStore,
+    audit: AuditLogger,
+) -> None:
     """Create a new token family with a token pair."""
-    scopes = {}
-    for scope_arg in args.scope:
+    scope_args: list[str] = list(args.scope)
+    scopes: dict[str, str] = {}
+    for scope_arg in scope_args:
         name, tier = parse_scope_arg(scope_arg)
         scopes[name] = tier
 
@@ -67,7 +74,13 @@ def handle_token_create(args, config, signing_key, store, audit):
         print("WARNING: Tokens are displayed only once. Store them securely.")
 
 
-def handle_token_list(args, config, signing_key, store, audit):
+def handle_token_list(
+    args: argparse.Namespace,
+    config: Config,
+    signing_key: SigningKey,
+    store: TokenStore,
+    audit: AuditLogger,
+) -> None:
     """List all token families."""
     families = store.list_families()
 
@@ -87,7 +100,13 @@ def handle_token_list(args, config, signing_key, store, audit):
         )
 
 
-def handle_token_modify(args, config, signing_key, store, audit):
+def handle_token_modify(
+    args: argparse.Namespace,
+    config: Config,
+    signing_key: SigningKey,
+    store: TokenStore,
+    audit: AuditLogger,
+) -> None:
     """Modify scopes on an existing token family."""
     family = store.get_family(args.family_id)
     if family is None:
@@ -97,16 +116,19 @@ def handle_token_modify(args, config, signing_key, store, audit):
         print(f"Error: family '{args.family_id}' is revoked", file=sys.stderr)
         sys.exit(1)
 
-    scopes = dict(family["scopes"])
+    scopes: dict[str, str] = dict(family["scopes"])
+    add_scope_args: list[str] = list(args.add_scope or [])
+    remove_scope_args: list[str] = list(args.remove_scope or [])
+    set_tier_args: list[str] = list(args.set_tier or [])
 
-    for scope_arg in args.add_scope or []:
+    for scope_arg in add_scope_args:
         name, tier = parse_scope_arg(scope_arg)
         scopes[name] = tier
 
-    for name in args.remove_scope or []:
-        scopes.pop(name, None)
+    for remove_name in remove_scope_args:
+        scopes.pop(remove_name, None)
 
-    for tier_arg in args.set_tier or []:
+    for tier_arg in set_tier_args:
         name, tier = parse_scope_arg(tier_arg)
         if name in scopes:
             scopes[name] = tier
@@ -127,7 +149,13 @@ def handle_token_modify(args, config, signing_key, store, audit):
             print(f"  {name}={tier}")
 
 
-def handle_token_revoke(args, config, signing_key, store, audit):
+def handle_token_revoke(
+    args: argparse.Namespace,
+    config: Config,
+    signing_key: SigningKey,
+    store: TokenStore,
+    audit: AuditLogger,
+) -> None:
     """Revoke a token family."""
     family = store.get_family(args.family_id)
     if family is None:
@@ -143,7 +171,13 @@ def handle_token_revoke(args, config, signing_key, store, audit):
         print(f"Family {args.family_id} revoked.")
 
 
-def handle_token_rotate(args, config, signing_key, store, audit):
+def handle_token_rotate(
+    args: argparse.Namespace,
+    config: Config,
+    signing_key: SigningKey,
+    store: TokenStore,
+    audit: AuditLogger,
+) -> None:
     """Rotate a token family: revoke old, create new with same scopes."""
     old_family = store.get_family(args.family_id)
     if old_family is None:
@@ -187,14 +221,28 @@ def handle_token_rotate(args, config, signing_key, store, audit):
         print("WARNING: Tokens are displayed only once. Store them securely.")
 
 
-def handle_serve(args, config, signing_key, store, audit, key_manager):
+def handle_serve(
+    args: argparse.Namespace,
+    config: Config,
+    signing_key: SigningKey,
+    store: TokenStore,
+    audit: AuditLogger,
+    key_manager: KeyManager,
+) -> None:
     """Start the agent-auth HTTP server."""
     from agent_auth.server import run_server
 
     run_server(config, signing_key, store, audit, key_manager)
 
 
-def handle_management_token_show(args, config, signing_key, store, audit, key_manager):
+def handle_management_token_show(
+    args: argparse.Namespace,
+    config: Config,
+    signing_key: SigningKey,
+    store: TokenStore,
+    audit: AuditLogger,
+    key_manager: KeyManager,
+) -> None:
     """Print the management refresh token from the keyring."""
     try:
         refresh_token = key_manager.get_management_refresh_token()
@@ -281,7 +329,7 @@ COMMAND_HANDLERS = {
 }
 
 
-def main():
+def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 

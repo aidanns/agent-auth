@@ -91,7 +91,7 @@ class ApprovalManager:
 
         return result
 
-    def _record_timed_grant(self, family_id: str, scope: str, result: ApprovalResult):
+    def _record_timed_grant(self, family_id: str, scope: str, result: ApprovalResult) -> None:
         """Cache a timed grant until its duration elapses."""
         if not result.duration_minutes:
             return
@@ -99,7 +99,7 @@ class ApprovalManager:
             expires = datetime.now(UTC) + timedelta(minutes=result.duration_minutes)
             self._timed_grants[GrantKey(family_id, scope)] = expires
 
-    def _expire_timed_grants(self):
+    def _expire_timed_grants(self) -> None:
         """Remove expired timed grants. Must be called with lock held."""
         now = datetime.now(UTC)
         expired = [key for key, exp in self._timed_grants.items() if exp <= now]

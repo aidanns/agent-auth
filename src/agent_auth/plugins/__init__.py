@@ -6,6 +6,7 @@
 
 import importlib
 from dataclasses import dataclass
+from typing import Any, cast
 
 
 @dataclass
@@ -25,7 +26,7 @@ class ApprovalResult:
 class NotificationPlugin:
     """Base class for approval notification plugins."""
 
-    def __init__(self, config: dict | None = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
 
     def request_approval(
@@ -38,7 +39,7 @@ class NotificationPlugin:
         raise NotImplementedError
 
 
-def load_plugin(name: str, config: dict | None = None) -> NotificationPlugin:
+def load_plugin(name: str, config: dict[str, Any] | None = None) -> NotificationPlugin:
     """Load a notification plugin by name.
 
     Looks for the plugin in agent_auth.plugins.<name> or as a fully-qualified module path.
@@ -48,4 +49,4 @@ def load_plugin(name: str, config: dict | None = None) -> NotificationPlugin:
 
     module = importlib.import_module(module_path)
     plugin_class = module.Plugin
-    return plugin_class(config)
+    return cast(NotificationPlugin, plugin_class(config))

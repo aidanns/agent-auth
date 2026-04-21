@@ -138,6 +138,18 @@ def test_oversize_body_returns_400(in_process_server):
     assert body["error"] == "malformed_request"
 
 
+def test_non_object_json_body_returns_400(in_process_server):
+    # A syntactically-valid JSON value that is not an object (array, string,
+    # number, ...) must surface as ``malformed_request`` rather than
+    # propagating through handlers that call ``.get(...)`` on the parsed body
+    # and producing an unhelpful 500.
+    _, base, _ = in_process_server
+    for raw in (b"[1, 2, 3]", b'"token"', b"42", b"null", b"true"):
+        status, body = post(f"{base}/agent-auth/v1/validate", raw=raw)
+        assert status == 400, f"raw={raw!r} unexpectedly produced {status}"
+        assert body["error"] == "malformed_request"
+
+
 # --- management-token bootstrap ---
 
 
