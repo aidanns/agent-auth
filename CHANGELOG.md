@@ -13,6 +13,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **macOS runner in the `Test` workflow** to exercise the real
+  osascript path shipped in `things-client-cli-applescript`. The new
+  `macos-applescript` job runs on `macos-14` (Apple Silicon) and
+  drives `tests/test_things_client_applescript_things.py` against
+  GitHub's pre-installed osascript so helper-AppleScript syntax
+  errors, osascript stderr-wording changes, and subprocess-timeout
+  handling get caught at merge time rather than on a contributor's
+  laptop during review. A real Things 3 instance + Automation
+  permissions aren't available on hosted macOS runners, so the
+  `@_requires_things3` end-to-end tests auto-skip — extending
+  coverage to a live Things database is tracked as follow-up. The
+  job deliberately does not reuse
+  `.github/actions/setup-toolchain` (Linux-asset URLs only) and
+  instead bootstraps uv + the project venv directly. The
+  aggregating `tests` job now fails on skip or failure of
+  `macos-applescript` so a silently-skipped macOS job can't sneak
+  through. Closes
+  [#69](https://github.com/aidanns/agent-auth/issues/69).
+
 ### Changed
 
 - **Release Please now authenticates via a dedicated GitHub App
