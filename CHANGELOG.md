@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Function-to-test coverage is now gated in CI. The last two uncovered
+  leaf functions (`Auto Refresh Token`, `Load Notification Plugin`) now
+  carry `@pytest.mark.covers_function(...)` annotations, bringing
+  coverage to 57/57. The `verify-function-tests` workflow no longer
+  carries `continue-on-error: true`, and `scripts/verify-standards.sh`
+  asserts that the workflow keeps gating the check without that escape
+  hatch
+  ([#5](https://github.com/aidanns/agent-auth/issues/5)).
 - **SLSA v1.0 Build Level 3 provenance on every release.**
   `release-publish.yml` now calls
   `slsa-framework/slsa-github-generator`'s

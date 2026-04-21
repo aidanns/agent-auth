@@ -134,6 +134,7 @@ def test_get_returns_parsed_body(servers, tmp_path):
     assert result == {"todos": []}
 
 
+@pytest.mark.covers_function("Auto Refresh Token")
 def test_401_token_expired_triggers_refresh_and_retry(servers, tmp_path):
     _BridgeHandler.responses = [
         (401, {"error": "token_expired"}, "aa_initial"),
@@ -159,6 +160,7 @@ def test_401_token_expired_triggers_refresh_and_retry(servers, tmp_path):
     assert loaded.refresh_token == "rt_new"
 
 
+@pytest.mark.covers_function("Auto Refresh Token")
 def test_refresh_expired_triggers_reissue_and_retry(servers, tmp_path):
     _BridgeHandler.responses = [
         (401, {"error": "token_expired"}, "aa_initial"),
