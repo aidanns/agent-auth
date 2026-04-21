@@ -206,3 +206,17 @@ The post-change review checklist should include: "review any updates
 to `design/functional_decomposition.yaml` and verify that
 descriptions reference only the required function (what), not the
 implementation mechanism (how)."
+
+### Document the `in-progress` GitHub-label convention in CLAUDE.md
+
+Every recent issue (#20 / #24 / #27 / #28 / #117 / #145–148 /
+#165 / #168 / #112 among others) carries the `in-progress`
+label while work is open, but the convention is not written down
+anywhere in `CLAUDE.md`, `CONTRIBUTING.md`, or the
+`.claude/instructions/` files. An AI collaborator starting a new
+issue has to reverse-engineer the pattern from `gh issue list --label in-progress`, and will skip the label unless explicitly
+reminded. Document the convention in `CLAUDE.md` (or a new
+`.claude/instructions/` file) as part of the "start-of-task"
+flow: after `EnterWorktree` / `git reset --hard origin/main`, run
+`gh issue edit <N> --add-label in-progress` for the primary
+issue being worked on.

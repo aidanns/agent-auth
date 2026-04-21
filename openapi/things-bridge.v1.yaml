@@ -1,0 +1,473 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+openapi: 3.1.0
+info:
+  title: things-bridge
+  version: "1.0.0"
+  summary: Read-only HTTP access to Things 3 via agent-auth-scoped tokens.
+  description: |
+    `things-bridge` delegates token validation to `agent-auth` and exposes
+    read-only Things 3 endpoints under `/things-bridge/v1/`. The bridge
+    itself contains no Things 3 logic — every request is translated into
+    a subprocess invocation of the configured Things-client CLI.
+
+    Error taxonomy: see `design/error-codes.md` in the project repository.
+    Versioning policy: see `design/DESIGN.md` "API Versioning Policy" —
+    breaking changes land under `/things-bridge/v2/`; `/things-bridge/health`
+    is unversioned by convention.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://127.0.0.1:9200
+    description: Default loopback bind address.
+tags:
+  - name: read
+    description: Read-only endpoints backed by the Things-client CLI.
+  - name: health
+    description: Liveness and readiness probes.
+paths:
+  /things-bridge/v1/todos:
+    get:
+      tags: [read]
+      summary: List todos.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: list
+          in: query
+          schema: { type: string }
+          description: Things built-in list id (e.g. `TMTodayListSource`).
+        - name: project
+          in: query
+          schema: { type: string }
+        - name: area
+          in: query
+          schema: { type: string }
+        - name: tag
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, completed, canceled]
+      responses:
+        '200':
+          description: List of todos.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [todos]
+                properties:
+                  todos:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Todo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ScopeDenied'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '502':
+          $ref: '#/components/responses/Unavailable'
+        '503':
+          $ref: '#/components/responses/ThingsPermissionDenied'
+
+  /things-bridge/v1/todos/{id}:
+    get:
+      tags: [read]
+      summary: Fetch one todo by id.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: One todo.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [todo]
+                properties:
+                  todo:
+                    $ref: '#/components/schemas/Todo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ScopeDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '502':
+          $ref: '#/components/responses/Unavailable'
+        '503':
+          $ref: '#/components/responses/ThingsPermissionDenied'
+
+  /things-bridge/v1/projects:
+    get:
+      tags: [read]
+      summary: List projects.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: area
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: List of projects.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [projects]
+                properties:
+                  projects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ScopeDenied'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '502':
+          $ref: '#/components/responses/Unavailable'
+        '503':
+          $ref: '#/components/responses/ThingsPermissionDenied'
+
+  /things-bridge/v1/projects/{id}:
+    get:
+      tags: [read]
+      summary: Fetch one project by id.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: One project.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [project]
+                properties:
+                  project:
+                    $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ScopeDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '502':
+          $ref: '#/components/responses/Unavailable'
+        '503':
+          $ref: '#/components/responses/ThingsPermissionDenied'
+
+  /things-bridge/v1/areas:
+    get:
+      tags: [read]
+      summary: List all areas.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of areas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [areas]
+                properties:
+                  areas:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Area'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ScopeDenied'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '502':
+          $ref: '#/components/responses/Unavailable'
+        '503':
+          $ref: '#/components/responses/ThingsPermissionDenied'
+
+  /things-bridge/v1/areas/{id}:
+    get:
+      tags: [read]
+      summary: Fetch one area by id.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: One area.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [area]
+                properties:
+                  area:
+                    $ref: '#/components/schemas/Area'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ScopeDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '502':
+          $ref: '#/components/responses/Unavailable'
+        '503':
+          $ref: '#/components/responses/ThingsPermissionDenied'
+
+  /things-bridge/health:
+    get:
+      tags: [health]
+      summary: Liveness and readiness probe (unversioned).
+      description: |
+        Unversioned by convention — probes must keep working across API
+        major bumps. Requires the `things-bridge:health` scope (delegated
+        to `agent-auth`).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Bridge is reachable and agent-auth accepted the token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthOk'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ScopeDenied'
+        '502':
+          description: agent-auth is unreachable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: aa_<id>_<hmac>
+      description: |
+        HMAC-signed agent-auth access token. Validation is delegated to
+        agent-auth.
+
+  schemas:
+    ErrorCode:
+      type: string
+      description: Stable error code. See `design/error-codes.md`.
+      enum:
+        - authz_unavailable
+        - method_not_allowed
+        - not_found
+        - scope_denied
+        - things_permission_denied
+        - things_unavailable
+        - token_expired
+        - unauthorized
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorCode'
+
+    HealthOk:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
+    Area:
+      type: object
+      required: [id, name, tag_names]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        tag_names:
+          type: array
+          items:
+            type: string
+
+    Project:
+      type: object
+      required:
+        - id
+        - name
+        - notes
+        - status
+        - area_id
+        - area_name
+        - tag_names
+        - due_date
+        - activation_date
+        - completion_date
+        - cancellation_date
+        - creation_date
+        - modification_date
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        notes:
+          type: string
+        status:
+          type: string
+          enum: [open, completed, canceled]
+        area_id:
+          type: [string, "null"]
+        area_name:
+          type: [string, "null"]
+        tag_names:
+          type: array
+          items:
+            type: string
+        due_date:
+          type: [string, "null"]
+        activation_date:
+          type: [string, "null"]
+        completion_date:
+          type: [string, "null"]
+        cancellation_date:
+          type: [string, "null"]
+        creation_date:
+          type: [string, "null"]
+        modification_date:
+          type: [string, "null"]
+
+    Todo:
+      type: object
+      required:
+        - id
+        - name
+        - notes
+        - status
+        - project_id
+        - project_name
+        - area_id
+        - area_name
+        - tag_names
+        - due_date
+        - activation_date
+        - completion_date
+        - cancellation_date
+        - creation_date
+        - modification_date
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        notes:
+          type: string
+        status:
+          type: string
+          enum: [open, completed, canceled]
+        project_id:
+          type: [string, "null"]
+        project_name:
+          type: [string, "null"]
+        area_id:
+          type: [string, "null"]
+        area_name:
+          type: [string, "null"]
+        tag_names:
+          type: array
+          items:
+            type: string
+        due_date:
+          type: [string, "null"]
+        activation_date:
+          type: [string, "null"]
+        completion_date:
+          type: [string, "null"]
+        cancellation_date:
+          type: [string, "null"]
+        creation_date:
+          type: [string, "null"]
+        modification_date:
+          type: [string, "null"]
+
+  responses:
+    Unauthorized:
+      description: Missing, invalid, or expired bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    ScopeDenied:
+      description: Token does not carry the required scope.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    NotFound:
+      description: Unknown path or unknown Things id.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    MethodNotAllowed:
+      description: Non-GET method on a read-only endpoint.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    Unavailable:
+      description: |
+        agent-auth or the Things-client subprocess is unavailable. The
+        error code distinguishes between the two.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    ThingsPermissionDenied:
+      description: macOS automation permission for Things was denied.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'

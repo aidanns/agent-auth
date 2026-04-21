@@ -841,6 +841,7 @@ else
   # delimiter separates the human-readable name from the grep pattern.
   security_sections=(
     # keep-sorted start
+    "application-security-standard|## Application security standard|Application security standard"
     "audit-surface|## Audit surface|## Audit log"
     "cybersecurity-standard|## Cybersecurity standard|Cybersecurity standard"
     "key-handling|## Key handling"
@@ -867,7 +868,7 @@ if [[ ${security_missing} -ne 0 ]]; then
   exit 1
 fi
 
-echo "verify-standards: SECURITY.md exists with all required sections including the cybersecurity standard."
+echo "verify-standards: SECURITY.md exists with all required sections including the cybersecurity, SDLC, and application security standards."
 
 # install.sh must exist at the repo root and be executable per
 # .claude/instructions/release-and-hygiene.md.
@@ -968,25 +969,29 @@ fi
 
 echo "verify-standards: config files use YAML (no config.json or json.load in config.py)."
 
-# API versioning: every registered HTTP route (outside /health) must match
-# ^/(agent-auth|things-bridge)/v[0-9]+/
-# (.claude/instructions/service-design.md — URL-versioned APIs).
+# API versioning: every registered HTTP route (outside /health and /metrics)
+# must match ^/(agent-auth|things-bridge)/v[0-9]+/
+# (.claude/instructions/service-design.md — URL-versioned APIs; see
+# design/DESIGN.md "API Versioning Policy" for the health/metrics
+# convention). /metrics is unimplemented today (#26) but is pre-excluded
+# so the check stays honest once the endpoint lands.
 # agent-auth/server.py uses `self.path ==`; things_bridge/server.py uses
 # bare `path ==` / `path.startswith` — both patterns are checked.
 unversioned_routes=$(grep -En \
   '(self\.path|[^_]path) (==|\.startswith\() "/' \
   src/agent_auth/server.py src/things_bridge/server.py 2>/dev/null \
   | grep -v '/health' \
+  | grep -v '/metrics' \
   | grep -v '/v[0-9]\+/' \
   | grep -v '# unversioned' || true)
 if [[ -n "${unversioned_routes}" ]]; then
   echo "verify-standards: unversioned HTTP routes found in server files:" >&2
   echo "${unversioned_routes}" >&2
-  echo "  All endpoints (except /health) must use the /v1/ namespace." >&2
+  echo "  All endpoints (except /health and /metrics) must use the /v1/ namespace." >&2
   exit 1
 fi
 
-echo "verify-standards: all non-health HTTP routes are versioned (/v1/)."
+echo "verify-standards: all non-health/metrics HTTP routes are versioned (/v1/)."
 
 # Audit schema contract tests: tests/test_audit_schema.py must exist and
 # reference each documented event kind
@@ -1045,3 +1050,130 @@ if [[ ${error_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: ${error_taxonomy_file} exists and references all documented error codes."
+
+# OpenAPI specs: openapi/agent-auth.v1.yaml and openapi/things-bridge.v1.yaml
+# must exist, and tests/test_openapi_spec.py must reference both so route and
+# error-taxonomy parity are enforced on every PR (#117).
+openapi_missing=0
+for spec in openapi/agent-auth.v1.yaml openapi/things-bridge.v1.yaml; do
+  if [[ ! -f "${spec}" ]]; then
+    echo "verify-standards: ${spec} is missing." >&2
+    openapi_missing=1
+  fi
+done
+
+openapi_contract_test="tests/test_openapi_spec.py"
+if [[ ! -f "${openapi_contract_test}" ]]; then
+  echo "verify-standards: ${openapi_contract_test} is missing." >&2
+  echo "  Add contract tests that diff spec paths against the server handlers." >&2
+  openapi_missing=1
+else
+  for spec in agent-auth.v1.yaml things-bridge.v1.yaml; do
+    if ! grep -q "${spec}" "${openapi_contract_test}"; then
+      echo "verify-standards: ${openapi_contract_test} does not reference ${spec}." >&2
+      openapi_missing=1
+    fi
+  done
+fi
+
+if [[ ${openapi_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: openapi/*.v1.yaml exist and ${openapi_contract_test} references both."
+
+# Health endpoints per .claude/instructions/service-design.md
+# ("Health endpoint") and the deterministic regression check from
+# issue #25:
+#
+#   - /agent-auth/health is registered in src/agent_auth/server.py
+#     and /things-bridge/health is registered in src/things_bridge/server.py.
+#   - At least one test function per route asserts a healthy (200)
+#     response, and at least one asserts an unhealthy subsystem-failure
+#     response (503 for agent-auth when the store ping fails; 502 for
+#     things-bridge when the authz upstream is unavailable).
+#
+# The check is scoped per-function (not per-file): without that,
+# tests/test_error_taxonomy.py would satisfy the gate for any route
+# because it mentions every route and every status code somewhere in
+# the file.
+
+health_drift="$(
+  python3 - <<'PY'
+import pathlib
+import re
+import sys
+
+# Accept either the literal path or a call to ``health_url()`` — the
+# integration fixtures expose the latter to let tests flip between
+# direct and in-process transports without hard-coding the path.
+SERVICES = (
+    ("agent-auth", "src/agent_auth/server.py", 503),
+    ("things-bridge", "src/things_bridge/server.py", 502),
+)
+
+def function_blocks(source: str) -> list[str]:
+    return re.split(r"\n(?=(?:async )?def )", source)
+
+
+def block_targets_route(block: str, route: str, service: str) -> bool:
+    if route in block:
+        return True
+    # ``health_url()`` is only surfaced by the service's own integration
+    # fixtures, so it's unambiguous which route it references once the
+    # file's service scope is known.
+    if "health_url()" in block and service in block:
+        return True
+    return False
+
+
+errors: list[str] = []
+
+for service, server_path, unhealthy_status in SERVICES:
+    route = f"/{service}/health"
+    server_src = pathlib.Path(server_path).read_text()
+    if f'"{route}"' not in server_src:
+        errors.append(f"{route} is not registered in {server_path}")
+        continue
+
+    healthy_found = False
+    unhealthy_found = False
+    for test_file in sorted(pathlib.Path("tests").rglob("*.py")):
+        source = test_file.read_text()
+        if route not in source and "health_url()" not in source:
+            continue
+        # ``health_url()`` fixtures live under the matching service
+        # directory; fall back to checking the whole file's service
+        # context when the literal route isn't present.
+        file_service_hint = service if service in str(test_file) or service in source else ""
+        if route not in source and not file_service_hint:
+            continue
+        for block in function_blocks(source):
+            if not block_targets_route(block, route, service):
+                continue
+            if re.search(r"status\s*==\s*200", block):
+                healthy_found = True
+            if re.search(rf"status\s*==\s*{unhealthy_status}", block):
+                unhealthy_found = True
+
+    if not healthy_found:
+        errors.append(f"no test function asserts status == 200 on {route}")
+    if not unhealthy_found:
+        errors.append(
+            f"no test function asserts status == {unhealthy_status} on {route}"
+        )
+
+for err in errors:
+    print(err)
+if errors:
+    sys.exit(1)
+PY
+)" || {
+  echo "verify-standards: health endpoint coverage gaps:" >&2
+  while IFS= read -r line; do
+    echo "  - ${line}" >&2
+  done <<<"${health_drift}"
+  exit 1
+}
+
+echo "verify-standards: /agent-auth/health and /things-bridge/health are registered with healthy + unhealthy test coverage."

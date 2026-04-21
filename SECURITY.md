@@ -247,7 +247,8 @@ covering the four SSDF practice groups:
 SSDF pairs with NIST SP 800-53 (the cybersecurity standard named above):
 SSDF specifies *how the project builds* the software, SP 800-53 specifies
 *what the running system does*. Application-level verification under OWASP
-ASVS is tracked in [#112](https://github.com/aidanns/agent-auth/issues/112);
+ASVS is recorded in the next section
+(see [`design/ASVS.md`](design/ASVS.md));
 build-provenance mechanisms (SLSA, Sigstore/cosign, SBOM) that SSDF's PS
 group references are tracked in
 [#109](https://github.com/aidanns/agent-auth/issues/109),
@@ -255,6 +256,35 @@ group references are tracked in
 [#111](https://github.com/aidanns/agent-auth/issues/111). The rationale
 for selecting SSDF is recorded in
 [`design/decisions/0015-nist-ssdf-sdlc-standard.md`](design/decisions/0015-nist-ssdf-sdlc-standard.md).
+
+## Application security standard
+
+This project adopts **OWASP Application Security Verification
+Standard (ASVS) v5** as the reference standard for application-layer
+verification, targeting **Level 2 (L2)**. Per-chapter conformance is
+tracked in [`design/ASVS.md`](design/ASVS.md), covering the 17 ASVS v5
+chapters.
+
+The chapters in scope for agent-auth's HTTP surface are V1 Encoding
+and Sanitization, V2 Validation and Business Logic, V4 API and Web
+Service, V6 Authentication, V7 Session Management, V8 Authorization,
+V9 Self-contained Tokens, V11 Cryptography, V12 Secure Communications,
+V13 Configuration, V14 Data Protection, V15 Secure Coding and
+Architecture, and V16 Security Logging and Error Handling. Chapters
+scoped out — V3 Web Frontend Security (no browser UI), V5 File
+Handling (no user file uploads), V10 OAuth and OIDC (custom token
+scheme, not OAuth), and V17 WebRTC (no peer connections) — are listed
+with their rationale in `design/ASVS.md`. L3 is not targeted because
+its high-assurance / regulated-context bar does not fit a
+solo-maintained, local-only, single-user project.
+
+ASVS pairs with the companion standards named above: NIST SP 800-53
+specifies *what the running system controls*, SSDF specifies *how
+the project builds the software*, ASVS specifies *what the
+application surface verifies*, and the supply-chain artefacts in the
+next section specify *what the released artefact attests to*. The
+rationale for selecting ASVS is recorded in
+[`design/decisions/0019-owasp-asvs-application-security-standard.md`](design/decisions/0019-owasp-asvs-application-security-standard.md).
 
 <!-- REUSE-IgnoreStart -->
 
@@ -269,11 +299,32 @@ wheel:
 - **`*.sig.bundle`** — a keyless Sigstore signature bundle produced
   by `cosign sign-blob` using the runner's ephemeral OIDC identity.
   One bundle per signed file (sdist, wheel, and each SBOM).
+- **`multiple.intoto.jsonl`** — a
+  [SLSA v1.0](https://slsa.dev/spec/v1.0/) Build Level 3 provenance
+  attestation in [in-toto](https://in-toto.io/) JSON-Lines format,
+  emitted by
+  [`slsa-framework/slsa-github-generator`](https://github.com/slsa-framework/slsa-github-generator)'s
+  `generator_generic_slsa3.yml` reusable workflow. One attestation
+  covers both the sdist and wheel, binding each artefact's sha256
+  digest to the exact `release-publish.yml` workflow run, commit SHA,
+  and ref that produced it. The generator runs on GitHub's isolated
+  SLSA generator runner (not the `publish` runner that produced the
+  artefacts), so a compromised step inside `publish` cannot forge the
+  provenance.
+
+### SLSA target level
+
+The release pipeline claims **SLSA v1.0 Build Level 3**. Provenance
+is produced by a hosted builder (GitHub's SLSA generator), is
+tamper-resistant against the workflow that produced the artefacts,
+and is transparency-log published via Sigstore. Level 3 is both the
+current state on `main` and the target for the 1.0 release.
 
 ### Verification recipe
 
 ```bash
-# Download the artefact, its SBOM, and both signature bundles from the release.
+# Download the artefact, its SBOM, both signature bundles, and the
+# `multiple.intoto.jsonl` provenance from the release.
 # Filenames use PEP 625 normalisation (underscore, not hyphen) — that is the
 # form `uv build` emits. Each SBOM lives next to its artefact as
 # `<artefact>.spdx.json`.
@@ -284,11 +335,26 @@ SDIST="agent_auth-${VERSION}.tar.gz"
 WHEEL="agent_auth-${VERSION}-py3-none-any.whl"
 IDENTITY="https://github.com/aidanns/agent-auth/.github/workflows/release-publish.yml@refs/tags/${TAG}"
 
+# 1. Cosign verifies the raw artefacts + their SBOMs against the
+#    runner's keyless signature.
 for f in "${SDIST}" "${WHEEL}" "${SDIST}.spdx.json" "${WHEEL}.spdx.json"; do
   cosign verify-blob \
     --bundle "${f}.sig.bundle" \
     --certificate-identity "${IDENTITY}" \
     --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+    "${f}"
+done
+
+# 2. slsa-verifier verifies the SLSA Build L3 provenance for each
+#    artefact against the source repository and tag. Install with
+#    `go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@latest`
+#    or download a binary from
+#    https://github.com/slsa-framework/slsa-verifier/releases.
+for f in "${SDIST}" "${WHEEL}"; do
+  slsa-verifier verify-artifact \
+    --provenance-path multiple.intoto.jsonl \
+    --source-uri github.com/aidanns/agent-auth \
+    --source-tag "${TAG}" \
     "${f}"
 done
 ```
@@ -298,7 +364,10 @@ The `--certificate-identity` pins the signature to the
 release; a signature produced by any other workflow or branch fails
 verification. Exact-match is used instead of `--certificate-identity-regexp`
 so that unescaped `.` characters in the tag cannot widen the accepted
-identity set.
+identity set. `slsa-verifier`'s `--source-uri` + `--source-tag` flags
+enforce the same property for the SLSA provenance: an attestation
+produced by a different repo, or for a different tag, will not verify
+against the expected source.
 
 ### Trust boundary and residual risks
 
@@ -324,9 +393,14 @@ The supply-chain trust boundary ends at the GitHub-hosted runner:
 - **No long-lived signing keys.** Cosign consumes the runner's
   OIDC token per-release, so there is no key to steal or revoke
   out-of-band. The trade-off is accepting the three risks above.
-
-SLSA build provenance is tracked separately in
-[#109](https://github.com/aidanns/agent-auth/issues/109).
+- **SLSA generator vs. publish runner.** SLSA build provenance is
+  emitted by a reusable workflow that GitHub schedules on a separate,
+  isolated runner, so a compromised step inside the `publish` job
+  cannot forge the attestation. The residual trust root for
+  provenance is GitHub's SLSA-generator repo
+  (`slsa-framework/slsa-github-generator`) and the OIDC identity of
+  that generator runner — the same Fulcio/Rekor trust surface as the
+  cosign signatures, plus the tag-pinned workflow ref.
 
 <!-- REUSE-IgnoreEnd -->
 

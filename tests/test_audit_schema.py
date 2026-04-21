@@ -10,6 +10,9 @@ present with the correct names and types.
 
 Breaking schema changes (renaming a field, removing a field) will fail
 these tests, which is the intent: the on-disk format is public API.
+A breaking change must also bump ``SCHEMA_VERSION`` in
+``src/agent_auth/audit.py`` and announce in ``CHANGELOG.md`` (see
+``design/DESIGN.md`` "Audit log fields").
 
 Documented events
 -----------------
@@ -23,7 +26,7 @@ import json
 from datetime import datetime
 from typing import Any, cast
 
-from agent_auth.audit import AuditLogger
+from agent_auth.audit import SCHEMA_VERSION, AuditLogger
 
 # -- helpers --
 
@@ -39,9 +42,22 @@ def _read_last_entry(path: str) -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(lines[-1]))
 
 
+def test_schema_version_value(tmp_path):
+    # The current wire-format schema version. A breaking change to the
+    # audit-log schema must bump this constant.
+    assert SCHEMA_VERSION == 1
+    logger = AuditLogger(_log_path(tmp_path))
+    logger.log("token_created", family_id="fam-1")
+    entry = _read_last_entry(_log_path(tmp_path))
+    assert entry["schema_version"] == SCHEMA_VERSION
+
+
 def _assert_base_fields(entry: dict[str, Any]) -> None:
     assert "timestamp" in entry
     assert "event" in entry
+    assert "schema_version" in entry
+    assert isinstance(entry["schema_version"], int)
+    assert entry["schema_version"] == SCHEMA_VERSION
     ts = entry["timestamp"]
     # Must be ISO 8601 UTC (ends with +00:00 or Z)
     assert ts.endswith("+00:00") or ts.endswith("Z"), f"timestamp not UTC: {ts!r}"

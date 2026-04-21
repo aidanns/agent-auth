@@ -71,7 +71,7 @@ runs:
   using: composite
   steps:
     - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
       with:
         enable-cache: true
 
@@ -85,12 +85,11 @@ runs:
         SYSTEMS_ENGINEERING_REF: ${{ inputs.systems-engineering-ref }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        # Authenticated Contents API avoids raw.githubusercontent.com per-IP
-        # rate limits when parallel CI jobs race for install.sh. See #155.
-        # --retry-all-errors (curl 7.71+, shipped on GitHub ubuntu runners) is
-        # load-bearing: plain --retry skips HTTP 4xx, which is what the rate
-        # limit returns.
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
+        # Stays inline (not via scripts/ci/fetch-release-asset.sh) because
+        # it fetches via the Contents API with a custom Accept header and
+        # has no pinned sha256 (dynamic ref). See the helper for retry-flag
+        # rationale.
+        curl -fsSL --retry 5 --retry-max-time 60 --retry-all-errors \
           -H "Accept: application/vnd.github.raw" \
           -H "Authorization: Bearer ${GITHUB_TOKEN}" \
           -o /tmp/systems-engineering-install.sh \
@@ -100,59 +99,10 @@ runs:
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - name: Install go-task
-      uses: arduino/setup-task@v2
+      uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
       with:
         version: ${{ inputs.go-task-version }}
         repo-token: ${{ inputs.github-token }}
-
-    - name: Install shellcheck
-      shell: bash
-      env:
-        SHELLCHECK_VERSION: ${{ inputs.shellcheck-version }}
-        SHELLCHECK_SHA256: ${{ inputs.shellcheck-sha256 }}
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: |
-        # Auth is safe: curl -L strips the Authorization header on the
-        # cross-origin redirect from github.com to the S3 asset URL. See #159.
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/shellcheck.tar.xz \
-          "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
-        echo "${SHELLCHECK_SHA256}  /tmp/shellcheck.tar.xz" | sha256sum -c -
-        tar -xJf /tmp/shellcheck.tar.xz -C /tmp
-        sudo install -m0755 "/tmp/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
-        shellcheck --version
-
-    - name: Install shfmt
-      shell: bash
-      env:
-        SHFMT_VERSION: ${{ inputs.shfmt-version }}
-        SHFMT_SHA256: ${{ inputs.shfmt-sha256 }}
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: |
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/shfmt \
-          "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64"
-        echo "${SHFMT_SHA256}  /tmp/shfmt" | sha256sum -c -
-        sudo install -m0755 /tmp/shfmt /usr/local/bin/shfmt
-        shfmt --version
-
-    - name: Install ruff
-      shell: bash
-      env:
-        RUFF_VERSION: ${{ inputs.ruff-version }}
-        RUFF_SHA256: ${{ inputs.ruff-sha256 }}
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: |
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/ruff.tar.gz \
-          "https://github.com/astral-sh/ruff/releases/download/${RUFF_VERSION}/ruff-x86_64-unknown-linux-gnu.tar.gz"
-        echo "${RUFF_SHA256}  /tmp/ruff.tar.gz" | sha256sum -c -
-        tar -xzf /tmp/ruff.tar.gz -C /tmp
-        sudo install -m0755 /tmp/ruff-x86_64-unknown-linux-gnu/ruff /usr/local/bin/ruff
-        ruff --version
 
     - name: Install mdformat
       shell: bash
@@ -167,68 +117,128 @@ runs:
           --with "mdformat-tables==${MDFORMAT_TABLES_VERSION}"
         mdformat --version
 
-    - name: Install taplo
-      shell: bash
-      env:
-        TAPLO_VERSION: ${{ inputs.taplo-version }}
-        TAPLO_SHA256: ${{ inputs.taplo-sha256 }}
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: |
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/taplo.gz \
-          "https://github.com/tamasfe/taplo/releases/download/${TAPLO_VERSION}/taplo-linux-x86_64.gz"
-        echo "${TAPLO_SHA256}  /tmp/taplo.gz" | sha256sum -c -
-        gunzip -f /tmp/taplo.gz
-        sudo install -m0755 /tmp/taplo /usr/local/bin/taplo
-        taplo --version
-
-    - name: Install keep-sorted
+    - name: Install release binaries
       shell: bash
       env:
         KEEP_SORTED_VERSION: ${{ inputs.keep-sorted-version }}
         KEEP_SORTED_SHA256: ${{ inputs.keep-sorted-sha256 }}
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: |
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/keep-sorted \
-          "https://github.com/google/keep-sorted/releases/download/v${KEEP_SORTED_VERSION}/keep-sorted_linux"
-        echo "${KEEP_SORTED_SHA256}  /tmp/keep-sorted" | sha256sum -c -
-        sudo install -m0755 /tmp/keep-sorted /usr/local/bin/keep-sorted
-        keep-sorted --version
-
-    - name: Install ripsecrets
-      shell: bash
-      env:
         RIPSECRETS_VERSION: ${{ inputs.ripsecrets-version }}
         RIPSECRETS_SHA256: ${{ inputs.ripsecrets-sha256 }}
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: |
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/ripsecrets.tar.gz \
-          "https://github.com/sirwart/ripsecrets/releases/download/v${RIPSECRETS_VERSION}/ripsecrets-${RIPSECRETS_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-        echo "${RIPSECRETS_SHA256}  /tmp/ripsecrets.tar.gz" | sha256sum -c -
-        tar -xzf /tmp/ripsecrets.tar.gz -C /tmp
-        sudo install -m0755 "/tmp/ripsecrets-${RIPSECRETS_VERSION}-x86_64-unknown-linux-gnu/ripsecrets" /usr/local/bin/ripsecrets
-        ripsecrets --version
-
-    - name: Install treefmt
-      shell: bash
-      env:
+        RUFF_VERSION: ${{ inputs.ruff-version }}
+        RUFF_SHA256: ${{ inputs.ruff-sha256 }}
+        SHELLCHECK_VERSION: ${{ inputs.shellcheck-version }}
+        SHELLCHECK_SHA256: ${{ inputs.shellcheck-sha256 }}
+        SHFMT_VERSION: ${{ inputs.shfmt-version }}
+        SHFMT_SHA256: ${{ inputs.shfmt-sha256 }}
+        TAPLO_VERSION: ${{ inputs.taplo-version }}
+        TAPLO_SHA256: ${{ inputs.taplo-sha256 }}
         TREEFMT_VERSION: ${{ inputs.treefmt-version }}
         TREEFMT_SHA256: ${{ inputs.treefmt-sha256 }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/treefmt.tar.gz \
-          "https://github.com/numtide/treefmt/releases/download/v${TREEFMT_VERSION}/treefmt_${TREEFMT_VERSION}_linux_amd64.tar.gz"
-        echo "${TREEFMT_SHA256}  /tmp/treefmt.tar.gz" | sha256sum -c -
+        set -euo pipefail
+
+        # Composite-action steps run sequentially, so the 7 independent
+        # release-binary downloads (~tens of MB each) are the one place
+        # where cross-step concurrency can be recovered. Fire them all as
+        # background jobs, redirect each child's combined output to a
+        # per-tool log so the 7 streams don't interleave, then replay
+        # each log inside its own `::group::` from the wait loop. Plain
+        # `wait` with no arg reports only the last job's exit code, so
+        # wait on each PID individually and accumulate failures. See
+        # #168.
+        declare -A pids=()
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+          /tmp/shellcheck.tar.xz \
+          "${SHELLCHECK_SHA256}" >/tmp/shellcheck.fetch.log 2>&1 &
+        pids[shellcheck]=$!
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" \
+          /tmp/shfmt \
+          "${SHFMT_SHA256}" >/tmp/shfmt.fetch.log 2>&1 &
+        pids[shfmt]=$!
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/astral-sh/ruff/releases/download/${RUFF_VERSION}/ruff-x86_64-unknown-linux-gnu.tar.gz" \
+          /tmp/ruff.tar.gz \
+          "${RUFF_SHA256}" >/tmp/ruff.fetch.log 2>&1 &
+        pids[ruff]=$!
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/tamasfe/taplo/releases/download/${TAPLO_VERSION}/taplo-linux-x86_64.gz" \
+          /tmp/taplo.gz \
+          "${TAPLO_SHA256}" >/tmp/taplo.fetch.log 2>&1 &
+        pids[taplo]=$!
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/google/keep-sorted/releases/download/v${KEEP_SORTED_VERSION}/keep-sorted_linux" \
+          /tmp/keep-sorted \
+          "${KEEP_SORTED_SHA256}" >/tmp/keep-sorted.fetch.log 2>&1 &
+        pids[keep-sorted]=$!
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/sirwart/ripsecrets/releases/download/v${RIPSECRETS_VERSION}/ripsecrets-${RIPSECRETS_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+          /tmp/ripsecrets.tar.gz \
+          "${RIPSECRETS_SHA256}" >/tmp/ripsecrets.fetch.log 2>&1 &
+        pids[ripsecrets]=$!
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/numtide/treefmt/releases/download/v${TREEFMT_VERSION}/treefmt_${TREEFMT_VERSION}_linux_amd64.tar.gz" \
+          /tmp/treefmt.tar.gz \
+          "${TREEFMT_SHA256}" >/tmp/treefmt.fetch.log 2>&1 &
+        pids[treefmt]=$!
+
+        # Iterate a fixed tool list (not "${!pids[@]}") so the replayed
+        # log order is deterministic across runs.
+        fail=0
+        for tool in shellcheck shfmt ruff taplo keep-sorted ripsecrets treefmt; do
+          if wait "${pids[$tool]}"; then
+            status=OK
+          else
+            status=FAILED
+            fail=1
+          fi
+          echo "::group::Download ${tool} (${status})"
+          cat "/tmp/${tool}.fetch.log"
+          echo "::endgroup::"
+        done
+        [[ $fail -eq 0 ]]
+
+        echo "::group::Install shellcheck"
+        tar -xJf /tmp/shellcheck.tar.xz -C /tmp
+        sudo install -m0755 "/tmp/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+        shellcheck --version
+        echo "::endgroup::"
+
+        echo "::group::Install shfmt"
+        sudo install -m0755 /tmp/shfmt /usr/local/bin/shfmt
+        shfmt --version
+        echo "::endgroup::"
+
+        echo "::group::Install ruff"
+        tar -xzf /tmp/ruff.tar.gz -C /tmp
+        sudo install -m0755 /tmp/ruff-x86_64-unknown-linux-gnu/ruff /usr/local/bin/ruff
+        ruff --version
+        echo "::endgroup::"
+
+        echo "::group::Install taplo"
+        gunzip -f /tmp/taplo.gz
+        sudo install -m0755 /tmp/taplo /usr/local/bin/taplo
+        taplo --version
+        echo "::endgroup::"
+
+        echo "::group::Install keep-sorted"
+        sudo install -m0755 /tmp/keep-sorted /usr/local/bin/keep-sorted
+        keep-sorted --version
+        echo "::endgroup::"
+
+        echo "::group::Install ripsecrets"
+        tar -xzf /tmp/ripsecrets.tar.gz -C /tmp
+        sudo install -m0755 "/tmp/ripsecrets-${RIPSECRETS_VERSION}-x86_64-unknown-linux-gnu/ripsecrets" /usr/local/bin/ripsecrets
+        ripsecrets --version
+        echo "::endgroup::"
+
+        echo "::group::Install treefmt"
         tar -xzf /tmp/treefmt.tar.gz -C /tmp
         sudo install -m0755 /tmp/treefmt /usr/local/bin/treefmt
         treefmt --version
+        echo "::endgroup::"
 
     - name: Verify Required Tooling
       shell: bash

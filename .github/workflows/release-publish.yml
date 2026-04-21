@@ -21,13 +21,18 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    outputs:
+      # base64-encoded sha256 digests of the sdist + wheel, fed to the
+      # SLSA generator reusable workflow to bind the provenance
+      # attestation to these exact artefacts.
+      hashes: ${{ steps.hashes.outputs.hashes }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
 
@@ -48,7 +53,7 @@ jobs:
           echo "wheel_sbom=${wheel[0]}.spdx.json" >> "${GITHUB_OUTPUT}"
 
       - name: Generate SPDX SBOM for sdist
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           file: ${{ steps.artefacts.outputs.sdist }}
           format: spdx-json
@@ -57,7 +62,7 @@ jobs:
           upload-artifact: false
 
       - name: Generate SPDX SBOM for wheel
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           file: ${{ steps.artefacts.outputs.wheel }}
           format: spdx-json
@@ -66,7 +71,7 @@ jobs:
           upload-artifact: false
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
 
       - name: Sign artefacts and SBOMs (keyless)
         shell: bash
@@ -80,6 +85,20 @@ jobs:
           for f in "${SDIST}" "${WHEEL}" "${SDIST_SBOM}" "${WHEEL_SBOM}"; do
             cosign sign-blob --yes --bundle "${f}.sig.bundle" "${f}"
           done
+
+      - name: Compute artefact hashes for SLSA provenance
+        id: hashes
+        shell: bash
+        env:
+          SDIST: ${{ steps.artefacts.outputs.sdist }}
+          WHEEL: ${{ steps.artefacts.outputs.wheel }}
+        run: |
+          set -euo pipefail
+          # The SLSA generator expects `base64(sha256sum basename1 basename2)`.
+          # Use basenames (not the `dist/…` path) so the provenance subjects
+          # match what consumers see on the release page.
+          cd "$(dirname "${SDIST}")"
+          echo "hashes=$(sha256sum "$(basename "${SDIST}")" "$(basename "${WHEEL}")" | base64 -w0)" >> "${GITHUB_OUTPUT}"
 
       - name: Upload artefacts to GitHub release
         env:
@@ -98,3 +117,27 @@ jobs:
             "${SDIST_SBOM}" "${SDIST_SBOM}.sig.bundle" \
             "${WHEEL_SBOM}" "${WHEEL_SBOM}.sig.bundle" \
             --clobber
+
+  # SLSA Level 3 build provenance attestation. The reusable workflow runs
+  # on GitHub's isolated generator runners (not our `publish` runner) so
+  # the provenance cannot be forged by a malicious step in `publish`. The
+  # generator uploads `multiple.intoto.jsonl` to the release alongside the
+  # signed artefacts; verification uses `slsa-verifier verify-artifact`
+  # (see SECURITY.md § Supply-chain artifacts).
+  #
+  # Exception to the SHA-pin policy in
+  # `.claude/instructions/tooling-and-ci.md`: slsa-github-generator's
+  # reusable workflow MUST be referenced by tag, not commit SHA — the
+  # workflow introspects its own `@ref` to certify the builder identity in
+  # the emitted provenance. See
+  # https://github.com/slsa-framework/slsa-github-generator/blob/main/internal/builders/generic/README.md#referencing-the-slsa-generator.
+  provenance:
+    needs: [publish]
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.publish.outputs.hashes }}
+      upload-assets: true

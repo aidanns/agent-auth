@@ -15,6 +15,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **SLSA v1.0 Build Level 3 provenance on every release.**
+  `release-publish.yml` now calls
+  `slsa-framework/slsa-github-generator`'s
+  `generator_generic_slsa3.yml` reusable workflow from a new
+  `provenance` job (sequenced after `publish` via `needs:`), binding
+  each sdist + wheel sha256 digest to the workflow run, commit SHA,
+  and ref. The attestation ships as `multiple.intoto.jsonl` on every
+  GitHub release. Verification recipe uses `slsa-verifier verify-artifact` with `--source-uri` + `--source-tag` pinning
+  (documented in `SECURITY.md` § Supply-chain artifacts). Rationale
+  and trust-boundary analysis in
+  [ADR 0020](design/decisions/0020-slsa-build-provenance.md);
+  `design/SSDF.md` PS.2.1 and PS.3.2 updated from *Planned* →
+  *Implemented*. The `slsa-github-generator` reusable workflow must
+  be tag-pinned (not SHA-pinned) because the generator introspects
+  its own `@ref` to certify builder identity — policy exception
+  documented in `.claude/instructions/tooling-and-ci.md`. Closes
+  [#109](https://github.com/aidanns/agent-auth/issues/109).
+- OWASP ASVS v5 adopted as the project's application-security
+  verification standard at target Level 2. `design/ASVS.md` records
+  per-chapter conformance (V1…V17) with evidence pointers and
+  out-of-scope rationales; `SECURITY.md` gains an
+  `## Application security standard` section linking the audit;
+  ADR 0019 records the rationale and the relationship with the
+  existing NIST SP 800-53 (cybersecurity), NIST SSDF (SDLC), and
+  supply-chain companion standards.
+  `scripts/verify-standards.sh` gates the new section. ADR 0015
+  and `design/SSDF.md` now cross-reference `design/ASVS.md`
+  directly instead of
+  [#112](https://github.com/aidanns/agent-auth/issues/112)
+  (closed by this change).
+- `scripts/verify-standards.sh` now gates the health-endpoint standard:
+  `/agent-auth/health` and `/things-bridge/health` must be registered in
+  their server modules and tests must cover both a healthy (200)
+  response and a subsystem-failure response (503 for agent-auth,
+  502 for things-bridge). Deletes of the route or its unhealthy-case
+  tests now fail CI
+  ([#25](https://github.com/aidanns/agent-auth/issues/25)).
+- Published OpenAPI 3.1 specs for both HTTP surfaces:
+  `openapi/agent-auth.v1.yaml` and `openapi/things-bridge.v1.yaml`.
+  A contract test in `tests/test_openapi_spec.py` (1) validates both
+  specs through `openapi-spec-validator`, (2) reflects on the
+  server handlers and asserts every registered route has a matching
+  spec path (catching both missing and stale entries), and (3)
+  asserts every error code in the spec is documented in
+  `design/error-codes.md`. `scripts/verify-standards.sh` gates
+  existence of both spec files plus the contract test. README
+  links the rendered specs
+  ([#117](https://github.com/aidanns/agent-auth/issues/117)).
+- Error taxonomy (`design/error-codes.md`) expanded to cover the
+  agent-auth management endpoints (`token/create`, `token/modify`,
+  `token/revoke`, `token/rotate`, `token/list`). Previously only the
+  validation/refresh/reissue/health surfaces were enumerated.
+- Audit-log `schema_version` field (currently `1`) emitted on every
+  entry, with a documented stability policy in
+  `design/DESIGN.md` "Audit log fields" and a contract test that
+  fails if the version changes
+  ([#20](https://github.com/aidanns/agent-auth/issues/20)).
 - Community-health files to complete the GitHub Community Profile: Contributor
   Covenant v3.0 Code of Conduct, issue templates (bug report, feature request,
   security redirect), pull-request template, and SUPPORT.md. CoC and SUPPORT
@@ -90,11 +147,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `treefmt --no-cache --fail-on-change` invocation; `ruff check` and
   `keep-sorted` remain as dedicated commands
   ([#42](https://github.com/aidanns/agent-auth/issues/42)).
+- `agent-auth serve` / `things-bridge serve` now print the OS-assigned
+  port on their `listening on ...` startup line when configured with
+  `port: 0`, instead of echoing the literal `0`
+  ([#163](https://github.com/aidanns/agent-auth/issues/163)).
 - **Token management HTTP routes moved under `/v1/`.**
   `POST /agent-auth/token/{create,modify,revoke,rotate}` and
   `GET /agent-auth/token/list` are now served at `/agent-auth/v1/token/...`.
   Completes the `/v1/` API namespace migration so every non-health route is
   versioned (enforced by `scripts/verify-standards.sh`).
+- `setup-toolchain` release-binary installs now go through a shared
+  `scripts/ci/fetch-release-asset.sh` helper (curl + auth + sha256 verify)
+  rather than open-coding the same block in 7 steps. Retry flags retuned
+  to `--retry 5 --retry-max-time 60 --retry-all-errors` (no explicit
+  `--retry-delay`) so curl honours `Retry-After` and exponential backoff
+  on 429s/5xx. `Install systems-engineering` stays inline (Contents API
+  with a custom Accept header and no pinned sha256) but picks up the
+  same retry retune. Part 3 of the follow-up (parallelise downloads) is
+  tracked separately
+  ([#165](https://github.com/aidanns/agent-auth/issues/165)).
+- `setup-toolchain` release-binary installs now run the 7 downloads
+  concurrently in a single `Install release binaries` step
+  (`fetch-release-asset.sh ... &` plus a per-PID `wait` loop that
+  fails fast on any curl / sha256 error). Extract + install + version
+  echo stays serial with `::group::` markers for per-tool log
+  readability. Trims composite-action wall-time on every CI job.
+  Completes the #165 follow-up sequenced in
+  [#168](https://github.com/aidanns/agent-auth/issues/168).
+- **Release-adjacent GitHub Actions pinned to commit SHAs.**
+  `release-please.yml`, `release-publish.yml`, `reuse.yml`, and
+  `.github/actions/setup-toolchain/action.yml` now reference every
+  third-party action by full commit SHA with a trailing `# vX` comment
+  (e.g. `actions/checkout@de0fac2... # v6`). Read-only workflows
+  (`check.yml`, `test.yml`, `verify-*.yml`, `typecheck.yml`,
+  `security.yml`) stay on floating-major tags. Policy documented in
+  `.claude/instructions/tooling-and-ci.md` "Pin release-affecting GitHub
+  Actions to commit SHAs"; Dependabot's existing `github-actions`
+  ecosystem entry (minor/patch grouped, majors individual) keeps the
+  pins refreshed. Closes
+  [#127](https://github.com/aidanns/agent-auth/issues/127).
 
 ### Fixed
 

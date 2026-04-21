@@ -127,6 +127,12 @@ curl -H "Authorization: Bearer aa_<id>_<sig>" \
   http://127.0.0.1:9100/agent-auth/v1/token/status
 ```
 
+The complete wire contract for both servers is published as OpenAPI 3.1:
+[`openapi/agent-auth.v1.yaml`](./openapi/agent-auth.v1.yaml) and
+[`openapi/things-bridge.v1.yaml`](./openapi/things-bridge.v1.yaml). See
+[`openapi/README.md`](./openapi/README.md) for the versioning guarantees and
+rendering tips.
+
 ### things-bridge (macOS host)
 
 `things-bridge` is an HTTP server that delegates token validation to `agent-auth` and exposes read-only Things 3 endpoints under `/things-bridge/`. It contains no Things 3 logic itself — every read-path request is translated into a subprocess invocation of a configured Things-client CLI (default `things-client-cli-applescript`, which shells to `osascript` on macOS). Run it alongside `agent-auth serve`:
@@ -169,7 +175,7 @@ The fake CLI is not shipped in the sdist/wheel — it lives under `tests/` and i
 ```bash
 # Save credentials — the CLI prompts interactively for tokens so they
 # don't appear in shell history. Alternatively, pre-populate the
-# credentials file at ~/.config/things-cli/credentials.json.
+# credentials file at ~/.config/things-cli/credentials.yaml.
 things-cli login \
   --bridge-url http://127.0.0.1:9200 \
   --auth-url http://127.0.0.1:9100 \

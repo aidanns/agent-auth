@@ -53,8 +53,10 @@ language: `python.md`, `bash.md`.
 
 - **Test runner script** — ensure a single-command test runner exists (e.g.
   `scripts/test.sh`) so the full test suite runs with one command.
+
 - **Wire all check scripts into CI** — every repeatable check script must
   have a CI workflow.
+
 - **Pin sha256 for tool binary downloads** — any CI step that downloads a
   CLI binary directly (curl/wget from a release CDN) must verify the
   artefact against a sha256 pinned in the repository before extracting or
@@ -66,6 +68,37 @@ language: `python.md`, `bash.md`.
   is preferred over fetching an upstream `checksums.txt`, because the
   checksum file would travel over the same TLS channel as the artefact
   it claims to verify.
+
+- **Pin release-affecting GitHub Actions to commit SHAs** — third-party
+  `uses:` references in any workflow that holds `id-token: write`,
+  `contents: write`, or otherwise sits on the release path must be pinned
+  to a full 40-character commit SHA, not a floating `@vX` tag. A
+  compromised action release on a floating tag can otherwise siphon the
+  runner's OIDC token or substitute a malicious signing binary in-flight.
+  Use the format `uses: ORG/REPO@<sha> # vX.Y.Z` — Dependabot reads the
+  trailing comment to track upgrades and rewrites both the SHA and the
+  comment on each bump, keeping the pin reviewable.
+
+  Scope today: `.github/workflows/release-please.yml`,
+  `.github/workflows/release-publish.yml`, `.github/workflows/reuse.yml`
+  (the REUSE gate is a release prerequisite), and
+  `.github/actions/setup-toolchain/action.yml` (indirectly part of the
+  release path via `reuse.yml`). Read-only workflows (`check.yml`,
+  `test.yml`, `verify-*.yml`, `typecheck.yml`, `security.yml`) stay on
+  floating-major tags — their blast radius is small enough that the
+  review cost of SHA-pinned bumps outweighs the benefit. Local composite
+  actions referenced as `uses: ./...` are version-locked to the repo
+  commit itself and need no extra pinning.
+
+  Explicit exception: `slsa-framework/slsa-github-generator`'s reusable
+  workflows **must** be referenced by semantic-version tag
+  (`@v2.1.0`), not by commit SHA. The SLSA generator introspects its
+  own `@ref` to certify the builder identity in the emitted
+  provenance; a SHA ref produces an invalid (or unverifiable)
+  attestation. See
+  https://github.com/slsa-framework/slsa-github-generator/blob/main/internal/builders/generic/README.md#referencing-the-slsa-generator.
+  Leave a comment at the call-site explaining the exception so the
+  next maintainer doesn't "harden" it by mistake.
 
 ## IDE
 
