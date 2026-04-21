@@ -48,6 +48,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still catching a regression that would add a per-request tax on
   every downstream bridge call. Closes
   [#41](https://github.com/aidanns/agent-auth/issues/41).
+- Rate-limiting / DoS posture decision recorded in
+  [ADR 0022](design/decisions/0022-rate-limiting-posture.md):
+  1.0 defers application-layer rate limiting and relies on the
+  loopback-only bind, the 1 MiB body cap, the 128-byte id-segment
+  cap on the bridge, and `ApprovalManager`'s implicit per-family
+  serialisation. `design/DESIGN.md` gains a new
+  "Rate limiting and request budgets" section enumerating the
+  expected steady / ceiling rate per endpoint.
+  `scripts/verify-standards.sh` gates that some ADR carries
+  "rate limit" / "DoS posture" / "denial of service" in its title
+  so a future deletion fails CI
+  ([#30](https://github.com/aidanns/agent-auth/issues/30)).
 - Fault-injection test layer under `tests/fault/` exercising each
   documented failure mode: SQLite write errors / closed connection,
   audit-log disk-full / read-only filesystem, keyring backend

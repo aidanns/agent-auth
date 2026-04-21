@@ -1568,3 +1568,38 @@ if ! grep -r -l -E "@pytest\\.mark\\.perf_budget\\b" tests/ >/dev/null 2>&1; the
 fi
 
 echo "verify-standards: ${design_file} documents a performance budget and at least one test carries the perf_budget marker."
+
+# Rate-limiting / DoS posture per
+# .claude/instructions/service-design.md ("Rate limiting / DoS posture")
+# and the deterministic regression check from issue #30:
+#
+#   - design/decisions/ contains an ADR addressing rate limiting / DoS.
+#     The gate matches on ADR titles or body copy that carry the
+#     "rate limit" keyword so a rename of the current ADR filename
+#     still satisfies the check as long as the rationale keeps
+#     living in an ADR.
+
+rate_limit_adr_found=0
+# Match the ADR title (first ``# ADR`` line), not body-copy mentions —
+# ASVS and other cross-cutting ADRs list "rate limiting" in their
+# follow-ups without actually carrying the posture decision. Requiring
+# the keyword in the title keeps the gate pointed at the dedicated ADR.
+for adr in design/decisions/*.md; do
+  [[ -f "${adr}" ]] || continue
+  base="$(basename "${adr}")"
+  [[ "${base}" == "README.md" || "${base}" == "TEMPLATE.md" ]] && continue
+  if grep -m1 "^# ADR" "${adr}" \
+    | grep -qiE "rate[[:space:]]?limit|DoS posture|denial[- ]of[- ]service"; then
+    rate_limit_adr_found=1
+    rate_limit_adr="${adr}"
+    break
+  fi
+done
+
+if [[ ${rate_limit_adr_found} -eq 0 ]]; then
+  echo "verify-standards: no ADR under design/decisions/ addresses rate limiting / DoS posture." >&2
+  echo "  Add an ADR with the decision (implement with thresholds, or defer with rationale)." >&2
+  exit 1
+fi
+
+echo "verify-standards: rate-limiting / DoS posture is recorded in ${rate_limit_adr}."
