@@ -94,6 +94,18 @@ The health endpoint is unversioned by convention (see versioning policy in
 `DESIGN.md`). A 503 body of `{"status": "unhealthy"}` (not an error code)
 indicates the backing store is unreachable.
 
+### `GET /agent-auth/metrics` *(unversioned)*
+
+| Error code      | HTTP status | Meaning                                             |
+| --------------- | ----------- | --------------------------------------------------- |
+| `missing_token` | 401         | No `Authorization: Bearer` header present.          |
+| `invalid_token` | 401         | Token is malformed or not an access token.          |
+| `token_expired` | 401         | Access token has passed its TTL.                    |
+| `scope_denied`  | 403         | Token does not have the `agent-auth:metrics` scope. |
+
+Successful scrapes return 200 with a Prometheus text exposition body
+(`Content-Type: text/plain; version=0.0.4`).
+
 ### Server-wide codes (any endpoint)
 
 | Error code  | HTTP status | Meaning                                      |
@@ -133,6 +145,18 @@ All data endpoints share the same authorization and Things-layer error codes:
 | `token_expired`     | 401         | Access token has passed its TTL.                      |
 | `scope_denied`      | 403         | Token does not have the `things-bridge:health` scope. |
 | `authz_unavailable` | 502         | The agent-auth service is unreachable.                |
+
+### `GET /things-bridge/metrics` *(unversioned)*
+
+| Error code          | HTTP status | Meaning                                                |
+| ------------------- | ----------- | ------------------------------------------------------ |
+| `unauthorized`      | 401         | No bearer token present.                               |
+| `token_expired`     | 401         | Access token has passed its TTL.                       |
+| `scope_denied`      | 403         | Token does not have the `things-bridge:metrics` scope. |
+| `authz_unavailable` | 502         | The agent-auth service is unreachable.                 |
+
+Successful scrapes return 200 with a Prometheus text exposition body
+(`Content-Type: text/plain; version=0.0.4`).
 
 ### Server-wide codes (any endpoint)
 

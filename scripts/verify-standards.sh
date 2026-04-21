@@ -1272,6 +1272,147 @@ fi
 
 echo "verify-standards: mutation testing configured ([tool.mutmut] / [tool.mutation_score]) and scheduled via ${mutation_workflow}."
 
+# Metrics endpoints per .claude/instructions/service-design.md
+# ("Metrics endpoint") and the deterministic regression check from
+# issue #26:
+#
+#   - /agent-auth/metrics is registered in src/agent_auth/server.py
+#     and /things-bridge/metrics is registered in src/things_bridge/server.py.
+#   - At least one test function per route scrapes the endpoint (200
+#     response) and validates that every declared metric name appears
+#     in the response body. Name lists are hard-coded below so a
+#     rename fails the gate deliberately.
+
+metrics_drift="$(
+  python3 - <<'PY'
+import pathlib
+import re
+import sys
+
+AGENT_AUTH_METRICS = (
+    "http_server_request_duration_seconds",
+    "http_server_active_requests",
+    "agent_auth_token_operations_total",
+    "agent_auth_validation_outcomes_total",
+    "agent_auth_approval_outcomes_total",
+)
+THINGS_BRIDGE_METRICS = (
+    "http_server_request_duration_seconds",
+    "http_server_active_requests",
+)
+SERVICES = (
+    ("agent-auth", "src/agent_auth/server.py", AGENT_AUTH_METRICS),
+    ("things-bridge", "src/things_bridge/server.py", THINGS_BRIDGE_METRICS),
+)
+
+
+def function_blocks(source: str) -> list[str]:
+    return re.split(r"\n(?=(?:async )?def )", source)
+
+
+errors: list[str] = []
+
+for service, server_path, required in SERVICES:
+    route = f"/{service}/metrics"
+    server_src = pathlib.Path(server_path).read_text()
+    if f'"{route}"' not in server_src:
+        errors.append(f"{route} is not registered in {server_path}")
+        continue
+
+    covered: set[str] = set()
+    for test_file in sorted(pathlib.Path("tests").rglob("*.py")):
+        source = test_file.read_text()
+        if route not in source:
+            continue
+        for block in function_blocks(source):
+            if route not in block:
+                continue
+            if not re.search(r"status\s*==\s*200", block):
+                continue
+            for name in required:
+                if name in block:
+                    covered.add(name)
+
+    missing = [n for n in required if n not in covered]
+    if missing:
+        errors.append(
+            f"{route}: no 200-response test block references metric(s) "
+            + ", ".join(missing)
+        )
+
+for err in errors:
+    print(err)
+if errors:
+    sys.exit(1)
+PY
+)" || {
+  echo "verify-standards: metrics endpoint coverage gaps:" >&2
+  while IFS= read -r line; do
+    echo "  - ${line}" >&2
+  done <<<"${metrics_drift}"
+  exit 1
+}
+
+echo "verify-standards: /agent-auth/metrics and /things-bridge/metrics are registered with metric-name test coverage."
+
+# Graceful SIGTERM / SIGINT shutdown per
+# .claude/instructions/service-design.md ("Graceful shutdown") and the
+# deterministic regression check from issue #32:
+#
+#   - Both server modules (src/agent_auth/server.py,
+#     src/things_bridge/server.py) install a SIGTERM handler.
+#   - At least one test under tests/ exercises SIGTERM shutdown
+#     behaviour (grepping the literal token SIGTERM — the existing
+#     subprocess-driven tests in tests/test_server_shutdown.py and
+#     tests/test_things_bridge_shutdown.py already satisfy this).
+#
+# The gate is grep-only so it won't false-positive on a stale
+# `# SIGTERM` comment after the real `signal.signal(signal.SIGTERM, ...)`
+# invocation has been removed: strip_comments is applied first.
+
+shutdown_missing=0
+
+fail_shutdown_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  shutdown_missing=1
+}
+
+for server_file in src/agent_auth/server.py src/things_bridge/server.py; do
+  if [[ ! -f "${server_file}" ]]; then
+    fail_shutdown_check \
+      "${server_file} is missing." \
+      "Restore the server module or update this check."
+    continue
+  fi
+  # strip_comments removes trailing comments so a commented-out mention
+  # of signal.SIGTERM doesn't satisfy the gate after the real handler
+  # installation has been removed.
+  if ! strip_comments "${server_file}" | grep -qE "signal\.signal\([[:space:]]*signal\.SIGTERM"; then
+    fail_shutdown_check \
+      "${server_file} does not install a SIGTERM handler." \
+      "Call 'signal.signal(signal.SIGTERM, ...)' in the server startup path (see .claude/instructions/service-design.md Graceful shutdown)."
+  fi
+done
+
+# Look for at least one test anywhere under tests/ that references
+# SIGTERM in executable code. ``test_server_shutdown.py`` and
+# ``test_things_bridge_shutdown.py`` both satisfy this today via their
+# ``invoke_installed_handler(signal.SIGTERM)`` + subprocess-driven
+# coverage.
+test_sigterm_hits="$(grep -rlE "\bSIGTERM\b" tests/ 2>/dev/null | grep -v __pycache__ || true)"
+if [[ -z "${test_sigterm_hits}" ]]; then
+  fail_shutdown_check \
+    "no test under tests/ references SIGTERM." \
+    "Add a test that sends SIGTERM to the server (or invokes the installed handler) and asserts a clean drain."
+fi
+
+if [[ ${shutdown_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: agent-auth and things-bridge install SIGTERM handlers and tests exercise shutdown behaviour."
+
 # ---------------------------------------------------------------------------
 # Fault-injection / chaos test layer.
 # ---------------------------------------------------------------------------

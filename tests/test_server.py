@@ -14,6 +14,7 @@ from agent_auth.approval import ApprovalManager
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
 from agent_auth.keys import KeyManager
+from agent_auth.metrics import build_registry
 from agent_auth.plugins import ApprovalResult, NotificationPlugin
 from agent_auth.server import (
     MANAGEMENT_SCOPE,
@@ -23,7 +24,7 @@ from agent_auth.server import (
 )
 from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair
-from tests._http import get, post
+from tests._http import get, get_text, post
 
 
 def _issue_health_token(server, store, scopes):
@@ -53,7 +54,8 @@ def in_process_server(tmp_dir, signing_key, encryption_key):
     store = TokenStore(config.db_path, encryption_key)
     audit = AuditLogger(config.log_path)
     approval_manager = ApprovalManager(_DenyPlugin(), store, audit)
-    server = AgentAuthServer(config, signing_key, store, audit, approval_manager)
+    registry, metrics = build_registry()
+    server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -107,6 +109,80 @@ def test_health_rejects_tokens_without_the_health_scope(in_process_server):
     status, body = get(f"{base}/agent-auth/health", _health_headers(token))
     assert status == 403
     assert body["error"] == "scope_denied"
+
+
+# -- /metrics ---------------------------------------------------------------
+_EXPECTED_METRIC_NAMES = (
+    "http_server_request_duration_seconds",
+    "http_server_active_requests",
+    "agent_auth_token_operations_total",
+    "agent_auth_validation_outcomes_total",
+    "agent_auth_approval_outcomes_total",
+)
+
+
+@pytest.mark.covers_function("Serve Metrics Endpoint")
+def test_metrics_requires_a_bearer_token(in_process_server):
+    _, base, _ = in_process_server
+    status, body = get(f"{base}/agent-auth/metrics")
+    assert status == 401
+    assert body["error"] == "missing_token"
+
+
+@pytest.mark.covers_function("Serve Metrics Endpoint")
+def test_metrics_rejects_tokens_without_the_metrics_scope(in_process_server):
+    server, base, store = in_process_server
+    token = _issue_health_token(server, store, {"things:read": "allow"})
+    status, body = get(f"{base}/agent-auth/metrics", _health_headers(token))
+    assert status == 403
+    assert body["error"] == "scope_denied"
+
+
+@pytest.mark.covers_function("Serve Metrics Endpoint")
+def test_metrics_emits_prometheus_text_with_all_declared_metric_names(in_process_server):
+    server, base, store = in_process_server
+    token = _issue_health_token(server, store, {"agent-auth:metrics": "allow"})
+    status, content_type, body = get_text(f"{base}/agent-auth/metrics", _health_headers(token))
+    assert status == 200
+    assert content_type.startswith("text/plain")
+    # Contract: every declared metric name must appear in the
+    # exposition. Names are inlined (not looped over a module
+    # constant) so the test body is what scripts/verify-standards.sh
+    # regex-matches against — a rename breaks both places at once.
+    assert "# TYPE http_server_request_duration_seconds" in body
+    assert "# TYPE http_server_active_requests" in body
+    assert "# TYPE agent_auth_token_operations_total" in body
+    assert "# TYPE agent_auth_validation_outcomes_total" in body
+    assert "# TYPE agent_auth_approval_outcomes_total" in body
+
+
+@pytest.mark.covers_function("Serve Metrics Endpoint")
+def test_metrics_record_http_duration_on_every_request(in_process_server):
+    """A scrape observes its own duration bucket — smoke test for the wrapper."""
+    server, base, store = in_process_server
+    token = _issue_health_token(server, store, {"agent-auth:metrics": "allow"})
+    # Prime with one request; the /metrics scrape itself increments too.
+    get_text(f"{base}/agent-auth/metrics", _health_headers(token))
+    status, _ct, body = get_text(f"{base}/agent-auth/metrics", _health_headers(token))
+    assert status == 200
+    # The scrape increments the bucket for its own (GET, /agent-auth/metrics)
+    # request; count must be >= 1 for the +Inf bucket.
+    assert 'route="/agent-auth/metrics"' in body
+    assert "http_server_request_duration_seconds_bucket" in body
+
+
+@pytest.mark.covers_function("Serve Metrics Endpoint")
+def test_metrics_increments_validation_denied_counter(in_process_server):
+    server, base, store = in_process_server
+    # Trigger a validation-denied outcome with an invalid token.
+    post(
+        f"{base}/agent-auth/v1/validate",
+        data={"token": "aa_fake_nope", "required_scope": "things:read"},
+    )
+    token = _issue_health_token(server, store, {"agent-auth:metrics": "allow"})
+    status, _ct, body = get_text(f"{base}/agent-auth/metrics", _health_headers(token))
+    assert status == 200
+    assert 'agent_auth_validation_outcomes_total{outcome="denied",reason="invalid_token"}' in body
 
 
 def test_unknown_get_route_returns_404(in_process_server):

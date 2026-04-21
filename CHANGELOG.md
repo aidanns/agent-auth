@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/fault/` exists and contains coverage for each scenario;
   `design/SSDF.md` PW.8.2 ratcheted to *Implemented*. Closes
   [#39](https://github.com/aidanns/agent-auth/issues/39).
+- `scripts/verify-standards.sh` now gates the graceful-shutdown
+  standard: both `src/agent_auth/server.py` and
+  `src/things_bridge/server.py` must install a `signal.SIGTERM`
+  handler, and at least one test under `tests/` must exercise
+  SIGTERM shutdown behaviour. Comment-only references are stripped
+  before the grep so a stale `# SIGTERM` cannot satisfy the gate
+  after the real handler installation has been removed
+  ([#32](https://github.com/aidanns/agent-auth/issues/32)).
 - Mutation testing on the token-lifecycle and cryptographic/storage
   trust base (`tokens`, `crypto`, `keys`, `scopes`, `store` modules)
   via [mutmut](https://github.com/boxed/mutmut) v3.5 configured in
@@ -103,6 +111,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   502 for things-bridge). Deletes of the route or its unhealthy-case
   tests now fail CI
   ([#25](https://github.com/aidanns/agent-auth/issues/25)).
+- `GET /agent-auth/metrics` and `GET /things-bridge/metrics`
+  Prometheus scrape endpoints. Both emit text exposition
+  format v0.0.4 gated by an `<service>:metrics` scope. Agent-auth
+  tracks HTTP duration + active requests, validation outcomes by
+  reason, token lifecycle operations, and JIT approval outcomes;
+  things-bridge tracks HTTP duration + active requests. Names
+  follow OTel semconv (ADR 0017); primitives live in the new
+  `src/server_metrics/` package (Counter / Gauge / Histogram /
+  Registry + text formatter). `design/DESIGN.md` "Observability"
+  fills in the domain-counter catalogue previously deferred to
+  this issue; `design/error-codes.md` gains `/metrics` taxonomy
+  rows; OpenAPI specs add the endpoint on both services.
+  `scripts/verify-standards.sh` gates the route registration and
+  per-metric test coverage
+  ([#26](https://github.com/aidanns/agent-auth/issues/26)).
 - Published OpenAPI 3.1 specs for both HTTP surfaces:
   `openapi/agent-auth.v1.yaml` and `openapi/things-bridge.v1.yaml`.
   A contract test in `tests/test_openapi_spec.py` (1) validates both

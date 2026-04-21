@@ -413,6 +413,37 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthUnhealthy'
 
+  /agent-auth/metrics:
+    get:
+      tags: [health]
+      summary: Prometheus metrics scrape endpoint (unversioned).
+      description: |
+        Unversioned by convention — scrape configs must keep working
+        across API major bumps. Requires the `agent-auth:metrics`
+        scope. Emits Prometheus text exposition format v0.0.4.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current metric values.
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Prometheus text exposition.
+        '401':
+          description: Missing, invalid, or expired token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Token does not have the `agent-auth:metrics` scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
 components:
   securitySchemes:
     BearerAuth:

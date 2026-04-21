@@ -9,15 +9,17 @@ import os
 import signal
 import sys
 import threading
+import time
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 from agent_auth.approval import ApprovalManager
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
 from agent_auth.errors import ScopeDeniedError, TokenInvalidError
 from agent_auth.keys import KeyManager, SigningKey
+from agent_auth.metrics import AgentAuthMetrics, build_registry
 from agent_auth.plugins import load_plugin
 from agent_auth.scopes import VALID_TIERS, check_scope
 from agent_auth.store import TokenStore
@@ -28,8 +30,18 @@ from agent_auth.tokens import (
     generate_token_id,
     verify_token,
 )
+from server_metrics import (
+    PROMETHEUS_CONTENT_TYPE,
+    Registry,
+    render_prometheus_text,
+)
 
 MANAGEMENT_SCOPE = "agent-auth:manage"
+METRICS_SCOPE = "agent-auth:metrics"
+
+# Sentinel route label for unmatched paths; keeps label cardinality
+# bounded when a scraper pokes arbitrary URLs.
+_UNKNOWN_ROUTE = "/unknown"
 
 
 class AgentAuthHandler(BaseHTTPRequestHandler):
@@ -67,33 +79,62 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         pass
 
+    # Route tables. Agent-auth paths have no path parameters, so the
+    # literal path is the route-label template.
+    _POST_ROUTES: ClassVar[dict[str, str]] = {
+        # keep-sorted start
+        "/agent-auth/v1/token/create": "_handle_token_create",
+        "/agent-auth/v1/token/modify": "_handle_token_modify",
+        "/agent-auth/v1/token/refresh": "_handle_refresh",
+        "/agent-auth/v1/token/reissue": "_handle_reissue",
+        "/agent-auth/v1/token/revoke": "_handle_token_revoke",
+        "/agent-auth/v1/token/rotate": "_handle_token_rotate",
+        "/agent-auth/v1/validate": "_handle_validate",
+        # keep-sorted end
+    }
+    _GET_ROUTES: ClassVar[dict[str, str]] = {
+        # keep-sorted start
+        "/agent-auth/health": "_handle_health",
+        "/agent-auth/metrics": "_handle_metrics",
+        "/agent-auth/v1/token/list": "_handle_token_list",
+        "/agent-auth/v1/token/status": "_handle_status",
+        # keep-sorted end
+    }
+
+    def send_response(self, code: int, message: str | None = None) -> None:
+        # Capture the status code so ``_dispatch`` can label the request
+        # duration histogram. ``BaseHTTPRequestHandler`` accepts either
+        # an ``HTTPStatus`` or a bare int; normalise here.
+        self._last_status_code = int(code)
+        super().send_response(code, message)
+
+    def _dispatch(self, method: str, routes: dict[str, str]) -> None:
+        handler_name = routes.get(self.path)
+        route = self.path if handler_name else _UNKNOWN_ROUTE
+        metrics = self._server.metrics
+        metrics.http_active_requests.inc(method=method)
+        start = time.perf_counter()
+        try:
+            if handler_name is None:
+                self._send_json(404, {"error": "not_found"})
+            else:
+                getattr(self, handler_name)()
+        finally:
+            duration = time.perf_counter() - start
+            metrics.http_active_requests.dec(method=method)
+            status_code = str(getattr(self, "_last_status_code", 0))
+            metrics.http_request_duration.observe(
+                duration,
+                method=method,
+                route=route,
+                status_code=status_code,
+            )
+
     def do_POST(self) -> None:
-        if self.path == "/agent-auth/v1/validate":
-            self._handle_validate()
-        elif self.path == "/agent-auth/v1/token/refresh":
-            self._handle_refresh()
-        elif self.path == "/agent-auth/v1/token/reissue":
-            self._handle_reissue()
-        elif self.path == "/agent-auth/v1/token/create":
-            self._handle_token_create()
-        elif self.path == "/agent-auth/v1/token/modify":
-            self._handle_token_modify()
-        elif self.path == "/agent-auth/v1/token/revoke":
-            self._handle_token_revoke()
-        elif self.path == "/agent-auth/v1/token/rotate":
-            self._handle_token_rotate()
-        else:
-            self._send_json(404, {"error": "not_found"})
+        self._dispatch("POST", self._POST_ROUTES)
 
     def do_GET(self) -> None:
-        if self.path == "/agent-auth/v1/token/status":
-            self._handle_status()
-        elif self.path == "/agent-auth/health":
-            self._handle_health()
-        elif self.path == "/agent-auth/v1/token/list":
-            self._handle_token_list()
-        else:
-            self._send_json(404, {"error": "not_found"})
+        self._dispatch("GET", self._GET_ROUTES)
 
     def _handle_validate(self) -> None:
         data = self._read_json()
@@ -108,6 +149,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         signing_key: SigningKey = self._server.signing_key
         approval_manager: ApprovalManager = self._server.approval_manager
         audit: AuditLogger = self._server.audit
+        metrics = self._server.metrics
 
         try:
             prefix, token_id = verify_token(token_raw, signing_key)
@@ -115,6 +157,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             audit.log_authorization_decision(
                 "validation_denied", reason="invalid_token", scope=required_scope
             )
+            metrics.validation_outcomes.inc(outcome="denied", reason="invalid_token")
             self._send_json(401, {"valid": False, "error": "invalid_token"})
             return
 
@@ -122,6 +165,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             audit.log_authorization_decision(
                 "validation_denied", reason="not_access_token", scope=required_scope
             )
+            metrics.validation_outcomes.inc(outcome="denied", reason="not_access_token")
             self._send_json(401, {"valid": False, "error": "invalid_token"})
             return
 
@@ -130,6 +174,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             audit.log_authorization_decision(
                 "validation_denied", reason="token_not_found", scope=required_scope
             )
+            metrics.validation_outcomes.inc(outcome="denied", reason="token_not_found")
             self._send_json(401, {"valid": False, "error": "invalid_token"})
             return
 
@@ -142,6 +187,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
                 token_id=token_id,
                 scope=required_scope,
             )
+            metrics.validation_outcomes.inc(outcome="denied", reason="token_expired")
             self._send_json(401, {"valid": False, "error": "token_expired"})
             return
 
@@ -153,6 +199,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
                 token_id=token_id,
                 scope=required_scope,
             )
+            metrics.validation_outcomes.inc(outcome="denied", reason="family_revoked")
             self._send_json(401, {"valid": False, "error": "token_revoked"})
             return
 
@@ -165,6 +212,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
                 token_id=token_id,
                 scope=required_scope,
             )
+            metrics.validation_outcomes.inc(outcome="denied", reason="scope_denied")
             self._send_json(403, {"valid": False, "error": "scope_denied"})
             return
 
@@ -175,6 +223,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
                 scope=required_scope,
                 tier="allow",
             )
+            metrics.validation_outcomes.inc(outcome="allowed", reason="ok")
             self._send_json(200, {"valid": True})
             return
 
@@ -188,6 +237,8 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
                     tier="prompt",
                     grant_type=result.grant_type,
                 )
+                metrics.approval_outcomes.inc(outcome="approved")
+                metrics.validation_outcomes.inc(outcome="allowed", reason="ok")
                 self._send_json(200, {"valid": True})
             else:
                 audit.log_authorization_decision(
@@ -196,6 +247,8 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
                     token_id=token_id,
                     scope=required_scope,
                 )
+                metrics.approval_outcomes.inc(outcome="denied")
+                metrics.validation_outcomes.inc(outcome="denied", reason="approval_denied")
                 self._send_json(403, {"valid": False, "error": "scope_denied"})
             return
 
@@ -237,6 +290,8 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "refresh_token_expired"})
             return
 
+        metrics = self._server.metrics
+
         # Atomically mark consumed — if already consumed, this is reuse
         if not store.mark_consumed(token_id):
             store.mark_family_revoked(token_record["family_id"])
@@ -245,6 +300,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
                 family_id=token_record["family_id"],
                 reason="refresh_token_reuse_detected",
             )
+            metrics.token_operations.inc(operation="revoked")
             self._send_json(
                 401,
                 {
@@ -258,6 +314,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         access_token, new_refresh_token = create_token_pair(signing_key, store, family_id, config)
 
         audit.log_token_operation("token_refreshed", family_id=family_id)
+        metrics.token_operations.inc(operation="refreshed")
 
         self._send_json(
             200,
@@ -304,17 +361,21 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "family_revoked"})
             return
 
+        metrics = self._server.metrics
         result = approval_manager.request_approval(
             family_id, "token:reissue", "Re-issue token pair for expired refresh token"
         )
         if not result.approved:
             audit.log_token_operation("reissue_denied", family_id=family_id)
+            metrics.approval_outcomes.inc(outcome="denied")
             self._send_json(403, {"error": "reissue_denied"})
             return
 
+        metrics.approval_outcomes.inc(outcome="approved")
         access_token, new_refresh_token = create_token_pair(signing_key, store, family_id, config)
 
         audit.log_token_operation("token_reissued", family_id=family_id)
+        metrics.token_operations.inc(operation="reissued")
 
         self._send_json(
             200,
@@ -405,6 +466,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         store.create_family(family_id, scopes)
         access_token, refresh_token = create_token_pair(signing_key, store, family_id, config)
         audit.log_token_operation("token_created", family_id=family_id, scopes=scopes)
+        self._server.metrics.token_operations.inc(operation="created")
 
         self._send_json(
             200,
@@ -507,6 +569,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
 
         store.mark_family_revoked(family_id)
         audit.log_token_operation("token_revoked", family_id=family_id)
+        self._server.metrics.token_operations.inc(operation="revoked")
 
         self._send_json(200, {"family_id": family_id, "revoked": True})
 
@@ -543,6 +606,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             new_family_id=new_family_id,
             scopes=scopes,
         )
+        self._server.metrics.token_operations.inc(operation="rotated")
 
         self._send_json(
             200,
@@ -557,6 +621,66 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         )
 
     HEALTH_SCOPE = "agent-auth:health"
+
+    def _authenticate_bearer_scope(self, scope: str) -> bool:
+        """Validate the ``Bearer`` token and check it carries ``scope``.
+
+        Writes the appropriate 401 / 403 JSON response and returns
+        ``False`` on failure. Used by ``/health`` and ``/metrics`` —
+        both are unversioned, operator-facing endpoints gated by a
+        scoped access token.
+        """
+        auth_header = self.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            self._send_json(401, {"error": "missing_token"})
+            return False
+
+        token_raw = auth_header[7:]
+        store: TokenStore = self._server.store
+        signing_key: SigningKey = self._server.signing_key
+
+        try:
+            prefix, token_id = verify_token(token_raw, signing_key)
+        except TokenInvalidError:
+            self._send_json(401, {"error": "invalid_token"})
+            return False
+        if prefix != PREFIX_ACCESS:
+            self._send_json(401, {"error": "invalid_token"})
+            return False
+
+        token_record = store.get_token(token_id)
+        if token_record is None:
+            self._send_json(401, {"error": "invalid_token"})
+            return False
+
+        family = store.get_family(token_record["family_id"])
+        if family is None or family["revoked"]:
+            self._send_json(401, {"error": "invalid_token"})
+            return False
+
+        now = datetime.now(UTC)
+        expires_at = datetime.fromisoformat(token_record["expires_at"])
+        if now >= expires_at:
+            self._send_json(401, {"error": "token_expired"})
+            return False
+
+        try:
+            check_scope(scope, family["scopes"])
+        except ScopeDeniedError:
+            self._send_json(403, {"error": "scope_denied"})
+            return False
+        return True
+
+    def _handle_metrics(self) -> None:
+        if not self._authenticate_bearer_scope(METRICS_SCOPE):
+            return
+        registry: Registry = self._server.registry
+        body = render_prometheus_text(registry).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", PROMETHEUS_CONTENT_TYPE)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _handle_health(self) -> None:
         auth_header = self.headers.get("Authorization", "")
@@ -666,12 +790,16 @@ class AgentAuthServer(ThreadingHTTPServer):
         store: TokenStore,
         audit: AuditLogger,
         approval_manager: ApprovalManager,
+        registry: Registry,
+        metrics: AgentAuthMetrics,
     ):
         self.config = config
         self.signing_key = signing_key
         self.store = store
         self.audit = audit
         self.approval_manager = approval_manager
+        self.registry = registry
+        self.metrics = metrics
         super().__init__((config.host, config.port), AgentAuthHandler)
 
 
@@ -768,7 +896,8 @@ def run_server(
     _bootstrap_management_token(store, signing_key, config, key_manager)
     plugin = load_plugin(config.notification_plugin, config.notification_plugin_config)
     approval_manager = ApprovalManager(plugin, store, audit)
-    server = AgentAuthServer(config, signing_key, store, audit, approval_manager)
+    registry, metrics = build_registry()
+    server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
     drain_complete = _install_shutdown_handler(server, config.shutdown_deadline_seconds)
     # Read the bound port from ``server_address`` (populated during
     # ``server_bind``) so a ``port: 0`` config surfaces the real port.

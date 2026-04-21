@@ -36,10 +36,18 @@ except ImportError as e:
     print(f"verify-token-cli-http-parity: could not import agent_auth modules: {e}", file=sys.stderr)
     sys.exit(1)
 
-routing_source = (
-    inspect.getsource(AgentAuthHandler.do_POST)
-    + inspect.getsource(AgentAuthHandler.do_GET)
-)
+# The handler dispatches through class-level route tables
+# (_POST_ROUTES / _GET_ROUTES). Join every literal path key so renames
+# that slip out of the tables still trip this gate. Also fall back to
+# the whole-class source in case a future refactor inlines the
+# routes back into do_POST / do_GET.
+routing_source_parts: list[str] = []
+for table_attr in ("_POST_ROUTES", "_GET_ROUTES"):
+    table = getattr(AgentAuthHandler, table_attr, None)
+    if isinstance(table, dict):
+        routing_source_parts.extend(table.keys())
+routing_source_parts.append(inspect.getsource(AgentAuthHandler))
+routing_source = "\n".join(routing_source_parts)
 
 missing = []
 for cmd in sorted(COMMAND_HANDLERS):
@@ -49,7 +57,7 @@ for cmd in sorted(COMMAND_HANDLERS):
         missing.append(f"  token {cmd!r}: no handler method {method!r}")
     elif route not in routing_source:
         missing.append(
-            f"  token {cmd!r}: method exists but route {route!r} is not wired in do_POST/do_GET"
+            f"  token {cmd!r}: method exists but route {route!r} is not wired via the route tables or do_POST/do_GET"
         )
 
 if missing:

@@ -807,36 +807,57 @@ pin refers to semconv attribute names only; the project emits
 Prometheus text and JSON-lines directly and does not depend on the
 OpenTelemetry SDK or OTLP transport.
 
-`GET /agent-auth/metrics` and `GET /things-bridge/metrics` are not
-yet implemented (tracked in #26). The audit-log schema is pinned by
-contract tests in `tests/test_audit_schema.py` and versioned via
-`SCHEMA_VERSION` in `src/agent_auth/audit.py` (see "Audit log
-fields" below). Log-level policy and retention policy are deferred
-to the dedicated observability design
-document (tracked in #33), which will also hold the full metrics
-catalogue. This section pins the naming standard those efforts
-build against; it does not yet satisfy
+`GET /agent-auth/metrics` and `GET /things-bridge/metrics` emit
+Prometheus text exposition (v0.0.4) gated by an
+`<service>:metrics` scope, paralleling the `<service>:health` model.
+The audit-log schema is pinned by contract tests in
+`tests/test_audit_schema.py` and versioned via `SCHEMA_VERSION` in
+`src/agent_auth/audit.py` (see "Audit log fields" below).
+Log-level policy and retention policy are deferred to the dedicated
+observability design document (tracked in #33), which will hold the
+full metrics catalogue in one place. This section pins the naming
+standard those efforts build against; it does not yet satisfy
 `.claude/instructions/service-design.md`'s Observability-design
 standard in full — the missing log-level and retention pieces are
 deliberately scoped to #33.
 
 ### HTTP server metrics
 
-Emitted on `/metrics` once #26 lands. Metric names follow OTel
-semconv; Prometheus exposition replaces `.` with `_` and appends
-units per the Prometheus convention.
+Emitted on `/metrics`. Metric names follow OTel semconv; Prometheus
+exposition replaces `.` with `_` and appends units per the
+Prometheus convention. The attribute set is a pragmatic subset of
+semconv: `http.request.method` / `http.route` /
+`http.response.status_code` are carried on the duration histogram;
+`url.scheme` and `server.*` are omitted because both services bind
+to a fixed host and speak HTTP only, so the attributes would add
+cardinality with no distinguishing power.
 
-| OTel metric name               | Prometheus name                        | Instrument (Prometheus type) | Attributes / labels                                                                                                                                         |
-| ------------------------------ | -------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `http.server.request.duration` | `http_server_request_duration_seconds` | Histogram (histogram)        | `http.request.method`, `http.route`, `url.scheme`, `http.response.status_code` (on non-error), `error.type` (on error)                                      |
-| `http.server.active_requests`  | `http_server_active_requests`          | UpDownCounter (gauge)        | `http.request.method`, `url.scheme` (required); `server.address`, `server.port` (opt-in per semconv; emitted because local bind address varies per service) |
+| OTel metric name               | Prometheus name                        | Instrument (Prometheus type) | Attributes / labels              |
+| ------------------------------ | -------------------------------------- | ---------------------------- | -------------------------------- |
+| `http.server.request.duration` | `http_server_request_duration_seconds` | Histogram (histogram)        | `method`, `route`, `status_code` |
+| `http.server.active_requests`  | `http_server_active_requests`          | UpDownCounter (gauge)        | `method`                         |
 
-Domain counters for validation outcomes, token operations, and JIT
-approval outcomes have no OTel equivalent and will use
-project-namespaced names (e.g. prefixed `agent_auth_` /
-`things_bridge_`). The specific metric names and label sets are
-designed with #26 when the metrics endpoint lands; this section
-only pins that they stay outside the OTel namespace.
+Histogram bucket boundaries (seconds): `0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10` — the OTel-recommended
+HTTP-latency defaults.
+
+### Domain metrics
+
+Agent-auth emits three domain counters outside the OTel namespace;
+things-bridge has no domain state of its own (authz denials and
+Things-app failures fold into the `status_code` label on the HTTP
+duration histogram).
+
+| Prometheus name                        | Type    | Labels              | Notes                                                                                                                   |
+| -------------------------------------- | ------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `agent_auth_token_operations_total`    | Counter | `operation`         | `operation` ∈ `{created, refreshed, reissued, revoked, rotated}`                                                        |
+| `agent_auth_validation_outcomes_total` | Counter | `outcome`, `reason` | `outcome` ∈ `{allowed, denied}`; `reason` mirrors the `validation_denied` audit reasons, plus `ok` for the allowed path |
+| `agent_auth_approval_outcomes_total`   | Counter | `outcome`           | `outcome` ∈ `{approved, denied}`                                                                                        |
+
+The endpoint is authenticated under the `agent-auth:metrics` and
+`things-bridge:metrics` scopes; unauthenticated probes return 401.
+Token-family and per-token labels are deliberately excluded to
+bound cardinality and to keep high-churn labels out of the audit
+surface.
 
 ### Audit log fields
 

@@ -9,10 +9,16 @@ import os
 import signal
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
+from server_metrics import (
+    PROMETHEUS_CONTENT_TYPE,
+    Registry,
+    render_prometheus_text,
+)
 from things_bridge.authz import AgentAuthClient
 from things_bridge.config import Config
 from things_bridge.errors import (
@@ -24,10 +30,16 @@ from things_bridge.errors import (
     ThingsNotFoundError,
     ThingsPermissionError,
 )
+from things_bridge.metrics import ThingsBridgeMetrics, build_registry
 from things_models.client import ThingsClient
 
 READ_SCOPE = "things:read"
 HEALTH_SCOPE = "things-bridge:health"
+METRICS_SCOPE = "things-bridge:metrics"
+
+# Sentinel route label for unmatched paths; bounds label cardinality
+# when a scraper hits arbitrary URLs.
+_UNKNOWN_ROUTE = "/unknown"
 
 # Upper bound on ids accepted from URL paths. Things ids are short; reject
 # anything excessive before it ever reaches AppleScript.
@@ -116,13 +128,60 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
         self._send_json(502, {"error": "things_unavailable"})
 
+    def send_response(self, code: int, message: str | None = None) -> None:
+        # Capture the status code so ``do_GET`` can label the request
+        # duration histogram. ``BaseHTTPRequestHandler`` accepts either
+        # an ``HTTPStatus`` or a bare int; normalise here.
+        self._last_status_code = int(code)
+        super().send_response(code, message)
+
+    def _handle_metrics(self) -> None:
+        token = self._extract_bearer()
+        if token is None:
+            self._send_json(401, {"error": "unauthorized"})
+            return
+        if not self._validate(token, METRICS_SCOPE, "things-bridge metrics scrape"):
+            return
+        registry: Registry = self._bridge.registry
+        body = render_prometheus_text(registry).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", PROMETHEUS_CONTENT_TYPE)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self) -> None:
+        metrics = self._bridge.metrics
+        metrics.http_active_requests.inc(method="GET")
+        start = time.perf_counter()
+        # ``_route_template`` is set by ``_dispatch_get`` before it hands
+        # off to a handler; default preserves _UNKNOWN_ROUTE if the
+        # dispatcher returns without matching.
+        self._route_template = _UNKNOWN_ROUTE
+        try:
+            self._dispatch_get()
+        finally:
+            duration = time.perf_counter() - start
+            metrics.http_active_requests.dec(method="GET")
+            status_code = str(getattr(self, "_last_status_code", 0))
+            metrics.http_request_duration.observe(
+                duration,
+                method="GET",
+                route=self._route_template,
+                status_code=status_code,
+            )
+
+    def _dispatch_get(self) -> None:
         url = urlsplit(self.path)
         path = url.path
         params = parse_qs(url.query)
 
         token = self._extract_bearer()
         if token is None:
+            # Unauthenticated probe: no route resolution is possible
+            # without leaking whether the path is known. Label as
+            # unknown to keep label cardinality bounded against
+            # scanners.
             self._send_json(401, {"error": "unauthorized"})
             return
 
@@ -131,15 +190,22 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         # without a token can probe the 401 (server-is-up signal); the
         # 200 path requires the scope. Health remains unversioned by convention.
         if path == "/things-bridge/health":
+            self._route_template = path
             if not self._validate(token, HEALTH_SCOPE, "things-bridge health check"):
                 return
             self._send_json(200, {"status": "ok"})
+            return
+
+        if path == "/things-bridge/metrics":
+            self._route_template = path
+            self._handle_metrics()
             return
 
         things: ThingsClient = self._bridge.things
 
         # Routing: longest-prefix specific paths first.
         if path == "/things-bridge/v1/todos":
+            self._route_template = path
             if not self._validate(token, READ_SCOPE, "List Things todos"):
                 return
             try:
@@ -157,6 +223,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/things-bridge/v1/todos/"):
+            self._route_template = "/things-bridge/v1/todos/{id}"
             todo_id = _safe_id(path[len("/things-bridge/v1/todos/") :])
             if todo_id is None:
                 self._send_json(404, {"error": "not_found"})
@@ -172,6 +239,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/things-bridge/v1/projects":
+            self._route_template = path
             if not self._validate(token, READ_SCOPE, "List Things projects"):
                 return
             try:
@@ -183,6 +251,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/things-bridge/v1/projects/"):
+            self._route_template = "/things-bridge/v1/projects/{id}"
             project_id = _safe_id(path[len("/things-bridge/v1/projects/") :])
             if project_id is None:
                 self._send_json(404, {"error": "not_found"})
@@ -198,6 +267,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/things-bridge/v1/areas":
+            self._route_template = path
             if not self._validate(token, READ_SCOPE, "List Things areas"):
                 return
             try:
@@ -209,6 +279,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/things-bridge/v1/areas/"):
+            self._route_template = "/things-bridge/v1/areas/{id}"
             area_id = _safe_id(path[len("/things-bridge/v1/areas/") :])
             if area_id is None:
                 self._send_json(404, {"error": "not_found"})
@@ -226,6 +297,10 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         self._send_json(404, {"error": "not_found"})
 
     def _method_not_allowed(self) -> None:
+        # Other methods still participate in metrics. Set the sentinel
+        # route template so do_GET's wrapper isn't the only accounting
+        # path. (Method labels disambiguate POST /path from GET /path.)
+        self._route_template = _UNKNOWN_ROUTE
         self.send_response(405)
         self.send_header("Allow", "GET")
         body = json.dumps({"error": "method_not_allowed"}).encode("utf-8")
@@ -258,10 +333,19 @@ class ThingsBridgeServer(ThreadingHTTPServer):
     # The shutdown watchdog in ``run_server`` bounds the wait.
     daemon_threads = False
 
-    def __init__(self, config: Config, things: ThingsClient, authz: AgentAuthClient):
+    def __init__(
+        self,
+        config: Config,
+        things: ThingsClient,
+        authz: AgentAuthClient,
+        registry: Registry,
+        metrics: ThingsBridgeMetrics,
+    ):
         self.config = config
         self.things = things
         self.authz = authz
+        self.registry = registry
+        self.metrics = metrics
         super().__init__((config.host, config.port), ThingsBridgeHandler)
 
 
@@ -319,7 +403,8 @@ def run_server(config: Config, things: ThingsClient, authz: AgentAuthClient) -> 
     Registers SIGTERM and SIGINT handlers that drain in-flight requests
     within ``config.shutdown_deadline_seconds`` before returning.
     """
-    server = ThingsBridgeServer(config, things, authz)
+    registry, metrics = build_registry()
+    server = ThingsBridgeServer(config, things, authz, registry, metrics)
     drain_complete = _install_shutdown_handler(server, config.shutdown_deadline_seconds)
     # Read the bound port from ``server_address`` (populated during
     # ``server_bind``) so a ``port: 0`` config surfaces the real port.
