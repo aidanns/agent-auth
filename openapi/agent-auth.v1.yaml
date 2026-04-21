@@ -1,0 +1,673 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+openapi: 3.1.0
+info:
+  title: agent-auth
+  version: "1.0.0"
+  summary: Token-based authorization for AI agent access to host applications.
+  description: |
+    `agent-auth` issues, validates, refreshes, and revokes scoped tokens
+    used to gate agent access to macOS applications. This spec documents
+    the wire contract of the HTTP API under `/agent-auth/v1/`.
+
+    Error taxonomy: see `design/error-codes.md` in the project repository.
+    Versioning policy: see `design/DESIGN.md` "API Versioning Policy" —
+    breaking changes land under `/agent-auth/v2/`; `/agent-auth/health`
+    is unversioned by convention.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://127.0.0.1:9100
+    description: Default loopback bind address.
+tags:
+  - name: validation
+    description: Validate tokens and apply scope decisions.
+  - name: token-lifecycle
+    description: Refresh, reissue, and self-inspection for token holders.
+  - name: management
+    description: Administrative operations gated by the `agent-auth:manage` scope.
+  - name: health
+    description: Liveness and readiness probes.
+paths:
+  /agent-auth/v1/validate:
+    post:
+      tags: [validation]
+      summary: Validate a token against a required scope.
+      description: |
+        Validates an access token and enforces scope policy. When the scope's
+        tier is `prompt`, the server blocks while requesting JIT approval
+        through its configured notification plugin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateRequest'
+      responses:
+        '200':
+          description: Token is valid and authorized for the required scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateSuccess'
+        '400':
+          description: Malformed request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorEnvelope'
+        '401':
+          description: Token invalid, expired, or from a revoked family.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorEnvelope'
+        '403':
+          description: Scope denied (policy or approval rejection).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorEnvelope'
+
+  /agent-auth/v1/token/refresh:
+    post:
+      tags: [token-lifecycle]
+      summary: Exchange a refresh token for a new access/refresh token pair.
+      description: |
+        Single-use: presenting an already-consumed refresh token revokes
+        the entire family as a reuse-detection response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: New access and refresh token pair.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '400':
+          description: Malformed request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Refresh token invalid, expired, reused, or family revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /agent-auth/v1/token/reissue:
+    post:
+      tags: [token-lifecycle]
+      summary: Reissue a token pair after refresh-token expiry (JIT-approved).
+      description: |
+        Only permitted when the family's refresh token has expired (not
+        consumed by reuse). Requires JIT approval from the configured
+        notification plugin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReissueRequest'
+      responses:
+        '200':
+          description: New access and refresh token pair for the family.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '400':
+          description: Malformed request, or refresh token is still valid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Family revoked or not eligible for reissue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: JIT approval for reissue was denied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /agent-auth/v1/token/create:
+    post:
+      tags: [management]
+      summary: Create a new token family (management scope required).
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenCreateRequest'
+      responses:
+        '200':
+          description: The newly created token family with its initial token pair.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenFamilyCreated'
+        '400':
+          description: Malformed request, no scopes, or invalid tier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, invalid, or expired management token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Token does not have the `agent-auth:manage` scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /agent-auth/v1/token/modify:
+    post:
+      tags: [management]
+      summary: Modify the scope set of an existing token family.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenModifyRequest'
+      responses:
+        '200':
+          description: Updated scopes for the family.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenModifyResponse'
+        '400':
+          description: Malformed request, no modifications, or invalid tier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, invalid, or expired management token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Token does not have the `agent-auth:manage` scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Token family not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Token family is already revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /agent-auth/v1/token/revoke:
+    post:
+      tags: [management]
+      summary: Revoke an entire token family.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRevokeRequest'
+      responses:
+        '200':
+          description: Family successfully revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRevokeResponse'
+        '400':
+          description: Malformed request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, invalid, or expired management token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Token does not have the `agent-auth:manage` scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Token family not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /agent-auth/v1/token/rotate:
+    post:
+      tags: [management]
+      summary: Rotate a token family (create a new family with the same scopes).
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRotateRequest'
+      responses:
+        '200':
+          description: The new family id, token pair, and carried-over scopes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRotateResponse'
+        '400':
+          description: Malformed request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, invalid, or expired management token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Token does not have the `agent-auth:manage` scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Token family not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Token family is already revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /agent-auth/v1/token/list:
+    get:
+      tags: [management]
+      summary: List all non-management token families.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of families (management families are excluded).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TokenFamily'
+        '401':
+          description: Missing, invalid, or expired management token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Token does not have the `agent-auth:manage` scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /agent-auth/v1/token/status:
+    get:
+      tags: [token-lifecycle]
+      summary: Introspect the presented access token.
+      description: |
+        Used by `things-cli` to decide between `refresh` and `reissue` when
+        handling a stale token.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Status of the presented token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenStatus'
+        '401':
+          description: Token missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /agent-auth/health:
+    get:
+      tags: [health]
+      summary: Liveness and readiness probe (unversioned).
+      description: |
+        Unversioned by convention — probes must keep working across API
+        major bumps. Requires the `agent-auth:health` scope.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The store is reachable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthOk'
+        '401':
+          description: Missing, invalid, or expired token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Token does not have the `agent-auth:health` scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Backing store is unreachable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthUnhealthy'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: aa_<id>_<hmac>
+      description: |
+        HMAC-signed token in the form `aa_<token-id>_<signature>`. Either
+        an access token or refresh token depending on the endpoint.
+
+  schemas:
+    ErrorCode:
+      type: string
+      description: Stable error code. See `design/error-codes.md`.
+      enum:
+        - authz_unavailable
+        - family_not_found
+        - family_revoked
+        - invalid_token
+        - invalid_tier
+        - malformed_request
+        - method_not_allowed
+        - missing_token
+        - no_modifications
+        - no_scopes
+        - not_found
+        - refresh_token_expired
+        - refresh_token_reuse_detected
+        - refresh_token_still_valid
+        - reissue_denied
+        - scope_denied
+        - things_permission_denied
+        - things_unavailable
+        - token_expired
+        - token_revoked
+        - unauthorized
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorCode'
+        detail:
+          description: Optional human-readable detail or structured payload.
+
+    ValidationErrorEnvelope:
+      type: object
+      required: [error, valid]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorCode'
+        valid:
+          type: boolean
+          enum: [false]
+
+    ScopeTier:
+      type: string
+      enum: [allow, prompt, deny]
+
+    ScopeMap:
+      type: object
+      description: Map of scope name to tier.
+      additionalProperties:
+        $ref: '#/components/schemas/ScopeTier'
+
+    ValidateRequest:
+      type: object
+      required: [token, required_scope]
+      properties:
+        token:
+          type: string
+          description: HMAC-signed access token (`aa_<id>_<hmac>`).
+        required_scope:
+          type: string
+          description: Scope being requested, e.g. `things:read`.
+        description:
+          type: string
+          description: |
+            Human-readable description of the operation. Surfaced in the
+            JIT approval prompt when the scope's tier is `prompt`.
+
+    ValidateSuccess:
+      type: object
+      required: [valid]
+      properties:
+        valid:
+          type: boolean
+          enum: [true]
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    ReissueRequest:
+      type: object
+      required: [family_id]
+      properties:
+        family_id:
+          type: string
+
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token, expires_in, scopes]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+          description: Access token TTL in seconds.
+        scopes:
+          $ref: '#/components/schemas/ScopeMap'
+
+    TokenFamily:
+      type: object
+      required: [id, scopes, revoked]
+      properties:
+        id:
+          type: string
+        scopes:
+          $ref: '#/components/schemas/ScopeMap'
+        revoked:
+          type: boolean
+
+    TokenFamilyCreated:
+      type: object
+      required: [family_id, access_token, refresh_token, scopes, expires_in]
+      properties:
+        family_id:
+          type: string
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        scopes:
+          $ref: '#/components/schemas/ScopeMap'
+        expires_in:
+          type: integer
+
+    TokenCreateRequest:
+      type: object
+      required: [scopes]
+      properties:
+        scopes:
+          $ref: '#/components/schemas/ScopeMap'
+
+    TokenModifyRequest:
+      type: object
+      required: [family_id]
+      properties:
+        family_id:
+          type: string
+        add_scopes:
+          $ref: '#/components/schemas/ScopeMap'
+        remove_scopes:
+          type: array
+          items:
+            type: string
+        set_tiers:
+          $ref: '#/components/schemas/ScopeMap'
+
+    TokenModifyResponse:
+      type: object
+      required: [family_id, scopes]
+      properties:
+        family_id:
+          type: string
+        scopes:
+          $ref: '#/components/schemas/ScopeMap'
+
+    TokenRevokeRequest:
+      type: object
+      required: [family_id]
+      properties:
+        family_id:
+          type: string
+
+    TokenRevokeResponse:
+      type: object
+      required: [family_id, revoked]
+      properties:
+        family_id:
+          type: string
+        revoked:
+          type: boolean
+          enum: [true]
+
+    TokenRotateRequest:
+      type: object
+      required: [family_id]
+      properties:
+        family_id:
+          type: string
+
+    TokenRotateResponse:
+      type: object
+      required:
+        - old_family_id
+        - new_family_id
+        - access_token
+        - refresh_token
+        - scopes
+        - expires_in
+      properties:
+        old_family_id:
+          type: string
+        new_family_id:
+          type: string
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        scopes:
+          $ref: '#/components/schemas/ScopeMap'
+        expires_in:
+          type: integer
+
+    TokenStatus:
+      type: object
+      required: [token_id, family_id, type, scopes, revoked, expires_at, expires_in]
+      properties:
+        token_id:
+          type: string
+        family_id:
+          type: string
+        type:
+          type: string
+          enum: [access, refresh]
+        scopes:
+          $ref: '#/components/schemas/ScopeMap'
+        revoked:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+        expires_in:
+          type: integer
+
+    HealthOk:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
+    HealthUnhealthy:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [unhealthy]
