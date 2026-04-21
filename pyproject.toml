@@ -76,6 +76,7 @@ ignore-vuln = []
 pythonpath = ["src"]
 markers = [
     "covers_function(*names): declare which functional-decomposition leaf functions a test exercises (read by `systems-engineering function verify`)",
+    "perf_budget: asserts a latency budget documented in design/DESIGN.md § Performance budget. Discoverable as a group via `pytest -m perf_budget`.",
 ]
 # Coverage is gated at a ratcheting floor per
 # .claude/instructions/testing-standards.md. --cov-fail-under is the

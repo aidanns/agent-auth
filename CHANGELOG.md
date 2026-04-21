@@ -31,6 +31,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Performance budget** for the agent hot path
+  (`POST /agent-auth/v1/validate`) documented in `design/DESIGN.md`
+  § Performance budget along with budgets for
+  `/v1/token/refresh` and `/v1/token/create`. A new perf-assertion
+  test (`tests/test_perf_budget.py`) drives the validate endpoint
+  against an in-process `AgentAuthServer` with N=100 sequential
+  requests and fails CI if the measured median or p95 exceeds the
+  budget. The test is discoverable as a group via
+  `pytest -m perf_budget`; the marker is registered in
+  `[tool.pytest.ini_options].markers`. `scripts/verify-standards.sh`
+  asserts both pieces are present (the DESIGN.md heading, the
+  marker registration, and at least one `@pytest.mark.perf_budget`
+  test). Local baseline is p50=0.62ms / p95=1.00ms against budgets
+  of 10ms / 50ms — the headroom absorbs CI-runner noise while
+  still catching a regression that would add a per-request tax on
+  every downstream bridge call. Closes
+  [#41](https://github.com/aidanns/agent-auth/issues/41).
 - Fault-injection test layer under `tests/fault/` exercising each
   documented failure mode: SQLite write errors / closed connection,
   audit-log disk-full / read-only filesystem, keyring backend
