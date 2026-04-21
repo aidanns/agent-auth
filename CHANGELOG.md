@@ -15,6 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Fault-injection test layer under `tests/fault/` exercising each
+  documented failure mode: SQLite write errors / closed connection,
+  audit-log disk-full / read-only filesystem, keyring backend
+  unavailable, notification plugin timeout and generic exception,
+  agent-auth unreachable from things-bridge, and Things subprocess
+  client failures (missing binary, timeout, non-zero exit, non-JSON
+  stdout). Each test asserts the typed error surfaces out of the
+  component boundary and does not leak a raw third-party exception
+  downstream. `scripts/verify-standards.sh` now asserts
+  `tests/fault/` exists and contains coverage for each scenario;
+  `design/SSDF.md` PW.8.2 ratcheted to *Implemented*. Closes
+  [#39](https://github.com/aidanns/agent-auth/issues/39).
 - `scripts/verify-standards.sh` now gates the graceful-shutdown
   standard: both `src/agent_auth/server.py` and
   `src/things_bridge/server.py` must install a `signal.SIGTERM`
