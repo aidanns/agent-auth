@@ -19,7 +19,7 @@ class Area:
     name: str
     tag_names: list[str]
 
-    def to_json(self) -> dict:
+    def to_json(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
@@ -47,7 +47,7 @@ class Project:
     creation_date: str | None
     modification_date: str | None
 
-    def to_json(self) -> dict:
+    def to_json(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
@@ -87,7 +87,7 @@ class Todo:
     creation_date: str | None
     modification_date: str | None
 
-    def to_json(self) -> dict:
+    def to_json(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod

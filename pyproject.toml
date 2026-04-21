@@ -134,18 +134,6 @@ module = [
 ]
 ignore_errors = true
 
-# Ratchet targets — things_bridge/*. See #146.
-[[tool.mypy.overrides]]
-module = [
-    # keep-sorted start
-    "things_bridge.cli",
-    "things_bridge.config",
-    "things_bridge.server",
-    "things_bridge.things_client",
-    # keep-sorted end
-]
-ignore_errors = true
-
 # Ratchet targets — things_cli/* + things_client_common/* +
 # things_models/*. See #147.
 [[tool.mypy.overrides]]

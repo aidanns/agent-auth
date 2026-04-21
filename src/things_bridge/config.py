@@ -11,6 +11,7 @@ Paths follow the XDG Base Directory Specification:
 
 import os
 from dataclasses import dataclass, field
+from typing import Any, cast
 
 import yaml
 
@@ -46,7 +47,7 @@ class Config:
     request_timeout_seconds: float = 35.0
     log_path: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.log_path:
             self.log_path = os.path.join(_default_state_dir(), "server.log")
 
@@ -66,6 +67,7 @@ def load_config() -> Config:
         return Config()
 
     with open(config_path) as f:
-        data = yaml.safe_load(f) or {}
+        raw = yaml.safe_load(f)
+    data: dict[str, Any] = cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
     kwargs = {k: v for k, v in data.items() if k in valid_fields}
     return Config(**kwargs)
