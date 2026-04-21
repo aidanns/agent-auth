@@ -27,6 +27,7 @@ def test_always_deny_plugin_denies():
     assert result.approved is False
 
 
+@pytest.mark.covers_function("Load Notification Plugin")
 @pytest.mark.parametrize(
     "module,approved",
     [

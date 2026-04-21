@@ -47,6 +47,9 @@
 #  10. lefthook pre-commit hook is installed in the local clone when
 #      lefthook.yml is present (skipped under CI=true, since CI enforces
 #      the same gates via explicit workflow steps).
+#  11. .github/workflows/verify-function-tests.yml (if present) does NOT
+#      mark the verify step continue-on-error, so regressions in
+#      function-to-test allocation fail CI.
 
 set -euo pipefail
 
@@ -1177,3 +1180,28 @@ PY
 }
 
 echo "verify-standards: /agent-auth/health and /things-bridge/health are registered with healthy + unhealthy test coverage."
+
+# ---------------------------------------------------------------------------
+# Function-to-test coverage is gated in CI (no continue-on-error).
+# ---------------------------------------------------------------------------
+# The verify-function-tests workflow must fail CI when any leaf function in
+# design/functional_decomposition.yaml lacks a matching
+# @pytest.mark.covers_function(...) annotation. A continue-on-error on the
+# verify step silently swallows regressions — enforce its absence here.
+function_tests_workflow=".github/workflows/verify-function-tests.yml"
+if [[ -f "${function_tests_workflow}" ]]; then
+  if ! command -v yq >/dev/null 2>&1; then
+    echo "verify-standards: 'yq' is required to inspect ${function_tests_workflow}." >&2
+    exit 1
+  fi
+  verify_step_has_continue_on_error="$(
+    yq eval -o=json '.jobs[].steps[] | select(.run // "" | test("verify-function-tests")) | .["continue-on-error"] // false' \
+      "${function_tests_workflow}" 2>/dev/null
+  )"
+  if [[ "${verify_step_has_continue_on_error}" == "true" ]]; then
+    echo "verify-standards: ${function_tests_workflow} has 'continue-on-error: true' on the verify step." >&2
+    echo "  Function-to-test coverage regressions must fail CI. Remove the continue-on-error." >&2
+    exit 1
+  fi
+  echo "verify-standards: ${function_tests_workflow} gates function-to-test coverage without continue-on-error."
+fi

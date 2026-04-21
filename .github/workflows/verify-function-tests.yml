@@ -20,9 +20,5 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # continue-on-error until aidanns/agent-auth#5 is resolved: the
-      # check currently reports 37/47 leaf functions covered, so it
-      # would block every PR. Remove once coverage reaches 100%.
       - name: Verify all functions have test coverage
-        continue-on-error: true
         run: task verify-function-tests
