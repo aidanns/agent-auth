@@ -794,6 +794,40 @@ Run modes:
   Docker.
 - `scripts/test.sh --all` — both layers.
 
+## Performance budget
+
+`.claude/instructions/testing-standards.md` § Performance requires a
+documented latency target for critical operations plus at least one
+test that asserts the budget. This section pins the targets; the
+assertion lives in `tests/test_perf_budget.py` behind a
+`@pytest.mark.perf_budget` marker so the gate is discoverable by tag
+and independently runnable (`pytest -m perf_budget`).
+
+The agent hot path — the one every third-party request passes through
+— is `POST /agent-auth/v1/validate`. A slow validate becomes a
+per-request tax on every downstream bridge, so it carries the tightest
+budget:
+
+| Endpoint                            | Median (p50) | p95    | Rationale                                                                                                                                                                                                                                                                       |
+| ----------------------------------- | ------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /agent-auth/v1/validate`      | 10 ms        | 50 ms  | HMAC verify + indexed SQLite read + audit-log append. Headroom over the measured local baseline so GitHub Actions / macOS CI noise does not flake. Budget is *allow-tier only*; prompt-tier latency is dominated by the notification plugin and is not a library-level concern. |
+| `POST /agent-auth/v1/token/refresh` | 20 ms        | 100 ms | Mark-consumed + new-token-pair write under a transaction; inherently hotter than validate because it writes, not reads.                                                                                                                                                         |
+| `POST /agent-auth/v1/token/create`  | 30 ms        | 150 ms | Management-side, low volume; budgeted generously because it also holds an encrypted scope write.                                                                                                                                                                                |
+
+Measurement protocol: the perf-budget test drives the listed endpoint
+against a throwaway in-process `AgentAuthServer` bound to `127.0.0.1:0`
+(same fixture pattern the other handler-edge tests use), issues N=100
+sequential requests, and asserts the median and p95 of the per-request
+wall-clock duration do not exceed the numbers above. The budget is
+deliberately sequential — concurrency-level throughput is out of scope
+for a single-instance, single-user deployment.
+
+The floor is a *never-loosen* signal, not a benchmark — it ratchets
+**downward** as the implementation improves, never upward, per the
+same policy as the coverage and mutation-score thresholds. Any commit
+that raises it must include the measurement and an explicit
+justification in the commit message body.
+
 ## Observability
 
 The project follows the

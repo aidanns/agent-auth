@@ -61,6 +61,10 @@
 #      timeout/exception, agent-auth unreachable, Things AppleScript
 #      failures), per .claude/instructions/testing-standards.md
 #      "Chaos and fault-injection tests".
+#  14. design/DESIGN.md documents a latency budget for critical
+#      operations AND at least one test carries the perf_budget
+#      pytest marker, per .claude/instructions/testing-standards.md
+#      "Performance budget".
 
 set -euo pipefail
 
@@ -1456,3 +1460,49 @@ if [[ ${fault_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: ${fault_dir}/ covers all required fault-injection scenarios."
+
+# ---------------------------------------------------------------------------
+# Performance budget.
+# ---------------------------------------------------------------------------
+# .claude/instructions/testing-standards.md (Performance — "Performance
+# budget") requires BOTH a documented latency target for critical
+# operations in the design docs AND at least one test asserting that
+# budget. The deterministic check asserts:
+#
+#   1. design/DESIGN.md contains a "Performance budget" heading.
+#   2. pyproject.toml registers the `perf_budget` pytest marker.
+#   3. At least one test file applies `@pytest.mark.perf_budget`.
+design_file="design/DESIGN.md"
+if [[ ! -f "${design_file}" ]]; then
+  echo "verify-standards: ${design_file} is missing." >&2
+  exit 1
+fi
+
+if ! grep -qE "^## +Performance budget\b" "${design_file}"; then
+  echo "verify-standards: ${design_file} is missing a '## Performance budget' section." >&2
+  echo "  Document a latency target per .claude/instructions/testing-standards.md § Performance." >&2
+  exit 1
+fi
+
+if ! python3 -c "
+import sys, tomllib
+from pathlib import Path
+pyproject = tomllib.loads(Path('pyproject.toml').read_text())
+markers = pyproject.get('tool', {}).get('pytest', {}).get('ini_options', {}).get('markers', [])
+if not any(str(m).startswith('perf_budget') for m in markers):
+    sys.exit('perf_budget marker not registered in [tool.pytest.ini_options].markers')
+" 2>/tmp/verify-standards-perf.err; then
+  echo "verify-standards: pyproject.toml does not register the perf_budget pytest marker:" >&2
+  cat /tmp/verify-standards-perf.err >&2
+  rm -f /tmp/verify-standards-perf.err
+  exit 1
+fi
+rm -f /tmp/verify-standards-perf.err
+
+if ! grep -r -l -E "@pytest\\.mark\\.perf_budget\\b" tests/ >/dev/null 2>&1; then
+  echo "verify-standards: no test under tests/ applies @pytest.mark.perf_budget." >&2
+  echo "  Add a perf-budget-assertion test referencing ${design_file} § Performance budget." >&2
+  exit 1
+fi
+
+echo "verify-standards: ${design_file} documents a performance budget and at least one test carries the perf_budget marker."
