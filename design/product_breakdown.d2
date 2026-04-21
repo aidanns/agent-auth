@@ -70,10 +70,28 @@ p6_container: "" {
 }
 p6 -> p6_container
 
-p9: things-cli
+p9: install.sh
 p9.width: 400
 root -> p9
 p9_container: "" {
+  grid-columns: 3
+  grid-rows: 1
+  grid-gap: 5
+  style: {
+    stroke-width: 0
+    fill: transparent
+  }
+  p10: install.sh
+  p10.width: 150
+  p10.height: 150
+  p10.shape: circle
+}
+p9 -> p9_container
+
+p11: things-cli
+p11.width: 400
+root -> p11
+p11_container: "" {
   grid-columns: 3
   grid-rows: 2
   grid-gap: 5
@@ -81,21 +99,21 @@ p9_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  p10: things\ncli
-  p10.width: 150
-  p10.height: 150
-  p10.shape: circle
-  p11: keyring
-  p11.width: 150
-  p11.height: 150
-  p11.shape: circle
-  p12: macOS\nKeychain
+  p12: things\ncli
   p12.width: 150
   p12.height: 150
   p12.shape: circle
-  p13: gnome\nkeyring
+  p13: keyring
   p13.width: 150
   p13.height: 150
   p13.shape: circle
+  p14: macOS\nKeychain
+  p14.width: 150
+  p14.height: 150
+  p14.shape: circle
+  p15: gnome\nkeyring
+  p15.width: 150
+  p15.height: 150
+  p15.shape: circle
 }
-p9 -> p9_container
+p11 -> p11_container

@@ -724,6 +724,33 @@ Response (200):
 
 Errors: `400 malformed_request`, `404 family_not_found`, `409 family_revoked`. No authentication required.
 
+## Graceful shutdown
+
+Both `agent-auth serve` and `things-bridge serve` install SIGTERM and
+SIGINT handlers in `run_server`. On first signal the process:
+
+1. Stops accepting new connections (`server.shutdown()` on a daemon
+   thread — required because `BaseServer.shutdown` must not run on
+   the `serve_forever` thread).
+2. Drains in-flight requests: `ThreadingHTTPServer.daemon_threads` is
+   set to `False` on both service classes so `server_close()` joins
+   every active request thread before returning.
+3. Runs service-specific cleanup — `agent-auth` calls
+   `TokenStore.close()` which issues `PRAGMA wal_checkpoint(TRUNCATE)`
+   on a fresh connection, so the next boot does not replay journalled
+   writes.
+4. Exits `0`.
+
+A daemon watchdog thread bounds the whole sequence to
+`shutdown_deadline_seconds` (default `5.0`, configurable per service
+in `config.yaml`). If drain has not completed by then the watchdog
+calls `os._exit(1)` so a hung request handler cannot hold the
+process open past its container's `stop_grace_period`.
+
+The default matches the `stop_grace_period: 5s` on each service in
+`docker/docker-compose.yaml`. See
+`design/decisions/0018-graceful-shutdown.md` for the rationale.
+
 ## Network Configuration
 
 ### Local (host only)

@@ -61,6 +61,12 @@ def in_process_server(tmp_dir, signing_key, encryption_key):
         yield server, f"http://127.0.0.1:{port}", store
     finally:
         server.shutdown()
+        # Non-daemon request threads (see ``AgentAuthServer.daemon_threads``)
+        # are only joined inside ``server_close``. Skipping it here would
+        # leak completed-but-unjoined threads that hold pytest open at
+        # session exit.
+        server.server_close()
+        thread.join(timeout=2)
 
 
 @pytest.mark.covers_function("Serve Health Endpoint")
