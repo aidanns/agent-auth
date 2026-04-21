@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Daily 07:00 UTC — paired with the 06:00 pip-audit run so a
+    # newly-published CodeQL query + a newly-published advisory
+    # hit main's latest tree on the same day.
+    - cron: "0 7 * * *"
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # ``python`` covers the src/ + tests/ Python surface; ``actions``
+        # covers workflow files under .github/ so a dangerous
+        # script-injection pattern in a new workflow lands in the
+        # Security tab rather than going unnoticed.
+        language: [python, actions]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # Explicit security-extended suite: default ``security`` is
+          # high-precision but narrow; extended adds medium-precision
+          # queries that routinely surface real issues on the Python
+          # surface (e.g. clear-text logging, weak crypto choices).
+          queries: security-extended
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
