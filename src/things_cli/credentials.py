@@ -19,6 +19,7 @@ import contextlib
 import os
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
+from typing import Any, cast
 
 import keyring
 import yaml
@@ -90,11 +91,21 @@ class KeyringStore(CredentialStore):
             raise CredentialsNotFoundError(
                 f"No credentials found in keyring; missing {missing}. Run `things-cli login`."
             )
+        # Required-field narrowing: ``missing`` is empty, so each required
+        # entry is a non-empty string.
+        access_token = values["access_token"]
+        refresh_token = values["refresh_token"]
+        bridge_url = values["bridge_url"]
+        auth_url = values["auth_url"]
+        assert access_token is not None
+        assert refresh_token is not None
+        assert bridge_url is not None
+        assert auth_url is not None
         return Credentials(
-            access_token=values["access_token"],
-            refresh_token=values["refresh_token"],
-            bridge_url=values["bridge_url"],
-            auth_url=values["auth_url"],
+            access_token=access_token,
+            refresh_token=refresh_token,
+            bridge_url=bridge_url,
+            auth_url=auth_url,
             family_id=values.get("family_id"),
         )
 
@@ -158,7 +169,8 @@ class FileStore(CredentialStore):
             )
         try:
             with open(self._path) as f:
-                data = yaml.safe_load(f) or {}
+                raw = yaml.safe_load(f)
+            data: dict[str, Any] = cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
         except yaml.YAMLError as exc:
             raise CredentialsBackendError(
                 f"Credentials file at {self._path} is corrupt: {exc}"
@@ -210,12 +222,15 @@ def select_store(
 
 def _keyring_available() -> bool:
     """Best-effort detection of a working keyring backend."""
+    fail_keyring_cls: type | None
     try:
-        from keyring.backends.fail import Keyring as FailKeyring
+        from keyring.backends.fail import Keyring as _FailKeyring
+
+        fail_keyring_cls = _FailKeyring
     except ImportError:
-        FailKeyring = None  # type: ignore[assignment]
+        fail_keyring_cls = None
     try:
         backend = keyring.get_keyring()
     except _KeyringBackendError:
         return False
-    return not (FailKeyring is not None and isinstance(backend, FailKeyring))
+    return not (fail_keyring_cls is not None and isinstance(backend, fail_keyring_cls))

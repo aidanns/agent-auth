@@ -30,6 +30,7 @@ import argparse
 import json
 import sys
 from collections.abc import Callable
+from typing import Any
 
 from things_models.client import ThingsClient
 from things_models.errors import (
@@ -46,7 +47,7 @@ EXIT_UNAVAILABLE = 6
 
 
 def add_read_commands(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
+    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",  # pyright: ignore[reportPrivateUsage]
 ) -> None:
     """Attach the todos / projects / areas sub-commands to ``subparsers``.
 
@@ -86,7 +87,7 @@ def add_read_commands(
     areas_show.add_argument("id")
 
 
-def _dispatch_read(client: ThingsClient, args: argparse.Namespace) -> dict | None:
+def _dispatch_read(client: ThingsClient, args: argparse.Namespace) -> dict[str, Any] | None:
     if args.command == "todos":
         if args.todos_command == "list":
             todos = client.list_todos(

@@ -164,21 +164,6 @@ module = [
 ]
 ignore_errors = true
 
-# Ratchet targets — things_cli/* + things_client_common/* +
-# things_models/*. See #147.
-[[tool.mypy.overrides]]
-module = [
-    # keep-sorted start
-    "things_cli.cli",
-    "things_cli.client",
-    "things_cli.credentials",
-    "things_cli.output",
-    "things_client_common.cli",
-    "things_models.models",
-    # keep-sorted end
-]
-ignore_errors = true
-
 # Tests use pytest fixture magic and parametrize decorators heavily;
 # `disallow_untyped_defs` in particular produces a large amount of
 # low-value noise on test functions. Tracked for ratcheting in #148.
