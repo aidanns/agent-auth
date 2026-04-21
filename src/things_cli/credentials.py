@@ -91,21 +91,23 @@ class KeyringStore(CredentialStore):
             raise CredentialsNotFoundError(
                 f"No credentials found in keyring; missing {missing}. Run `things-cli login`."
             )
-        # Required-field narrowing: ``missing`` is empty, so each required
-        # entry is a non-empty string.
-        access_token = values["access_token"]
-        refresh_token = values["refresh_token"]
-        bridge_url = values["bridge_url"]
-        auth_url = values["auth_url"]
-        assert access_token is not None
-        assert refresh_token is not None
-        assert bridge_url is not None
-        assert auth_url is not None
+        # Narrow the ``str | None`` entries returned by keyring to ``str``
+        # without relying on ``assert`` (which ``python -O`` strips). Any
+        # required field that somehow changed between the ``missing`` check
+        # and here raises explicitly.
+        required: dict[str, str] = {}
+        for name in _REQUIRED_FIELDS:
+            value = values[name]
+            if value is None:
+                raise CredentialsBackendError(
+                    f"Keyring returned no value for required field {name!r}"
+                )
+            required[name] = value
         return Credentials(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            bridge_url=bridge_url,
-            auth_url=auth_url,
+            access_token=required["access_token"],
+            refresh_token=required["refresh_token"],
+            bridge_url=required["bridge_url"],
+            auth_url=required["auth_url"],
             family_id=values.get("family_id"),
         )
 
@@ -170,11 +172,19 @@ class FileStore(CredentialStore):
         try:
             with open(self._path) as f:
                 raw = yaml.safe_load(f)
-            data: dict[str, Any] = cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
         except yaml.YAMLError as exc:
             raise CredentialsBackendError(
                 f"Credentials file at {self._path} is corrupt: {exc}"
             ) from exc
+        if raw is None:
+            data: dict[str, Any] = {}
+        elif isinstance(raw, dict):
+            data = cast(dict[str, Any], raw)
+        else:
+            raise CredentialsBackendError(
+                f"Credentials file at {self._path} is corrupt: "
+                f"expected a YAML mapping, got {type(raw).__name__}"
+            )
         missing = [name for name in _REQUIRED_FIELDS if not data.get(name)]
         if missing:
             raise CredentialsNotFoundError(
