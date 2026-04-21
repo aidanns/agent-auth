@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directly instead of
   [#112](https://github.com/aidanns/agent-auth/issues/112)
   (closed by this change).
+- `scripts/verify-standards.sh` now gates the health-endpoint standard:
+  `/agent-auth/health` and `/things-bridge/health` must be registered in
+  their server modules and tests must cover both a healthy (200)
+  response and a subsystem-failure response (503 for agent-auth,
+  502 for things-bridge). Deletes of the route or its unhealthy-case
+  tests now fail CI
+  ([#25](https://github.com/aidanns/agent-auth/issues/25)).
 - Published OpenAPI 3.1 specs for both HTTP surfaces:
   `openapi/agent-auth.v1.yaml` and `openapi/things-bridge.v1.yaml`.
   A contract test in `tests/test_openapi_spec.py` (1) validates both
