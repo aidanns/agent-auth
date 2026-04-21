@@ -13,6 +13,7 @@ live-subprocess path is exercised in ``test_things_bridge_e2e.py``.
 
 import json
 import subprocess
+from typing import Any, cast
 
 import pytest
 
@@ -90,7 +91,7 @@ def test_list_todos_omits_unset_flags(monkeypatch, client):
 
 
 def test_list_todos_parses_payload(monkeypatch, client):
-    payload = {
+    payload: dict[str, Any] = {
         "todos": [
             {
                 "id": "t1",
@@ -117,7 +118,7 @@ def test_list_todos_parses_payload(monkeypatch, client):
 
 
 def test_get_todo_argv_and_envelope(monkeypatch, client):
-    payload = {
+    payload: dict[str, Any] = {
         "todo": {
             "id": "t2",
             "name": "Y",
@@ -252,7 +253,7 @@ def test_timeout_surfaces_as_things_error_and_logs_partial_stderr(monkeypatch, c
     def _timeout(*args, **kwargs):
         raise subprocess.TimeoutExpired(
             cmd=args[0],
-            timeout=kwargs.get("timeout"),
+            timeout=cast(float, kwargs.get("timeout")),
             stderr="hung on automation prompt\n",
         )
 
@@ -274,7 +275,7 @@ def test_timeout_decodes_bytes_stderr_without_b_prefix(monkeypatch, capfd, clien
     def _timeout(*args, **kwargs):
         raise subprocess.TimeoutExpired(
             cmd=args[0],
-            timeout=kwargs.get("timeout"),
+            timeout=cast(float, kwargs.get("timeout")),
             stderr=b"hung on automation prompt\n",
         )
 

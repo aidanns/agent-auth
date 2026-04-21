@@ -20,7 +20,7 @@ class MockPlugin(NotificationPlugin):
     def __init__(self, result: ApprovalResult):
         super().__init__()
         self._result = result
-        self.calls = []
+        self.calls: list[tuple[str, str | None, str]] = []
 
     def request_approval(self, scope, description, family_id):
         self.calls.append((scope, description, family_id))

@@ -9,6 +9,7 @@ import os
 import pytest
 
 from agent_auth.crypto import decrypt_field, encrypt_field
+from agent_auth.keys import EncryptionKey
 
 
 @pytest.mark.covers_function("Encrypt Field", "Decrypt Field")
@@ -33,7 +34,7 @@ def test_different_nonces_produce_different_ciphertext(encryption_key):
 def test_wrong_key_fails(encryption_key):
     plaintext = b"test-data"
     ciphertext = encrypt_field(plaintext, encryption_key)
-    wrong_key = os.urandom(32)
+    wrong_key = EncryptionKey(os.urandom(32))
     try:
         decrypt_field(ciphertext, wrong_key)
         raise AssertionError("Should have raised an exception")

@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -52,30 +53,37 @@ _requires_things3 = pytest.mark.skipif(
 )
 
 
-class FakeRunner:
+class FakeRunner(AppleScriptRunner):
+    # Inherits AppleScriptRunner so ThingsApplescriptClient accepts it.
+    # __init__ is overridden to skip osascript path / timeout setup — the
+    # fake never shells out. ``called`` lets tests distinguish "run() was
+    # never reached" from "run() was reached with an empty script"
+    # without the ``str | None`` typing headache.
     def __init__(self, output: str = ""):
         self.output = output
-        self.last_script: str | None = None
+        self.last_script: str = ""
+        self.called: bool = False
 
     def run(self, script: str) -> str:
         self.last_script = script
+        self.called = True
         return self.output
 
 
-def _todo_row(values: dict) -> str:
+def _todo_row(values: dict[str, str]) -> str:
     # Fill defaults so the row always has len(_TODO_FIELDS) tab-separated columns.
     defaults = {k: "missing value" for k in _TODO_FIELDS}
     defaults.update(values)
     return "\t".join(defaults[k] for k in _TODO_FIELDS)
 
 
-def _project_row(values: dict) -> str:
+def _project_row(values: dict[str, str]) -> str:
     defaults = {k: "missing value" for k in _PROJECT_FIELDS}
     defaults.update(values)
     return "\t".join(defaults[k] for k in _PROJECT_FIELDS)
 
 
-def _area_row(values: dict) -> str:
+def _area_row(values: dict[str, str]) -> str:
     defaults = {k: "missing value" for k in _AREA_FIELDS}
     defaults.update(values)
     return "\t".join(defaults[k] for k in _AREA_FIELDS)
@@ -414,7 +422,7 @@ def test_list_todos_rejects_injection_via_filter_ids(bad):
     client = ThingsApplescriptClient(runner)
     with pytest.raises(ThingsError):
         client.list_todos(project_id=bad)
-    assert runner.last_script is None
+    assert not runner.called
 
 
 def test_get_todo_rejects_injection_in_id():
@@ -422,7 +430,7 @@ def test_get_todo_rejects_injection_in_id():
     client = ThingsApplescriptClient(runner)
     with pytest.raises(ThingsError):
         client.get_todo("foo\nbar")
-    assert runner.last_script is None
+    assert not runner.called
 
 
 @_darwin_only
@@ -497,7 +505,7 @@ def test_osascript_timeout_writes_diagnostic_to_stderr(capfd, monkeypatch):
     """
 
     def _raise_timeout(*args, **kwargs):
-        raise subprocess.TimeoutExpired(cmd=args[0], timeout=kwargs.get("timeout"))
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=cast(float, kwargs.get("timeout")))
 
     monkeypatch.setattr(subprocess, "run", _raise_timeout)
 
@@ -523,7 +531,7 @@ def test_osascript_timeout_surfaces_partial_stderr(capfd, monkeypatch):
     def _raise_timeout(*args, **kwargs):
         raise subprocess.TimeoutExpired(
             cmd=args[0],
-            timeout=kwargs.get("timeout"),
+            timeout=cast(float, kwargs.get("timeout")),
             stderr="waiting on user to grant automation access\n",
         )
 

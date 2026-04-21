@@ -8,7 +8,6 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
 from typing import Any
 
 import pytest
@@ -16,6 +15,7 @@ import pytest
 from tests.factories import make_project as _project
 from tests.factories import make_todo as _todo
 from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
+from things_bridge.authz import AgentAuthClient
 from things_bridge.config import Config
 from things_bridge.errors import (
     AuthzScopeDeniedError,
@@ -29,14 +29,18 @@ from things_bridge.server import ThingsBridgeServer
 from things_models.models import Area
 
 
-@dataclass
-class FakeAuthz:
-    raise_on_validate: Exception | None = None
-    last_token: str | None = None
-    last_scope: str | None = None
-    last_description: str | None = None
+class FakeAuthz(AgentAuthClient):
+    # Initialise AgentAuthClient with a fake URL so any inherited method
+    # (or future base-class attribute read) stays safe. validate() is
+    # overridden below and never touches the URL.
+    def __init__(self, *, raise_on_validate: Exception | None = None):
+        super().__init__("http://test-fake")
+        self.raise_on_validate = raise_on_validate
+        self.last_token: str | None = None
+        self.last_scope: str | None = None
+        self.last_description: str | None = None
 
-    def validate(self, token, required_scope, *, description=None):
+    def validate(self, token: str, required_scope: str, *, description: str | None = None) -> None:
         self.last_token = token
         self.last_scope = required_scope
         self.last_description = description
@@ -114,7 +118,7 @@ def bridge():
         thread.join(timeout=2)
 
 
-def _get(url: str, token: str | None = "aa_test_token"):
+def _get(url: str, token: str | None = "aa_test_token") -> tuple[int, Any]:
     req = urllib.request.Request(url)
     if token is not None:
         req.add_header("Authorization", f"Bearer {token}")

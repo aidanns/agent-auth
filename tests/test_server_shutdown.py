@@ -20,6 +20,7 @@ import signal
 import threading
 import time
 from http.server import ThreadingHTTPServer
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -179,7 +180,7 @@ def test_in_flight_request_completes_before_server_close_returns(
     serve_thread = threading.Thread(target=server.serve_forever, daemon=True)
     serve_thread.start()
 
-    response: list[tuple[int, dict]] = []
+    response: list[tuple[int, Any]] = []
 
     def _client():
         response.append(
@@ -241,7 +242,7 @@ def test_audit_log_entry_from_inflight_request_is_durable_post_shutdown(
     serve_thread = threading.Thread(target=server.serve_forever, daemon=True)
     serve_thread.start()
 
-    response: list[tuple[int, dict]] = []
+    response: list[tuple[int, Any]] = []
 
     def _client():
         response.append(

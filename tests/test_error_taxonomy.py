@@ -52,6 +52,7 @@ from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair
 from tests._http import get, post
 from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
+from things_bridge.authz import AgentAuthClient
 from things_bridge.config import Config as BridgeConfig
 from things_bridge.errors import (
     AuthzScopeDeniedError,
@@ -105,14 +106,16 @@ def _extract_token_id(raw_token: str) -> str:
     return raw_token.split("_")[1]
 
 
-def _bearer(token: str) -> dict:
+def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-class _FakeAuthz:
-    exc: Exception | None = None
+class _FakeAuthz(AgentAuthClient):
+    def __init__(self) -> None:
+        super().__init__("http://test-fake")
+        self.exc: Exception | None = None
 
-    def validate(self, token, required_scope, *, description=None):
+    def validate(self, token: str, required_scope: str, *, description: str | None = None) -> None:
         if self.exc is not None:
             raise self.exc
 

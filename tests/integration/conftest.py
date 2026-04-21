@@ -22,9 +22,10 @@ import logging
 import os
 import subprocess
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -91,6 +92,7 @@ class AgentAuthContainer:
             result = json.loads(self.exec_cli("--json", "management-token", "show"))
             _, body = post(self.url("token/refresh"), {"refresh_token": result["refresh_token"]})
             self._mgmt_token_cache = body["access_token"]
+        assert self._mgmt_token_cache is not None
         return self._mgmt_token_cache
 
     def exec_cli(self, *args: str) -> str:
@@ -109,22 +111,24 @@ class AgentAuthContainer:
                 f"`agent-auth {' '.join(args)}` failed: "
                 f"exit={exit_code} stdout={stdout!r} stderr={stderr!r}"
             )
-        return stdout
+        return cast(str, stdout)
 
-    def create_token(self, *scopes: str) -> dict:
+    def create_token(self, *scopes: str) -> dict[str, Any]:
         """Create a token family inside the container and return the parsed JSON."""
         if not scopes:
             raise ValueError("at least one scope required")
         scope_args = []
         for scope in scopes:
             scope_args.extend(["--scope", scope])
-        return json.loads(self.exec_cli("--json", "token", "create", *scope_args))
+        return cast(
+            dict[str, Any], json.loads(self.exec_cli("--json", "token", "create", *scope_args))
+        )
 
-    def list_families(self) -> list[dict]:
+    def list_families(self) -> list[dict[str, Any]]:
         """Return all token families via ``agent-auth token list --json``."""
-        return json.loads(self.exec_cli("--json", "token", "list"))
+        return cast(list[dict[str, Any]], json.loads(self.exec_cli("--json", "token", "list")))
 
-    def get_family(self, family_id: str) -> dict | None:
+    def get_family(self, family_id: str) -> dict[str, Any] | None:
         """Return a single family by id, or None if not present."""
         return next(
             (f for f in self.list_families() if f["id"] == family_id),
@@ -205,9 +209,9 @@ def _write_test_config(config_dir: Path, **overrides: object) -> None:
 
 @pytest.fixture
 def agent_auth_container_factory(
-    _test_image_tag,
-    tmp_path_factory,
-) -> Callable[..., AgentAuthContainer]:
+    _test_image_tag: str,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[Callable[..., AgentAuthContainer], None, None]:
     """Factory fixture — spin up an agent-auth container with custom config.
 
     Each invocation starts a fresh Compose project. Teardown is registered
@@ -287,6 +291,8 @@ def agent_auth_container_factory(
 
 
 @pytest.fixture
-def agent_auth_container(agent_auth_container_factory) -> AgentAuthContainer:
+def agent_auth_container(
+    agent_auth_container_factory: Callable[..., AgentAuthContainer],
+) -> AgentAuthContainer:
     """Default integration fixture — deny-by-default plugin, stock TTLs."""
     return agent_auth_container_factory()

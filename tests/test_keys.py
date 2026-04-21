@@ -38,4 +38,5 @@ def test_signing_and_encryption_keys_differ(mock_keyring):
     km = KeyManager()
     signing = km.get_or_create_signing_key()
     encryption = km.get_or_create_encryption_key()
-    assert signing != encryption
+    # NewType distinguishes them statically; at runtime both are bytes.
+    assert bytes(signing) != bytes(encryption)
