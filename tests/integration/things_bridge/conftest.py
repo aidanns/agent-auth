@@ -21,6 +21,7 @@ shared compose file used by every per-service fixture in this tree).
 from __future__ import annotations
 
 import os
+import subprocess
 import uuid
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
@@ -80,6 +81,24 @@ class ThingsBridgeStack:
         path = self.fixtures_dir / "things.yaml"
         path.write_text(yaml.safe_dump(fixture))
         os.chmod(path, 0o644)
+
+    def stop_agent_auth(self) -> None:
+        """Stop the sibling ``agent-auth`` container without tearing down the bridge.
+
+        Used to exercise the ``authz_unavailable`` path end-to-end: the
+        bridge stays up and keeps serving requests, but its in-network
+        upstream is gone so ``AgentAuthClient.validate`` surfaces a real
+        connection error from the container runtime rather than a mock.
+        The shared fixture teardown then runs ``compose down`` against
+        the whole project, which is a no-op for already-stopped
+        containers.
+        """
+        subprocess.run(
+            ["docker", "compose", "-f", self.compose_file, "stop", "agent-auth"],
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
 
 
 def _write_agent_auth_config(
