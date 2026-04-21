@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Build integration test image
+description: |
+  Build docker/Dockerfile.test under a stable tag so integration jobs
+  can reuse it via AGENT_AUTH_TEST_IMAGE_TAG. Kept as a step (not bundled
+  into the test step) so the GHA step-timing UI shows build cost split
+  out from test wall-time.
+
+inputs:
+  tag:
+    description: Image tag to apply to the built image
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: docker build
+      shell: bash
+      env:
+        IMAGE_TAG: ${{ inputs.tag }}
+      run: docker build -f docker/Dockerfile.test -t "$IMAGE_TAG" .

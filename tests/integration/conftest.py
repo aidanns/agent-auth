@@ -18,6 +18,7 @@ test image is rebuilt once per pytest run off the working tree.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import uuid
@@ -34,10 +35,20 @@ from tests.integration._support import (
     DOCKER_DIR,
     build_test_image,
     docker_compose_available,
+    phase_timer,
     render_compose_file,
     seed_empty_fixtures_dir,
     wait_until_server_ready,
 )
+
+# The integration runner enables ``log_cli_level=INFO`` so the
+# ``integration.timing`` phase logs stream live. The HTTP / docker
+# plumbing libraries log at INFO too, which drowns the phase rows
+# under noise unrelated to timing. Raise their floors to WARNING so
+# the CI log stays grep-friendly. Done unconditionally because this
+# module is only imported when the integration suite runs.
+for _noisy_logger in ("docker", "urllib3", "testcontainers", "asyncio"):
+    logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 
 BASELINE_CONFIG = DOCKER_DIR / "config.test.yaml"
 
@@ -130,17 +141,35 @@ def _docker_required():
         )
 
 
+def _resolve_test_image_tag() -> tuple[str, bool]:
+    """Resolve the image tag to use this session and whether to own it.
+
+    Returns ``(tag, managed)``. ``managed`` is ``True`` when the caller
+    must build and clean up the image, ``False`` when the tag was
+    supplied externally (typically via ``AGENT_AUTH_TEST_IMAGE_TAG`` set
+    by a CI step that ran ``docker build`` itself) and the caller must
+    not build or remove it.
+
+    A session-unique tag in the managed case prevents parallel sessions
+    (two worktrees, two CI jobs sharing a runner) from clobbering each
+    other's image under a shared mutable tag — without which one
+    session could boot another's image while still using its own
+    Compose project.
+    """
+    prebuilt = os.environ.get("AGENT_AUTH_TEST_IMAGE_TAG")
+    if prebuilt:
+        return prebuilt, False
+    return f"agent-auth-test:pytest-{uuid.uuid4().hex[:8]}", True
+
+
 @pytest.fixture(scope="session")
 def _test_image_tag(_docker_required):
-    """Build the integration-test image once per pytest session under a
-    session-unique tag, then clean it up on teardown.
-
-    A unique tag prevents parallel sessions (two worktrees, two CI jobs
-    sharing a runner) from clobbering each other's image under a shared
-    mutable tag — without which one session could boot another's image
-    while still using its own Compose project.
-    """
-    tag = f"agent-auth-test:pytest-{uuid.uuid4().hex[:8]}"
+    """Yield the integration-test image tag for this session, building
+    and cleaning it up when the fixture owns the image."""
+    tag, managed = _resolve_test_image_tag()
+    if not managed:
+        yield tag
+        return
     build_test_image(tag)
     try:
         yield tag
@@ -184,7 +213,7 @@ def agent_auth_container_factory(
     Each invocation starts a fresh Compose project. Teardown is registered
     on the fixture so every container is removed at the end of the test.
     """
-    started: list[DockerCompose] = []
+    started: list[tuple[str, DockerCompose]] = []
 
     def _factory(
         *,
@@ -228,8 +257,9 @@ def agent_auth_container_factory(
             context=str(rendered_compose.parent),
             compose_file_name=rendered_compose.name,
         )
-        started.append(compose)
-        compose.start()
+        started.append((project_name, compose))
+        with phase_timer("compose_start", project=project_name, service="agent-auth"):
+            compose.start()
 
         host = compose.get_service_host("agent-auth", 9100)
         port = compose.get_service_port("agent-auth", 9100)
@@ -248,9 +278,10 @@ def agent_auth_container_factory(
 
     yield _factory
 
-    for compose in started:
+    for project_name, compose in started:
         try:
-            compose.stop()
+            with phase_timer("compose_stop", project=project_name, service="agent-auth"):
+                compose.stop()
         except Exception as e:
             print(f"warning: compose teardown failed: {e!r}")
 
