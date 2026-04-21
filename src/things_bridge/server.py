@@ -283,7 +283,7 @@ def _install_shutdown_handler(
     shutdown_started = threading.Event()
     drain_complete = threading.Event()
 
-    def _watchdog():
+    def _watchdog() -> None:
         if drain_complete.wait(timeout=deadline_seconds):
             return
         print(
@@ -293,13 +293,13 @@ def _install_shutdown_handler(
         )
         os._exit(1)
 
-    def _drain():
+    def _drain() -> None:
         try:
             server.shutdown()
         finally:
             drain_complete.set()
 
-    def _handle(_signum, _frame):
+    def _handle(_signum: int, _frame: object) -> None:
         if shutdown_started.is_set():
             return
         shutdown_started.set()
