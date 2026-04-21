@@ -91,7 +91,7 @@ class AgentAuthContainer:
         if self._mgmt_token_cache is None:
             result = json.loads(self.exec_cli("--json", "management-token", "show"))
             _, body = post(self.url("token/refresh"), {"refresh_token": result["refresh_token"]})
-            self._mgmt_token_cache = cast(str, body["access_token"])
+            self._mgmt_token_cache = body["access_token"]
         assert self._mgmt_token_cache is not None
         return self._mgmt_token_cache
 

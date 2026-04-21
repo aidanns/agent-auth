@@ -111,8 +111,8 @@ def _bearer(token: str) -> dict[str, str]:
 
 
 class _FakeAuthz(AgentAuthClient):
-    # Skip AgentAuthClient.__init__: the test never exercises the HTTP path.
     def __init__(self) -> None:
+        super().__init__("http://test-fake")
         self.exc: Exception | None = None
 
     def validate(self, token: str, required_scope: str, *, description: str | None = None) -> None:

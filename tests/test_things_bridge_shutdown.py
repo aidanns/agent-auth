@@ -35,9 +35,8 @@ from things_bridge.server import (
 
 
 class _AlwaysValidAuthz(AgentAuthClient):
-    # Skip AgentAuthClient.__init__: the test never exercises the HTTP path.
     def __init__(self) -> None:
-        pass
+        super().__init__("http://test-fake")
 
     def validate(self, token: str, required_scope: str, *, description: str | None = None) -> None:
         return None

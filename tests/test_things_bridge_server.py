@@ -30,8 +30,11 @@ from things_models.models import Area
 
 
 class FakeAuthz(AgentAuthClient):
-    # Skip AgentAuthClient.__init__: tests never exercise the HTTP path.
+    # Initialise AgentAuthClient with a fake URL so any inherited method
+    # (or future base-class attribute read) stays safe. validate() is
+    # overridden below and never touches the URL.
     def __init__(self, *, raise_on_validate: Exception | None = None):
+        super().__init__("http://test-fake")
         self.raise_on_validate = raise_on_validate
         self.last_token: str | None = None
         self.last_scope: str | None = None

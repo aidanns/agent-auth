@@ -56,14 +56,17 @@ _requires_things3 = pytest.mark.skipif(
 class FakeRunner(AppleScriptRunner):
     # Inherits AppleScriptRunner so ThingsApplescriptClient accepts it.
     # __init__ is overridden to skip osascript path / timeout setup — the
-    # fake never shells out. ``last_script`` defaults to ``""`` so tests
-    # can use ``in`` without narrowing.
+    # fake never shells out. ``called`` lets tests distinguish "run() was
+    # never reached" from "run() was reached with an empty script"
+    # without the ``str | None`` typing headache.
     def __init__(self, output: str = ""):
         self.output = output
         self.last_script: str = ""
+        self.called: bool = False
 
     def run(self, script: str) -> str:
         self.last_script = script
+        self.called = True
         return self.output
 
 
@@ -419,7 +422,7 @@ def test_list_todos_rejects_injection_via_filter_ids(bad):
     client = ThingsApplescriptClient(runner)
     with pytest.raises(ThingsError):
         client.list_todos(project_id=bad)
-    assert runner.last_script == ""
+    assert not runner.called
 
 
 def test_get_todo_rejects_injection_in_id():
@@ -427,7 +430,7 @@ def test_get_todo_rejects_injection_in_id():
     client = ThingsApplescriptClient(runner)
     with pytest.raises(ThingsError):
         client.get_todo("foo\nbar")
-    assert runner.last_script == ""
+    assert not runner.called
 
 
 @_darwin_only
