@@ -55,6 +55,12 @@
 #      documented score threshold, per
 #      .claude/instructions/testing-standards.md "Mutation testing on
 #      security-critical paths".
+#  13. A tests/fault/ directory exists and contains test files covering
+#      each listed fault-injection scenario (SQLite write errors,
+#      audit-log disk-full, keyring unavailable, notification plugin
+#      timeout/exception, agent-auth unreachable, Things AppleScript
+#      failures), per .claude/instructions/testing-standards.md
+#      "Chaos and fault-injection tests".
 
 set -euo pipefail
 
@@ -1265,3 +1271,47 @@ if [[ "${mutation_workflow_found}" -eq 0 ]]; then
 fi
 
 echo "verify-standards: mutation testing configured ([tool.mutmut] / [tool.mutation_score]) and scheduled via ${mutation_workflow}."
+
+# ---------------------------------------------------------------------------
+# Fault-injection / chaos test layer.
+# ---------------------------------------------------------------------------
+# .claude/instructions/testing-standards.md (Coverage — "Chaos and
+# fault-injection tests") requires test coverage for each listed
+# failure mode. The deterministic check asserts that tests/fault/
+# exists and contains at least one test file whose contents mention
+# each scenario (by keyword, because the tests are free to name
+# themselves however the author prefers).
+fault_dir="tests/fault"
+if [[ ! -d "${fault_dir}" ]]; then
+  echo "verify-standards: ${fault_dir}/ is missing." >&2
+  echo "  Add a fault-injection test layer per" >&2
+  echo "  .claude/instructions/testing-standards.md § Coverage." >&2
+  exit 1
+fi
+
+declare -A fault_scenarios=(
+  [sqlite]="SQLite / storage write errors"
+  [audit]="audit-log disk-full or unwritable"
+  [keyring]="keyring backend unavailable"
+  [plugin]="notification plugin timeout / exception"
+  [agent_auth]="agent-auth unreachable from things-bridge"
+  [applescript]="Things AppleScript subprocess failure"
+)
+
+fault_missing=0
+for scenario in "${!fault_scenarios[@]}"; do
+  # Accept matches in filenames or file contents under tests/fault/.
+  if ! { find "${fault_dir}" -type f -name "*.py" -print 2>/dev/null | grep -qi "${scenario}"; } \
+    && ! grep -r -l -i "${scenario}" "${fault_dir}" >/dev/null 2>&1; then
+    echo "verify-standards: no fault-injection coverage for: ${fault_scenarios[${scenario}]}" >&2
+    fault_missing=1
+  fi
+done
+
+if [[ ${fault_missing} -ne 0 ]]; then
+  echo "  Add tests under ${fault_dir}/ (either in a file whose name mentions" >&2
+  echo "  the scenario keyword, or referencing the keyword in the test body)." >&2
+  exit 1
+fi
+
+echo "verify-standards: ${fault_dir}/ covers all required fault-injection scenarios."
