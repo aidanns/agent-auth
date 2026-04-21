@@ -62,8 +62,25 @@ runs:
       shell: bash
       env:
         SYSTEMS_ENGINEERING_REF: ${{ inputs.systems-engineering-ref }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        curl -fsSL "https://raw.githubusercontent.com/aidanns/systems-engineering/${SYSTEMS_ENGINEERING_REF}/install.sh" | bash
+        # Authenticated Contents API avoids raw.githubusercontent.com per-IP
+        # rate limits when parallel CI jobs race for install.sh. See #155.
+        installer="$(mktemp)"
+        trap 'rm -f "$installer"' EXIT
+
+        if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+          url="https://api.github.com/repos/aidanns/systems-engineering/contents/install.sh?ref=${SYSTEMS_ENGINEERING_REF}"
+          auth_args=(-H "Accept: application/vnd.github.raw" -H "Authorization: Bearer ${GITHUB_TOKEN}")
+        else
+          url="https://raw.githubusercontent.com/aidanns/systems-engineering/${SYSTEMS_ENGINEERING_REF}/install.sh"
+          auth_args=()
+        fi
+
+        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
+          "${auth_args[@]}" -o "$installer" "$url"
+
+        bash "$installer"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - name: Install go-task
