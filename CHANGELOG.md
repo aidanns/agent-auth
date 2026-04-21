@@ -137,6 +137,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   readability. Trims composite-action wall-time on every CI job.
   Completes the #165 follow-up sequenced in
   [#168](https://github.com/aidanns/agent-auth/issues/168).
+- **Release-adjacent GitHub Actions pinned to commit SHAs.**
+  `release-please.yml`, `release-publish.yml`, `reuse.yml`, and
+  `.github/actions/setup-toolchain/action.yml` now reference every
+  third-party action by full commit SHA with a trailing `# vX` comment
+  (e.g. `actions/checkout@de0fac2... # v6`). Read-only workflows
+  (`check.yml`, `test.yml`, `verify-*.yml`, `typecheck.yml`,
+  `security.yml`) stay on floating-major tags. Policy documented in
+  `.claude/instructions/tooling-and-ci.md` "Pin release-affecting GitHub
+  Actions to commit SHAs"; Dependabot's existing `github-actions`
+  ecosystem entry (minor/patch grouped, majors individual) keeps the
+  pins refreshed. Closes
+  [#127](https://github.com/aidanns/agent-auth/issues/127).
 
 ### Fixed
 
