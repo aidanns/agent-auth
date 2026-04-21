@@ -169,7 +169,7 @@ The fake CLI is not shipped in the sdist/wheel — it lives under `tests/` and i
 ```bash
 # Save credentials — the CLI prompts interactively for tokens so they
 # don't appear in shell history. Alternatively, pre-populate the
-# credentials file at ~/.config/things-cli/credentials.json.
+# credentials file at ~/.config/things-cli/credentials.yaml.
 things-cli login \
   --bridge-url http://127.0.0.1:9200 \
   --auth-url http://127.0.0.1:9100 \
