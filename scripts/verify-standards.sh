@@ -573,6 +573,49 @@ PY
   echo "verify-standards: mypy and pyright ratchet lists are in sync."
 fi
 
+# pytest-cov coverage floor per
+# .claude/instructions/testing-standards.md (Coverage) and
+# .claude/instructions/python.md (Tooling: pytest-cov). The
+# deterministic regression check from issue #37:
+#
+#   - pyproject.toml (or pytest.ini) sets --cov-fail-under=<N> in
+#     pytest's addopts (N > 0).
+#   - At least one CI workflow invokes `pytest --cov` (directly or
+#     via a task dispatcher that reaches pytest through pytest.ini
+#     addopts).
+
+coverage_missing=0
+
+fail_coverage_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  coverage_missing=1
+}
+
+if ! grep -qE -- "--cov-fail-under=[1-9][0-9]*" <<<"${pyproject_stripped}"; then
+  fail_coverage_check \
+    "pyproject.toml pytest addopts does not set --cov-fail-under=<N>." \
+    "Add '--cov-fail-under=<N>' to [tool.pytest.ini_options].addopts (see .claude/instructions/testing-standards.md Coverage)."
+fi
+
+# The CI gate is satisfied whether pytest is invoked directly (with
+# --cov on the command line) or transitively through `task test`
+# (pytest then picks up --cov=... from pyproject.toml's addopts).
+# Match `pytest --cov`, a direct task invocation that reaches pytest,
+# or the `task test` dispatcher pattern used by the Test workflow.
+if ! grep -qE "run:[[:space:]]*[^\\n]*pytest[^\\n]*--cov" <<<"${workflows_only_stripped}" \
+  && ! grep -qE "run:[[:space:]]*task[[:space:]]+test" <<<"${workflows_only_stripped}"; then
+  fail_coverage_check \
+    "no .github/workflows/*.yml runs 'pytest --cov' (or 'task test' which picks up --cov from pyproject.toml)." \
+    "Add a workflow step that runs 'task test' (see .github/workflows/test.yml)."
+fi
+
+if [[ ${coverage_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: pytest-cov fail-under threshold set in pyproject.toml and gated in CI."
+
 # CONTRIBUTING.md must exist and contain the four required sections per
 # .claude/instructions/release-and-hygiene.md.
 

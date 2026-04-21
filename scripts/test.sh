@@ -75,17 +75,26 @@ case "${mode}" in
     exec uv run --no-sync pytest tests/ --ignore=tests/integration "$@"
     ;;
   fast)
-    exec uv run --no-sync pytest "${FAST_TESTS[@]}" "$@"
+    # Disable coverage collection: --fast runs a curated smoke subset
+    # that only exercises ~6% of src/, so the --cov-fail-under=74 floor
+    # configured in pyproject.toml would always fail. The floor is
+    # measured against --unit (the authoritative gate).
+    exec uv run --no-sync pytest --no-cov "${FAST_TESTS[@]}" "$@"
     ;;
   integration)
+    # Same rationale as --fast: integration tests exercise a different
+    # surface than src/ (Docker lifecycle, cross-service contracts),
+    # so the unit-based floor doesn't apply. Integration coverage is
+    # tracked separately; see plans/pytest-cov-threshold.md "Out of
+    # scope".
     integration_path="tests/integration/"
     if [[ -n "${service}" ]]; then
       integration_path="${SERVICE_PATHS[${service}]}"
     fi
-    exec uv run --no-sync pytest "${integration_path}" "$@"
+    exec uv run --no-sync pytest --no-cov "${integration_path}" "$@"
     ;;
   all)
     uv run --no-sync pytest tests/ --ignore=tests/integration "$@"
-    exec uv run --no-sync pytest tests/integration/ "$@"
+    exec uv run --no-sync pytest --no-cov tests/integration/ "$@"
     ;;
 esac

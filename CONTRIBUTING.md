@@ -73,7 +73,7 @@ Every repeatable operation is exposed through the task runner. Run
 
 | Task                                       | Description                                                                                                                                               |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task test`                                | Run the pytest suite (unit by default; pass `-- --fast`, `-- --integration`, or `-- --all`).                                                              |
+| `task test`                                | Run the pytest suite with coverage (unit by default; pass `-- --fast`, `-- --integration`, or `-- --all`). Fails below the `--cov-fail-under` floor.      |
 | `task lint`                                | Run all configured linters (shellcheck, ruff check, keep-sorted).                                                                                         |
 | `task format`                              | Run all configured formatters (shfmt, ruff format, mdformat, taplo). Pass `-- --check` for diff-only mode (CI uses this).                                 |
 | `task typecheck`                           | Run mypy + pyright (strict) on `src/` and `tests/`.                                                                                                       |
@@ -92,6 +92,28 @@ Every repeatable operation is exposed through the task runner. Run
 Each task dispatches to a script under `scripts/*.sh`; the scripts are
 the single source of truth and can also be invoked directly if
 `go-task` is not installed.
+
+### Coverage
+
+`task test` (unit mode, the default) collects line and branch coverage
+via `pytest-cov` and fails when total coverage drops below the floor
+configured in `pyproject.toml` under
+`[tool.pytest.ini_options].addopts` as `--cov-fail-under=<N>`. The
+floor ratchets upward per
+`.claude/instructions/testing-standards.md` "Coverage".
+
+- **Bumping the floor** (coverage-improving PRs): run
+  `task test -- --unit` locally, read the reported `TOTAL` percentage,
+  update `--cov-fail-under=<N>` in `pyproject.toml` to one below the
+  new TOTAL (so fluctuation across environments doesn't flake CI), and
+  commit alongside the coverage-improving changes.
+- **Lowering the floor** (rare): only when a deliberate change removes
+  redundant coverage (e.g. a fixture refactor). Explain the reason in
+  the commit message body; never lower silently.
+- **`--fast` and `--integration` modes** run without coverage collection
+  (`--no-cov`). The floor is measured against `--unit` only —
+  integration tests exercise Docker-backed service interactions that
+  don't map cleanly onto `src/` line coverage.
 
 ## Commit conventions
 

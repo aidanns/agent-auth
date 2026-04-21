@@ -44,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rationale and the pairing with NIST SP 800-53 (cybersecurity),
   OWASP ASVS (#112), and SLSA / cosign / SBOM (#109 / #110 / #111).
   `scripts/verify-standards.sh` gates the new section.
+- **pytest-cov line+branch coverage gate with a ratcheting floor**. CI
+  now fails if total coverage of `src/` drops below the
+  `--cov-fail-under=<N>` threshold configured in `pyproject.toml`
+  (initial floor 74; baseline TOTAL was 74.77% on merge). The bump
+  procedure is documented in `CONTRIBUTING.md` § "Coverage". Integration
+  and `--fast` test modes run with `--no-cov`; the floor is measured
+  against `--unit` only. Closes
+  [#37](https://github.com/aidanns/agent-auth/issues/37).
 - **mypy + pyright type-checking**. Both run in CI under
   `task typecheck` (new `.github/workflows/typecheck.yml`). `pyproject.toml`
   declares `[tool.mypy]` with `strict = true` as the default;
