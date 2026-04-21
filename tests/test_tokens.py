@@ -7,6 +7,7 @@
 import pytest
 
 from agent_auth.errors import TokenInvalidError
+from agent_auth.keys import SigningKey
 from agent_auth.tokens import (
     PREFIX_ACCESS,
     PREFIX_REFRESH,
@@ -48,7 +49,7 @@ def test_verify_with_wrong_key(signing_key):
 
     token_id = generate_token_id()
     token = sign_token(token_id, PREFIX_ACCESS, signing_key)
-    wrong_key = os.urandom(32)
+    wrong_key = SigningKey(os.urandom(32))
     with pytest.raises(TokenInvalidError, match="signature verification failed"):
         verify_token(token, wrong_key)
 

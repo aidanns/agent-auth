@@ -21,6 +21,7 @@ Authorization decisions: validation_allowed, validation_denied,
 
 import json
 from datetime import datetime
+from typing import Any, cast
 
 from agent_auth.audit import AuditLogger
 
@@ -31,14 +32,14 @@ def _log_path(tmp_path):
     return str(tmp_path / "audit.log")
 
 
-def _read_last_entry(path: str) -> dict:
+def _read_last_entry(path: str) -> dict[str, Any]:
     with open(path) as f:
         lines = [line.strip() for line in f if line.strip()]
     assert lines, "audit log is empty"
-    return json.loads(lines[-1])
+    return cast(dict[str, Any], json.loads(lines[-1]))
 
 
-def _assert_base_fields(entry: dict) -> None:
+def _assert_base_fields(entry: dict[str, Any]) -> None:
     assert "timestamp" in entry
     assert "event" in entry
     ts = entry["timestamp"]

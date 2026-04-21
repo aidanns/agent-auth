@@ -22,9 +22,10 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -74,7 +75,7 @@ class ThingsBridgeStack:
         """Return the unversioned health endpoint URL."""
         return f"{self.base_url}/things-bridge/health"
 
-    def write_fixture(self, fixture: dict) -> None:
+    def write_fixture(self, fixture: dict[str, Any]) -> None:
         """Write/replace ``things.yaml`` in the bind-mounted fixtures dir."""
         path = self.fixtures_dir / "things.yaml"
         path.write_text(yaml.safe_dump(fixture))
@@ -109,9 +110,9 @@ def _write_agent_auth_config(
 
 @pytest.fixture
 def things_bridge_stack_factory(
-    _test_image_tag,
-    tmp_path_factory,
-) -> Callable[..., ThingsBridgeStack]:
+    _test_image_tag: str,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[Callable[..., ThingsBridgeStack], None, None]:
     """Factory fixture — spin up the agent-auth + things-bridge pair.
 
     Each invocation starts a fresh Compose project (per-test UUID).
@@ -203,7 +204,9 @@ def things_bridge_stack_factory(
 
 
 @pytest.fixture
-def things_bridge_stack(things_bridge_stack_factory) -> ThingsBridgeStack:
+def things_bridge_stack(
+    things_bridge_stack_factory: Callable[..., ThingsBridgeStack],
+) -> ThingsBridgeStack:
     """Default integration fixture — auto-approve plugin so JIT prompts
     for ``things:read`` complete without host interaction."""
     return things_bridge_stack_factory()

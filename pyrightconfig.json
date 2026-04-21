@@ -14,8 +14,43 @@
   "typeCheckingMode": "strict",
   "pythonVersion": "3.11",
   "reportMissingTypeStubs": "warning",
-  "ignore": [
-    "tests",
-    "src/tests_support"
+  "ignore": [],
+  "executionEnvironments": [
+    {
+      "root": "tests",
+      "reportUnknownParameterType": "none",
+      "reportUnknownVariableType": "none",
+      "reportUnknownMemberType": "none",
+      "reportUnknownArgumentType": "none",
+      "reportUnknownLambdaType": "none",
+      "reportMissingParameterType": "none",
+      "reportMissingTypeArgument": "none",
+      "reportPrivateUsage": "none",
+      "reportUnusedImport": "none",
+      "reportUnusedFunction": "none",
+      "reportUnnecessaryCast": "none",
+      "reportUnnecessaryComparison": "none",
+      "reportMissingTypeStubs": "none"
+    },
+    {
+      "root": "src/tests_support",
+      "reportUnknownParameterType": "none",
+      "reportUnknownVariableType": "none",
+      "reportUnknownMemberType": "none",
+      "reportUnknownArgumentType": "none",
+      "reportUnknownLambdaType": "none",
+      "reportMissingParameterType": "none",
+      "reportMissingTypeArgument": "none",
+      "reportPrivateUsage": "none",
+      "reportUnusedImport": "none",
+      "reportUnusedFunction": "none",
+      "reportUnnecessaryCast": "none",
+      "reportUnnecessaryComparison": "none",
+      "reportMissingTypeStubs": "none"
+    }
+  ],
+  "extraPaths": [
+    ".",
+    "src"
   ]
 }

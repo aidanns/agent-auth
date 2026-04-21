@@ -17,6 +17,7 @@ import json
 import subprocess
 import uuid
 from dataclasses import dataclass
+from typing import Any, cast
 
 import pytest
 
@@ -97,7 +98,7 @@ class ThingsCliInvoker:
             )
         return stdout
 
-    def login(self, token_payload: dict) -> None:
+    def login(self, token_payload: dict[str, Any]) -> None:
         """Persist credentials for a token-create payload."""
         # The bridge talks to agent-auth on the in-network address;
         # things-cli does too because it issues refresh / reissue
@@ -166,9 +167,9 @@ _DEFAULT_FIXTURE = {
 }
 
 
-def parse_json(stdout: str) -> dict:
+def parse_json(stdout: str) -> dict[str, Any]:
     """Parse ``things-cli --json`` stdout, raising on empty payloads."""
     stripped = stdout.strip()
     if not stripped:
         raise AssertionError("expected JSON on stdout but got empty output")
-    return json.loads(stripped)
+    return cast(dict[str, Any], json.loads(stripped))

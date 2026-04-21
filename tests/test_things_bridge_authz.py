@@ -7,7 +7,7 @@
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import pytest
 
@@ -22,7 +22,7 @@ from things_bridge.errors import (
 
 class _Responder(BaseHTTPRequestHandler):
     status = 200
-    body: ClassVar[dict] = {"valid": True}
+    body: ClassVar[dict[str, Any]] = {"valid": True}
     last_request_body: bytes | None = None
     last_request_path: str | None = None
 
