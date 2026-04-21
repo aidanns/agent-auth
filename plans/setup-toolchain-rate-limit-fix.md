@@ -19,31 +19,29 @@ Observed on PR #153's first Test run
 
 Two complementary fixes, applied together in the action's "Install
 systems-engineering" step. Both apply to the same curl invocation — no
-new step, no new input, no extra orchestration.
+new step, no extra orchestration.
 
-1. **Authenticate via `GITHUB_TOKEN` and the Contents API.** The action
-   already takes `github-token` as an input (every workflow passes
-   `${{ secrets.GITHUB_TOKEN }}`). Switch the fetch from the anonymous
-   raw-content CDN to `api.github.com/repos/{repo}/contents/{path}?ref=...`
-   with `Accept: application/vnd.github.raw` and the bearer token.
+1. **Authenticate via `GITHUB_TOKEN` and the Contents API.** Switch
+   the fetch from the anonymous raw-content CDN to
+   `api.github.com/repos/{repo}/contents/{path}?ref=...` with
+   `Accept: application/vnd.github.raw` and the bearer token.
    Authenticated requests share the 5,000/hr GITHUB_TOKEN budget rather
    than the low anonymous per-IP limit. The installer itself already
    honours `GITHUB_TOKEN` for its own API calls (see
    `gh_curl`/`gh_download` in `aidanns/systems-engineering/install.sh`),
    so forwarding it via `env` authenticates the release-metadata and
-   asset downloads too.
+   asset downloads too. Make the `github-token` input `required: true`
+   since every caller already passes it and the authenticated path is
+   now the only path.
 2. **Retry with backoff.** Use curl's built-in
    `--retry 2 --retry-delay 2 --retry-all-errors` (3 attempts total,
-   with backoff). `--retry-all-errors` is required because the rate-
-   limit response is HTTP 4xx, which plain `--retry` ignores. Absorbs
-   transient 403s / network hiccups without failing the job.
+   with backoff). `--retry-all-errors` is load-bearing because the
+   rate-limit response is HTTP 4xx, which plain `--retry` ignores.
+   Absorbs transient 403s / network hiccups without failing the job.
 
 The fetch-then-pipe-to-bash pattern loses curl's non-zero exit through
 the pipe, so download to a tempfile first, verify curl succeeded, then
 `bash <tempfile>`.
-
-If `github-token` is empty (the input is declared optional), fall
-through to the anonymous raw URL; the retry loop still helps.
 
 Rejected alternatives:
 
@@ -60,14 +58,19 @@ Rejected alternatives:
 1. `.github/actions/setup-toolchain/action.yml` — rewrite the "Install
    systems-engineering" step to:
    - Use `GITHUB_TOKEN` (passed via `env` from the `github-token`
-     input) to fetch `install.sh` through the Contents API when the
-     token is non-empty; otherwise fall back to the raw URL.
+     input) to fetch `install.sh` through the Contents API with
+     `Accept: application/vnd.github.raw`.
    - Use `curl --retry 2 --retry-delay 2 --retry-all-errors` for
      built-in retry with backoff (3 attempts total).
-   - Write to a tempfile and execute that, so a failed download does
-     not silently execute an empty/partial script.
+   - Write to `/tmp/systems-engineering-install.sh` (matching the
+     `/tmp/<toolname>` convention of the sibling install steps) and
+     execute that, so a failed download does not silently execute an
+     empty/partial script.
    - Export `GITHUB_TOKEN` to the installer invocation so its internal
      release-metadata / asset downloads are authenticated too.
+2. Mark the `github-token` input `required: true` and rewrite its
+   description to reflect its wider role (every workflow in this repo
+   already passes `secrets.GITHUB_TOKEN`; this formalises the contract).
 
 No workflow changes are required — every caller already passes
 `github-token: ${{ secrets.GITHUB_TOKEN }}` to this action.

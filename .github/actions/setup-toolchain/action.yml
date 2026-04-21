@@ -43,8 +43,8 @@ inputs:
     description: Commit SHA or ref of aidanns/systems-engineering to install
     default: "d8e664a5ad20c071d4ec1cd62377597f9404b6e9"
   github-token:
-    description: GitHub token to avoid rate limits when installing go-task
-    required: false
+    description: GitHub token used for authenticated downloads during toolchain install (avoids per-IP rate limits on raw.githubusercontent.com and the release-asset endpoint)
+    required: true
 
 runs:
   using: composite
@@ -66,21 +66,16 @@ runs:
       run: |
         # Authenticated Contents API avoids raw.githubusercontent.com per-IP
         # rate limits when parallel CI jobs race for install.sh. See #155.
-        installer="$(mktemp)"
-        trap 'rm -f "$installer"' EXIT
-
-        if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-          url="https://api.github.com/repos/aidanns/systems-engineering/contents/install.sh?ref=${SYSTEMS_ENGINEERING_REF}"
-          auth_args=(-H "Accept: application/vnd.github.raw" -H "Authorization: Bearer ${GITHUB_TOKEN}")
-        else
-          url="https://raw.githubusercontent.com/aidanns/systems-engineering/${SYSTEMS_ENGINEERING_REF}/install.sh"
-          auth_args=()
-        fi
-
+        # --retry-all-errors (curl 7.71+, shipped on GitHub ubuntu runners) is
+        # load-bearing: plain --retry skips HTTP 4xx, which is what the rate
+        # limit returns.
         curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          "${auth_args[@]}" -o "$installer" "$url"
+          -H "Accept: application/vnd.github.raw" \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          -o /tmp/systems-engineering-install.sh \
+          "https://api.github.com/repos/aidanns/systems-engineering/contents/install.sh?ref=${SYSTEMS_ENGINEERING_REF}"
 
-        bash "$installer"
+        bash /tmp/systems-engineering-install.sh
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - name: Install go-task
