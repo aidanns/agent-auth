@@ -64,8 +64,8 @@ inputs:
     description: Commit SHA or ref of aidanns/systems-engineering to install
     default: "d8e664a5ad20c071d4ec1cd62377597f9404b6e9"
   github-token:
-    description: GitHub token to avoid rate limits when installing go-task
-    required: false
+    description: GitHub token used for authenticated downloads during toolchain install (avoids per-IP rate limits on raw.githubusercontent.com and the release-asset endpoint)
+    required: true
 
 runs:
   using: composite
@@ -83,8 +83,20 @@ runs:
       shell: bash
       env:
         SYSTEMS_ENGINEERING_REF: ${{ inputs.systems-engineering-ref }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        curl -fsSL "https://raw.githubusercontent.com/aidanns/systems-engineering/${SYSTEMS_ENGINEERING_REF}/install.sh" | bash
+        # Authenticated Contents API avoids raw.githubusercontent.com per-IP
+        # rate limits when parallel CI jobs race for install.sh. See #155.
+        # --retry-all-errors (curl 7.71+, shipped on GitHub ubuntu runners) is
+        # load-bearing: plain --retry skips HTTP 4xx, which is what the rate
+        # limit returns.
+        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
+          -H "Accept: application/vnd.github.raw" \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          -o /tmp/systems-engineering-install.sh \
+          "https://api.github.com/repos/aidanns/systems-engineering/contents/install.sh?ref=${SYSTEMS_ENGINEERING_REF}"
+
+        bash /tmp/systems-engineering-install.sh
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - name: Install go-task

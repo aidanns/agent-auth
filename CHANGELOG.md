@@ -87,6 +87,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Completes the `/v1/` API namespace migration so every non-health route is
   versioned (enforced by `scripts/verify-standards.sh`).
 
+### Fixed
+
+- `setup-toolchain` composite action fetches the `systems-engineering`
+  installer through the authenticated GitHub Contents API (when
+  `github-token` is provided) and retries transient failures with backoff,
+  eliminating flakes where 6 parallel CI jobs tripped the unauthenticated
+  `raw.githubusercontent.com` per-IP rate limit
+  ([#155](https://github.com/aidanns/agent-auth/issues/155)).
+
 ## [0.1.0] - 2026-04-19
 
 ### Added
