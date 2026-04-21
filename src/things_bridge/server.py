@@ -6,6 +6,7 @@
 
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from things_bridge.authz import AgentAuthClient
@@ -56,7 +57,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
     def _bridge(self) -> "ThingsBridgeServer":
         return self.server  # type: ignore[return-value]
 
-    def _send_json(self, status: int, data: dict):
+    def _send_json(self, status: int, data: dict[str, Any]) -> None:
         body = json.dumps(data).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -64,7 +65,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_request(self, code="-", size="-"):
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
         # Suppress the default access log — request paths can reveal
         # Things ids and our bearer tokens appear in headers. Errors
         # still surface via the default ``log_error`` implementation.
@@ -111,7 +112,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             return
         self._send_json(502, {"error": "things_unavailable"})
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         url = urlsplit(self.path)
         path = url.path
         params = parse_qs(url.query)
@@ -220,7 +221,7 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
 
         self._send_json(404, {"error": "not_found"})
 
-    def _method_not_allowed(self):
+    def _method_not_allowed(self) -> None:
         self.send_response(405)
         self.send_header("Allow", "GET")
         body = json.dumps({"error": "method_not_allowed"}).encode("utf-8")

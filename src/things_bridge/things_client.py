@@ -14,6 +14,7 @@ subprocess protocol.
 import json
 import subprocess
 import sys
+from typing import Any, cast
 
 from things_models.errors import (
     ThingsError,
@@ -86,7 +87,7 @@ class ThingsSubprocessClient:
         payload = self._invoke(["areas", "show", area_id])
         return Area.from_json(payload["area"])
 
-    def _invoke(self, argv: list[str]) -> dict:
+    def _invoke(self, argv: list[str]) -> dict[str, Any]:
         full_command = [*self._command, *argv]
         try:
             result = subprocess.run(
@@ -99,7 +100,11 @@ class ThingsSubprocessClient:
         except FileNotFoundError as exc:
             raise ThingsError(f"things client not found at {self._command[0]!r}") from exc
         except subprocess.TimeoutExpired as exc:
-            partial = (exc.stderr or "").strip()
+            raw_stderr = exc.stderr
+            if isinstance(raw_stderr, bytes):
+                partial = raw_stderr.decode("utf-8", errors="replace").strip()
+            else:
+                partial = (raw_stderr or "").strip()
             print(
                 f"things-bridge: things client subprocess timed out after "
                 f"{self._timeout_seconds}s: {partial or '<empty stderr>'}",
@@ -129,7 +134,7 @@ class ThingsSubprocessClient:
         return payload
 
 
-def _parse_payload(stdout: str, command: list[str], returncode: int) -> dict:
+def _parse_payload(stdout: str, command: list[str], returncode: int) -> dict[str, Any]:
     if not stdout or stdout.isspace():
         raise ThingsError(f"things client {command[0]!r} emitted no JSON output (rc={returncode})")
     try:
@@ -143,10 +148,10 @@ def _parse_payload(stdout: str, command: list[str], returncode: int) -> dict:
             f"things client {command[0]!r} emitted non-object JSON "
             f"(rc={returncode}, got {type(payload).__name__})"
         )
-    return payload
+    return cast(dict[str, Any], payload)
 
 
-def _error_from_payload(payload: dict) -> ThingsError:
+def _error_from_payload(payload: dict[str, Any]) -> ThingsError:
     code = payload.get("error")
     detail = payload.get("detail") or ""
     if code == "not_found":
