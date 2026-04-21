@@ -1036,6 +1036,38 @@ their existing names:
 Log-level policy, log location, rotation, and retention are
 documented in the subsections above.
 
+## Rate limiting and request budgets
+
+Both services run loopback-only by default (`127.0.0.1`) and are
+single-user on a host. `design/decisions/0022-rate-limiting-posture.md`
+records the decision to **defer application-layer rate limiting**
+for 1.0; the guards that remain are the 1 MiB request-body cap
+(`AgentAuthHandler.MAX_BODY_SIZE`), the 128-byte id-segment cap
+(`ThingsBridgeHandler._safe_id`), and `ApprovalManager`'s implicit
+per-family serialisation of JIT approvals via the notification
+plugin's blocking contract.
+
+Expected request rate and ceiling per endpoint on a typical
+single-operator deployment:
+
+| Endpoint                                                  | Expected rate (steady)      | Ceiling (short burst) | Notes                                                                    |
+| --------------------------------------------------------- | --------------------------- | --------------------- | ------------------------------------------------------------------------ |
+| `POST /agent-auth/v1/validate`                            | ≲ 10 / min per active agent | 60 / min              | One call per Things-bridge request; scripted agents are the main source. |
+| `POST /agent-auth/v1/token/refresh`                       | ≲ 4 / hour per family       | 20 / hour             | Access tokens default to 15 min TTL, so 4/hour is the natural ceiling.   |
+| `POST /agent-auth/v1/token/reissue`                       | ≲ 1 / day per family        | 5 / day               | Gated by JIT approval; burst unlikely given human-in-the-loop.           |
+| `POST /agent-auth/v1/token/{create,modify,revoke,rotate}` | ≲ 1 / day                   | 50 / day              | Operator-driven management.                                              |
+| `GET /agent-auth/v1/token/{list,status}`                  | ≲ 10 / min                  | 120 / min             | Operator-driven; management UIs may poll.                                |
+| `GET /agent-auth/health`                                  | 1 / 10 s (probe)            | 1 / s                 | Liveness probes.                                                         |
+| `GET /agent-auth/metrics`                                 | 1 / 15–60 s (scrape)        | 1 / 5 s               | Prometheus scrape.                                                       |
+| `GET /things-bridge/v1/*` (read)                          | ≲ 10 / min per active agent | 60 / min              | AppleScript subprocess is the bottleneck, not the bridge.                |
+| `GET /things-bridge/health`, `/things-bridge/metrics`     | 1 / 10–60 s                 | 1 / s                 | Same probe / scrape budget as agent-auth.                                |
+
+"Ceiling" is an observational target (what we expect to *see* in
+normal operation) rather than an enforced limit. Exceeding it
+during production use is a signal to investigate — a looping
+agent, a runaway polling loop, or a legitimate workflow change —
+not a condition to refuse.
+
 ## Security Considerations
 
 - The signing key is stored in the system keyring (macOS Keychain or libsecret/gnome-keyring), never as a plaintext file. Only agent-auth reads it.

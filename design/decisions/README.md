@@ -63,3 +63,5 @@ is linked from this index.
   — tag-triggered `release-publish.yml` attaches `multiple.intoto.jsonl` in-toto attestations to every release; verification via `slsa-verifier verify-artifact`.
 - [ADR 0021 — Mutation testing on security-critical modules](0021-mutation-testing-security-critical.md)
   — nightly mutmut pass on tokens/crypto/keys/scopes/store gated by a ratcheting score floor; `scripts/verify-standards.sh` enforces `[tool.mutmut]` config and scheduled workflow stay present.
+- [ADR 0022 — Defer application-layer rate limiting; rely on loopback-only bind and bounded request bodies](0022-rate-limiting-posture.md)
+  — 1.0 ships without per-IP / per-token buckets; the loopback bind, 1 MiB body cap, and `ApprovalManager` serialisation cover the threat model until the trust boundary extends beyond localhost.
