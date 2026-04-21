@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scripts/verify-standards.sh` now gates the graceful-shutdown
+  standard: both `src/agent_auth/server.py` and
+  `src/things_bridge/server.py` must install a `signal.SIGTERM`
+  handler, and at least one test under `tests/` must exercise
+  SIGTERM shutdown behaviour. Comment-only references are stripped
+  before the grep so a stale `# SIGTERM` cannot satisfy the gate
+  after the real handler installation has been removed
+  ([#32](https://github.com/aidanns/agent-auth/issues/32)).
 - Mutation testing on the token-lifecycle and cryptographic/storage
   trust base (`tokens`, `crypto`, `keys`, `scopes`, `store` modules)
   via [mutmut](https://github.com/boxed/mutmut) v3.5 configured in
