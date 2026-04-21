@@ -10,6 +10,12 @@ on:
   pull_request:
     branches: [main]
 
+# Shared across every integration-* job: the composite build action and
+# the pytest session resolve the pre-built image through this tag, so
+# they must agree.
+env:
+  AGENT_AUTH_TEST_IMAGE_TAG: agent-auth-test:ci
+
 jobs:
   unit:
     runs-on: ubuntu-latest
@@ -32,6 +38,10 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: ./.github/actions/build-integration-test-image
+        with:
+          tag: ${{ env.AGENT_AUTH_TEST_IMAGE_TAG }}
+
       - name: Run agent-auth integration tests
         run: task test -- --integration agent-auth
 
@@ -43,6 +53,10 @@ jobs:
       - uses: ./.github/actions/setup-toolchain
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/build-integration-test-image
+        with:
+          tag: ${{ env.AGENT_AUTH_TEST_IMAGE_TAG }}
 
       - name: Run things-bridge integration tests
         run: task test -- --integration things-bridge
@@ -56,6 +70,10 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: ./.github/actions/build-integration-test-image
+        with:
+          tag: ${{ env.AGENT_AUTH_TEST_IMAGE_TAG }}
+
       - name: Run things-cli integration tests
         run: task test -- --integration things-cli
 
@@ -67,6 +85,10 @@ jobs:
       - uses: ./.github/actions/setup-toolchain
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/build-integration-test-image
+        with:
+          tag: ${{ env.AGENT_AUTH_TEST_IMAGE_TAG }}
 
       - name: Run things-client-applescript integration tests
         run: task test -- --integration things-client-applescript

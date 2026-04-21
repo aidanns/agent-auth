@@ -31,6 +31,7 @@ import yaml
 from testcontainers.compose import DockerCompose
 
 from tests.integration._support import (
+    phase_timer,
     render_compose_file,
     seed_empty_fixtures_dir,
     wait_until_server_ready,
@@ -117,7 +118,7 @@ def things_bridge_stack_factory(
     Teardown is registered on the fixture so every container is removed
     at the end of the test.
     """
-    started: list[DockerCompose] = []
+    started: list[tuple[str, DockerCompose]] = []
 
     def _factory(
         *,
@@ -157,8 +158,9 @@ def things_bridge_stack_factory(
             context=str(rendered_compose.parent),
             compose_file_name=rendered_compose.name,
         )
-        started.append(compose)
-        compose.start()
+        started.append((project_name, compose))
+        with phase_timer("compose_start", project=project_name, service="things-bridge"):
+            compose.start()
 
         bridge_host = compose.get_service_host("things-bridge", THINGS_BRIDGE_PORT)
         bridge_port = compose.get_service_port("things-bridge", THINGS_BRIDGE_PORT)
@@ -192,9 +194,10 @@ def things_bridge_stack_factory(
 
     yield _factory
 
-    for compose in started:
+    for project_name, compose in started:
         try:
-            compose.stop()
+            with phase_timer("compose_stop", project=project_name, service="things-bridge"):
+                compose.stop()
         except Exception as e:
             print(f"warning: compose teardown failed: {e!r}")
 
