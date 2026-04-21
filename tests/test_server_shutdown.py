@@ -40,49 +40,52 @@ class _DenyPlugin(NotificationPlugin):
         return ApprovalResult(approved=False)
 
 
+def _wait_until(predicate, timeout: float = 2.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and not predicate():
+        time.sleep(0.01)
+
+
 @pytest.mark.covers_function("Handle Graceful Shutdown")
 def test_sigterm_triggers_server_shutdown(preserve_signal_handlers):
     server = Mock(spec=ThreadingHTTPServer)
-    _install_shutdown_handler(server, deadline_seconds=5.0)
-
-    invoke_installed_handler(signal.SIGTERM)
-
-    deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline and not server.shutdown.called:
-        time.sleep(0.01)
-    assert server.shutdown.called, "SIGTERM did not cause server.shutdown()"
+    drain_complete = _install_shutdown_handler(server, deadline_seconds=5.0)
+    try:
+        invoke_installed_handler(signal.SIGTERM)
+        _wait_until(lambda: server.shutdown.called)
+        assert server.shutdown.called, "SIGTERM did not cause server.shutdown()"
+    finally:
+        drain_complete.set()
 
 
 @pytest.mark.covers_function("Handle Graceful Shutdown")
 def test_sigint_also_triggers_server_shutdown(preserve_signal_handlers):
     server = Mock(spec=ThreadingHTTPServer)
-    _install_shutdown_handler(server, deadline_seconds=5.0)
-
-    invoke_installed_handler(signal.SIGINT)
-
-    deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline and not server.shutdown.called:
-        time.sleep(0.01)
-    assert server.shutdown.called
+    drain_complete = _install_shutdown_handler(server, deadline_seconds=5.0)
+    try:
+        invoke_installed_handler(signal.SIGINT)
+        _wait_until(lambda: server.shutdown.called)
+        assert server.shutdown.called
+    finally:
+        drain_complete.set()
 
 
 @pytest.mark.covers_function("Handle Graceful Shutdown")
 def test_shutdown_handler_is_idempotent(preserve_signal_handlers):
     server = Mock(spec=ThreadingHTTPServer)
-    _install_shutdown_handler(server, deadline_seconds=5.0)
+    drain_complete = _install_shutdown_handler(server, deadline_seconds=5.0)
+    try:
+        invoke_installed_handler(signal.SIGTERM)
+        invoke_installed_handler(signal.SIGTERM)
+        invoke_installed_handler(signal.SIGINT)
 
-    invoke_installed_handler(signal.SIGTERM)
-    invoke_installed_handler(signal.SIGTERM)
-    invoke_installed_handler(signal.SIGINT)
-
-    deadline = time.monotonic() + 1.0
-    while time.monotonic() < deadline and not server.shutdown.called:
-        time.sleep(0.01)
-
-    time.sleep(0.1)
-    assert (
-        server.shutdown.call_count == 1
-    ), f"expected one shutdown call, got {server.shutdown.call_count}"
+        _wait_until(lambda: server.shutdown.called, timeout=1.0)
+        time.sleep(0.1)
+        assert (
+            server.shutdown.call_count == 1
+        ), f"expected one shutdown call, got {server.shutdown.call_count}"
+    finally:
+        drain_complete.set()
 
 
 @pytest.mark.covers_function("Handle Graceful Shutdown")
@@ -91,25 +94,42 @@ def test_watchdog_force_exits_when_drain_exceeds_deadline(preserve_signal_handle
     exit_calls: list[int] = []
     monkeypatch.setattr("agent_auth.server.os._exit", lambda code: exit_calls.append(code))
 
-    release = threading.Event()
-
-    def _hanging_shutdown():
-        release.wait(timeout=5.0)
-
     server = Mock(spec=ThreadingHTTPServer)
-    server.shutdown.side_effect = _hanging_shutdown
-
     _install_shutdown_handler(server, deadline_seconds=0.1)
     invoke_installed_handler(signal.SIGTERM)
 
-    deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline and not exit_calls:
-        time.sleep(0.02)
-
-    release.set()
+    _wait_until(lambda: bool(exit_calls))
     assert exit_calls == [
         1
     ], f"watchdog did not force-exit within deadline; exit_calls={exit_calls}"
+
+
+@pytest.mark.covers_function("Handle Graceful Shutdown")
+def test_watchdog_bounds_server_close_not_just_shutdown(preserve_signal_handlers, monkeypatch):
+    """Regression pin: the deadline must span the full drain.
+
+    ``server.shutdown()`` only stops the accept loop; ``server_close()``
+    joins the in-flight request threads. If the watchdog releases as
+    soon as ``server.shutdown()`` returns, a hung request handler blocks
+    ``server_close()`` forever and the container's ``stop_grace_period``
+    is defeated. The handler must require the *caller* to signal drain
+    completion after every post-shutdown step — including
+    ``server_close`` — has returned.
+    """
+    exit_calls: list[int] = []
+    monkeypatch.setattr("agent_auth.server.os._exit", lambda code: exit_calls.append(code))
+
+    server = Mock(spec=ThreadingHTTPServer)
+    # shutdown() returns promptly — it's server_close() that hangs.
+    _install_shutdown_handler(server, deadline_seconds=0.1)
+    invoke_installed_handler(signal.SIGTERM)
+
+    _wait_until(lambda: bool(exit_calls))
+    assert exit_calls == [1], (
+        "watchdog fired too early or not at all; "
+        "it should wait for the returned drain_complete event, "
+        f"exit_calls={exit_calls}"
+    )
 
 
 @pytest.mark.covers_function("Handle Graceful Shutdown")
@@ -248,15 +268,44 @@ def test_audit_log_entry_from_inflight_request_is_durable_post_shutdown(
 
 @pytest.mark.covers_function("Handle Graceful Shutdown")
 def test_token_store_close_checkpoints_wal(tmp_dir, encryption_key):
-    """After ``close()`` the WAL should be drained so the next open does not replay."""
-    db_path = os.path.join(tmp_dir, "tokens.db")
-    store = TokenStore(db_path, encryption_key)
-    store.create_family("fam-checkpoint-test", {"agent-auth:health": "allow"})
-    store.close()
+    """``close()`` must run ``PRAGMA wal_checkpoint(TRUNCATE)`` before exit.
 
-    # A successful WAL checkpoint does not delete the -wal file, but it
-    # does zero its contents. Re-opening and reading the family back
-    # proves the data is durable and the store API remains usable (via
-    # a fresh connection) post-close.
-    reopened = TokenStore(db_path, encryption_key)
-    assert reopened.get_family("fam-checkpoint-test") is not None
+    Running the write on a throwaway thread and then joining it lets
+    SQLite release the creator connection before ``close()`` attempts
+    the checkpoint; a live reader would otherwise force the PRAGMA to
+    fall back to ``PASSIVE`` and leave the ``-wal`` file populated.
+    ``TRUNCATE`` zeroes the file once its pages have been copied into
+    the main DB — so observing size zero afterwards pins that the
+    method is not a no-op.
+    """
+    import sqlite3
+
+    db_path = os.path.join(tmp_dir, "tokens.db")
+    wal_path = db_path + "-wal"
+
+    def _write():
+        store = TokenStore(db_path, encryption_key)
+        store.create_family("fam-checkpoint-test", {"agent-auth:health": "allow"})
+
+    writer = threading.Thread(target=_write)
+    writer.start()
+    writer.join(timeout=5.0)
+    assert not writer.is_alive()
+
+    assert os.path.exists(wal_path), "WAL file should exist after a write"
+    assert os.path.getsize(wal_path) > 0, "pre-close WAL should carry uncheckpointed writes"
+
+    closer = TokenStore(db_path, encryption_key)
+    closer.close()
+
+    assert os.path.exists(wal_path), "TRUNCATE leaves the file in place"
+    assert (
+        os.path.getsize(wal_path) == 0
+    ), f"WAL was not truncated by close(); size={os.path.getsize(wal_path)}"
+
+    fresh = sqlite3.connect(db_path)
+    try:
+        count = fresh.execute("SELECT COUNT(*) FROM token_families").fetchone()[0]
+    finally:
+        fresh.close()
+    assert count == 1

@@ -84,24 +84,29 @@ Install a shared-shape shutdown handler in each of
 `src/things_bridge/server.py::run_server`. On the first delivery of
 SIGTERM or SIGINT the handler:
 
-1. Spawns a daemon drain thread that calls `server.shutdown()`. The
+1. Spawns a daemon thread that calls `server.shutdown()`. The
    drain cannot run on the `serve_forever` thread or
    `BaseServer.shutdown()` deadlocks waiting for its own loop to
    exit.
 2. Spawns a daemon watchdog thread that waits on a `drain_complete`
-   event with a `shutdown_deadline_seconds` timeout. On drain
-   completion the event fires and the watchdog returns without
-   acting. On timeout it calls `os._exit(1)` — bypassing finalisers
-   so a hung request handler cannot hold the process past its
-   container's `stop_grace_period`.
+   event with a `shutdown_deadline_seconds` timeout. On timeout it
+   calls `os._exit(1)` — bypassing finalisers so a hung request
+   handler cannot hold the process past its container's
+   `stop_grace_period`.
+
+`_install_shutdown_handler` returns the `drain_complete` event and
+`run_server` sets it only after every cleanup step has returned. The
+full ordering is: `serve_forever` returns → `server.server_close()`
+(which with `daemon_threads = False` on both subclasses blocks
+joining every in-flight request thread) → service-specific close
+(for agent-auth, `store.close()` running
+`PRAGMA wal_checkpoint(TRUNCATE)` on a fresh connection) →
+`drain_complete.set()`. The watchdog therefore spans the *whole*
+drain, not just the `serve_forever` unwind — an earlier draft
+released it on shutdown-only and was a silent way for a hung handler
+inside `server_close` to defeat the deadline.
 
 Subsequent signals are ignored (idempotent; one shutdown at a time).
-
-After `serve_forever()` returns, `run_server` calls `server_close()`
-(which joins in-flight request threads because both server classes
-now set `daemon_threads = False`) and, for agent-auth, calls
-`store.close()` to run `PRAGMA wal_checkpoint(TRUNCATE)` on a
-fresh connection before exit.
 
 `shutdown_deadline_seconds` defaults to `5.0` on both services to
 match the existing `docker/docker-compose.yaml` `stop_grace_period: 5s` budget. It lives on the service `Config` dataclasses so

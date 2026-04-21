@@ -268,17 +268,24 @@ def _install_shutdown_handler(
     server: ThreadingHTTPServer,
     deadline_seconds: float,
     service_name: str = "things-bridge",
-) -> None:
-    """Install SIGTERM/SIGINT handlers that drain the server within a deadline.
+) -> threading.Event:
+    """Install SIGTERM / SIGINT handlers that bound the full shutdown.
 
-    On first signal, spawns a daemon drain thread that calls
-    ``server.shutdown()`` (which must not run on the ``serve_forever``
-    thread or it deadlocks) and a daemon watchdog that ``os._exit(1)``s
-    if the drain has not completed within ``deadline_seconds``. The
-    watchdog cancels itself as soon as the drain returns, so the
-    normal path exits cleanly without a forced exit; it exists so a
-    hung request handler cannot hold the process open past its
-    container's ``stop_grace_period``.
+    On first signal, spawns two daemon threads: one calls
+    ``server.shutdown()`` to kick ``serve_forever`` out of its loop
+    (this must not run on the ``serve_forever`` thread or the call
+    deadlocks), and a watchdog that ``os._exit(1)``s if
+    ``deadline_seconds`` elapses without the returned ``drain_complete``
+    event being set.
+
+    The caller is responsible for setting ``drain_complete`` once
+    *every* post-shutdown cleanup step has returned —
+    ``server.server_close()`` (which with non-daemon request threads
+    blocks on ``_threads.join_all``) and any resource close. The
+    watchdog therefore spans the full drain, not just the
+    ``serve_forever`` unwind: a request handler hung inside
+    ``server_close`` cannot hold the process past its container's
+    ``stop_grace_period``.
     """
     shutdown_started = threading.Event()
     drain_complete = threading.Event()
@@ -293,21 +300,16 @@ def _install_shutdown_handler(
         )
         os._exit(1)
 
-    def _drain() -> None:
-        try:
-            server.shutdown()
-        finally:
-            drain_complete.set()
-
     def _handle(_signum: int, _frame: object) -> None:
         if shutdown_started.is_set():
             return
         shutdown_started.set()
         threading.Thread(target=_watchdog, daemon=True).start()
-        threading.Thread(target=_drain, daemon=True).start()
+        threading.Thread(target=server.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGTERM, _handle)
     signal.signal(signal.SIGINT, _handle)
+    return drain_complete
 
 
 def run_server(config: Config, things: ThingsClient, authz: AgentAuthClient) -> None:
@@ -317,9 +319,12 @@ def run_server(config: Config, things: ThingsClient, authz: AgentAuthClient) -> 
     within ``config.shutdown_deadline_seconds`` before returning.
     """
     server = ThingsBridgeServer(config, things, authz)
-    _install_shutdown_handler(server, config.shutdown_deadline_seconds)
+    drain_complete = _install_shutdown_handler(server, config.shutdown_deadline_seconds)
     print(f"things-bridge listening on {config.host}:{config.port}", flush=True)
     try:
         server.serve_forever()
     finally:
-        server.server_close()
+        try:
+            server.server_close()
+        finally:
+            drain_complete.set()

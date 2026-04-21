@@ -89,6 +89,8 @@ def auth_server(tmp_dir, signing_key, encryption_key):
         yield config, signing_key, store, f"http://127.0.0.1:{port}"
     finally:
         server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def _expire_token(db_path: str, token_id: str) -> None:

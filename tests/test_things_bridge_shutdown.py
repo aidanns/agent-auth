@@ -37,47 +37,50 @@ class _AlwaysValidAuthz:
         return None
 
 
+def _wait_until(predicate, timeout: float = 2.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and not predicate():
+        time.sleep(0.01)
+
+
 @pytest.mark.covers_function("Handle Bridge Graceful Shutdown")
 def test_sigterm_triggers_bridge_shutdown(preserve_signal_handlers):
     server = Mock(spec=ThreadingHTTPServer)
-    _install_shutdown_handler(server, deadline_seconds=5.0)
-
-    invoke_installed_handler(signal.SIGTERM)
-
-    deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline and not server.shutdown.called:
-        time.sleep(0.01)
-    assert server.shutdown.called
+    drain_complete = _install_shutdown_handler(server, deadline_seconds=5.0)
+    try:
+        invoke_installed_handler(signal.SIGTERM)
+        _wait_until(lambda: server.shutdown.called)
+        assert server.shutdown.called
+    finally:
+        drain_complete.set()
 
 
 @pytest.mark.covers_function("Handle Bridge Graceful Shutdown")
 def test_sigint_also_triggers_bridge_shutdown(preserve_signal_handlers):
     server = Mock(spec=ThreadingHTTPServer)
-    _install_shutdown_handler(server, deadline_seconds=5.0)
-
-    invoke_installed_handler(signal.SIGINT)
-
-    deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline and not server.shutdown.called:
-        time.sleep(0.01)
-    assert server.shutdown.called
+    drain_complete = _install_shutdown_handler(server, deadline_seconds=5.0)
+    try:
+        invoke_installed_handler(signal.SIGINT)
+        _wait_until(lambda: server.shutdown.called)
+        assert server.shutdown.called
+    finally:
+        drain_complete.set()
 
 
 @pytest.mark.covers_function("Handle Bridge Graceful Shutdown")
 def test_bridge_shutdown_handler_is_idempotent(preserve_signal_handlers):
     server = Mock(spec=ThreadingHTTPServer)
-    _install_shutdown_handler(server, deadline_seconds=5.0)
+    drain_complete = _install_shutdown_handler(server, deadline_seconds=5.0)
+    try:
+        invoke_installed_handler(signal.SIGTERM)
+        invoke_installed_handler(signal.SIGTERM)
+        invoke_installed_handler(signal.SIGINT)
 
-    invoke_installed_handler(signal.SIGTERM)
-    invoke_installed_handler(signal.SIGTERM)
-    invoke_installed_handler(signal.SIGINT)
-
-    deadline = time.monotonic() + 1.0
-    while time.monotonic() < deadline and not server.shutdown.called:
-        time.sleep(0.01)
-
-    time.sleep(0.1)
-    assert server.shutdown.call_count == 1
+        _wait_until(lambda: server.shutdown.called, timeout=1.0)
+        time.sleep(0.1)
+        assert server.shutdown.call_count == 1
+    finally:
+        drain_complete.set()
 
 
 @pytest.mark.covers_function("Handle Bridge Graceful Shutdown")
@@ -87,22 +90,32 @@ def test_bridge_watchdog_force_exits_when_drain_exceeds_deadline(
     exit_calls: list[int] = []
     monkeypatch.setattr("things_bridge.server.os._exit", lambda code: exit_calls.append(code))
 
-    release = threading.Event()
-
-    def _hanging_shutdown():
-        release.wait(timeout=5.0)
-
     server = Mock(spec=ThreadingHTTPServer)
-    server.shutdown.side_effect = _hanging_shutdown
-
     _install_shutdown_handler(server, deadline_seconds=0.1)
     invoke_installed_handler(signal.SIGTERM)
 
-    deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline and not exit_calls:
-        time.sleep(0.02)
+    _wait_until(lambda: bool(exit_calls))
+    assert exit_calls == [1]
 
-    release.set()
+
+@pytest.mark.covers_function("Handle Bridge Graceful Shutdown")
+def test_bridge_watchdog_bounds_server_close_not_just_shutdown(
+    preserve_signal_handlers, monkeypatch
+):
+    """Regression pin: deadline must cover ``server_close`` too.
+
+    See the agent-auth equivalent for rationale — ``server.shutdown()``
+    only stops the accept loop; the hung-request protection relies on
+    the watchdog still being armed during ``server_close``.
+    """
+    exit_calls: list[int] = []
+    monkeypatch.setattr("things_bridge.server.os._exit", lambda code: exit_calls.append(code))
+
+    server = Mock(spec=ThreadingHTTPServer)
+    _install_shutdown_handler(server, deadline_seconds=0.1)
+    invoke_installed_handler(signal.SIGTERM)
+
+    _wait_until(lambda: bool(exit_calls))
     assert exit_calls == [1]
 
 
