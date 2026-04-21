@@ -65,6 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the domain fields that keep their existing names. No code changes; this
   lands the standard that #26 (metrics endpoint), #20 (audit schema pinning),
   and #33 (observability design) build on.
+- **Graceful SIGTERM / SIGINT handling in `agent-auth serve` and
+  `things-bridge serve`.** Both entrypoints now install signal handlers that
+  stop accepting new connections, drain in-flight requests within
+  `shutdown_deadline_seconds` (default 5s, configurable per service), and
+  checkpoint the `agent-auth` SQLite WAL before exiting 0. A daemon
+  watchdog `os._exit(1)`s if drain exceeds the deadline so a hung request
+  cannot hold the process past its container's `stop_grace_period`. See
+  ADR 0018. Closes
+  [#154](https://github.com/aidanns/agent-auth/issues/154).
 
 ### Changed
 

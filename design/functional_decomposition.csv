@@ -33,10 +33,18 @@ Token Store,Query Tokens,"Read token and family records for validation, introspe
 Token Store,Encrypt Field,Encrypt a column value using AES-256-GCM with the database encryption key.
 Token Store,Decrypt Field,Decrypt a column value using AES-256-GCM with the database encryption key.
 agent-auth,HTTP API,Expose agent-auth functionality over HTTP for use by app bridges and CLIs. All endpoints are prefixed with /agent-auth/.
-HTTP API,Serve Validate Endpoint,"Handle POST /agent-auth/validate requests from app bridges, including blocking for JIT approval on prompt-tier scopes."
-HTTP API,Serve Refresh Endpoint,Handle POST /agent-auth/token/refresh requests from CLIs.
-HTTP API,Serve Reissue Endpoint,Handle POST /agent-auth/token/reissue requests from CLIs when the refresh token has expired. Triggers JIT approval via the configured notification plugin.
-HTTP API,Serve Status Endpoint,Handle GET /agent-auth/token/status requests for token introspection.
+HTTP API,Serve Validate Endpoint,"Handle POST /agent-auth/v1/validate requests from app bridges, including blocking for JIT approval on prompt-tier scopes."
+HTTP API,Serve Refresh Endpoint,Handle POST /agent-auth/v1/token/refresh requests from CLIs.
+HTTP API,Serve Reissue Endpoint,Handle POST /agent-auth/v1/token/reissue requests from CLIs when the refresh token has expired. Triggers JIT approval via the configured notification plugin.
+HTTP API,Serve Status Endpoint,Handle GET /agent-auth/v1/token/status requests for token introspection.
+HTTP API,Serve Health Endpoint,"Handle GET /agent-auth/health liveness / readiness probes; require an access token carrying the agent-auth:health scope, return 200 when the token store is reachable, 401 / 403 on missing / unscoped tokens, and 503 when the store is unreachable."
+HTTP API,Serve Token Create Endpoint,Handle POST /agent-auth/v1/token/create requests to create a new token family and return an access/refresh token pair.
+HTTP API,Serve Token List Endpoint,Handle GET /agent-auth/v1/token/list requests to return all token families and their scopes.
+HTTP API,Serve Token Modify Endpoint,"Handle POST /agent-auth/v1/token/modify requests to add, remove, or change tiers on scopes of an existing token family."
+HTTP API,Serve Token Revoke Endpoint,"Handle POST /agent-auth/v1/token/revoke requests to revoke a token family, invalidating all its tokens."
+HTTP API,Serve Token Rotate Endpoint,Handle POST /agent-auth/v1/token/rotate requests to revoke an existing token family and create a new one with the same scopes.
+HTTP API,Bootstrap Management Token,"On server startup, check the OS keyring for a management refresh token; if absent or revoked, create a new agent-auth:manage=allow token family directly via the store and persist the refresh token to the keyring."
+HTTP API,Handle Graceful Shutdown,"Install SIGTERM / SIGINT handlers that stop accepting new connections, drain in-flight requests within shutdown_deadline_seconds, checkpoint the token store WAL, and exit 0. A watchdog force-exits the process if drain exceeds the deadline."
 agent-auth,Audit Logging,Record all token operations and authorization decisions for security review.
 Audit Logging,Log Token Operation,"Record token creation, refresh, reissue, revocation, rotation, and scope modification events."
 Audit Logging,Log Authorization Decision,"Record validation results including scope checks, tier resolutions, and JIT approval outcomes."
@@ -47,10 +55,12 @@ CLI Interface,Handle Token Modify Command,Parse arguments and invoke scope modif
 CLI Interface,Handle Token Revoke Command,Parse arguments and invoke token family revocation.
 CLI Interface,Handle Token Rotate Command,Parse arguments and invoke token family rotation.
 CLI Interface,Handle Serve Command,Start the agent-auth HTTP server.
+CLI Interface,Handle Management Token Show Command,Retrieve the management refresh token from the OS keyring and print it (or surface a clean error and non-zero exit if the keyring is unavailable).
 agent-auth,Things Bridge,"Expose authenticated Things 3 read operations over HTTP to the CLI client, delegating authorization to agent-auth."
 Things Bridge,Delegate Token Validation,"Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation."
 Things Bridge,Fetch Things Data,"Retrieve the todos, projects, or areas requested by the client, translating typed errors into the ThingsError hierarchy."
 Things Bridge,Serve Bridge HTTP API,Expose Things 3 read operations as HTTP endpoints for the CLI client under the /things-bridge/ prefix.
+Things Bridge,Handle Bridge Graceful Shutdown,"Install SIGTERM / SIGINT handlers that stop accepting new connections, drain in-flight requests within shutdown_deadline_seconds, and exit 0. A watchdog force-exits the process if drain exceeds the deadline."
 agent-auth,Things CLI,"Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer."
 Things CLI,Send Bridge Request,Send an authenticated HTTP request to the app bridge with the bearer token.
 Things CLI,Auto Refresh Token,"Detect 401 responses, refresh the token pair via agent-auth, and retry the request. If the refresh token has expired, attempt re-issuance via JIT approval."

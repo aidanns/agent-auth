@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
-# SPDX-License-Identifier: MIT
-
 vars: {
   d2-config: {
     layout-engine: elk
@@ -143,7 +140,7 @@ f32.width: 400
 root -> f32
 f32_container: "" {
   grid-columns: 1
-  grid-rows: 4
+  grid-rows: 12
   grid-gap: 5
   style: {
     stroke-width: 0
@@ -157,13 +154,29 @@ f32_container: "" {
   f35.width: 400
   f36: Serve Status Endpoint
   f36.width: 400
+  f37: Serve Health Endpoint
+  f37.width: 400
+  f38: Serve Token Create Endpoint
+  f38.width: 400
+  f39: Serve Token List Endpoint
+  f39.width: 400
+  f40: Serve Token Modify Endpoint
+  f40.width: 400
+  f41: Serve Token Revoke Endpoint
+  f41.width: 400
+  f42: Serve Token Rotate Endpoint
+  f42.width: 400
+  f43: Bootstrap Management Token
+  f43.width: 400
+  f44: Handle Graceful Shutdown
+  f44.width: 400
 }
 f32 -> f32_container
 
-f37: Audit Logging
-f37.width: 400
-root -> f37
-f37_container: "" {
+f45: Audit Logging
+f45.width: 400
+root -> f45
+f45_container: "" {
   grid-columns: 1
   grid-rows: 2
   grid-gap: 5
@@ -171,63 +184,67 @@ f37_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f38: Log Token Operation
-  f38.width: 400
-  f39: Log Authorization Decision
-  f39.width: 400
-}
-f37 -> f37_container
-
-f40: CLI Interface
-f40.width: 400
-root -> f40
-f40_container: "" {
-  grid-columns: 1
-  grid-rows: 6
-  grid-gap: 5
-  style: {
-    stroke-width: 0
-    fill: transparent
-  }
-  f41: Handle Token Create Command
-  f41.width: 400
-  f42: Handle Token List Command
-  f42.width: 400
-  f43: Handle Token Modify Command
-  f43.width: 400
-  f44: Handle Token Revoke Command
-  f44.width: 400
-  f45: Handle Token Rotate Command
-  f45.width: 400
-  f46: Handle Serve Command
+  f46: Log Token Operation
   f46.width: 400
+  f47: Log Authorization Decision
+  f47.width: 400
 }
-f40 -> f40_container
+f45 -> f45_container
 
-f47: Things Bridge
-f47.width: 400
-root -> f47
-f47_container: "" {
+f48: CLI Interface
+f48.width: 400
+root -> f48
+f48_container: "" {
   grid-columns: 1
-  grid-rows: 3
+  grid-rows: 7
   grid-gap: 5
   style: {
     stroke-width: 0
     fill: transparent
   }
-  f48: Delegate Token Validation
-  f48.width: 400
-  f49: Fetch Things Data
+  f49: Handle Token Create Command
   f49.width: 400
-  f50: Serve Bridge HTTP API
+  f50: Handle Token List Command
   f50.width: 400
+  f51: Handle Token Modify Command
+  f51.width: 400
+  f52: Handle Token Revoke Command
+  f52.width: 400
+  f53: Handle Token Rotate Command
+  f53.width: 400
+  f54: Handle Serve Command
+  f54.width: 400
+  f55: Handle Management Token Show Command
+  f55.width: 400
 }
-f47 -> f47_container
+f48 -> f48_container
 
-f51: Things CLI
-f51.width: 400
-root -> f51
-f51_container: "" {
+f56: Things Bridge
+f56.width: 400
+root -> f56
+f56_container: "" {
+  grid-columns: 1
+  grid-rows: 4
+  grid-gap: 5
+  style: {
+    stroke-width: 0
+    fill: transparent
+  }
+  f57: Delegate Token Validation
+  f57.width: 400
+  f58: Fetch Things Data
+  f58.width: 400
+  f59: Serve Bridge HTTP API
+  f59.width: 400
+  f60: Handle Bridge Graceful Shutdown
+  f60.width: 400
+}
+f56 -> f56_container
+
+f61: Things CLI
+f61.width: 400
+root -> f61
+f61_container: "" {
   grid-columns: 1
   grid-rows: 5
   grid-gap: 5
@@ -235,15 +252,15 @@ f51_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f52: Send Bridge Request
-  f52.width: 400
-  f53: Auto Refresh Token
-  f53.width: 400
-  f54: Store CLI Credentials
-  f54.width: 400
-  f55: Handle App Commands
-  f55.width: 400
-  f56: Display Results
-  f56.width: 400
+  f62: Send Bridge Request
+  f62.width: 400
+  f63: Auto Refresh Token
+  f63.width: 400
+  f64: Store CLI Credentials
+  f64.width: 400
+  f65: Handle App Commands
+  f65.width: 400
+  f66: Display Results
+  f66.width: 400
 }
-f51 -> f51_container
+f61 -> f61_container

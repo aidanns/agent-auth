@@ -195,3 +195,26 @@ class TokenStore:
     def ping(self) -> None:
         """Verify the database connection is usable. Raises on failure."""
         self._get_conn().execute("SELECT 1").fetchone()
+
+    def close(self) -> None:
+        """Checkpoint the WAL before the process exits.
+
+        Opens a short-lived connection on the caller's thread (the per-
+        thread pool cannot be touched from a different thread because
+        ``sqlite3`` enforces ``check_same_thread`` by default) and runs
+        ``PRAGMA wal_checkpoint(TRUNCATE)`` so the next process start
+        does not have to replay the WAL. Errors are swallowed — the
+        process is terminating and we would rather exit than surface a
+        cleanup failure.
+        """
+        try:
+            conn = sqlite3.connect(self._db_path)
+        except sqlite3.Error:
+            return
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.commit()
+        except sqlite3.Error:
+            pass
+        finally:
+            conn.close()

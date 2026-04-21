@@ -5,6 +5,7 @@
 """Shared test fixtures for agent-auth."""
 
 import os
+import signal
 import tempfile
 from unittest.mock import patch
 
@@ -42,6 +43,24 @@ def test_config(tmp_dir):
 @pytest.fixture
 def store(test_config, encryption_key):
     return TokenStore(test_config.db_path, encryption_key)
+
+
+@pytest.fixture
+def preserve_signal_handlers():
+    """Restore SIGTERM / SIGINT handlers after the test.
+
+    Any test that calls ``_install_shutdown_handler`` mutates
+    process-global signal state; without this fixture a later test's
+    SIGINT (or pytest's own interrupt handling) would invoke our
+    installed callback.
+    """
+    originals = {
+        signal.SIGTERM: signal.getsignal(signal.SIGTERM),
+        signal.SIGINT: signal.getsignal(signal.SIGINT),
+    }
+    yield
+    for sig, handler in originals.items():
+        signal.signal(sig, handler)
 
 
 @pytest.fixture

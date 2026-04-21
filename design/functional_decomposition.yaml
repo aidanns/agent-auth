@@ -99,6 +99,8 @@ functions:
         description: Handle POST /agent-auth/v1/token/rotate requests to revoke an existing token family and create a new one with the same scopes.
       - name: Bootstrap Management Token
         description: On server startup, check the OS keyring for a management refresh token; if absent or revoked, create a new agent-auth:manage=allow token family directly via the store and persist the refresh token to the keyring.
+      - name: Handle Graceful Shutdown
+        description: Install SIGTERM / SIGINT handlers that stop accepting new connections, drain in-flight requests within shutdown_deadline_seconds, checkpoint the token store WAL, and exit 0. A watchdog force-exits the process if drain exceeds the deadline.
   - name: Audit Logging
     description: Record all token operations and authorization decisions for security review.
     functions:
@@ -132,6 +134,8 @@ functions:
         description: Retrieve the todos, projects, or areas requested by the client, translating typed errors into the ThingsError hierarchy.
       - name: Serve Bridge HTTP API
         description: Expose Things 3 read operations as HTTP endpoints for the CLI client under the /things-bridge/ prefix.
+      - name: Handle Bridge Graceful Shutdown
+        description: Install SIGTERM / SIGINT handlers that stop accepting new connections, drain in-flight requests within shutdown_deadline_seconds, and exit 0. A watchdog force-exits the process if drain exceeds the deadline.
   - name: Things CLI
     description: Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer.
     functions:

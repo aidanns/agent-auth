@@ -5,6 +5,10 @@
 """HTTP server exposing read-only Things operations."""
 
 import json
+import os
+import signal
+import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
@@ -247,6 +251,12 @@ def _first(params: dict[str, list[str]], key: str) -> str | None:
 class ThingsBridgeServer(ThreadingHTTPServer):
     """Threaded HTTP server with shared state for things-bridge."""
 
+    # Non-daemon request threads combined with ``block_on_close=True``
+    # (inherited default from ``ThreadingMixIn``) let ``server_close``
+    # wait for in-flight requests to complete during graceful shutdown.
+    # The shutdown watchdog in ``run_server`` bounds the wait.
+    daemon_threads = False
+
     def __init__(self, config: Config, things: ThingsClient, authz: AgentAuthClient):
         self.config = config
         self.things = things
@@ -254,12 +264,62 @@ class ThingsBridgeServer(ThreadingHTTPServer):
         super().__init__((config.host, config.port), ThingsBridgeHandler)
 
 
+def _install_shutdown_handler(
+    server: ThreadingHTTPServer,
+    deadline_seconds: float,
+    service_name: str = "things-bridge",
+) -> None:
+    """Install SIGTERM/SIGINT handlers that drain the server within a deadline.
+
+    On first signal, spawns a daemon drain thread that calls
+    ``server.shutdown()`` (which must not run on the ``serve_forever``
+    thread or it deadlocks) and a daemon watchdog that ``os._exit(1)``s
+    if the drain has not completed within ``deadline_seconds``. The
+    watchdog cancels itself as soon as the drain returns, so the
+    normal path exits cleanly without a forced exit; it exists so a
+    hung request handler cannot hold the process open past its
+    container's ``stop_grace_period``.
+    """
+    shutdown_started = threading.Event()
+    drain_complete = threading.Event()
+
+    def _watchdog():
+        if drain_complete.wait(timeout=deadline_seconds):
+            return
+        print(
+            f"{service_name}: shutdown deadline of {deadline_seconds}s exceeded, force-exiting",
+            file=sys.stderr,
+            flush=True,
+        )
+        os._exit(1)
+
+    def _drain():
+        try:
+            server.shutdown()
+        finally:
+            drain_complete.set()
+
+    def _handle(_signum, _frame):
+        if shutdown_started.is_set():
+            return
+        shutdown_started.set()
+        threading.Thread(target=_watchdog, daemon=True).start()
+        threading.Thread(target=_drain, daemon=True).start()
+
+    signal.signal(signal.SIGTERM, _handle)
+    signal.signal(signal.SIGINT, _handle)
+
+
 def run_server(config: Config, things: ThingsClient, authz: AgentAuthClient) -> None:
-    """Start the things-bridge HTTP server."""
+    """Start the things-bridge HTTP server.
+
+    Registers SIGTERM and SIGINT handlers that drain in-flight requests
+    within ``config.shutdown_deadline_seconds`` before returning.
+    """
     server = ThingsBridgeServer(config, things, authz)
-    print(f"things-bridge listening on {config.host}:{config.port}")
+    _install_shutdown_handler(server, config.shutdown_deadline_seconds)
+    print(f"things-bridge listening on {config.host}:{config.port}", flush=True)
     try:
         server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nShutting down.")
-        server.shutdown()
+    finally:
+        server.server_close()

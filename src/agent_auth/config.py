@@ -43,6 +43,10 @@ class Config:
     notification_plugin_config: dict = field(default_factory=dict)
     db_path: str = ""
     log_path: str = ""
+    # Upper bound on how long ``serve`` will wait for in-flight requests to
+    # drain after SIGTERM before a watchdog thread force-exits the process.
+    # Must fit inside the deployment's container ``stop_grace_period``.
+    shutdown_deadline_seconds: float = 5.0
 
     def __post_init__(self):
         if not self.db_path:

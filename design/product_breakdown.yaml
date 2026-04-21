@@ -40,6 +40,7 @@ components:
           - Serve Token Revoke Endpoint
           - Serve Token Rotate Endpoint
           - Bootstrap Management Token
+          - Handle Graceful Shutdown
           - Log Token Operation
           - Log Authorization Decision
           - Handle Token Create Command
@@ -79,6 +80,7 @@ components:
           - Delegate Token Validation
           - Fetch Things Data
           - Serve Bridge HTTP API
+          - Handle Bridge Graceful Shutdown
       - name: things-client-cli-applescript
         description: Read-only CLI shipped with the distribution that answers todos / projects / areas sub-commands by running AppleScript via osascript. The bridge's default things_client_command.
         functions: []

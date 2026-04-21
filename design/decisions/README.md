@@ -55,3 +55,5 @@ is linked from this index.
   — autorelease via Release Please; keyless cosign signatures and per-artefact SPDX SBOMs on every release; REUSE per-file licensing across the source tree.
 - [ADR 0017 — Adopt OpenTelemetry semantic conventions for metrics and logs](0017-opentelemetry-semantic-conventions.md)
   — HTTP-server metric and log attribute names follow OTel semconv v1.40.0; domain fields keep their existing names.
+- [ADR 0018 — Handle SIGTERM gracefully in `agent-auth` and `things-bridge`](0018-graceful-shutdown.md)
+  — SIGTERM/SIGINT drain in-flight requests within `shutdown_deadline_seconds` (default 5s) before a watchdog force-exits via `os._exit(1)`.

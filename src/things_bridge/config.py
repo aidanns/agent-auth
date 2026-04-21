@@ -44,6 +44,10 @@ class Config:
     # Kept above the shipped CLI's own 30s osascript timeout so the child can
     # surface a structured timeout envelope before the bridge kills it.
     request_timeout_seconds: float = 35.0
+    # Upper bound on how long ``serve`` will wait for in-flight requests to
+    # drain after SIGTERM before a watchdog thread force-exits the process.
+    # Must fit inside the deployment's container ``stop_grace_period``.
+    shutdown_deadline_seconds: float = 5.0
     log_path: str = ""
 
     def __post_init__(self):
