@@ -1456,3 +1456,65 @@ if [[ ${fault_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: ${fault_dir}/ covers all required fault-injection scenarios."
+
+# Observability design documentation per
+# .claude/instructions/service-design.md ("Observability design") and
+# the deterministic regression check from issue #33:
+#
+#   - Either design/DESIGN.md or design/OBSERVABILITY.md contains the
+#     five required pieces: log schema, log levels, log location,
+#     retention policy, and metrics catalogue. Heading patterns are
+#     forgiving (accept a dedicated heading or a sentence whose text
+#     carries the topic) because the content has historically lived
+#     inline under ``## Observability`` rather than under a named
+#     subheading per topic.
+
+observability_missing=0
+
+fail_observability_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  observability_missing=1
+}
+
+observability_sources=()
+[[ -f design/DESIGN.md ]] && observability_sources+=(design/DESIGN.md)
+[[ -f design/OBSERVABILITY.md ]] && observability_sources+=(design/OBSERVABILITY.md)
+
+if [[ ${#observability_sources[@]} -eq 0 ]]; then
+  fail_observability_check \
+    "neither design/DESIGN.md nor design/OBSERVABILITY.md exists." \
+    "Create one of these documents with the observability design."
+else
+  observability_text="$(cat "${observability_sources[@]}")"
+
+  # Combined "name|pattern" entries keep the required-topic list
+  # sortable without misaligned parallel arrays. Each pattern is a
+  # case-insensitive ERE alternation that matches either a section
+  # heading or a distinctive phrase from the body copy.
+  observability_topics=(
+    # keep-sorted start
+    "log-levels|^###[[:space:]]+Log levels|log[- ]level policy"
+    "log-location|^###[[:space:]]+Log location|log location"
+    "log-schema|^###[[:space:]]+Audit log fields|^###[[:space:]]+Log schema|log schema|schema_version"
+    "metrics-catalogue|^###[[:space:]]+HTTP server metrics|^###[[:space:]]+Metrics catalogue|metrics catalogue"
+    "retention|^###[[:space:]]+Retention|retention (is the operator|policy|expectations)"
+    # keep-sorted end
+  )
+
+  for entry in "${observability_topics[@]}"; do
+    topic_name="${entry%%|*}"
+    topic_pattern="${entry#*|}"
+    if ! grep -qiE "${topic_pattern}" <<<"${observability_text}"; then
+      fail_observability_check \
+        "observability design is missing the '${topic_name}' topic." \
+        "Add coverage matching: ${topic_pattern}"
+    fi
+  done
+fi
+
+if [[ ${observability_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: observability design (log schema, levels, location, retention, metrics catalogue) is documented."

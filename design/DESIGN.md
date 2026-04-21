@@ -813,13 +813,84 @@ Prometheus text exposition (v0.0.4) gated by an
 The audit-log schema is pinned by contract tests in
 `tests/test_audit_schema.py` and versioned via `SCHEMA_VERSION` in
 `src/agent_auth/audit.py` (see "Audit log fields" below).
-Log-level policy and retention policy are deferred to the dedicated
-observability design document (tracked in #33), which will hold the
-full metrics catalogue in one place. This section pins the naming
-standard those efforts build against; it does not yet satisfy
-`.claude/instructions/service-design.md`'s Observability-design
-standard in full — the missing log-level and retention pieces are
-deliberately scoped to #33.
+
+Three observable surfaces ship with each service: the audit log
+(JSON-lines on disk), the operational streams (human-readable text
+on stdout / stderr), and the Prometheus scrape endpoint
+(`GET /<service>/metrics`). The rest of this section pins their
+schema, routing, log levels, locations, rotation, and retention,
+satisfying `.claude/instructions/service-design.md`'s
+Observability-design standard.
+
+### Log streams
+
+Each surface has a distinct purpose and stability contract; mixing
+them would break downstream expectations:
+
+| Stream         | Format          | Destination                                              | Purpose                                                                                                 | Stability                                                                             |
+| -------------- | --------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Audit log      | JSON-lines      | `$XDG_STATE_HOME/agent-auth/audit.log` (agent-auth only) | Security-relevant events for SIEM, compliance, forensics.                                               | Versioned via `schema_version`; contract-tested.                                      |
+| Operational    | Human text      | stdout / stderr of the server or CLI process             | One-off messages — startup banner, shutdown notices, CLI user feedback, fatal errors before audit init. | Not versioned; phrasing may change without notice. Not for programmatic consumption.  |
+| Metrics scrape | Prometheus text | `GET /<service>/metrics`                                 | Aggregate counters / histograms for dashboards and alerting.                                            | Metric names and labels documented in "HTTP server metrics" / "Domain metrics" below. |
+
+things-bridge emits no dedicated audit log — every request it
+handles traces back to agent-auth's audit trail via the delegated
+validation call, so audit coverage is single-sourced there.
+
+### Log levels
+
+The project deliberately does *not* use Python's `logging` module
+and therefore has no DEBUG / INFO / WARN / ERROR hierarchy. The
+flat two-stream model reduces the surface where an operator must
+configure log-level routing on a personal-use deployment:
+
+| "Level"     | Goes where           | When it's emitted                                                          |
+| ----------- | -------------------- | -------------------------------------------------------------------------- |
+| Audit       | JSON-lines audit log | Every token lifecycle operation + every validation / JIT-approval outcome. |
+| Operational | stdout               | Startup banner (service name + bound port), shutdown notices.              |
+| Operational | stderr               | Shutdown-deadline overrun, CLI error messages, Python tracebacks on crash. |
+
+DEBUG-style tracing (per-request spans, internal state dumps) is
+not shipped. When a deeper trace is needed for a specific
+investigation, reach for a debugger or add a targeted print in a
+branch — do not introduce a persistent DEBUG channel, which would
+create an auxiliary surface that can drift from the audit schema.
+
+### Log location and rotation
+
+| Stream      | Location                               | Rotation                                                                                                                                                                                                             |
+| ----------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Audit log   | `$XDG_STATE_HOME/agent-auth/audit.log` | **Not rotated by the service.** The operator is expected to rotate via `logrotate`, `newsyslog`, or equivalent; agent-auth re-opens the log file via plain append on every write, so post-rotate truncation is safe. |
+| Operational | stdout / stderr of the process         | Handled by whatever captures the process (systemd journal, launchd, container runtime). Not the service's concern.                                                                                                   |
+
+`$XDG_STATE_HOME` falls back to `~/.local/state` on Linux and
+`~/Library/Application Support` on macOS per the XDG base-directory
+spec. The path is honoured by `Config.log_path`'s default; the
+operator can override it in `config.yaml`.
+
+### Retention policy
+
+Retention is the operator's responsibility:
+
+- **Audit log** — recommended minimum of 90 days for a
+  personal-use deployment; extend per any applicable compliance
+  obligations. The file is append-only; use `logrotate` (or host
+  equivalent) to archive and optionally compress older segments.
+  Automated pruning from within the service is intentionally out
+  of scope — any retention policy would also need a tamper-evidence
+  story that's beyond the project's assurance level (see
+  `design/ASSURANCE.md`).
+- **Operational logs** — best-effort. The service writes them to
+  stdout / stderr and does not persist them; retention is whatever
+  the process supervisor records.
+- **Metrics** — not persisted by the service. Any Prometheus
+  scraper records its own retention per its deployment config.
+
+No message emitted by the service requires asynchronous operator
+action — all actionable signals either return a non-2xx HTTP
+status or fail the process with a non-zero exit code. A missing
+`audit.log` at startup is non-fatal; the service creates it on
+first write.
 
 ### HTTP server metrics
 
@@ -928,8 +999,8 @@ their existing names:
 | `grant_type`     | string | JIT grant flavour on a `prompt`-tier approval.                                                                                                                                                                                 |
 | `reason`         | string | Denial reason code on `validation_denied` / `reissue_denied`.                                                                                                                                                                  |
 
-The dedicated observability design (#33) will extend this mapping
-with log-level policy and retention details.
+Log-level policy, log location, rotation, and retention are
+documented in the subsections above.
 
 ## Security Considerations
 
