@@ -1348,3 +1348,61 @@ PY
 }
 
 echo "verify-standards: /agent-auth/metrics and /things-bridge/metrics are registered with metric-name test coverage."
+
+# Graceful SIGTERM / SIGINT shutdown per
+# .claude/instructions/service-design.md ("Graceful shutdown") and the
+# deterministic regression check from issue #32:
+#
+#   - Both server modules (src/agent_auth/server.py,
+#     src/things_bridge/server.py) install a SIGTERM handler.
+#   - At least one test under tests/ exercises SIGTERM shutdown
+#     behaviour (grepping the literal token SIGTERM — the existing
+#     subprocess-driven tests in tests/test_server_shutdown.py and
+#     tests/test_things_bridge_shutdown.py already satisfy this).
+#
+# The gate is grep-only so it won't false-positive on a stale
+# `# SIGTERM` comment after the real `signal.signal(signal.SIGTERM, ...)`
+# invocation has been removed: strip_comments is applied first.
+
+shutdown_missing=0
+
+fail_shutdown_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  shutdown_missing=1
+}
+
+for server_file in src/agent_auth/server.py src/things_bridge/server.py; do
+  if [[ ! -f "${server_file}" ]]; then
+    fail_shutdown_check \
+      "${server_file} is missing." \
+      "Restore the server module or update this check."
+    continue
+  fi
+  # strip_comments removes trailing comments so a commented-out mention
+  # of signal.SIGTERM doesn't satisfy the gate after the real handler
+  # installation has been removed.
+  if ! strip_comments "${server_file}" | grep -qE "signal\.signal\([[:space:]]*signal\.SIGTERM"; then
+    fail_shutdown_check \
+      "${server_file} does not install a SIGTERM handler." \
+      "Call 'signal.signal(signal.SIGTERM, ...)' in the server startup path (see .claude/instructions/service-design.md Graceful shutdown)."
+  fi
+done
+
+# Look for at least one test anywhere under tests/ that references
+# SIGTERM in executable code. ``test_server_shutdown.py`` and
+# ``test_things_bridge_shutdown.py`` both satisfy this today via their
+# ``invoke_installed_handler(signal.SIGTERM)`` + subprocess-driven
+# coverage.
+test_sigterm_hits="$(grep -rlE "\bSIGTERM\b" tests/ 2>/dev/null | grep -v __pycache__ || true)"
+if [[ -z "${test_sigterm_hits}" ]]; then
+  fail_shutdown_check \
+    "no test under tests/ references SIGTERM." \
+    "Add a test that sends SIGTERM to the server (or invokes the installed handler) and asserts a clean drain."
+fi
+
+if [[ ${shutdown_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: agent-auth and things-bridge install SIGTERM handlers and tests exercise shutdown behaviour."
