@@ -115,6 +115,27 @@ floor ratchets upward per
   integration tests exercise Docker-backed service interactions that
   don't map cleanly onto `src/` line coverage.
 
+### Mutation score
+
+`task mutation-test` runs [mutmut](https://github.com/boxed/mutmut)
+against the security-critical modules listed in
+`[tool.mutmut].paths_to_mutate` (tokens, crypto, keys, scopes, store)
+and gates the resulting score against the floor in
+`[tool.mutation_score].fail_under`. The job is scheduled nightly in
+`.github/workflows/mutation.yml` rather than per-PR — runtime is
+too high — so a score regression is caught within 24h rather than
+immediately. Rationale in
+[ADR 0021](design/decisions/0021-mutation-testing-security-critical.md).
+
+- **Bumping the floor** (mutation-strengthening PRs): run
+  `task mutation-test` locally (or download the `mutmut-stats`
+  artifact from a completed nightly run), compute the new score from
+  `mutants/mutmut-cicd-stats.json` as `killed / (killed + survived)`,
+  and raise `fail_under` in `[tool.mutation_score]` to one point
+  below the new score (so fluctuation doesn't flake CI).
+- **Lowering the floor** (rare): only with a commit-message
+  justification; never lower silently. The floor never goes below 0.
+
 ## Commit conventions
 
 Use conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`,

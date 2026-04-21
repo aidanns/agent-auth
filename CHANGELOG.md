@@ -15,6 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Mutation testing on the token-lifecycle and cryptographic/storage
+  trust base (`tokens`, `crypto`, `keys`, `scopes`, `store` modules)
+  via [mutmut](https://github.com/boxed/mutmut) v3.5 configured in
+  `[tool.mutmut]`. A new nightly scheduled workflow
+  (`.github/workflows/mutation.yml`) runs `task mutation-test`, which
+  invokes mutmut over those five modules against the focused unit
+  test files that exercise them and then gates the mutation score
+  (`killed / (killed + survived)`) via
+  `scripts/check-mutation-score.sh` against the floor in
+  `[tool.mutation_score].fail_under` (initial floor 65.0; local
+  baseline 68.95% — 262 killed / 380 actionable mutants).
+  `CONTRIBUTING.md` § "Mutation score" documents the
+  ratchet-upward-only policy; ADR 0021 records the rationale.
+  `scripts/verify-standards.sh` gates presence of both the
+  `[tool.mutmut]` / `[tool.mutation_score]` configuration and a
+  scheduled workflow invoking the tool. `design/SSDF.md` PW.8.2
+  updated from *Partial* → *Implemented for mutation testing*.
+  Closes
+  [#38](https://github.com/aidanns/agent-auth/issues/38).
 - **`design/SELF_ASSESSMENT.md` — CNCF TAG-Security-style security
   self-assessment covering agent-auth, things-bridge, and things-cli
   as a system.** Structured around the

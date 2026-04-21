@@ -24,6 +24,7 @@ dev = [
     # keep-sorted start
     "build>=1.0",
     "keyrings.alt>=5.0",
+    "mutmut>=3.5",
     "mypy>=1.20",
     "openapi-spec-validator>=0.7",
     "pip-audit>=2.7",
@@ -164,3 +165,74 @@ module = [
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_calls = false
+
+# Mutation testing, per .claude/instructions/testing-standards.md
+# "Mutation testing on security-critical paths" and ADR 0021. Mutates
+# the five modules that together implement the token lifecycle and
+# cryptographic/storage trust base: tokens (HMAC signing / parsing),
+# crypto (AES-GCM encrypt/decrypt), keys (keyring load/generate),
+# scopes (tier resolution / authorisation decisions), store (token
+# family persistence with field-level encryption). Survivors on these
+# modules indicate a real gap in the test suite because a subtle
+# regression here is a security defect rather than a functional one.
+#
+# The runner is scoped to the unit-test files that directly exercise
+# these modules so a single mutant triggers at most one focused test
+# run rather than the full suite — mutation testing otherwise scales
+# quadratically with test-suite size and becomes impractical on every
+# PR. This job runs nightly on CI (see mutation.yml); the score floor
+# is enforced by scripts/check-mutation-score.sh, which reads the
+# threshold from the [tool.mutation_score] section below.
+[tool.mutmut]
+paths_to_mutate = [
+    # keep-sorted start
+    "src/agent_auth/crypto.py",
+    "src/agent_auth/keys.py",
+    "src/agent_auth/scopes.py",
+    "src/agent_auth/store.py",
+    "src/agent_auth/tokens.py",
+    # keep-sorted end
+]
+# mutmut only copies files under paths_to_mutate into the mutants/
+# working copy by default, so sibling modules (agent_auth.config,
+# agent_auth.audit, agent_auth.errors, ...) and the other top-level
+# packages referenced by the test suite are missing at import time.
+# Replicate the entire src/ + tests_support so the Python imports the
+# pytest session expects all resolve; per-mutant copies overwrite the
+# files under paths_to_mutate for each mutation.
+also_copy = [
+    "src/",
+    "src/tests_support/",
+]
+# Explicitly override the default tests_dir to just the unit-test
+# files that directly exercise the mutated modules. Integration
+# tests under tests/integration/* are too slow for the per-mutant
+# loop and the other tests/test_*.py files don't add signal on
+# tokens / crypto / keys / scopes / store.
+tests_dir = [
+    # keep-sorted start
+    "tests/test_crypto.py",
+    "tests/test_keys.py",
+    "tests/test_scopes.py",
+    "tests/test_store.py",
+    "tests/test_tokens.py",
+    # keep-sorted end
+]
+pytest_add_cli_args = ["--no-cov"]
+do_not_mutate = [
+    # __init__.py is a pure re-export surface; mutating it just
+    # produces noise without signal on the security properties we're
+    # trying to assert.
+    "src/agent_auth/__init__.py",
+]
+
+# Mutation-score floor for the scheduled mutation CI job. The local
+# baseline on the five targeted modules (tokens, crypto, keys, scopes,
+# store) was 68.95% (262 killed / 380 actionable mutants); the floor
+# is set a few points below to absorb run-to-run variance while still
+# catching a regression. Ratchets upward with the same never-lower
+# policy as [tool.pytest.ini_options].addopts --cov-fail-under. Score
+# is killed / (killed + survived), ignoring no_tests / skipped /
+# timeout mutants.
+[tool.mutation_score]
+fail_under = 65.0

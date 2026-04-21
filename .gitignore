@@ -15,4 +15,5 @@ build/
 coverage.xml
 dist/
 htmlcov/
+mutants/
 # keep-sorted end

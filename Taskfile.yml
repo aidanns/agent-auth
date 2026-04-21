@@ -55,6 +55,12 @@ tasks:
       - uv export --extra dev --no-emit-project --format requirements-txt --no-hashes > /tmp/requirements.txt
       - uvx pip-audit --strict -r /tmp/requirements.txt
 
+  mutation-test:
+    desc: Run mutmut against security-critical modules and gate the mutation score against [tool.mutation_score].fail_under.
+    cmds:
+      - scripts/mutation-test.sh {{.CLI_ARGS}}
+      - scripts/check-mutation-score.sh
+
   reuse-lint:
     desc: Verify every tracked file carries SPDX licensing metadata (REUSE spec).
     cmds:

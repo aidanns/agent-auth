@@ -50,6 +50,11 @@
 #  11. .github/workflows/verify-function-tests.yml (if present) does NOT
 #      mark the verify step continue-on-error, so regressions in
 #      function-to-test allocation fail CI.
+#  12. A mutation-testing tool is configured (e.g. [tool.mutmut] in
+#      pyproject.toml) and a scheduled CI workflow invokes it with a
+#      documented score threshold, per
+#      .claude/instructions/testing-standards.md "Mutation testing on
+#      security-critical paths".
 
 set -euo pipefail
 
@@ -1205,3 +1210,58 @@ if [[ -f "${function_tests_workflow}" ]]; then
   fi
   echo "verify-standards: ${function_tests_workflow} gates function-to-test coverage without continue-on-error."
 fi
+
+# ---------------------------------------------------------------------------
+# Mutation testing on security-critical paths.
+# ---------------------------------------------------------------------------
+# .claude/instructions/testing-standards.md (Coverage — "Mutation testing
+# on security-critical paths") requires:
+#   1. A mutation-testing tool configured in pyproject.toml.
+#   2. A scheduled CI workflow that invokes it.
+#   3. A documented score threshold.
+#
+# The check is deliberately agnostic between mutmut / cosmic-ray — it
+# only asserts that one of the two config sections exists. The threshold
+# field name tracks the tool choice: [tool.mutation_score].fail_under.
+if ! python3 -c "
+import sys, tomllib
+from pathlib import Path
+data = tomllib.loads(Path('pyproject.toml').read_text())
+tool = data.get('tool', {})
+if 'mutmut' not in tool and 'cosmic_ray' not in tool:
+    sys.exit('no [tool.mutmut] or [tool.cosmic_ray] section in pyproject.toml')
+threshold = tool.get('mutation_score', {}).get('fail_under')
+if threshold is None:
+    sys.exit('no [tool.mutation_score].fail_under threshold in pyproject.toml')
+" 2>/tmp/verify-standards-mutation.err; then
+  echo "verify-standards: mutation testing is not configured:" >&2
+  cat /tmp/verify-standards-mutation.err >&2
+  echo "  See .claude/instructions/testing-standards.md § Coverage and ADR 0021." >&2
+  rm -f /tmp/verify-standards-mutation.err
+  exit 1
+fi
+rm -f /tmp/verify-standards-mutation.err
+
+# Require at least one workflow file under .github/workflows/ that
+# both has a `schedule:` trigger AND runs `task mutation-test` or calls
+# mutmut directly. Matching on the Taskfile shim keeps us robust if
+# the workflow ever inlines the commands.
+mutation_workflow_found=0
+for wf in .github/workflows/*.yml; do
+  [[ -f "${wf}" ]] || continue
+  if yq eval '.on | has("schedule")' "${wf}" 2>/dev/null | grep -qx true \
+    && grep -qE "task[[:space:]]+mutation-test|mutmut[[:space:]]+run" "${wf}"; then
+    mutation_workflow_found=1
+    mutation_workflow="${wf}"
+    break
+  fi
+done
+
+if [[ "${mutation_workflow_found}" -eq 0 ]]; then
+  echo "verify-standards: no scheduled workflow invokes the mutation-testing gate." >&2
+  echo "  Add a .github/workflows/*.yml that triggers on 'schedule:' and runs" >&2
+  echo "  'task mutation-test' (or 'mutmut run')." >&2
+  exit 1
+fi
+
+echo "verify-standards: mutation testing configured ([tool.mutmut] / [tool.mutation_score]) and scheduled via ${mutation_workflow}."
