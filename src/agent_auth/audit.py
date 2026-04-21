@@ -8,6 +8,7 @@ import json
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 
 class AuditLogger:
@@ -24,7 +25,7 @@ class AuditLogger:
         self._lock = threading.Lock()
         Path(log_path).parent.mkdir(parents=True, exist_ok=True)
 
-    def log(self, event: str, **details):
+    def log(self, event: str, **details: Any) -> None:
         """Write an audit log entry."""
         entry = {
             "timestamp": datetime.now(UTC).isoformat(),
@@ -35,8 +36,8 @@ class AuditLogger:
         with self._lock, open(self._log_path, "a", encoding="utf-8") as f:
             f.write(line)
 
-    def log_token_operation(self, event: str, **details):
+    def log_token_operation(self, event: str, **details: Any) -> None:
         self.log(event, **details)
 
-    def log_authorization_decision(self, event: str, **details):
+    def log_authorization_decision(self, event: str, **details: Any) -> None:
         self.log(event, **details)

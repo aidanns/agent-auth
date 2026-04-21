@@ -8,9 +8,14 @@ import hashlib
 import hmac
 import uuid
 from datetime import UTC
+from typing import TYPE_CHECKING
 
 from agent_auth.errors import TokenInvalidError
 from agent_auth.keys import SigningKey
+
+if TYPE_CHECKING:
+    from agent_auth.config import Config
+    from agent_auth.store import TokenStore
 
 PREFIX_ACCESS = "aa"
 PREFIX_REFRESH = "rt"
@@ -50,7 +55,12 @@ def parse_token(raw: str) -> tuple[str, str, str]:
     return prefix, token_id, signature
 
 
-def create_token_pair(signing_key: SigningKey, store, family_id: str, config) -> tuple[str, str]:
+def create_token_pair(
+    signing_key: SigningKey,
+    store: "TokenStore",
+    family_id: str,
+    config: "Config",
+) -> tuple[str, str]:
     """Create an access + refresh token pair, persist both, return (access_token, refresh_token)."""
     from datetime import datetime, timedelta
 

@@ -9,6 +9,7 @@ import sqlite3
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -34,9 +35,9 @@ class TokenStore:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA foreign_keys=ON")
             self._local.conn = conn
-        return self._local.conn
+        return cast(sqlite3.Connection, self._local.conn)
 
-    def _init_schema(self):
+    def _init_schema(self) -> None:
         conn = self._get_conn()
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS token_families (
@@ -66,7 +67,7 @@ class TokenStore:
 
     # -- Token families --
 
-    def create_family(self, family_id: str, scopes: dict[str, str]) -> dict:
+    def create_family(self, family_id: str, scopes: dict[str, str]) -> dict[str, Any]:
         """Create a new token family with the given scopes."""
         now = datetime.now(UTC).isoformat()
         encrypted_scopes = self._encrypt(json.dumps(scopes))
@@ -78,7 +79,7 @@ class TokenStore:
         conn.commit()
         return {"id": family_id, "scopes": scopes, "created_at": now, "revoked": False}
 
-    def get_family(self, family_id: str) -> dict | None:
+    def get_family(self, family_id: str) -> dict[str, Any] | None:
         """Retrieve a token family by ID."""
         conn = self._get_conn()
         row = conn.execute("SELECT * FROM token_families WHERE id = ?", (family_id,)).fetchone()
@@ -91,7 +92,7 @@ class TokenStore:
             "revoked": bool(row["revoked"]),
         }
 
-    def list_families(self) -> list[dict]:
+    def list_families(self) -> list[dict[str, Any]]:
         """List all token families."""
         conn = self._get_conn()
         rows = conn.execute("SELECT * FROM token_families ORDER BY created_at DESC").fetchall()
@@ -105,13 +106,13 @@ class TokenStore:
             for row in rows
         ]
 
-    def mark_family_revoked(self, family_id: str):
+    def mark_family_revoked(self, family_id: str) -> None:
         """Mark a token family and all its tokens as revoked."""
         conn = self._get_conn()
         conn.execute("UPDATE token_families SET revoked = 1 WHERE id = ?", (family_id,))
         conn.commit()
 
-    def update_family_scopes(self, family_id: str, scopes: dict[str, str]):
+    def update_family_scopes(self, family_id: str, scopes: dict[str, str]) -> None:
         """Update the scopes on a token family."""
         encrypted_scopes = self._encrypt(json.dumps(scopes))
         conn = self._get_conn()
@@ -130,7 +131,7 @@ class TokenStore:
         family_id: str,
         token_type: str,
         expires_at: str,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Store a new access or refresh token."""
         encrypted_sig = self._encrypt(hmac_signature)
         conn = self._get_conn()
@@ -148,7 +149,7 @@ class TokenStore:
             "consumed": False,
         }
 
-    def get_token(self, token_id: str) -> dict | None:
+    def get_token(self, token_id: str) -> dict[str, Any] | None:
         """Retrieve a token by ID."""
         conn = self._get_conn()
         row = conn.execute("SELECT * FROM tokens WHERE id = ?", (token_id,)).fetchone()
@@ -163,7 +164,7 @@ class TokenStore:
             "consumed": bool(row["consumed"]),
         }
 
-    def get_tokens_by_family(self, family_id: str) -> list[dict]:
+    def get_tokens_by_family(self, family_id: str) -> list[dict[str, Any]]:
         """Retrieve all tokens for a family."""
         conn = self._get_conn()
         rows = conn.execute("SELECT * FROM tokens WHERE family_id = ?", (family_id,)).fetchall()

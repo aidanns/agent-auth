@@ -147,22 +147,6 @@ module = [
 ]
 ignore_missing_imports = true
 
-# Ratchet targets — agent_auth/*. Each listed module currently fails
-# strict mode; see #145 for the per-module fix list.
-[[tool.mypy.overrides]]
-module = [
-    # keep-sorted start
-    "agent_auth.approval",
-    "agent_auth.audit",
-    "agent_auth.cli",
-    "agent_auth.config",
-    "agent_auth.plugins",
-    "agent_auth.server",
-    "agent_auth.store",
-    "agent_auth.tokens",
-    # keep-sorted end
-]
-ignore_errors = true
 
 # Tests use pytest fixture magic and parametrize decorators heavily;
 # `disallow_untyped_defs` in particular produces a large amount of

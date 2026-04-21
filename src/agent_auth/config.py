@@ -12,6 +12,7 @@ Paths follow the XDG Base Directory Specification:
 
 import os
 from dataclasses import dataclass, field
+from typing import Any, cast
 
 import yaml
 
@@ -40,11 +41,11 @@ class Config:
     access_token_ttl_seconds: int = 900
     refresh_token_ttl_seconds: int = 28800
     notification_plugin: str = "terminal"
-    notification_plugin_config: dict = field(default_factory=dict)
+    notification_plugin_config: dict[str, Any] = field(default_factory=lambda: {})
     db_path: str = ""
     log_path: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.db_path:
             self.db_path = os.path.join(_default_data_dir(), "tokens.db")
         if not self.log_path:
@@ -68,7 +69,15 @@ def load_config(config_dir: str | None = None) -> Config:
 
     if os.path.exists(config_path):
         with open(config_path) as f:
-            data = yaml.safe_load(f) or {}
+            raw = yaml.safe_load(f)
+        if raw is None:
+            data: dict[str, Any] = {}
+        elif isinstance(raw, dict):
+            data = cast(dict[str, Any], raw)
+        else:
+            raise ValueError(
+                f"Config file at {config_path} must be a YAML mapping, " f"got {type(raw).__name__}"
+            )
         return Config(**{k: v for k, v in data.items() if k in valid_fields})
 
     if config_dir:
