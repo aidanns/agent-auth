@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+
+SPDX-License-Identifier: MIT
+-->
+
 # Plan: Make systems-engineering install in setup-toolchain survive raw.githubusercontent.com 403s
 
 Resolves [#155](https://github.com/aidanns/agent-auth/issues/155).
