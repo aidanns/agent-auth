@@ -216,6 +216,18 @@ def test_expired_access_token_returns_401_token_expired(
 
 
 @pytest.mark.covers_function("Delegate Token Validation")
+def test_list_todos_authz_unavailable_returns_502(stack):
+    # Stop the in-network agent-auth service mid-test so the bridge's
+    # ``authz.validate`` call surfaces a real connection error, not a
+    # mocked one. The 502 ``authz_unavailable`` discriminator is what
+    # clients rely on to distinguish upstream outage from bad tokens.
+    stack["stack"].stop_agent_auth()
+    status, data = _get(stack["stack"].url("todos"), stack["token"])
+    assert status == 502
+    assert data == {"error": "authz_unavailable"}
+
+
+@pytest.mark.covers_function("Delegate Token Validation")
 def test_health_endpoint_requires_token(things_bridge_stack):
     # Regression guard: dropping the bearer check would let any caller
     # probe service-internal state without authorization.
