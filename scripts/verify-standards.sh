@@ -1050,3 +1050,34 @@ if [[ ${error_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: ${error_taxonomy_file} exists and references all documented error codes."
+
+# OpenAPI specs: openapi/agent-auth.v1.yaml and openapi/things-bridge.v1.yaml
+# must exist, and tests/test_openapi_spec.py must reference both so route and
+# error-taxonomy parity are enforced on every PR (#117).
+openapi_missing=0
+for spec in openapi/agent-auth.v1.yaml openapi/things-bridge.v1.yaml; do
+  if [[ ! -f "${spec}" ]]; then
+    echo "verify-standards: ${spec} is missing." >&2
+    openapi_missing=1
+  fi
+done
+
+openapi_contract_test="tests/test_openapi_spec.py"
+if [[ ! -f "${openapi_contract_test}" ]]; then
+  echo "verify-standards: ${openapi_contract_test} is missing." >&2
+  echo "  Add contract tests that diff spec paths against the server handlers." >&2
+  openapi_missing=1
+else
+  for spec in agent-auth.v1.yaml things-bridge.v1.yaml; do
+    if ! grep -q "${spec}" "${openapi_contract_test}"; then
+      echo "verify-standards: ${openapi_contract_test} does not reference ${spec}." >&2
+      openapi_missing=1
+    fi
+  done
+fi
+
+if [[ ${openapi_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: openapi/*.v1.yaml exist and ${openapi_contract_test} references both."

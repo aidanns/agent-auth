@@ -51,6 +51,36 @@ a `"valid": false` field.
 No error codes — this endpoint does not return 4xx responses beyond the
 generic server-wide codes below.
 
+### Management endpoints (`/agent-auth/v1/token/{create,modify,revoke,rotate}`, `/agent-auth/v1/token/list`)
+
+All management endpoints share the same authorization error set, driven by
+`_require_management_auth`:
+
+| Error code      | HTTP status | Meaning                                                |
+| --------------- | ----------- | ------------------------------------------------------ |
+| `missing_token` | 401         | No `Authorization: Bearer` header present.             |
+| `invalid_token` | 401         | Token is malformed, not an access token, or not found. |
+| `token_expired` | 401         | Access token has passed its TTL.                       |
+| `scope_denied`  | 403         | Token does not have the `agent-auth:manage` scope.     |
+
+Per-endpoint error codes:
+
+| Endpoint             | Error code          | HTTP status | Meaning                                                                                  |
+| -------------------- | ------------------- | ----------- | ---------------------------------------------------------------------------------------- |
+| `POST /token/create` | `malformed_request` | 400         | Request body is not valid JSON or exceeds the size limit.                                |
+| `POST /token/create` | `no_scopes`         | 400         | `scopes` is missing, empty, or not a mapping.                                            |
+| `POST /token/create` | `invalid_tier`      | 400         | A scope tier is not one of `allow`, `prompt`, `deny`. Detail lists the offending scopes. |
+| `POST /token/modify` | `malformed_request` | 400         | Request body is malformed or `family_id` is missing.                                     |
+| `POST /token/modify` | `no_modifications`  | 400         | No `add_scopes`, `remove_scopes`, or `set_tiers` provided.                               |
+| `POST /token/modify` | `invalid_tier`      | 400         | A scope tier is not one of `allow`, `prompt`, `deny`. Detail lists the offending scopes. |
+| `POST /token/modify` | `family_not_found`  | 404         | No token family exists for the given `family_id`.                                        |
+| `POST /token/modify` | `family_revoked`    | 409         | Token family has been revoked; cannot modify scopes.                                     |
+| `POST /token/revoke` | `malformed_request` | 400         | Request body is malformed or `family_id` is missing.                                     |
+| `POST /token/revoke` | `family_not_found`  | 404         | No token family exists for the given `family_id`.                                        |
+| `POST /token/rotate` | `malformed_request` | 400         | Request body is malformed or `family_id` is missing.                                     |
+| `POST /token/rotate` | `family_not_found`  | 404         | No token family exists for the given `family_id`.                                        |
+| `POST /token/rotate` | `family_revoked`    | 409         | Token family has been revoked; cannot rotate.                                            |
+
 ### `GET /agent-auth/health` *(unversioned)*
 
 | Error code      | HTTP status | Meaning                                            |
