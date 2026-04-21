@@ -85,12 +85,11 @@ runs:
         SYSTEMS_ENGINEERING_REF: ${{ inputs.systems-engineering-ref }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        # Authenticated Contents API avoids raw.githubusercontent.com per-IP
-        # rate limits when parallel CI jobs race for install.sh. See #155.
-        # --retry-all-errors (curl 7.71+, shipped on GitHub ubuntu runners) is
-        # load-bearing: plain --retry skips HTTP 4xx, which is what the rate
-        # limit returns.
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
+        # Stays inline (not via scripts/ci/fetch-release-asset.sh) because
+        # it fetches via the Contents API with a custom Accept header and
+        # has no pinned sha256 (dynamic ref). See the helper for retry-flag
+        # rationale.
+        curl -fsSL --retry 5 --retry-max-time 60 --retry-all-errors \
           -H "Accept: application/vnd.github.raw" \
           -H "Authorization: Bearer ${GITHUB_TOKEN}" \
           -o /tmp/systems-engineering-install.sh \
@@ -112,13 +111,10 @@ runs:
         SHELLCHECK_SHA256: ${{ inputs.shellcheck-sha256 }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        # Auth is safe: curl -L strips the Authorization header on the
-        # cross-origin redirect from github.com to the S3 asset URL. See #159.
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/shellcheck.tar.xz \
-          "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
-        echo "${SHELLCHECK_SHA256}  /tmp/shellcheck.tar.xz" | sha256sum -c -
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+          /tmp/shellcheck.tar.xz \
+          "${SHELLCHECK_SHA256}"
         tar -xJf /tmp/shellcheck.tar.xz -C /tmp
         sudo install -m0755 "/tmp/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
         shellcheck --version
@@ -130,11 +126,10 @@ runs:
         SHFMT_SHA256: ${{ inputs.shfmt-sha256 }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/shfmt \
-          "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64"
-        echo "${SHFMT_SHA256}  /tmp/shfmt" | sha256sum -c -
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" \
+          /tmp/shfmt \
+          "${SHFMT_SHA256}"
         sudo install -m0755 /tmp/shfmt /usr/local/bin/shfmt
         shfmt --version
 
@@ -145,11 +140,10 @@ runs:
         RUFF_SHA256: ${{ inputs.ruff-sha256 }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/ruff.tar.gz \
-          "https://github.com/astral-sh/ruff/releases/download/${RUFF_VERSION}/ruff-x86_64-unknown-linux-gnu.tar.gz"
-        echo "${RUFF_SHA256}  /tmp/ruff.tar.gz" | sha256sum -c -
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/astral-sh/ruff/releases/download/${RUFF_VERSION}/ruff-x86_64-unknown-linux-gnu.tar.gz" \
+          /tmp/ruff.tar.gz \
+          "${RUFF_SHA256}"
         tar -xzf /tmp/ruff.tar.gz -C /tmp
         sudo install -m0755 /tmp/ruff-x86_64-unknown-linux-gnu/ruff /usr/local/bin/ruff
         ruff --version
@@ -174,11 +168,10 @@ runs:
         TAPLO_SHA256: ${{ inputs.taplo-sha256 }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/taplo.gz \
-          "https://github.com/tamasfe/taplo/releases/download/${TAPLO_VERSION}/taplo-linux-x86_64.gz"
-        echo "${TAPLO_SHA256}  /tmp/taplo.gz" | sha256sum -c -
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/tamasfe/taplo/releases/download/${TAPLO_VERSION}/taplo-linux-x86_64.gz" \
+          /tmp/taplo.gz \
+          "${TAPLO_SHA256}"
         gunzip -f /tmp/taplo.gz
         sudo install -m0755 /tmp/taplo /usr/local/bin/taplo
         taplo --version
@@ -190,11 +183,10 @@ runs:
         KEEP_SORTED_SHA256: ${{ inputs.keep-sorted-sha256 }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/keep-sorted \
-          "https://github.com/google/keep-sorted/releases/download/v${KEEP_SORTED_VERSION}/keep-sorted_linux"
-        echo "${KEEP_SORTED_SHA256}  /tmp/keep-sorted" | sha256sum -c -
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/google/keep-sorted/releases/download/v${KEEP_SORTED_VERSION}/keep-sorted_linux" \
+          /tmp/keep-sorted \
+          "${KEEP_SORTED_SHA256}"
         sudo install -m0755 /tmp/keep-sorted /usr/local/bin/keep-sorted
         keep-sorted --version
 
@@ -205,11 +197,10 @@ runs:
         RIPSECRETS_SHA256: ${{ inputs.ripsecrets-sha256 }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/ripsecrets.tar.gz \
-          "https://github.com/sirwart/ripsecrets/releases/download/v${RIPSECRETS_VERSION}/ripsecrets-${RIPSECRETS_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-        echo "${RIPSECRETS_SHA256}  /tmp/ripsecrets.tar.gz" | sha256sum -c -
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/sirwart/ripsecrets/releases/download/v${RIPSECRETS_VERSION}/ripsecrets-${RIPSECRETS_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+          /tmp/ripsecrets.tar.gz \
+          "${RIPSECRETS_SHA256}"
         tar -xzf /tmp/ripsecrets.tar.gz -C /tmp
         sudo install -m0755 "/tmp/ripsecrets-${RIPSECRETS_VERSION}-x86_64-unknown-linux-gnu/ripsecrets" /usr/local/bin/ripsecrets
         ripsecrets --version
@@ -221,11 +212,10 @@ runs:
         TREEFMT_SHA256: ${{ inputs.treefmt-sha256 }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          -o /tmp/treefmt.tar.gz \
-          "https://github.com/numtide/treefmt/releases/download/v${TREEFMT_VERSION}/treefmt_${TREEFMT_VERSION}_linux_amd64.tar.gz"
-        echo "${TREEFMT_SHA256}  /tmp/treefmt.tar.gz" | sha256sum -c -
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/numtide/treefmt/releases/download/v${TREEFMT_VERSION}/treefmt_${TREEFMT_VERSION}_linux_amd64.tar.gz" \
+          /tmp/treefmt.tar.gz \
+          "${TREEFMT_SHA256}"
         tar -xzf /tmp/treefmt.tar.gz -C /tmp
         sudo install -m0755 /tmp/treefmt /usr/local/bin/treefmt
         treefmt --version

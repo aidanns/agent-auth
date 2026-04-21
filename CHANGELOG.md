@@ -100,6 +100,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GET /agent-auth/token/list` are now served at `/agent-auth/v1/token/...`.
   Completes the `/v1/` API namespace migration so every non-health route is
   versioned (enforced by `scripts/verify-standards.sh`).
+- `setup-toolchain` release-binary installs now go through a shared
+  `scripts/ci/fetch-release-asset.sh` helper (curl + auth + sha256 verify)
+  rather than open-coding the same block in 7 steps. Retry flags retuned
+  to `--retry 5 --retry-max-time 60 --retry-all-errors` (no explicit
+  `--retry-delay`) so curl honours `Retry-After` and exponential backoff
+  on 429s/5xx. `Install systems-engineering` stays inline (Contents API
+  with a custom Accept header and no pinned sha256) but picks up the
+  same retry retune. Part 3 of the follow-up (parallelise downloads) is
+  tracked separately
+  ([#165](https://github.com/aidanns/agent-auth/issues/165)).
 
 ### Fixed
 
