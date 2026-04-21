@@ -264,6 +264,28 @@ def test_timeout_surfaces_as_things_error_and_logs_partial_stderr(monkeypatch, c
     assert "hung on automation prompt" in err
 
 
+@pytest.mark.covers_function("Fetch Things Data")
+def test_timeout_decodes_bytes_stderr_without_b_prefix(monkeypatch, capfd, client):
+    # Regression: CPython populates ``TimeoutExpired.stderr`` as ``bytes`` even
+    # when ``subprocess.run`` was invoked with ``text=True``, so the timeout
+    # path must decode it explicitly. If the decode branch regresses, the
+    # operator-facing stderr line would show a ``b'...'`` byte-literal repr
+    # instead of the actual subprocess output.
+    def _timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(
+            cmd=args[0],
+            timeout=kwargs.get("timeout"),
+            stderr=b"hung on automation prompt\n",
+        )
+
+    monkeypatch.setattr(subprocess, "run", _timeout)
+    with pytest.raises(ThingsError, match="timed out"):
+        client.list_todos()
+    err = capfd.readouterr().err
+    assert "hung on automation prompt" in err
+    assert "b'hung" not in err
+
+
 def test_subprocess_stderr_is_forwarded(monkeypatch, capfd, client):
     # The bridge must surface the client's stderr unchanged — otherwise
     # osascript permission prompts, YAML-load errors, etc. are invisible
