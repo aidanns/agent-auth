@@ -95,6 +95,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   eliminating flakes where 6 parallel CI jobs tripped the unauthenticated
   `raw.githubusercontent.com` per-IP rate limit
   ([#155](https://github.com/aidanns/agent-auth/issues/155)).
+- `setup-toolchain` release-binary installs (shellcheck, shfmt, ruff, taplo,
+  keep-sorted, ripsecrets, treefmt) now download with the same
+  `--retry 2 --retry-delay 2 --retry-all-errors` flags and authenticated
+  `Authorization: Bearer ${github-token}` header used by the
+  systems-engineering step, absorbing transient GitHub-release-download
+  flakes and lifting the per-IP anonymous rate limit
+  ([#159](https://github.com/aidanns/agent-auth/issues/159)).
 
 ## [0.1.0] - 2026-04-19
 
