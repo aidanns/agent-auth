@@ -17,12 +17,23 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      # Mint a short-lived installation token from the "Release Please
+      # agent-auth" GitHub App. Tags and releases created by the default
+      # GITHUB_TOKEN do not fire downstream `on: push: tags:` workflow
+      # triggers, which would silently break the chain into
+      # release-publish.yml — so we need a non-GITHUB_TOKEN credential.
+      # The App has `contents: write` + `pull-requests: write` on this
+      # repo only; the token expires on workflow completion. Setup
+      # instructions: CONTRIBUTING.md § Release process → Default path.
+      - name: Mint GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
         with:
-          # RELEASE_PLEASE_TOKEN must be a PAT or GitHub App token. Tags
-          # and releases created by the default GITHUB_TOKEN do not fire
-          # downstream workflow triggers, which would silently break the
-          # release-publish chain. See CONTRIBUTING.md § Release process.
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
