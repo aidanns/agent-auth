@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Mutation
+
+# Runtime is O(mutants × focused-test-run) and too expensive for every
+# PR. Run on a nightly schedule to catch regressions within a day of
+# landing, and expose workflow_dispatch so a reviewer can trigger a run
+# on-demand when reviewing a change to a security-critical module.
+#
+# ADR 0021 documents the rationale; .claude/instructions/testing-standards.md
+# "Mutation testing on security-critical paths" is the originating standard.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *" # 04:00 UTC nightly
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    # Hard timeout below the default 6-hour runner limit so a
+    # runaway mutation run (e.g. a new mutant in a test-lookup loop)
+    # gets cut off cleanly rather than burning compute minutes.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run mutation test and gate score
+        run: task mutation-test
+
+      - name: Upload mutation stats
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutmut-stats
+          path: mutants/mutmut-cicd-stats.json
+          if-no-files-found: warn

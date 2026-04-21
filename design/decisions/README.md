@@ -61,3 +61,5 @@ is linked from this index.
   — application-layer companion to NIST SP 800-53 and NIST SSDF at target Level 2; per-chapter conformance tracked in `design/ASVS.md`.
 - [ADR 0020 — SLSA Build Level 3 provenance via slsa-github-generator](0020-slsa-build-provenance.md)
   — tag-triggered `release-publish.yml` attaches `multiple.intoto.jsonl` in-toto attestations to every release; verification via `slsa-verifier verify-artifact`.
+- [ADR 0021 — Mutation testing on security-critical modules](0021-mutation-testing-security-critical.md)
+  — nightly mutmut pass on tokens/crypto/keys/scopes/store gated by a ratcheting score floor; `scripts/verify-standards.sh` enforces `[tool.mutmut]` config and scheduled workflow stay present.
