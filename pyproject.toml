@@ -129,6 +129,11 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 # pyrightconfig.json — typically via an executionEnvironments entry
 # for tests-style relaxations or the top-level ignore/exclude lists
 # for full module skips. Renames MUST touch both files.
+# scripts/verify-standards.sh asserts the two sides stay in sync: any
+# ignore_errors = true override pairs with a pyrightconfig.json
+# 'ignore' path, and any disallow_* = false override pairs with a
+# pyrightconfig.json 'executionEnvironments' root relaxing the
+# equivalent reportMissing/reportUnknown* diagnostic.
 [tool.mypy]
 python_version = "3.11"
 strict = true

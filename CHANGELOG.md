@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`scripts/verify-standards.sh`'s mypy/pyright ratchet-drift gate
+  now also covers per-diagnostic relaxations.** Previously the gate
+  only paired mypy `ignore_errors = true` overrides with
+  `pyrightconfig.json`'s top-level `ignore` list, so a narrower
+  mypy override such as `disallow_untyped_defs = false` on
+  `tests.*` (landed in #171) had no matching pyright-side check —
+  a contributor could drop the pyright `executionEnvironments`
+  root without the gate catching it. The check now also asserts
+  every `[[tool.mypy.overrides]]` entry that sets any `disallow_*`
+  flag to `false` has an `executionEnvironments` root in
+  `pyrightconfig.json` relaxing the equivalent `reportMissing*` /
+  `reportUnknown*` diagnostic, and vice versa.
+  [`#175`](https://github.com/aidanns/agent-auth/issues/175).
+
 ### Added
 
 - **macOS runner in the `Test` workflow** to exercise the real

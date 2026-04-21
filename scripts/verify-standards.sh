@@ -513,15 +513,31 @@ fi
 
 echo "verify-standards: mypy (strict) and pyright are configured and gated in CI."
 
-# Ratchet-list co-source check: every module relaxed in
-# pyproject.toml's [[tool.mypy.overrides]] with `ignore_errors = true`
-# must also appear in pyrightconfig.json's `ignore`, and vice versa.
+# Ratchet-list co-source check: every module relaxed on the mypy side
+# must have a matching relaxation on the pyright side, and vice versa.
 # Without this, a rename or delete that touches one file leaves the
 # other stale — the file silently returns to strict under the
 # un-synchronised checker (which may then report pre-existing errors
 # in a surprise PR) or stays relaxed forever (hiding regressions).
 # Mutual citation in the file comments makes the co-edit conventional;
 # this check makes it enforced.
+#
+# The mypy side carries two *kinds* of relaxation that we care about:
+#
+#   - ``ignore_errors = true`` — the whole module is skipped; pairs
+#     with an entry in pyrightconfig.json's top-level ``ignore`` list.
+#   - Per-diagnostic relaxations such as
+#     ``disallow_untyped_defs = false`` — individual strictness flags
+#     are turned off (e.g. the tests.* override used for pytest
+#     fixture-parameter ergonomics). These pair with a pyright
+#     ``executionEnvironments`` entry whose ``root`` covers the same
+#     source tree, which is where pyright's per-scope diagnostic
+#     relaxations live.
+#
+# Historically only the first kind was checked, so PR #171 narrowed
+# the tests.* override to per-diagnostic relaxations without the
+# safeguard catching a matching pyright drift (see issue #175). The
+# check below now covers both kinds.
 
 if [[ -f pyproject.toml && -f pyrightconfig.json ]]; then
   ratchet_drift="$(
@@ -536,15 +552,36 @@ with open("pyproject.toml", "rb") as f:
 with open("pyrightconfig.json") as f:
     pyright = json.load(f)
 
-mypy_modules: set[str] = set()
+# Any disallow_* flag set to false (the mypy equivalent of a pyright
+# per-diagnostic relaxation) triggers the executionEnvironments-match
+# check. The set is kept deliberately narrow to disallow_*:
+# ignore_missing_imports applies to untyped third-party packages
+# (e.g. keyring) whose shape isn't something pyright's scoped rules
+# mirror, and a warn_* flag doesn't relax strictness in the same way.
+DISALLOW_FLAGS = (
+    "disallow_untyped_defs",
+    "disallow_incomplete_defs",
+    "disallow_untyped_calls",
+    "disallow_any_generics",
+    "disallow_untyped_decorators",
+    "disallow_subclassing_any",
+    "disallow_any_unimported",
+    "disallow_any_expr",
+    "disallow_any_decorated",
+    "disallow_any_explicit",
+)
+
+mypy_ignore_modules: set[str] = set()
+mypy_relaxed_modules: set[str] = set()
 for override in pyproject.get("tool", {}).get("mypy", {}).get("overrides", []):
-    if not override.get("ignore_errors", False):
-        continue
     mods = override.get("module", [])
     if isinstance(mods, str):
         mods = [mods]
-    for m in mods:
-        mypy_modules.add(m.rstrip(".*").rstrip("."))
+    cleaned = [m.rstrip(".*").rstrip(".") for m in mods]
+    if override.get("ignore_errors", False):
+        mypy_ignore_modules.update(cleaned)
+    if any(override.get(flag) is False for flag in DISALLOW_FLAGS):
+        mypy_relaxed_modules.update(cleaned)
 
 
 def module_to_path(mod: str) -> str:
@@ -560,28 +597,93 @@ def module_to_path(mod: str) -> str:
     return f"src/{path}"
 
 
-expected_pyright = {module_to_path(m) for m in mypy_modules}
-actual_pyright = set(pyright.get("ignore", []))
+expected_pyright_ignore = {module_to_path(m) for m in mypy_ignore_modules}
+actual_pyright_ignore = set(pyright.get("ignore", []))
 
-missing_from_pyright = expected_pyright - actual_pyright
-missing_from_mypy = actual_pyright - expected_pyright
+missing_from_pyright_ignore = expected_pyright_ignore - actual_pyright_ignore
+missing_from_mypy_ignore = actual_pyright_ignore - expected_pyright_ignore
 
-if missing_from_pyright:
-    print("missing_from_pyright:")
-    for p in sorted(missing_from_pyright):
-        print(f"  - {p}")
-if missing_from_mypy:
-    print("missing_from_mypy:")
-    for p in sorted(missing_from_mypy):
-        print(f"  - {p}")
-if missing_from_pyright or missing_from_mypy:
+expected_pyright_envs = {module_to_path(m) for m in mypy_relaxed_modules}
+actual_pyright_envs = {
+    env.get("root", "")
+    for env in pyright.get("executionEnvironments", [])
+    if env.get("root")
+}
+
+# Only flag pyright executionEnvironments whose root falls inside one
+# of the include paths that also carry per-source relaxations — the
+# root can legitimately exist purely for a non-strictness reason (e.g.
+# a different Python version), so we require a real mypy side match
+# only when the pyright env overrides one of the DISALLOW_FLAG
+# counterparts below.
+PYRIGHT_DIAGNOSTIC_EQUIVALENTS = (
+    "reportMissingParameterType",
+    "reportUnknownParameterType",
+    "reportUnknownArgumentType",
+    "reportUnknownVariableType",
+    "reportUnknownMemberType",
+    "reportUnknownLambdaType",
+    "reportMissingTypeArgument",
+)
+pyright_envs_relaxing_diagnostics = {
+    env.get("root", "")
+    for env in pyright.get("executionEnvironments", [])
+    if env.get("root")
+    and any(
+        env.get(diag) == "none" or env.get(diag) == "warning"
+        for diag in PYRIGHT_DIAGNOSTIC_EQUIVALENTS
+    )
+}
+
+missing_from_pyright_envs = expected_pyright_envs - pyright_envs_relaxing_diagnostics
+missing_from_mypy_relaxed = pyright_envs_relaxing_diagnostics - expected_pyright_envs
+
+problems: list[tuple[str, list[str]]] = []
+if missing_from_pyright_ignore:
+    problems.append(
+        (
+            "mypy ignore_errors entries with no matching pyrightconfig.json 'ignore' path",
+            sorted(missing_from_pyright_ignore),
+        )
+    )
+if missing_from_mypy_ignore:
+    problems.append(
+        (
+            "pyrightconfig.json 'ignore' paths with no matching mypy ignore_errors override",
+            sorted(missing_from_mypy_ignore),
+        )
+    )
+if missing_from_pyright_envs:
+    problems.append(
+        (
+            "mypy disallow_* = false overrides with no matching pyright executionEnvironments root",
+            sorted(missing_from_pyright_envs),
+        )
+    )
+if missing_from_mypy_relaxed:
+    problems.append(
+        (
+            "pyright executionEnvironments roots relaxing reportMissing/reportUnknown* with no matching mypy disallow_* = false override",
+            sorted(missing_from_mypy_relaxed),
+        )
+    )
+
+for heading, entries in problems:
+    print(heading + ":")
+    for entry in entries:
+        print(f"  - {entry}")
+
+if problems:
     sys.exit(1)
 PY
   )" || {
     echo "verify-standards: mypy/pyright ratchet lists are out of sync." >&2
-    echo "  Every [[tool.mypy.overrides]] entry with ignore_errors = true in" >&2
-    echo "  pyproject.toml must have a corresponding entry in pyrightconfig.json's" >&2
-    echo "  'ignore' list, and vice versa. Drift:" >&2
+    echo "  Every [[tool.mypy.overrides]] entry that relaxes strictness in" >&2
+    echo "  pyproject.toml must have a matching relaxation in" >&2
+    echo "  pyrightconfig.json (top-level 'ignore' for ignore_errors = true;" >&2
+    echo "  an 'executionEnvironments' root with a relaxed reportUnknown* /" >&2
+    echo "  reportMissing* diagnostic for per-flag disallow_* = false), and" >&2
+    echo "  vice versa. Drift:" >&2
     while IFS= read -r line; do
       echo "  ${line}" >&2
     done <<<"${ratchet_drift}"
