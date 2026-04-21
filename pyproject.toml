@@ -26,6 +26,7 @@ dev = [
     "mypy>=1.20",
     "pip-audit>=2.7",
     "pyright>=1.1.408",
+    "pytest-cov>=5.0",
     "pytest>=8.0",
     "reuse>=4.0",
     "testcontainers[compose]>=4",
@@ -72,6 +73,35 @@ ignore-vuln = []
 pythonpath = ["src"]
 markers = [
     "covers_function(*names): declare which functional-decomposition leaf functions a test exercises (read by `systems-engineering function verify`)",
+]
+# Coverage is gated at a ratcheting floor per
+# .claude/instructions/testing-standards.md. --cov-fail-under is the
+# single lever: never lowered without an explicit justification commit.
+# See CONTRIBUTING.md § "Coverage" for the bump procedure. Integration
+# tests run in a separate CI job and are excluded here — rolling them
+# into the floor would make it flaky on Docker availability.
+addopts = [
+    "--cov=src",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-fail-under=74",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    # Standard no-cover pragma.
+    "pragma: no cover",
+    # Type-checking-only imports never execute at runtime.
+    "if TYPE_CHECKING:",
+    # Abstract method bodies and protocol stubs.
+    "raise NotImplementedError",
+    # Defensive branches that only fire on platform mismatches.
+    "if __name__ == .__main__.:",
 ]
 
 [tool.ruff]

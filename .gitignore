@@ -5,10 +5,14 @@
 # keep-sorted start
 *.egg-info/
 *.pyc
+.coverage
+.coverage.*
 .eggs/
 .idea
 .venv*/
 __pycache__/
 build/
+coverage.xml
 dist/
+htmlcov/
 # keep-sorted end
