@@ -28,6 +28,7 @@ import pytest
 from agent_auth.approval import ApprovalManager
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
+from agent_auth.metrics import build_registry
 from agent_auth.plugins import ApprovalResult, NotificationPlugin
 from agent_auth.server import AgentAuthHandler, AgentAuthServer, _install_shutdown_handler
 from agent_auth.store import TokenStore
@@ -149,7 +150,8 @@ def _make_server(tmp_dir, signing_key, encryption_key):
     store = TokenStore(config.db_path, encryption_key)
     audit = AuditLogger(config.log_path)
     approval_manager = ApprovalManager(_DenyPlugin(), store, audit)
-    server = AgentAuthServer(config, signing_key, store, audit, approval_manager)
+    registry, metrics = build_registry()
+    server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
     return config, store, server
 
 

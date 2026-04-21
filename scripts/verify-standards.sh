@@ -1265,3 +1265,86 @@ if [[ "${mutation_workflow_found}" -eq 0 ]]; then
 fi
 
 echo "verify-standards: mutation testing configured ([tool.mutmut] / [tool.mutation_score]) and scheduled via ${mutation_workflow}."
+
+# Metrics endpoints per .claude/instructions/service-design.md
+# ("Metrics endpoint") and the deterministic regression check from
+# issue #26:
+#
+#   - /agent-auth/metrics is registered in src/agent_auth/server.py
+#     and /things-bridge/metrics is registered in src/things_bridge/server.py.
+#   - At least one test function per route scrapes the endpoint (200
+#     response) and validates that every declared metric name appears
+#     in the response body. Name lists are hard-coded below so a
+#     rename fails the gate deliberately.
+
+metrics_drift="$(
+  python3 - <<'PY'
+import pathlib
+import re
+import sys
+
+AGENT_AUTH_METRICS = (
+    "http_server_request_duration_seconds",
+    "http_server_active_requests",
+    "agent_auth_token_operations_total",
+    "agent_auth_validation_outcomes_total",
+    "agent_auth_approval_outcomes_total",
+)
+THINGS_BRIDGE_METRICS = (
+    "http_server_request_duration_seconds",
+    "http_server_active_requests",
+)
+SERVICES = (
+    ("agent-auth", "src/agent_auth/server.py", AGENT_AUTH_METRICS),
+    ("things-bridge", "src/things_bridge/server.py", THINGS_BRIDGE_METRICS),
+)
+
+
+def function_blocks(source: str) -> list[str]:
+    return re.split(r"\n(?=(?:async )?def )", source)
+
+
+errors: list[str] = []
+
+for service, server_path, required in SERVICES:
+    route = f"/{service}/metrics"
+    server_src = pathlib.Path(server_path).read_text()
+    if f'"{route}"' not in server_src:
+        errors.append(f"{route} is not registered in {server_path}")
+        continue
+
+    covered: set[str] = set()
+    for test_file in sorted(pathlib.Path("tests").rglob("*.py")):
+        source = test_file.read_text()
+        if route not in source:
+            continue
+        for block in function_blocks(source):
+            if route not in block:
+                continue
+            if not re.search(r"status\s*==\s*200", block):
+                continue
+            for name in required:
+                if name in block:
+                    covered.add(name)
+
+    missing = [n for n in required if n not in covered]
+    if missing:
+        errors.append(
+            f"{route}: no 200-response test block references metric(s) "
+            + ", ".join(missing)
+        )
+
+for err in errors:
+    print(err)
+if errors:
+    sys.exit(1)
+PY
+)" || {
+  echo "verify-standards: metrics endpoint coverage gaps:" >&2
+  while IFS= read -r line; do
+    echo "  - ${line}" >&2
+  done <<<"${metrics_drift}"
+  exit 1
+}
+
+echo "verify-standards: /agent-auth/metrics and /things-bridge/metrics are registered with metric-name test coverage."

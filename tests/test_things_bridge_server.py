@@ -25,6 +25,7 @@ from things_bridge.errors import (
     ThingsError,
     ThingsPermissionError,
 )
+from things_bridge.metrics import build_registry as build_bridge_registry
 from things_bridge.server import ThingsBridgeServer
 from things_models.models import Area
 
@@ -100,7 +101,8 @@ def bridge():
     authz = FakeAuthz()
     store = FakeThingsStore()
     things = _InjectableThings(store)
-    server = ThingsBridgeServer(config, things, authz)
+    registry, metrics = build_bridge_registry()
+    server = ThingsBridgeServer(config, things, authz, registry, metrics)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -134,10 +136,91 @@ def _get(url: str, token: str | None = "aa_test_token") -> tuple[int, Any]:
         return exc.code, parsed
 
 
+def _get_text(url: str, token: str | None = "aa_test_token"):
+    """GET a text/plain endpoint, returning (status, content_type, body)."""
+    req = urllib.request.Request(url)
+    if token is not None:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return (
+                resp.status,
+                resp.headers.get("Content-Type", ""),
+                resp.read().decode("utf-8"),
+            )
+    except urllib.error.HTTPError as exc:
+        return (
+            exc.code,
+            exc.headers.get("Content-Type", "") if exc.headers else "",
+            exc.read().decode("utf-8", errors="replace"),
+        )
+
+
 def test_get_todos_requires_bearer_token(bridge):
     status, data = _get(f"{bridge['url']}/things-bridge/v1/todos", token=None)
     assert status == 401
     assert data == {"error": "unauthorized"}
+
+
+# -- /metrics ---------------------------------------------------------------
+
+_EXPECTED_BRIDGE_METRIC_NAMES = (
+    "http_server_request_duration_seconds",
+    "http_server_active_requests",
+)
+
+
+def test_metrics_requires_bearer_token(bridge):
+    status, data = _get(f"{bridge['url']}/things-bridge/metrics", token=None)
+    assert status == 401
+    assert data == {"error": "unauthorized"}
+
+
+def test_metrics_rejects_tokens_without_metrics_scope(bridge):
+    bridge["authz"].raise_on_validate = AuthzScopeDeniedError("scope_denied")
+    status, data = _get(f"{bridge['url']}/things-bridge/metrics")
+    assert status == 403
+    assert data == {"error": "scope_denied"}
+
+
+def test_metrics_returns_prometheus_text_with_declared_metrics(bridge):
+    status, content_type, body = _get_text(f"{bridge['url']}/things-bridge/metrics")
+    assert status == 200
+    assert content_type.startswith("text/plain")
+    # The scrape calls authz.validate under the ``things-bridge:metrics``
+    # scope. Our FakeAuthz accepts anything that doesn't raise.
+    assert bridge["authz"].last_scope == "things-bridge:metrics"
+    # Contract: every declared metric name appears in the exposition.
+    # Names are inlined (not looped via a module constant) so
+    # scripts/verify-standards.sh can regex-match this block — a
+    # rename breaks both places at once.
+    assert "# TYPE http_server_request_duration_seconds" in body
+    assert "# TYPE http_server_active_requests" in body
+
+
+def test_metrics_authz_unavailable_maps_to_502(bridge):
+    bridge["authz"].raise_on_validate = AuthzUnavailableError("unreachable")
+    status, data = _get(f"{bridge['url']}/things-bridge/metrics")
+    assert status == 502
+    assert data["error"] == "authz_unavailable"
+
+
+def test_metrics_scrape_records_its_own_http_duration(bridge):
+    _get_text(f"{bridge['url']}/things-bridge/metrics")
+    status, _ct, body = _get_text(f"{bridge['url']}/things-bridge/metrics")
+    assert status == 200
+    assert 'route="/things-bridge/metrics"' in body
+    assert "http_server_request_duration_seconds_bucket" in body
+
+
+def test_metrics_id_carrying_route_uses_templated_label(bridge):
+    # Probe a todo-by-id path — the metric label should collapse the
+    # ``{id}`` segment so cardinality stays bounded.
+    _get(f"{bridge['url']}/things-bridge/v1/todos/t1")
+    status, _ct, body = _get_text(f"{bridge['url']}/things-bridge/metrics")
+    assert status == 200
+    assert 'route="/things-bridge/v1/todos/{id}"' in body
+    assert 'route="/things-bridge/v1/todos/t1"' not in body
 
 
 def test_get_todos_delegates_to_authz_and_returns_list(bridge):

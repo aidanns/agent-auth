@@ -21,6 +21,24 @@ def get(url: str, headers: dict[str, str] | None = None) -> tuple[int, Any]:
         return e.code, json.loads(e.read())
 
 
+def get_text(url: str, headers: dict[str, str] | None = None) -> tuple[int, str, str]:
+    """GET a text/plain endpoint; return (status, content_type, body)."""
+    req = urllib.request.Request(url, headers=headers or {})
+    try:
+        resp = urllib.request.urlopen(req)
+        return (
+            resp.status,
+            resp.headers.get("Content-Type", ""),
+            resp.read().decode("utf-8"),
+        )
+    except urllib.error.HTTPError as e:
+        return (
+            e.code,
+            e.headers.get("Content-Type", "") if e.headers else "",
+            e.read().decode("utf-8"),
+        )
+
+
 def post(
     url: str,
     data: dict[str, Any] | None = None,

@@ -27,6 +27,7 @@ from tests.factories import make_area
 from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
 from things_bridge.authz import AgentAuthClient
 from things_bridge.config import Config
+from things_bridge.metrics import build_registry as build_bridge_registry
 from things_bridge.server import (
     ThingsBridgeHandler,
     ThingsBridgeServer,
@@ -137,7 +138,8 @@ def test_in_flight_bridge_request_completes_before_server_close_returns(monkeypa
     things = FakeThingsClient(store)
     authz = _AlwaysValidAuthz()
     config = Config(host="127.0.0.1", port=0)
-    server = ThingsBridgeServer(config, things, authz)
+    registry, metrics = build_bridge_registry()
+    server = ThingsBridgeServer(config, things, authz, registry, metrics)
     port = server.server_address[1]
 
     request_entered = threading.Event()
