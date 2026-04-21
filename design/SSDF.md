@@ -14,8 +14,9 @@ alongside two companion standards:
 - [NIST SP 800-53 Rev 5](../SECURITY.md#cybersecurity-standard) —
   system-level cybersecurity controls (access control, audit,
   authentication, communications protection, system integrity).
-- OWASP ASVS v5 — application-level verification (tracked in
-  [#112](https://github.com/aidanns/agent-auth/issues/112)).
+- [OWASP ASVS v5](ASVS.md) — application-layer verification (17
+  chapters at target Level 2; see
+  [ADR 0019](decisions/0019-owasp-asvs-application-security-standard.md)).
 
 SSDF specifies **what practices** the project follows to produce
 software; the companions specify **what the running system does**

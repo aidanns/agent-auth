@@ -15,6 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- OWASP ASVS v5 adopted as the project's application-security
+  verification standard at target Level 2. `design/ASVS.md` records
+  per-chapter conformance (V1…V17) with evidence pointers and
+  out-of-scope rationales; `SECURITY.md` gains an
+  `## Application security standard` section linking the audit;
+  ADR 0019 records the rationale and the relationship with the
+  existing NIST SP 800-53 (cybersecurity), NIST SSDF (SDLC), and
+  supply-chain companion standards.
+  `scripts/verify-standards.sh` gates the new section. ADR 0015
+  and `design/SSDF.md` now cross-reference `design/ASVS.md`
+  directly instead of
+  [#112](https://github.com/aidanns/agent-auth/issues/112)
+  (closed by this change).
 - Published OpenAPI 3.1 specs for both HTTP surfaces:
   `openapi/agent-auth.v1.yaml` and `openapi/things-bridge.v1.yaml`.
   A contract test in `tests/test_openapi_spec.py` (1) validates both

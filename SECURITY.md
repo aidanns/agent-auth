@@ -247,7 +247,8 @@ covering the four SSDF practice groups:
 SSDF pairs with NIST SP 800-53 (the cybersecurity standard named above):
 SSDF specifies *how the project builds* the software, SP 800-53 specifies
 *what the running system does*. Application-level verification under OWASP
-ASVS is tracked in [#112](https://github.com/aidanns/agent-auth/issues/112);
+ASVS is recorded in the next section
+(see [`design/ASVS.md`](design/ASVS.md));
 build-provenance mechanisms (SLSA, Sigstore/cosign, SBOM) that SSDF's PS
 group references are tracked in
 [#109](https://github.com/aidanns/agent-auth/issues/109),
@@ -255,6 +256,35 @@ group references are tracked in
 [#111](https://github.com/aidanns/agent-auth/issues/111). The rationale
 for selecting SSDF is recorded in
 [`design/decisions/0015-nist-ssdf-sdlc-standard.md`](design/decisions/0015-nist-ssdf-sdlc-standard.md).
+
+## Application security standard
+
+This project adopts **OWASP Application Security Verification
+Standard (ASVS) v5** as the reference standard for application-layer
+verification, targeting **Level 2 (L2)**. Per-chapter conformance is
+tracked in [`design/ASVS.md`](design/ASVS.md), covering the 17 ASVS v5
+chapters.
+
+The chapters in scope for agent-auth's HTTP surface are V1 Encoding
+and Sanitization, V2 Validation and Business Logic, V4 API and Web
+Service, V6 Authentication, V7 Session Management, V8 Authorization,
+V9 Self-contained Tokens, V11 Cryptography, V12 Secure Communications,
+V13 Configuration, V14 Data Protection, V15 Secure Coding and
+Architecture, and V16 Security Logging and Error Handling. Chapters
+scoped out — V3 Web Frontend Security (no browser UI), V5 File
+Handling (no user file uploads), V10 OAuth and OIDC (custom token
+scheme, not OAuth), and V17 WebRTC (no peer connections) — are listed
+with their rationale in `design/ASVS.md`. L3 is not targeted because
+its high-assurance / regulated-context bar does not fit a
+solo-maintained, local-only, single-user project.
+
+ASVS pairs with the companion standards named above: NIST SP 800-53
+specifies *what the running system controls*, SSDF specifies *how
+the project builds the software*, ASVS specifies *what the
+application surface verifies*, and the supply-chain artefacts in the
+next section specify *what the released artefact attests to*. The
+rationale for selecting ASVS is recorded in
+[`design/decisions/0019-owasp-asvs-application-security-standard.md`](design/decisions/0019-owasp-asvs-application-security-standard.md).
 
 <!-- REUSE-IgnoreStart -->
 

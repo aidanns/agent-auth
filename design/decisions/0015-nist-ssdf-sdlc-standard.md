@@ -29,7 +29,9 @@ who wants to reason about the project's security posture:
    project can walk before each PR.
 2. **Application-layer verification.** What the auth surface
    itself guarantees about input validation, session management,
-   token handling, etc. — tracked separately in
+   token handling, etc. — resolved separately by
+   [ADR 0019](0019-owasp-asvs-application-security-standard.md)
+   (OWASP ASVS v5 at L2), tracked originally in
    [#112](https://github.com/aidanns/agent-auth/issues/112).
 
 This ADR resolves gap (1) by naming an SDLC-practice standard.
@@ -135,8 +137,10 @@ Framework (SSDF)** as the project's SDLC-practices standard.
 - Per-practice gap issues filed as part of
   [#113](https://github.com/aidanns/agent-auth/issues/113) —
   linked from the relevant rows of `design/SSDF.md`.
-- OWASP ASVS companion — tracked in
-  [#112](https://github.com/aidanns/agent-auth/issues/112).
+- OWASP ASVS companion — resolved by
+  [ADR 0019](0019-owasp-asvs-application-security-standard.md)
+  (tracked originally in
+  [#112](https://github.com/aidanns/agent-auth/issues/112)).
 - CNCF TAG-Security self-assessment structure for `SECURITY.md`
   threat model — tracked in
   [#114](https://github.com/aidanns/agent-auth/issues/114).

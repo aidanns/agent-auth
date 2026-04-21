@@ -841,6 +841,7 @@ else
   # delimiter separates the human-readable name from the grep pattern.
   security_sections=(
     # keep-sorted start
+    "application-security-standard|## Application security standard|Application security standard"
     "audit-surface|## Audit surface|## Audit log"
     "cybersecurity-standard|## Cybersecurity standard|Cybersecurity standard"
     "key-handling|## Key handling"
@@ -867,7 +868,7 @@ if [[ ${security_missing} -ne 0 ]]; then
   exit 1
 fi
 
-echo "verify-standards: SECURITY.md exists with all required sections including the cybersecurity standard."
+echo "verify-standards: SECURITY.md exists with all required sections including the cybersecurity, SDLC, and application security standards."
 
 # install.sh must exist at the repo root and be executable per
 # .claude/instructions/release-and-hygiene.md.
