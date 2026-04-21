@@ -807,9 +807,11 @@ Prometheus text and JSON-lines directly and does not depend on the
 OpenTelemetry SDK or OTLP transport.
 
 `GET /agent-auth/metrics` and `GET /things-bridge/metrics` are not
-yet implemented (tracked in #26). The audit log schema is not yet
-pinned by contract tests (tracked in #20). Log-level policy and
-retention policy are deferred to the dedicated observability design
+yet implemented (tracked in #26). The audit-log schema is pinned by
+contract tests in `tests/test_audit_schema.py` and versioned via
+`SCHEMA_VERSION` in `src/agent_auth/audit.py` (see "Audit log
+fields" below). Log-level policy and retention policy are deferred
+to the dedicated observability design
 document (tracked in #33), which will also hold the full metrics
 catalogue. This section pins the naming standard those efforts
 build against; it does not yet satisfy
@@ -838,6 +840,27 @@ only pins that they stay outside the OTel namespace.
 ### Audit log fields
 
 The audit log at `$XDG_STATE_HOME/agent-auth/audit.log` is JSON-lines.
+The on-disk format is part of the project's public surface and is
+versioned via the `schema_version` field emitted on every entry
+(current value: `1`; constant `SCHEMA_VERSION` in
+`src/agent_auth/audit.py`).
+
+**Stability policy** — downstream consumers (SIEM, compliance,
+forensics) can rely on the following guarantees within a given
+`schema_version`:
+
+- Adding a new optional field is non-breaking; the version stays the
+  same.
+- Adding a new `event` kind is non-breaking; the version stays the
+  same.
+- Renaming, removing, or re-typing an existing field is a breaking
+  change; `SCHEMA_VERSION` must be bumped and the change announced
+  in `CHANGELOG.md`.
+
+Contract tests in `tests/test_audit_schema.py` pin every documented
+event kind and fail if a field is renamed, removed, or re-typed
+without a version bump.
+
 Fields fall into two groups:
 
 **HTTP request attributes (OTel HTTP semconv keys)** — populated on
@@ -870,20 +893,21 @@ trails can be joined across services:
 state, not HTTP mechanics. No OTel equivalent exists; these keep
 their existing names:
 
-| Field        | Type   | Description                                                                                                                                                            |
-| ------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `timestamp`  | string | ISO 8601 UTC emit time. Kept as `timestamp` (flat JSON, not an OTel LogRecord envelope).                                                                               |
-| `event`      | string | Discriminator — `validation_allowed`, `validation_denied`, `token_created`, `token_refreshed`, `token_reissued`, `token_revoked`, `scopes_modified`, `reissue_denied`. |
-| `token_id`   | string | Opaque token identifier.                                                                                                                                               |
-| `family_id`  | string | Opaque token-family identifier.                                                                                                                                        |
-| `scope`      | string | The single requested scope.                                                                                                                                            |
-| `scopes`     | list   | Scopes on a family (on create / modify events).                                                                                                                        |
-| `tier`       | string | `allow`, `prompt`, or `deny`.                                                                                                                                          |
-| `grant_type` | string | JIT grant flavour on a `prompt`-tier approval.                                                                                                                         |
-| `reason`     | string | Denial reason code on `validation_denied` / `reissue_denied`.                                                                                                          |
+| Field            | Type   | Description                                                                                                                                                                                                                    |
+| ---------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `timestamp`      | string | ISO 8601 UTC emit time. Kept as `timestamp` (flat JSON, not an OTel LogRecord envelope).                                                                                                                                       |
+| `schema_version` | int    | Wire-format version of the audit-log schema (currently `1`). See the stability policy above.                                                                                                                                   |
+| `event`          | string | Discriminator — `validation_allowed`, `validation_denied`, `token_created`, `token_refreshed`, `token_reissued`, `token_revoked`, `token_rotated`, `scopes_modified`, `reissue_denied`, `approval_granted`, `approval_denied`. |
+| `token_id`       | string | Opaque token identifier.                                                                                                                                                                                                       |
+| `family_id`      | string | Opaque token-family identifier.                                                                                                                                                                                                |
+| `scope`          | string | The single requested scope.                                                                                                                                                                                                    |
+| `scopes`         | list   | Scopes on a family (on create / modify events).                                                                                                                                                                                |
+| `tier`           | string | `allow`, `prompt`, or `deny`.                                                                                                                                                                                                  |
+| `grant_type`     | string | JIT grant flavour on a `prompt`-tier approval.                                                                                                                                                                                 |
+| `reason`         | string | Denial reason code on `validation_denied` / `reissue_denied`.                                                                                                                                                                  |
 
-Contract tests pinning the schema (#20) and the dedicated
-observability design (#33) extend this mapping.
+The dedicated observability design (#33) will extend this mapping
+with log-level policy and retention details.
 
 ## Security Considerations
 
