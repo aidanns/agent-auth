@@ -90,6 +90,16 @@ language: `python.md`, `bash.md`.
   actions referenced as `uses: ./...` are version-locked to the repo
   commit itself and need no extra pinning.
 
+  Explicit exception: `slsa-framework/slsa-github-generator`'s reusable
+  workflows **must** be referenced by semantic-version tag
+  (`@v2.1.0`), not by commit SHA. The SLSA generator introspects its
+  own `@ref` to certify the builder identity in the emitted
+  provenance; a SHA ref produces an invalid (or unverifiable)
+  attestation. See
+  https://github.com/slsa-framework/slsa-github-generator/blob/main/internal/builders/generic/README.md#referencing-the-slsa-generator.
+  Leave a comment at the call-site explaining the exception so the
+  next maintainer doesn't "harden" it by mistake.
+
 ## IDE
 
 - **VS Code project** — generate or commit a `.vscode/` directory covering

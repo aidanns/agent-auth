@@ -23,6 +23,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   asserts that the workflow keeps gating the check without that escape
   hatch
   ([#5](https://github.com/aidanns/agent-auth/issues/5)).
+- **SLSA v1.0 Build Level 3 provenance on every release.**
+  `release-publish.yml` now calls
+  `slsa-framework/slsa-github-generator`'s
+  `generator_generic_slsa3.yml` reusable workflow from a new
+  `provenance` job (sequenced after `publish` via `needs:`), binding
+  each sdist + wheel sha256 digest to the workflow run, commit SHA,
+  and ref. The attestation ships as `multiple.intoto.jsonl` on every
+  GitHub release. Verification recipe uses `slsa-verifier verify-artifact` with `--source-uri` + `--source-tag` pinning
+  (documented in `SECURITY.md` § Supply-chain artifacts). Rationale
+  and trust-boundary analysis in
+  [ADR 0020](design/decisions/0020-slsa-build-provenance.md);
+  `design/SSDF.md` PS.2.1 and PS.3.2 updated from *Planned* →
+  *Implemented*. The `slsa-github-generator` reusable workflow must
+  be tag-pinned (not SHA-pinned) because the generator introspects
+  its own `@ref` to certify builder identity — policy exception
+  documented in `.claude/instructions/tooling-and-ci.md`. Closes
+  [#109](https://github.com/aidanns/agent-auth/issues/109).
 - OWASP ASVS v5 adopted as the project's application-security
   verification standard at target Level 2. `design/ASVS.md` records
   per-chapter conformance (V1…V17) with evidence pointers and
