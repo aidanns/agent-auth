@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/fault/` exists and contains coverage for each scenario;
   `design/SSDF.md` PW.8.2 ratcheted to *Implemented*. Closes
   [#39](https://github.com/aidanns/agent-auth/issues/39).
+- `design/DESIGN.md` "Observability" now documents the full set of
+  log streams (audit JSON-lines, operational stdout/stderr, the
+  Prometheus scrape endpoint), the project's no-hierarchy log-level
+  policy, log location and rotation expectations, and retention
+  responsibilities — closing out the final gaps against
+  `.claude/instructions/service-design.md`'s Observability-design
+  standard. `scripts/verify-standards.sh` gates presence of each
+  required topic so a future edit that drops one fails CI
+  ([#33](https://github.com/aidanns/agent-auth/issues/33)).
 - `scripts/verify-standards.sh` now gates the graceful-shutdown
   standard: both `src/agent_auth/server.py` and
   `src/things_bridge/server.py` must install a `signal.SIGTERM`
