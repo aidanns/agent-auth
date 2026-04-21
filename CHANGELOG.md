@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Release Please now authenticates via a dedicated GitHub App
+  instead of a PAT.** `.github/workflows/release-please.yml` mints a
+  short-lived installation token per workflow run via
+  `actions/create-github-app-token` (pinned to `v3` commit SHA),
+  using new repository secrets `RELEASE_PLEASE_APP_ID` +
+  `RELEASE_PLEASE_APP_PRIVATE_KEY`. The "Release Please agent-auth"
+  App scopes to `aidanns/agent-auth` only with `contents: write` +
+  `pull-requests: write`, strictly narrower than a human-account
+  PAT. The legacy `RELEASE_PLEASE_TOKEN` secret is retired; setup
+  and rotation procedures are documented in `CONTRIBUTING.md` §
+  *Release process → Default path*. ADR 0016 "Consequences" and
+  "Follow-ups" updated. Closes
+  [#128](https://github.com/aidanns/agent-auth/issues/128).
+
 ### Added
 
 - **Performance budget** for the agent hot path
@@ -44,6 +60,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/fault/` exists and contains coverage for each scenario;
   `design/SSDF.md` PW.8.2 ratcheted to *Implemented*. Closes
   [#39](https://github.com/aidanns/agent-auth/issues/39).
+- `design/DESIGN.md` "Observability" now documents the full set of
+  log streams (audit JSON-lines, operational stdout/stderr, the
+  Prometheus scrape endpoint), the project's no-hierarchy log-level
+  policy, log location and rotation expectations, and retention
+  responsibilities — closing out the final gaps against
+  `.claude/instructions/service-design.md`'s Observability-design
+  standard. `scripts/verify-standards.sh` gates presence of each
+  required topic so a future edit that drops one fails CI
+  ([#33](https://github.com/aidanns/agent-auth/issues/33)).
 - `scripts/verify-standards.sh` now gates the graceful-shutdown
   standard: both `src/agent_auth/server.py` and
   `src/things_bridge/server.py` must install a `signal.SIGTERM`

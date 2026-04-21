@@ -129,14 +129,22 @@ the per-file licensing convention.
 - A compromised GitHub-hosted runner could produce a signed
   malicious bundle. Residual risk accepted; Rekor transparency-log
   inclusion is the detection signal.
-- Release Please requires a PAT or GitHub App token stored as a
-  repository secret (`RELEASE_PLEASE_TOKEN`) because tags created
-  with the default `GITHUB_TOKEN` do not fire downstream workflow
-  triggers. This adds one long-lived credential to the trust root
-  — weaker than the keyless cosign posture elsewhere in this
-  pipeline. Rotation burden is on the maintainer; a GitHub App
-  installation token is the preferred mitigation if we spin one
-  up.
+- Release Please requires a non-`GITHUB_TOKEN` credential stored as
+  a repository secret because tags created with the default
+  `GITHUB_TOKEN` do not fire downstream workflow triggers. The
+  original implementation used a fine-grained PAT
+  (`RELEASE_PLEASE_TOKEN`); as of
+  [#128](https://github.com/aidanns/agent-auth/issues/128) this has
+  been replaced with a dedicated GitHub App
+  ("Release Please agent-auth") whose installation token is minted
+  per workflow run via `actions/create-github-app-token` from
+  `RELEASE_PLEASE_APP_ID` + `RELEASE_PLEASE_APP_PRIVATE_KEY`
+  secrets. The token is short-lived and the App scopes to this
+  single repo with only `contents: write` and
+  `pull-requests: write` — strictly narrower than a PAT bound to a
+  human account. The private key remains the long-lived credential
+  in the trust root; rotation procedure is documented in
+  `CONTRIBUTING.md` § *Release process → Default path*.
 - `release-type: simple` means Release Please will generate its
   own CHANGELOG section on first run, which may not match the
   existing hand-maintained Keep-a-Changelog format perfectly. We
@@ -147,17 +155,24 @@ the per-file licensing convention.
 
 ## Follow-ups
 
-- [#109](https://github.com/aidanns/agent-auth/issues/109) — add
-  SLSA build provenance attestation on top of the publish workflow.
 - [#93](https://github.com/aidanns/agent-auth/issues/93) —
   write-protect the `v*` tag namespace to CI only.
 - [#18](https://github.com/aidanns/agent-auth/issues/18) — decide
   whether to collapse `scripts/release.sh` into a smaller local
   validator once the CI path has produced a few real releases.
-- [#127](https://github.com/aidanns/agent-auth/issues/127) — pin
-  release-affecting GitHub Actions to commit SHAs.
-- [#128](https://github.com/aidanns/agent-auth/issues/128) — migrate
-  `release-please-action` from a PAT to a GitHub App installation
-  token.
+
+Resolved since this ADR landed:
+
+- [#109](https://github.com/aidanns/agent-auth/issues/109) — SLSA
+  Build L3 provenance attached to every release (see
+  [ADR 0020](0020-slsa-build-provenance.md)).
+- [#127](https://github.com/aidanns/agent-auth/issues/127) —
+  release-adjacent Actions pinned to commit SHAs; policy in
+  `.claude/instructions/tooling-and-ci.md`.
+- [#128](https://github.com/aidanns/agent-auth/issues/128) —
+  `release-please-action` migrated from a PAT to a dedicated GitHub
+  App installation token minted via
+  `actions/create-github-app-token`. Setup and rotation in
+  `CONTRIBUTING.md` § *Release process → Default path*.
 
 <!-- REUSE-IgnoreEnd -->
