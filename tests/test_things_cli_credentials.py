@@ -133,6 +133,19 @@ def test_file_store_corrupt_yaml_raises_backend_error(tmp_path):
         store.load()
 
 
+def test_file_store_non_dict_yaml_root_raises_backend_error(tmp_path):
+    # A credentials file whose YAML root is a list (or other non-mapping
+    # scalar) is malformed — the user must know their file is unusable so
+    # they can run ``things-cli login`` again, not silently fall through
+    # to "no credentials stored".
+    path = tmp_path / "creds.yaml"
+    path.write_text("- access_token: aa\n- refresh_token: bb\n")
+    path.chmod(0o600)
+    store = FileStore(str(path))
+    with pytest.raises(CredentialsBackendError, match="expected a YAML mapping"):
+        store.load()
+
+
 def test_file_store_missing_required_field_raises_not_found(tmp_path):
     path = tmp_path / "creds.yaml"
     path.write_text(yaml.safe_dump({"access_token": "aa"}))

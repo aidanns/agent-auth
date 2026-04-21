@@ -6,6 +6,7 @@
 
 import json
 import sys
+from typing import Any
 
 
 def _truncate(value: str | None, width: int) -> str:
@@ -17,7 +18,7 @@ def _truncate(value: str | None, width: int) -> str:
     return v
 
 
-def print_todos(todos: list[dict], *, as_json: bool = False) -> None:
+def print_todos(todos: list[dict[str, Any]], *, as_json: bool = False) -> None:
     if as_json:
         print(json.dumps({"todos": todos}, indent=2))
         return
@@ -34,7 +35,7 @@ def print_todos(todos: list[dict], *, as_json: bool = False) -> None:
         )
 
 
-def print_todo(todo: dict, *, as_json: bool = False) -> None:
+def print_todo(todo: dict[str, Any], *, as_json: bool = False) -> None:
     if as_json:
         print(json.dumps({"todo": todo}, indent=2))
         return
@@ -59,7 +60,7 @@ def print_todo(todo: dict, *, as_json: bool = False) -> None:
             print(f"  {line}")
 
 
-def print_projects(projects: list[dict], *, as_json: bool = False) -> None:
+def print_projects(projects: list[dict[str, Any]], *, as_json: bool = False) -> None:
     if as_json:
         print(json.dumps({"projects": projects}, indent=2))
         return
@@ -76,7 +77,7 @@ def print_projects(projects: list[dict], *, as_json: bool = False) -> None:
         )
 
 
-def print_project(project: dict, *, as_json: bool = False) -> None:
+def print_project(project: dict[str, Any], *, as_json: bool = False) -> None:
     if as_json:
         print(json.dumps({"project": project}, indent=2))
         return
@@ -100,7 +101,7 @@ def print_project(project: dict, *, as_json: bool = False) -> None:
             print(f"  {line}")
 
 
-def print_areas(areas: list[dict], *, as_json: bool = False) -> None:
+def print_areas(areas: list[dict[str, Any]], *, as_json: bool = False) -> None:
     if as_json:
         print(json.dumps({"areas": areas}, indent=2))
         return
@@ -112,7 +113,7 @@ def print_areas(areas: list[dict], *, as_json: bool = False) -> None:
         print(f"{a['id']}  {_truncate(a['name'], 40):<40}  tags: {tags}")
 
 
-def print_area(area: dict, *, as_json: bool = False) -> None:
+def print_area(area: dict[str, Any], *, as_json: bool = False) -> None:
     if as_json:
         print(json.dumps({"area": area}, indent=2))
         return

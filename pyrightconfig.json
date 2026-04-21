@@ -23,12 +23,6 @@
     "src/agent_auth/server.py",
     "src/agent_auth/store.py",
     "src/agent_auth/tokens.py",
-    "src/things_cli/cli.py",
-    "src/things_cli/client.py",
-    "src/things_cli/credentials.py",
-    "src/things_cli/output.py",
-    "src/things_client_common/cli.py",
-    "src/things_models/models.py",
     "tests",
     "src/tests_support"
   ]

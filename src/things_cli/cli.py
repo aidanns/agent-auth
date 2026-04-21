@@ -26,14 +26,14 @@ def _default_file_path() -> str:
     return os.path.join(os.path.expanduser("~"), ".config", "things-cli", "credentials.yaml")
 
 
-def _resolve_store(args) -> CredentialStore:
+def _resolve_store(args: argparse.Namespace) -> CredentialStore:
     return select_store(
         args.credential_store,
         file_path=args.credentials_file or _default_file_path(),
     )
 
 
-def handle_login(args) -> int:
+def handle_login(args: argparse.Namespace) -> int:
     store = _resolve_store(args)
     creds = Credentials(
         access_token=args.access_token,
@@ -47,14 +47,14 @@ def handle_login(args) -> int:
     return 0
 
 
-def handle_logout(args) -> int:
+def handle_logout(args: argparse.Namespace) -> int:
     store = _resolve_store(args)
     store.clear()
     print("Credentials cleared.")
     return 0
 
 
-def handle_status(args) -> int:
+def handle_status(args: argparse.Namespace) -> int:
     store = _resolve_store(args)
     try:
         creds = store.load()
@@ -69,13 +69,13 @@ def handle_status(args) -> int:
     return 0
 
 
-def _load_client(args) -> BridgeClient:
+def _load_client(args: argparse.Namespace) -> BridgeClient:
     store = _resolve_store(args)
     creds = store.load()
     return BridgeClient(creds, store)
 
 
-def handle_todos_list(args) -> int:
+def handle_todos_list(args: argparse.Namespace) -> int:
     client = _load_client(args)
     params: dict[str, str] = {}
     if args.list:
@@ -93,14 +93,14 @@ def handle_todos_list(args) -> int:
     return 0
 
 
-def handle_todo_show(args) -> int:
+def handle_todo_show(args: argparse.Namespace) -> int:
     client = _load_client(args)
     data = client.get_todo(args.id)
     output.print_todo(data["todo"], as_json=args.json)
     return 0
 
 
-def handle_projects_list(args) -> int:
+def handle_projects_list(args: argparse.Namespace) -> int:
     client = _load_client(args)
     params: dict[str, str] = {}
     if args.area:
@@ -110,21 +110,21 @@ def handle_projects_list(args) -> int:
     return 0
 
 
-def handle_project_show(args) -> int:
+def handle_project_show(args: argparse.Namespace) -> int:
     client = _load_client(args)
     data = client.get_project(args.id)
     output.print_project(data["project"], as_json=args.json)
     return 0
 
 
-def handle_areas_list(args) -> int:
+def handle_areas_list(args: argparse.Namespace) -> int:
     client = _load_client(args)
     data = client.list_areas()
     output.print_areas(data.get("areas", []), as_json=args.json)
     return 0
 
 
-def handle_area_show(args) -> int:
+def handle_area_show(args: argparse.Namespace) -> int:
     client = _load_client(args)
     data = client.get_area(args.id)
     output.print_area(data["area"], as_json=args.json)

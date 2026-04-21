@@ -19,6 +19,7 @@ import contextlib
 import os
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
+from typing import Any, cast
 
 import keyring
 import yaml
@@ -90,11 +91,23 @@ class KeyringStore(CredentialStore):
             raise CredentialsNotFoundError(
                 f"No credentials found in keyring; missing {missing}. Run `things-cli login`."
             )
+        # Narrow the ``str | None`` entries returned by keyring to ``str``
+        # without relying on ``assert`` (which ``python -O`` strips). Any
+        # required field that somehow changed between the ``missing`` check
+        # and here raises explicitly.
+        required: dict[str, str] = {}
+        for name in _REQUIRED_FIELDS:
+            value = values[name]
+            if value is None:
+                raise CredentialsBackendError(
+                    f"Keyring returned no value for required field {name!r}"
+                )
+            required[name] = value
         return Credentials(
-            access_token=values["access_token"],
-            refresh_token=values["refresh_token"],
-            bridge_url=values["bridge_url"],
-            auth_url=values["auth_url"],
+            access_token=required["access_token"],
+            refresh_token=required["refresh_token"],
+            bridge_url=required["bridge_url"],
+            auth_url=required["auth_url"],
             family_id=values.get("family_id"),
         )
 
@@ -158,11 +171,20 @@ class FileStore(CredentialStore):
             )
         try:
             with open(self._path) as f:
-                data = yaml.safe_load(f) or {}
+                raw = yaml.safe_load(f)
         except yaml.YAMLError as exc:
             raise CredentialsBackendError(
                 f"Credentials file at {self._path} is corrupt: {exc}"
             ) from exc
+        if raw is None:
+            data: dict[str, Any] = {}
+        elif isinstance(raw, dict):
+            data = cast(dict[str, Any], raw)
+        else:
+            raise CredentialsBackendError(
+                f"Credentials file at {self._path} is corrupt: "
+                f"expected a YAML mapping, got {type(raw).__name__}"
+            )
         missing = [name for name in _REQUIRED_FIELDS if not data.get(name)]
         if missing:
             raise CredentialsNotFoundError(
@@ -210,12 +232,15 @@ def select_store(
 
 def _keyring_available() -> bool:
     """Best-effort detection of a working keyring backend."""
+    fail_keyring_cls: type | None
     try:
-        from keyring.backends.fail import Keyring as FailKeyring
+        from keyring.backends.fail import Keyring as _FailKeyring
+
+        fail_keyring_cls = _FailKeyring
     except ImportError:
-        FailKeyring = None  # type: ignore[assignment]
+        fail_keyring_cls = None
     try:
         backend = keyring.get_keyring()
     except _KeyringBackendError:
         return False
-    return not (FailKeyring is not None and isinstance(backend, FailKeyring))
+    return not (fail_keyring_cls is not None and isinstance(backend, fail_keyring_cls))

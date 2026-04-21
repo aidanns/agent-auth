@@ -6,6 +6,7 @@
 
 import json
 from http.client import HTTPConnection, HTTPSConnection
+from typing import Any
 from urllib.parse import quote, urlencode, urlparse
 
 from things_cli.credentials import Credentials, CredentialStore
@@ -48,27 +49,27 @@ class BridgeClient:
 
     # -- public API: one method per bridge endpoint --
 
-    def list_todos(self, params: dict[str, str] | None = None) -> dict:
+    def list_todos(self, params: dict[str, str] | None = None) -> dict[str, Any]:
         """List todos from the bridge, optionally filtered by query params."""
         return self._request("GET", "/things-bridge/v1/todos", params=params)
 
-    def get_todo(self, todo_id: str) -> dict:
+    def get_todo(self, todo_id: str) -> dict[str, Any]:
         """Get a single todo by id."""
         return self._request("GET", f"/things-bridge/v1/todos/{quote(todo_id, safe='')}")
 
-    def list_projects(self, params: dict[str, str] | None = None) -> dict:
+    def list_projects(self, params: dict[str, str] | None = None) -> dict[str, Any]:
         """List projects from the bridge, optionally filtered by query params."""
         return self._request("GET", "/things-bridge/v1/projects", params=params)
 
-    def get_project(self, project_id: str) -> dict:
+    def get_project(self, project_id: str) -> dict[str, Any]:
         """Get a single project by id."""
         return self._request("GET", f"/things-bridge/v1/projects/{quote(project_id, safe='')}")
 
-    def list_areas(self) -> dict:
+    def list_areas(self) -> dict[str, Any]:
         """List areas from the bridge."""
         return self._request("GET", "/things-bridge/v1/areas")
 
-    def get_area(self, area_id: str) -> dict:
+    def get_area(self, area_id: str) -> dict[str, Any]:
         """Get a single area by id."""
         return self._request("GET", f"/things-bridge/v1/areas/{quote(area_id, safe='')}")
 
@@ -81,7 +82,7 @@ class BridgeClient:
         *,
         params: dict[str, str] | None = None,
         _already_retried: bool = False,
-    ) -> dict:
+    ) -> dict[str, Any]:
         status, data = self._do_http(
             self._credentials.bridge_url,
             method,
@@ -170,9 +171,9 @@ class BridgeClient:
         path: str,
         *,
         params: dict[str, str] | None = None,
-        body: dict | None = None,
+        body: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
-    ) -> tuple[int, dict | None]:
+    ) -> tuple[int, dict[str, Any] | None]:
         parsed = urlparse(base_url)
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
             raise BridgeUnavailableError(f"Invalid URL: {base_url!r}")
@@ -182,7 +183,7 @@ class BridgeClient:
 
         query = ""
         if params:
-            query = "?" + urlencode({k: v for k, v in params.items() if v is not None})
+            query = "?" + urlencode(params)
         full_path = (parsed.path.rstrip("/") + path) + query
 
         request_body: bytes | None = None
