@@ -159,15 +159,64 @@ For every user-facing PR, update `CHANGELOG.md` before merging:
 
 ### Default path: Release Please
 
-One-time setup: create a **fine-grained personal access token** (or
-GitHub App installation token) with `contents: write` and
-`pull-requests: write` permission on this repository, and save it as
-the `RELEASE_PLEASE_TOKEN` repository secret. This is required
-because tags created by the default `GITHUB_TOKEN` do **not** fire
-downstream `on: push: tags:` workflows — without a PAT, the chain
-from the Release Please merge to the signed-artefact publish
-silently breaks. A GitHub App token is the lower-blast-radius option
-if you're willing to spin one up.
+One-time setup: install a **GitHub App** on this repository that the
+`Release Please` workflow uses to mint short-lived installation
+tokens via
+[`actions/create-github-app-token`](https://github.com/actions/create-github-app-token).
+A GitHub App token is required (rather than the default
+`GITHUB_TOKEN`) because tags created by `GITHUB_TOKEN` do **not**
+fire downstream `on: push: tags:` workflows — the chain from the
+Release Please merge to the signed-artefact publish would silently
+break. The App is preferred over a PAT because it scopes to a single
+repo, exposes no human credential surface, and its private key can
+be rotated without touching a personal account.
+
+#### One-time: register the "Release Please agent-auth" GitHub App
+
+1. Go to
+   [github.com/settings/apps/new](https://github.com/settings/apps/new)
+   (user-owned App) and create an App with:
+   - **App name**: `Release Please agent-auth` (any identifier
+     works; the name appears in release-PR author metadata).
+   - **Homepage URL**:
+     `https://github.com/aidanns/agent-auth`.
+   - **Webhook**: uncheck *Active* — this App does not handle
+     events.
+   - **Repository permissions**:
+     - *Contents*: **Read & write** (create tags + releases).
+     - *Pull requests*: **Read & write** (open/update the release
+       PR).
+     - All other permissions: **No access**.
+   - **Where can this GitHub App be installed?**: *Only on this
+     account*.
+2. Click **Create GitHub App**.
+3. On the App's settings page:
+   - Copy the **App ID** (numeric, shown at the top) for step 5.
+   - Under **Private keys → Generate a private key**, download
+     the `.pem` file. GitHub shows it once.
+4. Still on the App's settings page, open **Install App** and
+   install it against `aidanns/agent-auth` only — not *All
+   repositories*.
+5. In the repo's
+   [Settings → Secrets and variables → Actions](https://github.com/aidanns/agent-auth/settings/secrets/actions),
+   add:
+   - `RELEASE_PLEASE_APP_ID` — the numeric App ID from step 3.
+   - `RELEASE_PLEASE_APP_PRIVATE_KEY` — the **full contents** of
+     the `.pem` file, including the `-----BEGIN/END` markers and
+     the trailing newline.
+6. Delete the legacy `RELEASE_PLEASE_TOKEN` secret if it still
+   exists.
+
+The workflow in `.github/workflows/release-please.yml` reads these
+two secrets at run time, mints an installation token via
+`actions/create-github-app-token`, and hands the token to
+`googleapis/release-please-action`. The token is short-lived and
+is not persisted beyond the workflow run.
+
+To rotate the private key, re-run step 3 (generate a new key),
+update `RELEASE_PLEASE_APP_PRIVATE_KEY` in repo settings, and
+revoke the old key from the App settings page. No workflow change
+is required.
 
 1. Land PRs on `main` using Conventional Commits.
 2. The `Release Please` workflow opens or updates the release PR

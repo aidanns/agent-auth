@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Release Please now authenticates via a dedicated GitHub App
+  instead of a PAT.** `.github/workflows/release-please.yml` mints a
+  short-lived installation token per workflow run via
+  `actions/create-github-app-token` (pinned to `v3` commit SHA),
+  using new repository secrets `RELEASE_PLEASE_APP_ID` +
+  `RELEASE_PLEASE_APP_PRIVATE_KEY`. The "Release Please agent-auth"
+  App scopes to `aidanns/agent-auth` only with `contents: write` +
+  `pull-requests: write`, strictly narrower than a human-account
+  PAT. The legacy `RELEASE_PLEASE_TOKEN` secret is retired; setup
+  and rotation procedures are documented in `CONTRIBUTING.md` §
+  *Release process → Default path*. ADR 0016 "Consequences" and
+  "Follow-ups" updated. Closes
+  [#128](https://github.com/aidanns/agent-auth/issues/128).
+
 ### Added
 
 - **`design/SELF_ASSESSMENT.md` — CNCF TAG-Security-style security
