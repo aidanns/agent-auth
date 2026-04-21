@@ -756,7 +756,10 @@ def run_server(
     approval_manager = ApprovalManager(plugin, store, audit)
     server = AgentAuthServer(config, signing_key, store, audit, approval_manager)
     drain_complete = _install_shutdown_handler(server, config.shutdown_deadline_seconds)
-    print(f"agent-auth server listening on {config.host}:{config.port}", flush=True)
+    # Read the bound port from ``server_address`` (populated during
+    # ``server_bind``) so a ``port: 0`` config surfaces the real port.
+    bound_port = server.server_address[1]
+    print(f"agent-auth server listening on {config.host}:{bound_port}", flush=True)
     try:
         server.serve_forever()
     finally:

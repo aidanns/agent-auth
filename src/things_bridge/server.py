@@ -321,7 +321,10 @@ def run_server(config: Config, things: ThingsClient, authz: AgentAuthClient) -> 
     """
     server = ThingsBridgeServer(config, things, authz)
     drain_complete = _install_shutdown_handler(server, config.shutdown_deadline_seconds)
-    print(f"things-bridge listening on {config.host}:{config.port}", flush=True)
+    # Read the bound port from ``server_address`` (populated during
+    # ``server_bind``) so a ``port: 0`` config surfaces the real port.
+    bound_port = server.server_address[1]
+    print(f"things-bridge listening on {config.host}:{bound_port}", flush=True)
     try:
         server.serve_forever()
     finally:
