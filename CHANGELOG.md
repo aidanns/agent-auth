@@ -110,6 +110,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same retry retune. Part 3 of the follow-up (parallelise downloads) is
   tracked separately
   ([#165](https://github.com/aidanns/agent-auth/issues/165)).
+- `setup-toolchain` release-binary installs now run the 7 downloads
+  concurrently in a single `Install release binaries` step
+  (`fetch-release-asset.sh ... &` plus a per-PID `wait` loop that
+  fails fast on any curl / sha256 error). Extract + install + version
+  echo stays serial with `::group::` markers for per-tool log
+  readability. Trims composite-action wall-time on every CI job.
+  Completes the #165 follow-up sequenced in
+  [#168](https://github.com/aidanns/agent-auth/issues/168).
 
 ### Fixed
 
