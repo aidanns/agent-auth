@@ -10,7 +10,7 @@ from things_models.models import Area, Project, Todo
 
 
 def make_todo(**overrides: Any) -> Todo:
-    defaults = dict(
+    defaults: dict[str, Any] = dict(
         id="t1",
         name="",
         notes="",
@@ -32,7 +32,7 @@ def make_todo(**overrides: Any) -> Todo:
 
 
 def make_project(**overrides: Any) -> Project:
-    defaults = dict(
+    defaults: dict[str, Any] = dict(
         id="p1",
         name="",
         notes="",
@@ -52,6 +52,6 @@ def make_project(**overrides: Any) -> Project:
 
 
 def make_area(**overrides: Any) -> Area:
-    defaults = dict(id="a1", name="", tag_names=[])
+    defaults: dict[str, Any] = dict(id="a1", name="", tag_names=[])
     defaults.update(overrides)
     return Area(**defaults)

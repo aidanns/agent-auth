@@ -20,6 +20,7 @@ implementations:
 import inspect
 import re
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -40,9 +41,9 @@ _THINGS_BRIDGE_SPEC = _OPENAPI_DIR / "things-bridge.v1.yaml"
 _PATH_RE = re.compile(r'"(/(?:agent-auth|things-bridge)/[A-Za-z0-9/_\{\}-]*)"')
 
 
-def _load_spec(path: Path) -> dict:
+def _load_spec(path: Path) -> dict[str, Any]:
     with open(path) as f:
-        return yaml.safe_load(f)
+        return cast(dict[str, Any], yaml.safe_load(f))
 
 
 def _handler_paths(handler_cls: type) -> set[str]:
@@ -58,7 +59,7 @@ def _handler_paths(handler_cls: type) -> set[str]:
     return {m.group(1) for m in _PATH_RE.finditer(src)}
 
 
-def _spec_paths(spec: dict) -> set[str]:
+def _spec_paths(spec: dict[str, Any]) -> set[str]:
     return set(spec.get("paths", {}).keys())
 
 

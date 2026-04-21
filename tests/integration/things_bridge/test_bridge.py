@@ -21,6 +21,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+from typing import Any
 
 import pytest
 
@@ -82,7 +83,7 @@ def stack(things_bridge_stack):
     }
 
 
-def _get(url: str, token: str | None):
+def _get(url: str, token: str | None) -> tuple[int, Any]:
     req = urllib.request.Request(url)
     if token is not None:
         req.add_header("Authorization", f"Bearer {token}")

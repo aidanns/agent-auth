@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -24,6 +25,7 @@ import pytest
 from tests._signals import invoke_installed_handler
 from tests.factories import make_area
 from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
+from things_bridge.authz import AgentAuthClient
 from things_bridge.config import Config
 from things_bridge.server import (
     ThingsBridgeHandler,
@@ -32,8 +34,11 @@ from things_bridge.server import (
 )
 
 
-class _AlwaysValidAuthz:
-    def validate(self, token, required_scope, *, description=None):
+class _AlwaysValidAuthz(AgentAuthClient):
+    def __init__(self) -> None:
+        super().__init__("http://test-fake")
+
+    def validate(self, token: str, required_scope: str, *, description: str | None = None) -> None:
         return None
 
 
@@ -150,7 +155,7 @@ def test_in_flight_bridge_request_completes_before_server_close_returns(monkeypa
     serve_thread = threading.Thread(target=server.serve_forever, daemon=True)
     serve_thread.start()
 
-    response: list[tuple[int, dict]] = []
+    response: list[tuple[int, Any]] = []
 
     def _client():
         req = urllib.request.Request(

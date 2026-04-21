@@ -66,7 +66,7 @@ def preserve_signal_handlers():
 @pytest.fixture
 def mock_keyring():
     """Mock keyring that stores passwords in memory."""
-    passwords = {}
+    passwords: dict[tuple[str, str], str] = {}
 
     def get_password(service, username):
         return passwords.get((service, username))

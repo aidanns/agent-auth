@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import textwrap
+from typing import Any, cast
 
 import pytest
 
@@ -57,9 +58,9 @@ def seeded_runner(fake_cli_runner):
     return fake_cli_runner
 
 
-def _json(result) -> dict:
+def _json(result: Any) -> dict[str, Any]:
     assert result.stdout.strip(), f"no JSON on stdout; stderr={result.stderr!r}"
-    return json.loads(result.stdout)
+    return cast(dict[str, Any], json.loads(result.stdout))
 
 
 @pytest.mark.covers_function("Fetch Things Data")

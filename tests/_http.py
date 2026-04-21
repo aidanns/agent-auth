@@ -9,9 +9,10 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from typing import Any
 
 
-def get(url: str, headers: dict | None = None) -> tuple[int, dict]:
+def get(url: str, headers: dict[str, str] | None = None) -> tuple[int, Any]:
     req = urllib.request.Request(url, headers=headers or {})
     try:
         resp = urllib.request.urlopen(req)
@@ -22,10 +23,10 @@ def get(url: str, headers: dict | None = None) -> tuple[int, dict]:
 
 def post(
     url: str,
-    data: dict | None = None,
+    data: dict[str, Any] | None = None,
     raw: bytes | None = None,
-    headers: dict | None = None,
-) -> tuple[int, dict]:
+    headers: dict[str, str] | None = None,
+) -> tuple[int, Any]:
     body = raw if raw is not None else json.dumps(data or {}).encode("utf-8")
     req_headers = {"Content-Type": "application/json", **(headers or {})}
     req = urllib.request.Request(url, data=body, headers=req_headers)

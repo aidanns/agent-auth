@@ -121,14 +121,13 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 # Type-checking configuration. Two checkers run in CI (see
 # .claude/instructions/python.md): mypy for Python-standard semantics,
 # pyright for a second implementation catching disjoint issues. The
-# project-wide default is strict; modules that existed before strict
-# was introduced are relaxed below via `ignore_errors = true` and
-# paired with a ratcheting follow-up issue.
-#
-# Every module listed with `ignore_errors = true` below must also
-# appear as a path in pyrightconfig.json's `ignore` list. Renames and
-# deletions MUST touch both files. scripts/verify-standards.sh asserts
-# the two lists agree.
+# project-wide default is strict. The [[tool.mypy.overrides]] block
+# below only carries narrow, per-reason relaxations (currently just
+# disallow_untyped_defs = false for tests, so pytest fixture magic
+# stays ergonomic). Any such relaxation must be mirrored in
+# pyrightconfig.json — typically via an executionEnvironments entry
+# for tests-style relaxations or the top-level ignore/exclude lists
+# for full module skips. Renames MUST touch both files.
 [tool.mypy]
 python_version = "3.11"
 strict = true
@@ -151,9 +150,11 @@ module = [
 ignore_missing_imports = true
 
 
-# Tests use pytest fixture magic and parametrize decorators heavily;
-# `disallow_untyped_defs` in particular produces a large amount of
-# low-value noise on test functions. Tracked for ratcheting in #148.
+# Pytest convention: test function signatures (``def test_foo(tmp_path):``)
+# intentionally stay unannotated — pytest's fixture injection already gives
+# each parameter a single well-known type, and adding ``-> None`` / fixture
+# type hints to every test provides no extra value while making the suite
+# much noisier. Keep strict everywhere else.
 [[tool.mypy.overrides]]
 module = [
     # keep-sorted start
@@ -161,7 +162,9 @@ module = [
     "tests_support.*",
     # keep-sorted end
 ]
-ignore_errors = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
 
 # Mutation testing, per .claude/instructions/testing-standards.md
 # "Mutation testing on security-critical paths" and ADR 0021. Mutates
