@@ -76,6 +76,16 @@ it targets Impact, Likelihood, or both, and links to the implementing function i
 the [functional decomposition](design/functional_decomposition.yaml) or to the
 tracking issue.
 
+The STRIDE tables below capture per-asset threats at the implementation
+level. [`design/SELF_ASSESSMENT.md`](design/SELF_ASSESSMENT.md) is the
+companion document and rolls the overall system security posture up to
+the [CNCF TAG-Security self-assessment
+template](https://tag-security.cncf.io/community/assessments/guide/self-assessment/)
+structure — actors, actions, goals / non-goals, compliance standards,
+development pipeline, and incident-response posture. Use it as the
+starting point for an external review; drill into this threat model for
+per-asset detail.
+
 ### Spoofing
 
 | Threat                                                             | Impact | Likelihood | Rating | Mitigation                                                                                                                                                                                                                                                      |

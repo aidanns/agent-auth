@@ -15,6 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`design/SELF_ASSESSMENT.md` — CNCF TAG-Security-style security
+  self-assessment covering agent-auth, things-bridge, and things-cli
+  as a system.** Structured around the
+  [CNCF self-assessment template](https://tag-security.cncf.io/community/assessments/guide/self-assessment/)
+  (Metadata, Overview, Self-Assessment Use, Security Functions and
+  Features, Project Compliance, Secure Development Practices, Security
+  Issue Resolution, Appendix). Cross-references the existing
+  `SECURITY.md` threat model, `design/SSDF.md`, `design/ASVS.md`, and
+  the ADR set; non-applicable items have explicit out-of-scope entries.
+  `SECURITY.md` § Threat model links to the new doc as the system-level
+  starting point. Closes
+  [#114](https://github.com/aidanns/agent-auth/issues/114).
 - **SLSA v1.0 Build Level 3 provenance on every release.**
   `release-publish.yml` now calls
   `slsa-framework/slsa-github-generator`'s
