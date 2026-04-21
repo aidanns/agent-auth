@@ -59,3 +59,5 @@ is linked from this index.
   — SIGTERM/SIGINT drain in-flight requests within `shutdown_deadline_seconds` (default 5s) before a watchdog force-exits via `os._exit(1)`.
 - [ADR 0019 — Adopt OWASP ASVS v5 as the application security verification standard](0019-owasp-asvs-application-security-standard.md)
   — application-layer companion to NIST SP 800-53 and NIST SSDF at target Level 2; per-chapter conformance tracked in `design/ASVS.md`.
+- [ADR 0020 — SLSA Build Level 3 provenance via slsa-github-generator](0020-slsa-build-provenance.md)
+  — tag-triggered `release-publish.yml` attaches `multiple.intoto.jsonl` in-toto attestations to every release; verification via `slsa-verifier verify-artifact`.
