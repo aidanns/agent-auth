@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
-# SPDX-License-Identifier: MIT
-
 vars: {
   d2-config: {
     layout-engine: elk
@@ -227,7 +224,7 @@ f56.width: 400
 root -> f56
 f56_container: "" {
   grid-columns: 1
-  grid-rows: 4
+  grid-rows: 5
   grid-gap: 5
   style: {
     stroke-width: 0
@@ -239,15 +236,17 @@ f56_container: "" {
   f58.width: 400
   f59: Serve Bridge HTTP API
   f59.width: 400
-  f60: Handle Bridge Graceful Shutdown
+  f60: Serve Bridge Health Endpoint
   f60.width: 400
+  f61: Handle Bridge Graceful Shutdown
+  f61.width: 400
 }
 f56 -> f56_container
 
-f61: Things CLI
-f61.width: 400
-root -> f61
-f61_container: "" {
+f62: Things CLI
+f62.width: 400
+root -> f62
+f62_container: "" {
   grid-columns: 1
   grid-rows: 5
   grid-gap: 5
@@ -255,15 +254,15 @@ f61_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f62: Send Bridge Request
-  f62.width: 400
-  f63: Auto Refresh Token
+  f63: Send Bridge Request
   f63.width: 400
-  f64: Store CLI Credentials
+  f64: Auto Refresh Token
   f64.width: 400
-  f65: Handle App Commands
+  f65: Store CLI Credentials
   f65.width: 400
-  f66: Display Results
+  f66: Handle App Commands
   f66.width: 400
+  f67: Display Results
+  f67.width: 400
 }
-f61 -> f61_container
+f62 -> f62_container

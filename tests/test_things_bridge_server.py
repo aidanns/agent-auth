@@ -26,7 +26,7 @@ from things_bridge.errors import (
     ThingsPermissionError,
 )
 from things_bridge.metrics import build_registry as build_bridge_registry
-from things_bridge.server import ThingsBridgeServer
+from things_bridge.server import ThingsBridgeServer, _HealthChecker
 from things_models.models import Area
 
 
@@ -160,6 +160,131 @@ def test_get_todos_requires_bearer_token(bridge):
     status, data = _get(f"{bridge['url']}/things-bridge/v1/todos", token=None)
     assert status == 401
     assert data == {"error": "unauthorized"}
+
+
+# -- /health depth -----------------------------------------------------------
+
+# The /health handler must verify that ``things_client_command[0]`` is
+# still resolvable before returning 200 — a bridge that can't reach its
+# Things client binary isn't actually healthy. These tests pin both the
+# success path and the 503 unhealthy path.
+
+
+class _ResolverStub:
+    """Callable stand-in for ``shutil.which`` with scripted responses."""
+
+    def __init__(self, resolves: bool):
+        self.resolves = resolves
+        self.calls: list[str] = []
+
+    def __call__(self, name: str) -> str | None:
+        self.calls.append(name)
+        return f"/fake/path/{name}" if self.resolves else None
+
+
+def _bridge_with_health_checker(health_checker: _HealthChecker) -> dict[str, Any]:
+    """Start a bridge under test with an injected :class:`_HealthChecker`.
+
+    Mirrors the default ``bridge`` fixture but lets the caller wire a
+    resolver stub in so /health 503 can be exercised without touching
+    the real PATH.
+    """
+    config = Config(host="127.0.0.1", port=0)
+    authz = FakeAuthz()
+    store = FakeThingsStore()
+    things = _InjectableThings(store)
+    registry, metrics = build_bridge_registry()
+    server = ThingsBridgeServer(
+        config, things, authz, registry, metrics, health_checker=health_checker
+    )
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return {
+        "url": f"http://127.0.0.1:{port}",
+        "authz": authz,
+        "server": server,
+        "thread": thread,
+    }
+
+
+def _stop_bridge(handle: dict[str, Any]) -> None:
+    handle["server"].shutdown()
+    handle["server"].server_close()
+    handle["thread"].join(timeout=2)
+
+
+@pytest.mark.covers_function("Serve Bridge Health Endpoint")
+def test_health_returns_503_when_things_client_unresolvable():
+    resolver = _ResolverStub(resolves=False)
+    checker = _HealthChecker(["things-client-cli-applescript"], resolver=resolver)
+    handle = _bridge_with_health_checker(checker)
+    try:
+        status, data = _get(f"{handle['url']}/things-bridge/health")
+        assert status == 503
+        assert data == {"status": "unhealthy"}
+        assert resolver.calls == ["things-client-cli-applescript"]
+    finally:
+        _stop_bridge(handle)
+
+
+@pytest.mark.covers_function("Serve Bridge Health Endpoint")
+def test_health_returns_200_when_things_client_resolvable():
+    resolver = _ResolverStub(resolves=True)
+    checker = _HealthChecker(["things-client-cli-applescript"], resolver=resolver)
+    handle = _bridge_with_health_checker(checker)
+    try:
+        status, data = _get(f"{handle['url']}/things-bridge/health")
+        assert status == 200
+        assert data == {"status": "ok"}
+    finally:
+        _stop_bridge(handle)
+
+
+@pytest.mark.covers_function("Serve Bridge Health Endpoint")
+def test_health_checker_caches_resolution_within_ttl():
+    # Cache TTL guarantees at most one PATH walk per window even under
+    # a readiness-probe storm. Pin the clock and drive two calls inside
+    # the TTL — the resolver must be queried exactly once.
+    now = [100.0]
+    resolver = _ResolverStub(resolves=True)
+    checker = _HealthChecker(
+        ["things-client-cli-applescript"],
+        cache_ttl_seconds=30.0,
+        clock=lambda: now[0],
+        resolver=resolver,
+    )
+    assert checker.things_client_resolvable() is True
+    now[0] += 29.0
+    assert checker.things_client_resolvable() is True
+    assert resolver.calls == ["things-client-cli-applescript"]
+
+
+@pytest.mark.covers_function("Serve Bridge Health Endpoint")
+def test_health_checker_requeries_after_ttl_expires():
+    # After the TTL lapses, the next call must re-run the resolver —
+    # otherwise a freshly-installed client could never flip health
+    # back to green without a restart.
+    now = [100.0]
+    resolver = _ResolverStub(resolves=True)
+    checker = _HealthChecker(
+        ["things-client-cli-applescript"],
+        cache_ttl_seconds=30.0,
+        clock=lambda: now[0],
+        resolver=resolver,
+    )
+    assert checker.things_client_resolvable() is True
+    now[0] += 31.0
+    assert checker.things_client_resolvable() is True
+    assert len(resolver.calls) == 2
+
+
+@pytest.mark.covers_function("Serve Bridge Health Endpoint")
+def test_health_checker_rejects_empty_command():
+    # Defensive: an empty ``things_client_command`` is a config bug.
+    # Fail loud at construction rather than silently reporting healthy.
+    with pytest.raises(ValueError):
+        _HealthChecker([])
 
 
 # -- /metrics ---------------------------------------------------------------

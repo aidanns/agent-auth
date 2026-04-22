@@ -15,6 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`GET /things-bridge/health` now fails closed when the configured
+  Things-client binary is missing.** The handler previously returned
+  `200 {"status":"ok"}` unconditionally once the probe token
+  authorised; it now also calls `shutil.which(things_client_command[0])`
+  (cached for 30s to keep the probe cheap) and returns
+  `503 {"status":"unhealthy"}` when resolution fails. agent-auth
+  reachability stays covered implicitly by the probe-authorisation
+  call, which already surfaces 502 `authz_unavailable` on upstream
+  outage. `design/error-codes.md` documents the 503 body and
+  `design/functional_decomposition.*` carry a new "Serve Bridge Health
+  Endpoint" leaf function under Things Bridge. Rationale in
+  [ADR 0023](design/decisions/0023-things-bridge-health-depth.md).
+  Closes
+  [#91](https://github.com/aidanns/agent-auth/issues/91).
+
 - **`scripts/verify-standards.sh`'s mypy/pyright ratchet-drift gate
   now also covers per-diagnostic relaxations.** Previously the gate
   only paired mypy `ignore_errors = true` overrides with

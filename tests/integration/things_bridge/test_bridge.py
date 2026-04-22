@@ -227,7 +227,7 @@ def test_list_todos_authz_unavailable_returns_502(stack):
     assert data == {"error": "authz_unavailable"}
 
 
-@pytest.mark.covers_function("Delegate Token Validation")
+@pytest.mark.covers_function("Delegate Token Validation", "Serve Bridge Health Endpoint")
 def test_health_endpoint_requires_token(things_bridge_stack):
     # Regression guard: dropping the bearer check would let any caller
     # probe service-internal state without authorization.
@@ -236,7 +236,11 @@ def test_health_endpoint_requires_token(things_bridge_stack):
     assert data == {"error": "unauthorized"}
 
 
-@pytest.mark.covers_function("Delegate Token Validation", "Check Scope Authorization")
+@pytest.mark.covers_function(
+    "Delegate Token Validation",
+    "Check Scope Authorization",
+    "Serve Bridge Health Endpoint",
+)
 def test_health_endpoint_requires_health_scope(things_bridge_stack):
     # A token without ``things-bridge:health`` must not satisfy the
     # health endpoint — it pins the scope-check path on /health, mirroring
@@ -247,8 +251,12 @@ def test_health_endpoint_requires_health_scope(things_bridge_stack):
     assert data == {"error": "scope_denied"}
 
 
-@pytest.mark.covers_function("Delegate Token Validation", "Serve Bridge HTTP API")
+@pytest.mark.covers_function("Delegate Token Validation", "Serve Bridge Health Endpoint")
 def test_health_endpoint_returns_ok_with_health_scope(things_bridge_stack):
+    # In the Compose stack, things-client-cli-applescript is installed on
+    # PATH, so the deepened resolvability check passes and /health returns
+    # 200. This is the positive end-to-end evidence that the check doesn't
+    # regress the readiness-probe path used by Docker healthchecks.
     payload = things_bridge_stack.agent_auth.create_token("things-bridge:health=allow")
     status, data = _get(things_bridge_stack.health_url(), payload["access_token"])
     assert status == 200

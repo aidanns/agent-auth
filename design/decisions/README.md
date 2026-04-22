@@ -65,3 +65,5 @@ is linked from this index.
   — nightly mutmut pass on tokens/crypto/keys/scopes/store gated by a ratcheting score floor; `scripts/verify-standards.sh` enforces `[tool.mutmut]` config and scheduled workflow stay present.
 - [ADR 0022 — Defer application-layer rate limiting; rely on loopback-only bind and bounded request bodies](0022-rate-limiting-posture.md)
   — 1.0 ships without per-IP / per-token buckets; the loopback bind, 1 MiB body cap, and `ApprovalManager` serialisation cover the threat model until the trust boundary extends beyond localhost.
+- [ADR 0023 — Deepen `/things-bridge/health` to verify the Things-client binary is resolvable](0023-things-bridge-health-depth.md)
+  — /health now returns 503 `{"status":"unhealthy"}` when `things_client_command[0]` fails PATH resolution; cached for 30s to keep the probe cheap. agent-auth reachability is covered implicitly by the probe-authorization call.
