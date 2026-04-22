@@ -19,7 +19,7 @@
 #
 # Walks with --first-parent so a merge commit contributes only its own
 # subject, not the intermediate commits from the merged branch (matches
-# release-please / go-semantic-release and keeps the result stable across
+# semantic-release / go-semantic-release and keeps the result stable across
 # squash- vs merge-commit PR policies).
 #
 # `revert:` commits: `git revert` copies the reverted commit's full message

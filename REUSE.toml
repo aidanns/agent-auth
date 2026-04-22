@@ -24,8 +24,9 @@ SPDX-License-Identifier = "MIT"
 
 [[annotations]]
 path = [
-    ".release-please-config.json",
-    ".release-please-manifest.json",
+    ".releaserc.json",
+    "package-lock.json",
+    "package.json",
     "pyrightconfig.json",
 ]
 SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"

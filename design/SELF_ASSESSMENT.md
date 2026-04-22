@@ -297,9 +297,11 @@ compromise would not by itself defeat it:
   See [ADR 0016](decisions/0016-release-supply-chain.md),
   [ADR 0020](decisions/0020-slsa-build-provenance.md).
 - **Reviewer discipline.** Solo-maintainer project — reviews are
-  self-reviews gated by CI. Release PRs (Release Please output)
-  are reviewed for version derivation and CHANGELOG accuracy
-  before merging.
+  self-reviews gated by CI. Releases are driven by semantic-release
+  on merge to `main`; version derivation is reviewed at the PR
+  commit-message stage (the PR *is* the review gate, since there is
+  no downstream release PR). See
+  [ADR 0026](decisions/0026-semantic-release-autorelease.md).
 - **Container / image signing.** Not applicable; the project
   ships source distributions and wheels, not OCI images.
 - **Vulnerability checks.** `pip-audit` runs daily on `main` and
@@ -318,9 +320,11 @@ compromise would not by itself defeat it:
   (bug, feature, security-redirect); `SUPPORT.md` points users
   at issues for non-security requests.
 - **Outbound (release notes, advisories, changelog).**
-  `CHANGELOG.md` (Keep-a-Changelog format) is updated on every
-  user-visible PR; Release Please surfaces changes in the release
-  PR body; security advisories go through
+  `CHANGELOG.md` is generated from Conventional Commit subjects and
+  bodies by semantic-release on every release; the GitHub release
+  body carries the same content. Older hand-written sections
+  (pre-ADR 0026) remain in Keep-a-Changelog format. Security
+  advisories go through
   [GitHub private vulnerability
   reporting](https://github.com/aidanns/agent-auth/security/advisories/new).
 
@@ -370,10 +374,12 @@ working flow, derived from SSDF RV.\*:
    private fork; CI gates and the standards-review checklist still
    apply.
 4. **Coordinated release.** Cut a patch release via the usual
-   Release Please + release-publish workflow, timing the advisory
-   publication to the release. Include a `SECURITY.md` /
-   CHANGELOG entry describing the class of issue (not the
-   primitive, if the advisory embargo is still sensitive).
+   semantic-release + release-publish workflow (merge a `fix:`
+   commit to `main`), timing the advisory publication to the
+   release. Include a `SECURITY.md` entry describing the class of
+   issue (not the primitive, if the advisory embargo is still
+   sensitive); the CHANGELOG bullet is derived from the commit
+   subject.
 5. **Post-mortem.** Open a public follow-up issue for any
    structural mitigation that could prevent the class of issue.
 

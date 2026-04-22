@@ -150,15 +150,22 @@ signing are sibling requirements, not the same thing.
 
 Two release paths exist:
 
-- **Default — Release Please (CI)**: on every push to `main` the
-  `Release Please` workflow parses Conventional Commits and keeps a
-  single open release PR. Merging that PR pushes a `vX.Y.Z` tag, which
-  triggers the `Release Publish` workflow. The publish workflow
-  builds the sdist and wheel with `uv build`, generates an SPDX SBOM
-  per artifact with Syft, signs each artifact and SBOM with keyless
-  cosign (Sigstore OIDC), and attaches everything to the GitHub
-  release. Verification recipe: see
+- **Default — semantic-release (CI)**: on every push to `main` the
+  `Semantic Release` workflow parses Conventional Commits since the
+  last `vX.Y.Z` tag, and — if any commit qualifies (`feat:`, `fix:`,
+  `perf:`, `revert:`, or a `BREAKING CHANGE:`) — computes the next
+  version, prepends a new section to `CHANGELOG.md`, creates a signed
+  `vX.Y.Z` tag, creates a GitHub release, and pushes a
+  `chore(release):` commit back to `main`. The tag push triggers the
+  `Release Publish` workflow. The publish workflow builds the sdist
+  and wheel with `uv build`, generates an SPDX SBOM per artifact with
+  Syft, signs each artifact and SBOM with keyless cosign (Sigstore
+  OIDC), and attaches everything to the GitHub release.
+  Verification recipe: see
   [`SECURITY.md` → Supply-chain artifacts](SECURITY.md#supply-chain-artifacts).
+  Rationale for the autorelease-on-merge flow — and the trade-offs
+  accepted vs. the previous Release Please PR-batched flow — in
+  [ADR 0026](design/decisions/0026-semantic-release-autorelease.md).
 - **Break-glass — `task release` (local)**: runs `scripts/release.sh`
   on your laptop. Use when CI is unavailable or a release has to be
   cut without waiting for the runner. The tag push uses your own git
@@ -170,43 +177,64 @@ Two release paths exist:
   see a release whose assets are still being uploaded. Documented
   below.
 
-### Before releasing (both paths)
+### Writing release-worthy commits
 
-For every user-facing PR, update `CHANGELOG.md` before merging:
+`CHANGELOG.md` is generated from Conventional Commit subjects and
+bodies, not hand-edited. To get a rich CHANGELOG entry:
 
-1. Add a bullet under `## [Unreleased]` describing the user-visible change.
-2. Keep the format consistent with the existing entries (present-tense action,
-   linked to relevant issues/PRs where helpful).
+- Keep the subject line accurate — it becomes the bullet text in
+  the generated section.
+- Put user-visible context (behaviour change, rationale, migration
+  notes) in the commit **body**, not a separate CHANGELOG edit. The
+  body surfaces in the GitHub release notes even when the CHANGELOG
+  keeps only the subject.
+- Reference the closing issue with `Closes #N` in the footer so the
+  generated section links back.
+- Mark breaking changes with a `!` after the type (`feat!:`) or a
+  `BREAKING CHANGE:` footer. Pre-1.0, these demote to a minor bump
+  (see [ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
+  § Graduating to 1.0.0).
 
-### Default path: Release Please
+Hand edits to `CHANGELOG.md` are preserved across releases (the
+generator prepends, it does not rewrite existing content), but
+subsequent automated content renders in the commit-derived format
+rather than the Keep-a-Changelog prose style used in older sections.
+
+### Default path: semantic-release
 
 One-time setup: install a **GitHub App** on this repository that the
-`Release Please` workflow uses to mint short-lived installation
+`Semantic Release` workflow uses to mint short-lived installation
 tokens via
 [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token).
 A GitHub App token is required (rather than the default
-`GITHUB_TOKEN`) because tags created by `GITHUB_TOKEN` do **not**
-fire downstream `on: push: tags:` workflows — the chain from the
-Release Please merge to the signed-artefact publish would silently
-break. The App is preferred over a PAT because it scopes to a single
-repo, exposes no human credential surface, and its private key can
-be rotated without touching a personal account.
+`GITHUB_TOKEN`) because tags and `chore(release):` commits created
+by `GITHUB_TOKEN` do **not** fire downstream workflow triggers —
+the chain from the semantic-release tag push to the signed-artefact
+publish would silently break. The App is preferred over a PAT
+because it scopes to a single repo, exposes no human credential
+surface, and its private key can be rotated without touching a
+personal account.
 
-#### One-time: register the "Release Please agent-auth" GitHub App
+#### One-time: register the "Release agent-auth" GitHub App
 
 1. Go to
    [github.com/settings/apps/new](https://github.com/settings/apps/new)
    (user-owned App) and create an App with:
-   - **App name**: `Release Please agent-auth` (any identifier
-     works; the name appears in release-PR author metadata).
+   - **App name**: `Release agent-auth` (any identifier works; the
+     name appears in the `chore(release):` commit author metadata).
    - **Homepage URL**:
      `https://github.com/aidanns/agent-auth`.
    - **Webhook**: uncheck *Active* — this App does not handle
      events.
    - **Repository permissions**:
-     - *Contents*: **Read & write** (create tags + releases).
-     - *Pull requests*: **Read & write** (open/update the release
-       PR).
+     - *Contents*: **Read & write** (create tags, push release
+       commits, create releases).
+     - *Pull requests*: **Read & write** (reserved for future
+       backport / maintenance-branch workflows; semantic-release
+       itself does not open PRs).
+     - *Issues*: **Read & write** (semantic-release can comment on
+       released issues; disabled in `.releaserc.json` today but the
+       permission is reserved).
      - All other permissions: **No access**.
    - **Where can this GitHub App be installed?**: *Only on this
      account*.
@@ -228,11 +256,18 @@ be rotated without touching a personal account.
 6. Delete the legacy `RELEASE_PLEASE_TOKEN` secret if it still
    exists.
 
-The workflow in `.github/workflows/release-please.yml` reads these
-two secrets at run time, mints an installation token via
+Secret names retain the `RELEASE_PLEASE_` prefix for migration
+continuity — the secrets were provisioned for the previous Release
+Please flow and semantic-release consumes the identical App token.
+A follow-up rename to `RELEASE_APP_*` is tracked in
+[ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
+§ Follow-ups.
+
+The workflow in `.github/workflows/semantic-release.yml` reads
+these two secrets at run time, mints an installation token via
 `actions/create-github-app-token`, and hands the token to
-`googleapis/release-please-action`. The token is short-lived and
-is not persisted beyond the workflow run.
+`semantic-release` via the `GITHUB_TOKEN` env. The token is
+short-lived and is not persisted beyond the workflow run.
 
 To rotate the private key, re-run step 3 (generate a new key),
 update `RELEASE_PLEASE_APP_PRIVATE_KEY` in repo settings, and
@@ -240,15 +275,18 @@ revoke the old key from the App settings page. No workflow change
 is required.
 
 1. Land PRs on `main` using Conventional Commits.
-2. The `Release Please` workflow opens or updates the release PR
-   automatically.
-3. **Review the release PR like any other change** — this is the
-   pre-1.0 guardrail. Release Please does not auto-merge; a human
-   must click merge. Check the derived version and the generated
-   CHANGELOG entry before merging.
-4. Merge the release PR. Release Please creates the `vX.Y.Z` tag and
-   a GitHub release. The tag push triggers `Release Publish`, which
-   attaches the sdist, wheel, SBOMs, and `.sig.bundle` signatures.
+2. The `Semantic Release` workflow runs on every push to `main`. If
+   at least one commit since the last tag is `feat:`, `fix:`,
+   `perf:`, `revert:`, or carries a `BREAKING CHANGE:` footer, the
+   workflow cuts a new release. Otherwise it exits cleanly with no
+   side effects.
+3. There is **no release PR to review**. Pre-1.0 risk is mitigated
+   by (a) a `releaseRules` policy in `.releaserc.json` that demotes
+   `BREAKING CHANGE:` to a minor bump and (b) commit-review
+   discipline at PR merge time — the PR *is* the review gate.
+4. Semantic-release pushes the `vX.Y.Z` tag. The tag push triggers
+   `Release Publish`, which attaches the sdist, wheel, SBOMs, and
+   `.sig.bundle` signatures.
 
 ### Break-glass path: `task release`
 

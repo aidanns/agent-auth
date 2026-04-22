@@ -152,6 +152,10 @@ if compgen -G '.github/workflows/*.yml' >/dev/null || compgen -G '.github/workfl
   required_ecosystems+=(github-actions)
 fi
 
+if [[ -f package.json ]]; then
+  required_ecosystems+=(npm)
+fi
+
 if [[ ${#required_ecosystems[@]} -eq 0 ]]; then
   echo "verify-standards: no known dependency ecosystems detected; skipping dependabot coverage check."
 else

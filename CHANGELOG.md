@@ -13,6 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Autorelease driver migrated from Release Please to
+  semantic-release.** Pushes to `main` carrying a qualifying
+  Conventional Commit (`feat:`, `fix:`, `perf:`, `revert:`, or a
+  `BREAKING CHANGE:`) now cut a release immediately instead of
+  accumulating into a reviewable release PR. `CHANGELOG.md` is
+  written by `@semantic-release/changelog` from commit subjects +
+  bodies — hand-editing the file is no longer part of the PR
+  workflow. Pre-1.0 `BREAKING CHANGE:` commits are demoted to a
+  minor bump via `.releaserc.json` `releaseRules`; graduating to
+  1.0.0 means removing that demotion and anchoring the 1.0.0 tag
+  via `task release -- 1.0.0`. `setuptools-scm` remains the
+  runtime version source; `release-publish.yml` still fires on the
+  `v*` tag push with unchanged SBOM / cosign / SLSA L3 semantics.
+  The existing GitHub App and secrets (`RELEASE_PLEASE_APP_ID`,
+  `RELEASE_PLEASE_APP_PRIVATE_KEY`) are reused. Rationale and the
+  trade-offs accepted (weakened pre-1.0 guardrail, CHANGELOG prose
+  quality regression, new Node toolchain in CI) in
+  [ADR 0026](design/decisions/0026-semantic-release-autorelease.md),
+  which supersedes the autorelease-driver choice in ADR 0016.
+
 ### Added
 
 - **Optional TLS listener on `agent-auth serve` and `things-bridge serve`.**

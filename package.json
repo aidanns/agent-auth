@@ -1,0 +1,15 @@
+{
+  "name": "agent-auth-release-tooling",
+  "private": true,
+  "description": "Node tooling used only by the semantic-release CI workflow. Not shipped; no runtime dependency on the Python package.",
+  "license": "MIT",
+  "devDependencies": {
+    "@semantic-release/changelog": "6.0.3",
+    "@semantic-release/commit-analyzer": "13.0.1",
+    "@semantic-release/git": "10.0.1",
+    "@semantic-release/github": "11.0.1",
+    "@semantic-release/release-notes-generator": "14.0.3",
+    "conventional-changelog-conventionalcommits": "8.0.0",
+    "semantic-release": "24.2.1"
+  }
+}
