@@ -138,10 +138,35 @@ immediately. Rationale in
 
 ## Commit conventions
 
-Use conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`,
-`refactor:`, `test:`, `ci:`, `style:`, `perf:`, `build:`). Default branch
-is `main`; feature branches follow `aidanns/<feature-name>`. See the
-project [CLAUDE.md](CLAUDE.md) for the full working agreement.
+Use [Conventional Commit](https://www.conventionalcommits.org/) messages.
+Semantic-release reads the commit type to decide whether and how to cut
+a release — the full set of accepted types and their release impact
+(mirrors `.releaserc.json` `releaseRules`):
+
+| Type        | Release impact | Use for                                             |
+| ----------- | -------------- | --------------------------------------------------- |
+| `feat:`     | minor bump     | New user-visible feature or capability.             |
+| `fix:`      | patch bump     | Bug fix visible to users.                           |
+| `perf:`     | patch bump     | User-visible performance improvement.               |
+| `revert:`   | patch bump     | Revert of an earlier commit.                        |
+| `docs:`     | no release     | Docs / comments / README / CONTRIBUTING.            |
+| `style:`    | no release     | Formatting, whitespace, no logic change.            |
+| `chore:`    | no release     | Build / tooling / dependency bumps with no API hit. |
+| `refactor:` | no release     | Internal restructuring with no behaviour change.    |
+| `test:`     | no release     | Test-only changes.                                  |
+| `build:`    | no release     | Build-system / packaging changes (non-dep).         |
+| `ci:`       | no release     | CI workflow / action changes.                       |
+
+Breaking changes are marked with a `!` suffix on the type
+(`feat!: drop /v0 endpoint`) or a `BREAKING CHANGE:` footer. They
+would normally bump major; while the project is in the 0.x range
+they are demoted to a minor bump via
+[ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
+§ Pre-1.0 behaviour.
+
+Default branch is `main`; feature branches follow
+`aidanns/<feature-name>`. See the project [CLAUDE.md](CLAUDE.md) for
+the full working agreement.
 
 See also: [Commit signing](#commit-signing) — commit message format and GPG/SSH
 signing are sibling requirements, not the same thing.
