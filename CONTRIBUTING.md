@@ -215,12 +215,12 @@ because it scopes to a single repo, exposes no human credential
 surface, and its private key can be rotated without touching a
 personal account.
 
-#### One-time: register the "semantic-release" GitHub App
+#### One-time: register the "semantic-release-agent-auth" GitHub App
 
 1. Go to
    [github.com/settings/apps/new](https://github.com/settings/apps/new)
    (user-owned App) and create an App with:
-   - **App name**: `semantic-release` (any identifier works; the
+   - **App name**: `semantic-release-agent-auth` (any identifier works; the
      name appears in the `chore(release):` commit author metadata).
    - **Homepage URL**:
      `https://github.com/aidanns/agent-auth`.
@@ -229,12 +229,12 @@ personal account.
    - **Repository permissions**:
      - *Contents*: **Read & write** (create tags, push release
        commits, create releases).
-     - *Pull requests*: **Read & write** (reserved for future
-       backport / maintenance-branch workflows; semantic-release
-       itself does not open PRs).
-     - *Issues*: **Read & write** (semantic-release can comment on
-       released issues; disabled in `.releaserc.json` today but the
-       permission is reserved).
+     - *Pull requests*: **Read & write** (needed by
+       `@semantic-release/github` to post `successComment` on
+       resolved PRs and add `releasedLabels` to them).
+     - *Issues*: **Read & write** (needed by
+       `@semantic-release/github` to post `successComment` on
+       resolved issues and add `releasedLabels` to them).
      - All other permissions: **No access**.
    - **Where can this GitHub App be installed?**: *Only on this
      account*.

@@ -103,17 +103,18 @@ driver on every push to `main`.
   `release-publish.yml`. No change to `release-publish.yml` is
   required — it still fires on `push: tags: v*`.
 - **Credentials**: semantic-release authenticates via a dedicated
-  "semantic-release" GitHub App installed on this repo
+  "semantic-release-agent-auth" GitHub App installed on this repo
   (`SEMANTIC_RELEASE_APP_ID` + `SEMANTIC_RELEASE_APP_PRIVATE_KEY`).
   The previous "Release Please agent-auth" App was removed as part
   of the migration; its secrets are deleted. The token is minted
   per run via `actions/create-github-app-token` and consumed by
   semantic-release through `GITHUB_TOKEN`. Required App
-  permissions: `Contents: Read & write` only — the prior grants
-  on `Pull requests` and `Issues` are not load-bearing for any
-  plugin option enabled in `.releaserc.json`
-  (`successComment`, `failComment`, `releasedLabels`, `addReleases`
-  are all `false` / unset).
+  permissions: `Contents: Read & write` (tag, release commit, and
+  Release creation), `Issues: Read & write` + `Pull requests: Read & write` (both needed by `@semantic-release/github` for the
+  enabled `successComment` and `releasedLabels` options, which
+  comment on and label resolved PRs/issues). `failComment` stays
+  `false` — we prefer workflow-run failure surfacing over
+  synthetic issues.
 - **Guardrail**: pre-1.0 discipline moves to the PR commit-review
   step. Breaking changes demote automatically; accidental
   `feat:`-over-`fix:` escalations are caught by reading commit
