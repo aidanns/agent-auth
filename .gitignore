@@ -16,4 +16,5 @@ coverage.xml
 dist/
 htmlcov/
 mutants/
+node_modules/
 # keep-sorted end

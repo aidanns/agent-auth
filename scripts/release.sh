@@ -86,12 +86,9 @@ for cmd in git gh; do
   fi
 done
 
-VERSION_AUTO_DETECTED=0
 if [[ $# -eq 1 ]]; then
   VERSION="${1}"
 else
-  VERSION_AUTO_DETECTED=1
-
   if ! LAST_TAG="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null)"; then
     echo "release: no 'vX.Y.Z' tag found — the first release needs an explicit version." >&2
     echo "  Run 'scripts/release.sh X.Y.Z' (e.g. 'scripts/release.sh 0.1.0')." >&2
@@ -186,12 +183,10 @@ changelog_body="$(
 
 if [[ -z "${changelog_body}" ]]; then
   echo "release: no non-empty '## [${VERSION}]' section found in CHANGELOG.md." >&2
-  if [[ "${VERSION_AUTO_DETECTED}" -eq 1 ]]; then
-    echo "  Rename the '## [Unreleased]' section to '## [${VERSION}] - $(date -u +%F)', " >&2
-    echo "  add a fresh empty '## [Unreleased]' above it, commit, push, and re-run." >&2
-  else
-    echo "  Update CHANGELOG.md with the release notes before running this script." >&2
-  fi
+  echo "  Add a '## [${VERSION}] - $(date -u +%F)' section at the top of CHANGELOG.md" >&2
+  echo "  (below the preamble, above the previous version's heading) summarising" >&2
+  echo "  user-visible changes since the last tag, commit, push, and re-run." >&2
+  echo "  See CONTRIBUTING.md § 'Break-glass path: task release' for the full recipe." >&2
   exit 1
 fi
 

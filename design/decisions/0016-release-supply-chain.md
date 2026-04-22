@@ -9,7 +9,11 @@ SPDX-License-Identifier: MIT
 
 ## Status
 
-Accepted — 2026-04-20.
+Accepted — 2026-04-20. Autorelease-driver choice superseded by
+[ADR 0026](0026-semantic-release-autorelease.md) — 2026-04-22. The
+remaining decisions (keyless cosign, SPDX SBOM via Syft, REUSE 3.3,
+break-glass `scripts/release.sh`, setuptools-scm as runtime version
+source) carry over unchanged.
 
 ## Context
 

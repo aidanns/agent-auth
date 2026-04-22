@@ -138,10 +138,35 @@ immediately. Rationale in
 
 ## Commit conventions
 
-Use conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`,
-`refactor:`, `test:`, `ci:`, `style:`, `perf:`, `build:`). Default branch
-is `main`; feature branches follow `aidanns/<feature-name>`. See the
-project [CLAUDE.md](CLAUDE.md) for the full working agreement.
+Use [Conventional Commit](https://www.conventionalcommits.org/) messages.
+Semantic-release reads the commit type to decide whether and how to cut
+a release — the full set of accepted types and their release impact
+(mirrors `.releaserc.json` `releaseRules`):
+
+| Type        | Release impact | Use for                                             |
+| ----------- | -------------- | --------------------------------------------------- |
+| `feat:`     | minor bump     | New user-visible feature or capability.             |
+| `fix:`      | patch bump     | Bug fix visible to users.                           |
+| `perf:`     | patch bump     | User-visible performance improvement.               |
+| `revert:`   | patch bump     | Revert of an earlier commit.                        |
+| `docs:`     | no release     | Docs / comments / README / CONTRIBUTING.            |
+| `style:`    | no release     | Formatting, whitespace, no logic change.            |
+| `chore:`    | no release     | Build / tooling / dependency bumps with no API hit. |
+| `refactor:` | no release     | Internal restructuring with no behaviour change.    |
+| `test:`     | no release     | Test-only changes.                                  |
+| `build:`    | no release     | Build-system / packaging changes (non-dep).         |
+| `ci:`       | no release     | CI workflow / action changes.                       |
+
+Breaking changes are marked with a `!` suffix on the type
+(`feat!: drop /v0 endpoint`) or a `BREAKING CHANGE:` footer. They
+would normally bump major; while the project is in the 0.x range
+they are demoted to a minor bump via
+[ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
+§ Pre-1.0 behaviour.
+
+Default branch is `main`; feature branches follow
+`<username>/<feature-name>`. See the project [CLAUDE.md](CLAUDE.md) for
+the full working agreement.
 
 See also: [Commit signing](#commit-signing) — commit message format and GPG/SSH
 signing are sibling requirements, not the same thing.
@@ -150,15 +175,22 @@ signing are sibling requirements, not the same thing.
 
 Two release paths exist:
 
-- **Default — Release Please (CI)**: on every push to `main` the
-  `Release Please` workflow parses Conventional Commits and keeps a
-  single open release PR. Merging that PR pushes a `vX.Y.Z` tag, which
-  triggers the `Release Publish` workflow. The publish workflow
-  builds the sdist and wheel with `uv build`, generates an SPDX SBOM
-  per artifact with Syft, signs each artifact and SBOM with keyless
-  cosign (Sigstore OIDC), and attaches everything to the GitHub
-  release. Verification recipe: see
+- **Default — semantic-release (CI)**: on every push to `main` the
+  `Semantic Release` workflow parses Conventional Commits since the
+  last `vX.Y.Z` tag, and — if any commit qualifies (`feat:`, `fix:`,
+  `perf:`, `revert:`, or a `BREAKING CHANGE:`) — computes the next
+  version, prepends a new section to `CHANGELOG.md`, creates a signed
+  `vX.Y.Z` tag, creates a GitHub release, and pushes a
+  `chore(release):` commit back to `main`. The tag push triggers the
+  `Release Publish` workflow. The publish workflow builds the sdist
+  and wheel with `uv build`, generates an SPDX SBOM per artifact with
+  Syft, signs each artifact and SBOM with keyless cosign (Sigstore
+  OIDC), and attaches everything to the GitHub release.
+  Verification recipe: see
   [`SECURITY.md` → Supply-chain artifacts](SECURITY.md#supply-chain-artifacts).
+  Rationale for the autorelease-on-merge flow — and the trade-offs
+  accepted vs. the previous Release Please PR-batched flow — in
+  [ADR 0026](design/decisions/0026-semantic-release-autorelease.md).
 - **Break-glass — `task release` (local)**: runs `scripts/release.sh`
   on your laptop. Use when CI is unavailable or a release has to be
   cut without waiting for the runner. The tag push uses your own git
@@ -170,43 +202,64 @@ Two release paths exist:
   see a release whose assets are still being uploaded. Documented
   below.
 
-### Before releasing (both paths)
+### Writing release-worthy commits
 
-For every user-facing PR, update `CHANGELOG.md` before merging:
+`CHANGELOG.md` is generated from Conventional Commit subjects and
+bodies, not hand-edited. To get a rich CHANGELOG entry:
 
-1. Add a bullet under `## [Unreleased]` describing the user-visible change.
-2. Keep the format consistent with the existing entries (present-tense action,
-   linked to relevant issues/PRs where helpful).
+- Keep the subject line accurate — it becomes the bullet text in
+  the generated section.
+- Put user-visible context (behaviour change, rationale, migration
+  notes) in the commit **body**, not a separate CHANGELOG edit. The
+  body surfaces in the GitHub release notes even when the CHANGELOG
+  keeps only the subject.
+- Reference the closing issue with `Closes #N` in the footer so the
+  generated section links back.
+- Mark breaking changes with a `!` after the type (`feat!:`) or a
+  `BREAKING CHANGE:` footer. Pre-1.0, these demote to a minor bump
+  (see [ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
+  § Graduating to 1.0.0).
 
-### Default path: Release Please
+Hand edits to `CHANGELOG.md` are preserved across releases (the
+generator prepends, it does not rewrite existing content), but
+subsequent automated content renders in the commit-derived format
+rather than the Keep-a-Changelog prose style used in older sections.
+
+### Default path: semantic-release
 
 One-time setup: install a **GitHub App** on this repository that the
-`Release Please` workflow uses to mint short-lived installation
+`Semantic Release` workflow uses to mint short-lived installation
 tokens via
 [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token).
 A GitHub App token is required (rather than the default
-`GITHUB_TOKEN`) because tags created by `GITHUB_TOKEN` do **not**
-fire downstream `on: push: tags:` workflows — the chain from the
-Release Please merge to the signed-artefact publish would silently
-break. The App is preferred over a PAT because it scopes to a single
-repo, exposes no human credential surface, and its private key can
-be rotated without touching a personal account.
+`GITHUB_TOKEN`) because tags and `chore(release):` commits created
+by `GITHUB_TOKEN` do **not** fire downstream workflow triggers —
+the chain from the semantic-release tag push to the signed-artefact
+publish would silently break. The App is preferred over a PAT
+because it scopes to a single repo, exposes no human credential
+surface, and its private key can be rotated without touching a
+personal account.
 
-#### One-time: register the "Release Please agent-auth" GitHub App
+#### One-time: register the "semantic-release-agent-auth" GitHub App
 
 1. Go to
    [github.com/settings/apps/new](https://github.com/settings/apps/new)
    (user-owned App) and create an App with:
-   - **App name**: `Release Please agent-auth` (any identifier
-     works; the name appears in release-PR author metadata).
+   - **App name**: `semantic-release-agent-auth` (any identifier works; the
+     name appears in the `chore(release):` commit author metadata).
    - **Homepage URL**:
      `https://github.com/aidanns/agent-auth`.
    - **Webhook**: uncheck *Active* — this App does not handle
      events.
    - **Repository permissions**:
-     - *Contents*: **Read & write** (create tags + releases).
-     - *Pull requests*: **Read & write** (open/update the release
-       PR).
+     - *Contents*: **Read & write** (create tags, push release
+       commits, create releases).
+     - *Pull requests*: **Read & write** (needed by
+       `@semantic-release/github` to post `successComment` on
+       resolved PRs and add `releasedLabels` to them).
+     - *Issues*: **Read & write** (needed by
+       `@semantic-release/github` to post `successComment` on
+       resolved issues and add `releasedLabels` to them).
      - All other permissions: **No access**.
    - **Where can this GitHub App be installed?**: *Only on this
      account*.
@@ -221,34 +274,38 @@ be rotated without touching a personal account.
 5. In the repo's
    [Settings → Secrets and variables → Actions](https://github.com/aidanns/agent-auth/settings/secrets/actions),
    add:
-   - `RELEASE_PLEASE_APP_ID` — the numeric App ID from step 3.
-   - `RELEASE_PLEASE_APP_PRIVATE_KEY` — the **full contents** of
+   - `SEMANTIC_RELEASE_APP_ID` — the numeric App ID from step 3.
+   - `SEMANTIC_RELEASE_APP_PRIVATE_KEY` — the **full contents** of
      the `.pem` file, including the `-----BEGIN/END` markers and
      the trailing newline.
-6. Delete the legacy `RELEASE_PLEASE_TOKEN` secret if it still
-   exists.
+6. Delete any legacy release secrets (`RELEASE_PLEASE_TOKEN`,
+   `RELEASE_PLEASE_APP_ID`, `RELEASE_PLEASE_APP_PRIVATE_KEY`) if
+   they still exist from earlier release-automation iterations.
 
-The workflow in `.github/workflows/release-please.yml` reads these
-two secrets at run time, mints an installation token via
+The workflow in `.github/workflows/release.yml` reads
+these two secrets at run time, mints an installation token via
 `actions/create-github-app-token`, and hands the token to
-`googleapis/release-please-action`. The token is short-lived and
-is not persisted beyond the workflow run.
+`semantic-release` via the `GITHUB_TOKEN` env. The token is
+short-lived and is not persisted beyond the workflow run.
 
 To rotate the private key, re-run step 3 (generate a new key),
-update `RELEASE_PLEASE_APP_PRIVATE_KEY` in repo settings, and
+update `SEMANTIC_RELEASE_APP_PRIVATE_KEY` in repo settings, and
 revoke the old key from the App settings page. No workflow change
 is required.
 
 1. Land PRs on `main` using Conventional Commits.
-2. The `Release Please` workflow opens or updates the release PR
-   automatically.
-3. **Review the release PR like any other change** — this is the
-   pre-1.0 guardrail. Release Please does not auto-merge; a human
-   must click merge. Check the derived version and the generated
-   CHANGELOG entry before merging.
-4. Merge the release PR. Release Please creates the `vX.Y.Z` tag and
-   a GitHub release. The tag push triggers `Release Publish`, which
-   attaches the sdist, wheel, SBOMs, and `.sig.bundle` signatures.
+2. The `Semantic Release` workflow runs on every push to `main`. If
+   at least one commit since the last tag is `feat:`, `fix:`,
+   `perf:`, `revert:`, or carries a `BREAKING CHANGE:` footer, the
+   workflow cuts a new release. Otherwise it exits cleanly with no
+   side effects.
+3. There is **no release PR to review**. Pre-1.0 risk is mitigated
+   by (a) a `releaseRules` policy in `.releaserc.json` that demotes
+   `BREAKING CHANGE:` to a minor bump and (b) commit-review
+   discipline at PR merge time — the PR *is* the review gate.
+4. Semantic-release pushes the `vX.Y.Z` tag. The tag push triggers
+   `Release Publish`, which attaches the sdist, wheel, SBOMs, and
+   `.sig.bundle` signatures.
 
 ### Break-glass path: `task release`
 
@@ -279,13 +336,24 @@ normally map to a **major** bump is demoted to a **minor** bump until
 
 To cut a release:
 
-1. Move the entries under `## [Unreleased]` in `CHANGELOG.md` into a new
-   `## [X.Y.Z] - YYYY-MM-DD` section. If you don't know the version yet, run
-   `task release` once — it will print the auto-detected version (e.g.
-   `Auto-detected minor bump from commits since v0.1.0: v0.2.0`) then exit
-   asking you to update the CHANGELOG.
-2. Leave a fresh empty `## [Unreleased]` section above the new version.
+1. Determine the target version. Either pass it explicitly
+   (`task release -- 0.3.0`), or run `task release` with no argument —
+   it will print the auto-detected version (e.g.
+   `Auto-detected minor bump from commits since v0.2.0: v0.3.0`) and
+   exit asking you to update `CHANGELOG.md`.
+2. Write a `## [X.Y.Z] - YYYY-MM-DD` section at the top of
+   `CHANGELOG.md` (directly below the preamble, above the previous
+   version's heading) summarising user-visible changes since the last
+   tag. For consistency with the CI default path, preview what
+   semantic-release would produce — if the npm tooling is available
+   locally, `npx semantic-release --dry-run --no-ci` prints the
+   auto-generated release notes you can crib from. Otherwise walk
+   `git log vX.Y.Z..HEAD --oneline` and group by Conventional Commit
+   type.
 3. Commit and push: `git commit -m "chore: prepare release vX.Y.Z"`.
+   (`chore:` is in the no-release list in `.releaserc.json`, so the
+   CI release workflow will ignore this commit and won't race with
+   the break-glass path.)
 4. Run `task release` (auto-detect) or `task release -- X.Y.Z` (explicit).
    Add `-y` / `--yes` to skip the confirmation prompt
    (e.g. `task release -- -y X.Y.Z`) when you want a hands-off run — the

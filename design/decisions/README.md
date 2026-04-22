@@ -52,7 +52,7 @@ is linked from this index.
 - [ADR 0015 — Adopt NIST SSDF (SP 800-218) as the SDLC standard](0015-nist-ssdf-sdlc-standard.md)
   — SSDF is the SDLC-practices companion to the existing NIST SP 800-53 cybersecurity standard; conformance tracked in `design/SSDF.md`.
 - [ADR 0016 — Release supply chain: Release Please + keyless cosign + SPDX SBOM + REUSE](0016-release-supply-chain.md)
-  — autorelease via Release Please; keyless cosign signatures and per-artefact SPDX SBOMs on every release; REUSE per-file licensing across the source tree.
+  — keyless cosign signatures and per-artefact SPDX SBOMs on every release; REUSE per-file licensing across the source tree. Autorelease-driver choice superseded by ADR 0026.
 - [ADR 0017 — Adopt OpenTelemetry semantic conventions for metrics and logs](0017-opentelemetry-semantic-conventions.md)
   — HTTP-server metric and log attribute names follow OTel semconv v1.40.0; domain fields keep their existing names.
 - [ADR 0018 — Handle SIGTERM gracefully in `agent-auth` and `things-bridge`](0018-graceful-shutdown.md)
@@ -71,3 +71,5 @@ is linked from this index.
   — keep things-bridge audit-free (authz traces come via agent-auth); add OTel `service.name` / `service.version` to every audit entry so a future second emitter drops in with no schema churn; mark HTTP-attribute fields as reserved until emission lands.
 - [ADR 0025 — Optional in-process TLS listener on agent-auth and things-bridge](0025-tls-for-devcontainer-host-traffic.md)
   — close SC-8 for devcontainer-to-host traffic via a config-gated `ssl.SSLContext` wrap of the server socket (TLS 1.2+); plaintext stays the default for the loopback-only single-host deployment.
+- [ADR 0026 — Migrate autorelease driver from Release Please to semantic-release](0026-semantic-release-autorelease.md)
+  — semantic-release runs on every push to `main` and cuts a release immediately on any qualifying Conventional Commit; PR-merge review replaces the Release Please release-PR guardrail; setuptools-scm remains the runtime version source.

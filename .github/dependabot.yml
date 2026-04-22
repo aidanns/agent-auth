@@ -29,3 +29,16 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # npm tracks semantic-release and its plugins (used only by
+  # .github/workflows/release.yml). No runtime Node
+  # dependency — the Python package is unaffected.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"

@@ -13,8 +13,9 @@ Accepted — 2026-04-21.
 
 ## Context
 
-ADR 0016 established the release supply chain (Release Please, keyless
-cosign, SPDX SBOM, REUSE) and explicitly deferred
+ADR 0016 established the release supply chain (keyless cosign, SPDX
+SBOM, REUSE; autorelease driver subsequently changed to
+semantic-release per ADR 0026) and explicitly deferred
 [SLSA](https://slsa.dev) build provenance to
 [#109](https://github.com/aidanns/agent-auth/issues/109). Without
 provenance, a verifier can confirm *that* the runner-signed artefact
@@ -153,8 +154,10 @@ v1.0 Build Level 3**.
 ## Follow-ups
 
 - [#128](https://github.com/aidanns/agent-auth/issues/128) — replace
-  the PAT used by Release Please with a GitHub App installation
-  token to shrink the remaining long-lived credential surface.
+  the PAT used by the autorelease driver with a GitHub App
+  installation token to shrink the remaining long-lived credential
+  surface. *(Resolved — the App token is now consumed by the
+  semantic-release workflow per ADR 0026.)*
 - Revisit GitHub's native `actions/attest-build-provenance` as an
   alternative once its trust root aligns with public Sigstore, or
   the SLSA spec shifts its recommended default builder.

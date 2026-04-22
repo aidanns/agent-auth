@@ -37,8 +37,12 @@ simplifying for "personal project" scope.
 - Python 3.11+, no external dependencies for core functionality
 - Use `src/` layout with `pyproject.toml`
 - Follow user global instructions for shell scripts, commits, TODOs, etc.
-- Use conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`,
-  `refactor:`, `test:`, `ci:`, `style:`, `perf:`, `build:`)
+- Use Conventional Commit messages. Release-triggering types:
+  `feat:` (minor), `fix:` / `perf:` / `revert:` (patch). Non-release
+  types: `docs:`, `style:`, `chore:`, `refactor:`, `test:`, `build:`,
+  `ci:`. Breaking changes (`!` on the type — `feat!:` — or a
+  `BREAKING CHANGE:` footer) are demoted to a minor bump while in
+  0.x. `.releaserc.json` `releaseRules` is the source of truth.
 
 ## Project-specific notes
 
