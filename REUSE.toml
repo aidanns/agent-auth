@@ -32,6 +32,15 @@ path = [
 SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
 SPDX-License-Identifier = "MIT"
 
+# CHANGELOG.md is managed by @semantic-release/changelog, which anchors new
+# release sections to a `# Changelog` title at the top of the file. An inline
+# HTML SPDX comment would push the title off the first line and break that
+# anchor, so the header is declared here instead.
+[[annotations]]
+path = "CHANGELOG.md"
+SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
+SPDX-License-Identifier = "MIT"
+
 [[annotations]]
 path = "uv.lock"
 SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
