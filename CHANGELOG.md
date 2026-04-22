@@ -15,6 +15,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Audit log entries now carry OTel resource attributes
+  (`service.name`, `service.version`) on every line.** Consolidates
+  the audit envelope across the system: SIEM consumers joining
+  archived or multi-service trails can filter by emitter from the
+  entry itself instead of inferring from the file path. The fields
+  are constant today (`service.name = "agent-auth"`) because
+  things-bridge is intentionally audit-free — every bridge
+  authorization trace comes via agent-auth's `/validate` — but the
+  envelope now matches what a second emitter would need, future-
+  proofing multi-service consumers. Contract tests
+  (`tests/test_audit_schema.py`) assert the resource attributes on
+  every documented event kind so a rename fails CI. `schema_version`
+  stays at `1` (new optional field per the stability policy).
+  `design/DESIGN.md` §Audit log fields reframes the HTTP-attribute
+  table as *reserved for future events*, aligning docs with what the
+  code actually emits. Rationale in
+  [ADR 0024](design/decisions/0024-audit-log-shared-envelope.md).
+  Closes
+  [#100](https://github.com/aidanns/agent-auth/issues/100).
+
 - **`GET /things-bridge/health` now fails closed when the configured
   Things-client binary is missing.** The handler previously returned
   `200 {"status":"ok"}` unconditionally once the probe token
