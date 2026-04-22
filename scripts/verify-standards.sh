@@ -897,8 +897,10 @@ fi
 
 echo "verify-standards: ${ASSURANCE_FILE} declares a QM/SIL level with required activities and evidence."
 
-# CHANGELOG.md must exist and contain a ## [Unreleased] section per
-# .claude/instructions/release-and-hygiene.md (Keep-a-Changelog format).
+# CHANGELOG.md must exist per .claude/instructions/release-and-hygiene.md.
+# The `## [Unreleased]` section is intentionally absent: semantic-release
+# (ADR 0026) owns the file post-migration and prepends a new versioned
+# section on each release rather than promoting [Unreleased] content.
 
 if [[ ! -f CHANGELOG.md ]]; then
   echo "verify-standards: CHANGELOG.md is missing from the repo root." >&2
@@ -906,13 +908,7 @@ if [[ ! -f CHANGELOG.md ]]; then
   exit 1
 fi
 
-if ! grep -qE "^## \\[Unreleased\\]" CHANGELOG.md; then
-  echo "verify-standards: CHANGELOG.md does not contain a '## [Unreleased]' section." >&2
-  echo "  Add '## [Unreleased]' as the topmost version section in CHANGELOG.md." >&2
-  exit 1
-fi
-
-echo "verify-standards: CHANGELOG.md exists with a [Unreleased] section."
+echo "verify-standards: CHANGELOG.md exists."
 
 # LICENSE.md must exist and README.md must link to it from a ## License section
 # per .claude/instructions/release-and-hygiene.md.

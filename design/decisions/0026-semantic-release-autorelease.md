@@ -154,15 +154,10 @@ driver on every push to `main`.
 - `CHANGELOG.md` content quality regresses from hand-authored
   Keep-a-Changelog prose (pre-migration) to commit-derived bullets.
   Mitigated by `CONTRIBUTING.md` guidance pointing contributors at
-  rich commit bodies. Older [0.1.0] and [Unreleased] sections
-  remain in the file in their original format; the generator
-  prepends above them.
-- First run will produce a CHANGELOG section describing commits
-  already enumerated in the pre-migration `[Unreleased]` section —
-  both will coexist until a maintainer prunes the duplicate.
-  Accepted as a one-time artefact; the alternative (hand-cutting a
-  `0.2.0` release immediately before the migration) adds scope
-  without improving downstream visibility.
+  rich commit bodies. The pre-migration `## [Unreleased]` section
+  is pruned in the same PR so the generator starts from a clean
+  slate; the historical `## [0.1.0]` section remains in its original
+  Keep-a-Changelog format and the generator prepends above it.
 - Node toolchain in CI. `package.json` pins
   `semantic-release@24.2.1` and plugin versions; `package-lock.json`
   locks the transitive graph. Two advisories in `npm`'s own
@@ -190,9 +185,6 @@ driver on every push to `main`.
   `picomatch`) on the next `semantic-release` major — if they
   resolve, drop this note; if they persist, open an accept-risk
   follow-up.
-- On the first post-migration release, prune the legacy
-  `## [Unreleased]` section once its content has been captured by
-  the auto-generated section.
 - Graduating to 1.0.0: remove
   `{"breaking": true, "release": "minor"}` from
   `.releaserc.json` and run
