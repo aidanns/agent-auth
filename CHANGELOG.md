@@ -28,8 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   via `task release -- 1.0.0`. `setuptools-scm` remains the
   runtime version source; `release-publish.yml` still fires on the
   `v*` tag push with unchanged SBOM / cosign / SLSA L3 semantics.
-  The existing GitHub App and secrets (`RELEASE_PLEASE_APP_ID`,
-  `RELEASE_PLEASE_APP_PRIVATE_KEY`) are reused. Rationale and the
+  A new dedicated "semantic-release" GitHub App replaces the
+  previous "Release Please agent-auth" App, with secrets
+  `SEMANTIC_RELEASE_APP_ID` + `SEMANTIC_RELEASE_APP_PRIVATE_KEY`.
+  Rationale and the
   trade-offs accepted (weakened pre-1.0 guardrail, CHANGELOG prose
   quality regression, new Node toolchain in CI) in
   [ADR 0026](design/decisions/0026-semantic-release-autorelease.md),

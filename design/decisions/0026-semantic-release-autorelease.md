@@ -102,15 +102,18 @@ driver on every push to `main`.
   tag at build time in the existing tag-triggered
   `release-publish.yml`. No change to `release-publish.yml` is
   required — it still fires on `push: tags: v*`.
-- **Credentials**: semantic-release authenticates via the same
-  GitHub App provisioned for Release Please in #128
-  (`RELEASE_PLEASE_APP_ID` + `RELEASE_PLEASE_APP_PRIVATE_KEY`).
-  The token is minted per run via
-  `actions/create-github-app-token` and consumed by semantic-release
-  through `GITHUB_TOKEN`. Required permissions shrink slightly
-  (`pull-requests: write` becomes reserved rather than load-bearing
-  for the release flow), but no secret rotation is needed — see
-  Follow-ups.
+- **Credentials**: semantic-release authenticates via a dedicated
+  "semantic-release" GitHub App installed on this repo
+  (`SEMANTIC_RELEASE_APP_ID` + `SEMANTIC_RELEASE_APP_PRIVATE_KEY`).
+  The previous "Release Please agent-auth" App was removed as part
+  of the migration; its secrets are deleted. The token is minted
+  per run via `actions/create-github-app-token` and consumed by
+  semantic-release through `GITHUB_TOKEN`. Required App
+  permissions: `Contents: Read & write` only — the prior grants
+  on `Pull requests` and `Issues` are not load-bearing for any
+  plugin option enabled in `.releaserc.json`
+  (`successComment`, `failComment`, `releasedLabels`, `addReleases`
+  are all `false` / unset).
 - **Guardrail**: pre-1.0 discipline moves to the PR commit-review
   step. Breaking changes demote automatically; accidental
   `feat:`-over-`fix:` escalations are caught by reading commit
@@ -173,10 +176,6 @@ driver on every push to `main`.
 
 **Neutral**
 
-- The GitHub App and its secret names (`RELEASE_PLEASE_*`) are
-  retained for migration continuity. Rename-to-`RELEASE_APP_*` is
-  a future hygiene item; the prefix is a migration-era artefact,
-  not a behaviour concern.
 - `CHANGELOG.md`'s existing historical entries referencing "Release
   Please" are preserved. Rewriting history would violate Keep-a-
   Changelog stability guarantees; the text accurately describes
@@ -184,9 +183,6 @@ driver on every push to `main`.
 
 ## Follow-ups
 
-- Rename `RELEASE_PLEASE_APP_ID` → `RELEASE_APP_ID` and
-  `RELEASE_PLEASE_APP_PRIVATE_KEY` → `RELEASE_APP_PRIVATE_KEY` in
-  repo settings and the workflow. Non-urgent; purely cosmetic.
 - Add an `npm` ecosystem block to `.github/dependabot.yml` so
   Dependabot surfaces semantic-release + plugin updates.
 - Re-evaluate the `npm audit` advisories (`brace-expansion`,

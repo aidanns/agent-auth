@@ -249,19 +249,13 @@ personal account.
 5. In the repo's
    [Settings → Secrets and variables → Actions](https://github.com/aidanns/agent-auth/settings/secrets/actions),
    add:
-   - `RELEASE_PLEASE_APP_ID` — the numeric App ID from step 3.
-   - `RELEASE_PLEASE_APP_PRIVATE_KEY` — the **full contents** of
+   - `SEMANTIC_RELEASE_APP_ID` — the numeric App ID from step 3.
+   - `SEMANTIC_RELEASE_APP_PRIVATE_KEY` — the **full contents** of
      the `.pem` file, including the `-----BEGIN/END` markers and
      the trailing newline.
-6. Delete the legacy `RELEASE_PLEASE_TOKEN` secret if it still
-   exists.
-
-Secret names retain the `RELEASE_PLEASE_` prefix for migration
-continuity — the secrets were provisioned for the previous Release
-Please flow and semantic-release consumes the identical App token.
-A follow-up rename to `RELEASE_APP_*` is tracked in
-[ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
-§ Follow-ups.
+6. Delete any legacy release secrets (`RELEASE_PLEASE_TOKEN`,
+   `RELEASE_PLEASE_APP_ID`, `RELEASE_PLEASE_APP_PRIVATE_KEY`) if
+   they still exist from earlier release-automation iterations.
 
 The workflow in `.github/workflows/release.yml` reads
 these two secrets at run time, mints an installation token via
@@ -270,7 +264,7 @@ these two secrets at run time, mints an installation token via
 short-lived and is not persisted beyond the workflow run.
 
 To rotate the private key, re-run step 3 (generate a new key),
-update `RELEASE_PLEASE_APP_PRIVATE_KEY` in repo settings, and
+update `SEMANTIC_RELEASE_APP_PRIVATE_KEY` in repo settings, and
 revoke the old key from the App settings page. No workflow change
 is required.
 
