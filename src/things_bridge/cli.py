@@ -40,7 +40,11 @@ def main() -> None:
             command=config.things_client_command,
             timeout_seconds=config.request_timeout_seconds,
         )
-        authz = AgentAuthClient(config.auth_url, timeout_seconds=config.request_timeout_seconds)
+        authz = AgentAuthClient(
+            config.auth_url,
+            timeout_seconds=config.request_timeout_seconds,
+            ca_cert_path=config.auth_ca_cert_path,
+        )
         run_server(config, things, authz)
         return
 

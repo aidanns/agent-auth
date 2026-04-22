@@ -5,6 +5,7 @@
 """HTTP client for delegating token validation to agent-auth."""
 
 import json
+import ssl
 from http.client import HTTPConnection, HTTPSConnection
 from typing import Any
 from urllib.parse import urlparse
@@ -20,14 +21,36 @@ from things_bridge.errors import (
 class AgentAuthClient:
     """Validates bearer tokens against agent-auth's ``/agent-auth/v1/validate`` endpoint."""
 
-    def __init__(self, auth_url: str, *, timeout_seconds: float = 30.0):
+    def __init__(
+        self,
+        auth_url: str,
+        *,
+        timeout_seconds: float = 30.0,
+        ca_cert_path: str = "",
+    ):
         parsed = urlparse(auth_url)
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
             raise ValueError(f"Invalid auth_url: {auth_url!r}")
         self._host = parsed.hostname
         self._port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        self._conn_cls = HTTPSConnection if parsed.scheme == "https" else HTTPConnection
+        self._use_tls = parsed.scheme == "https"
         self._timeout = timeout_seconds
+        # Build the SSL context once per client and reuse it — loading
+        # a CA bundle is cheap but not free, and doing it per request
+        # would needlessly charge the authz hot path. A configured
+        # ``ca_cert_path`` means the operator runs agent-auth behind a
+        # self-signed or private CA (typical for a devcontainer-host
+        # deployment); an empty path falls back to the system trust
+        # store.
+        if self._use_tls:
+            if ca_cert_path:
+                self._ssl_context: ssl.SSLContext | None = ssl.create_default_context(
+                    cafile=ca_cert_path
+                )
+            else:
+                self._ssl_context = ssl.create_default_context()
+        else:
+            self._ssl_context = None
 
     def validate(self, token: str, required_scope: str, *, description: str | None = None) -> None:
         """Validate ``token`` carries ``required_scope``.
@@ -39,7 +62,12 @@ class AgentAuthClient:
             payload["description"] = description
         body = json.dumps(payload).encode("utf-8")
 
-        conn = self._conn_cls(self._host, self._port, timeout=self._timeout)
+        if self._use_tls:
+            conn: HTTPConnection = HTTPSConnection(
+                self._host, self._port, timeout=self._timeout, context=self._ssl_context
+            )
+        else:
+            conn = HTTPConnection(self._host, self._port, timeout=self._timeout)
         try:
             try:
                 conn.request(

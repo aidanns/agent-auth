@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import signal
+import ssl
 import sys
 import threading
 import time
@@ -381,6 +382,18 @@ def _first(params: dict[str, list[str]], key: str) -> str | None:
     return values[0] or None
 
 
+def _build_tls_context(cert_path: str, key_path: str) -> ssl.SSLContext:
+    """Build a server-side ``SSLContext`` loaded from PEM files.
+
+    Matches the floor pinned for ``agent-auth`` (``TLSv1_2`` minimum,
+    server-role context) so the two services don't drift.
+    """
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(certfile=cert_path, keyfile=key_path)
+    return context
+
+
 class ThingsBridgeServer(ThreadingHTTPServer):
     """Threaded HTTP server with shared state for things-bridge."""
 
@@ -409,6 +422,13 @@ class ThingsBridgeServer(ThreadingHTTPServer):
         # clock to drive the failure path without mutating PATH.
         self.health_checker = health_checker or _HealthChecker(config.things_client_command)
         super().__init__((config.host, config.port), ThingsBridgeHandler)
+        if config.tls_enabled:
+            # Wrap the bound listening socket in a TLS context so every
+            # accepted connection speaks TLS. See agent-auth's server
+            # for the matching pattern and ADR 0025 for rationale.
+            self.socket = _build_tls_context(config.tls_cert_path, config.tls_key_path).wrap_socket(
+                self.socket, server_side=True
+            )
 
 
 def _install_shutdown_handler(
@@ -471,7 +491,8 @@ def run_server(config: Config, things: ThingsClient, authz: AgentAuthClient) -> 
     # Read the bound port from ``server_address`` (populated during
     # ``server_bind``) so a ``port: 0`` config surfaces the real port.
     bound_port = server.server_address[1]
-    print(f"things-bridge listening on {config.host}:{bound_port}", flush=True)
+    scheme = "https" if config.tls_enabled else "http"
+    print(f"things-bridge listening on {scheme}://{config.host}:{bound_port}", flush=True)
     try:
         server.serve_forever()
     finally:

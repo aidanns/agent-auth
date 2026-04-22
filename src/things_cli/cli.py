@@ -72,7 +72,7 @@ def handle_status(args: argparse.Namespace) -> int:
 def _load_client(args: argparse.Namespace) -> BridgeClient:
     store = _resolve_store(args)
     creds = store.load()
-    return BridgeClient(creds, store)
+    return BridgeClient(creds, store, ca_cert_path=getattr(args, "ca_cert", "") or "")
 
 
 def handle_todos_list(args: argparse.Namespace) -> int:
@@ -146,6 +146,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--credentials-file",
         help="Path for --credential-store=file (default: ~/.config/things-cli/credentials.yaml)",
+    )
+    parser.add_argument(
+        "--ca-cert",
+        help=(
+            "Path to a PEM bundle used to verify HTTPS certificates for the bridge and "
+            "agent-auth URLs (e.g. a self-signed cert for a devcontainer-to-host setup). "
+            "Empty falls back to the system trust store."
+        ),
     )
 
     subparsers = parser.add_subparsers(dest="command")

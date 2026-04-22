@@ -115,9 +115,59 @@ def test_invalid_auth_url_raises_valueerror():
 def test_https_url_uses_https_connection():
     # Regression: the client previously used HTTPConnection regardless of
     # scheme, so any deployment that put agent-auth behind TLS would silently
-    # send plaintext on port 443.
-    from http.client import HTTPSConnection
-
+    # send plaintext on port 443. After #101 the connection class is picked
+    # on the fly inside ``validate``; pin the invariants via the
+    # TLS-selection flags instead.
     client = AgentAuthClient("https://auth.example.invalid:9443")
-    assert client._conn_cls is HTTPSConnection
+    assert client._use_tls is True
+    assert client._ssl_context is not None
     assert client._port == 9443
+
+
+def test_http_url_does_not_build_ssl_context():
+    # Loopback HTTP stays the default posture for a single-user host;
+    # the client must not pay for TLS context creation in that path.
+    client = AgentAuthClient("http://auth.example.invalid:9100")
+    assert client._use_tls is False
+    assert client._ssl_context is None
+    assert client._port == 9100
+
+
+def test_https_url_with_ca_cert_loads_bundle(tmp_path):
+    # Self-signed deployments point ``auth_ca_cert_path`` at a PEM file
+    # the authz client uses to verify the server. Pin that the explicit
+    # CA bundle is loaded (not silently ignored) by asserting the
+    # context is present and distinct from the default.
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test-ca")])
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(_utcnow())
+        .not_valid_after(_utcnow_plus_hours(1))
+        .sign(key, hashes.SHA256())
+    )
+    ca_path = tmp_path / "ca.pem"
+    ca_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    client = AgentAuthClient("https://auth.example.invalid:9443", ca_cert_path=str(ca_path))
+    assert client._ssl_context is not None
+
+
+def _utcnow():
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC)
+
+
+def _utcnow_plus_hours(hours):
+    from datetime import UTC, datetime, timedelta
+
+    return datetime.now(UTC) + timedelta(hours=hours)

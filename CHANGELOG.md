@@ -13,6 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Optional TLS listener on `agent-auth serve` and `things-bridge serve`.**
+  Setting `tls_cert_path` + `tls_key_path` in `config.yaml` wraps the
+  bound socket with `ssl.SSLContext(PROTOCOL_TLS_SERVER)` pinned to
+  TLS 1.2+. Closes NIST SP 800-53 SC-8 for the
+  devcontainer-to-host deployment, where plaintext bearer tokens
+  previously crossed a virtual network interface between the
+  devcontainer and the host. Plaintext remains the default — the
+  loopback-only single-host bind already satisfies SC-8 without
+  crypto. Half-configured TLS (only cert or only key set) raises
+  `ValueError` at `Config.__post_init__` so the service cannot
+  silently fall back to plaintext. `things-bridge`'s `AgentAuthClient`
+  gains an `auth_ca_cert_path` config for trusting a self-signed
+  agent-auth cert; `things-cli` gains a `--ca-cert` flag for the same
+  job. New `tests/test_server_tls.py` and
+  `tests/test_things_bridge_tls.py` drive a real TLS handshake via a
+  `cryptography`-generated self-signed cert and assert the positive
+  path, plaintext rejection, and untrusted-CA rejection.
+  `SECURITY.md` SC-8 row flips from *Partial* to *Implemented*.
+  README carries a devcontainer TLS recipe. Rationale in
+  [ADR 0025](design/decisions/0025-tls-for-devcontainer-host-traffic.md).
+  Closes [#101](https://github.com/aidanns/agent-auth/issues/101).
+
 ### Changed
 
 - **Audit log entries now carry OTel resource attributes

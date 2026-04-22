@@ -48,12 +48,33 @@ class Config:
     # drain after SIGTERM before a watchdog thread force-exits the process.
     # Must fit inside the deployment's container ``stop_grace_period``.
     shutdown_deadline_seconds: float = 5.0
+    # TLS server-side config. Both paths must be set together to enable
+    # TLS; setting only one is a config error. When neither is set the
+    # server binds plaintext HTTP — fine for the default loopback-only
+    # deployment (SC-8 satisfied by the 127.0.0.1 bind), required for
+    # devcontainer-to-host deployments where the socket crosses a
+    # virtual network interface (see ADR 0025).
+    tls_cert_path: str = ""
+    tls_key_path: str = ""
 
     def __post_init__(self) -> None:
         if not self.db_path:
             self.db_path = os.path.join(_default_data_dir(), "tokens.db")
         if not self.log_path:
             self.log_path = os.path.join(_default_state_dir(), "audit.log")
+        # Fail loudly when only one half of the TLS pair is present.
+        # Silently falling back to plaintext here would be a security
+        # foot-gun; downgrading from an intended TLS deployment to
+        # plaintext is exactly the regression SC-8 is meant to prevent.
+        if bool(self.tls_cert_path) != bool(self.tls_key_path):
+            raise ValueError(
+                "Config: tls_cert_path and tls_key_path must both be set or both be empty; "
+                f"got cert={self.tls_cert_path!r} key={self.tls_key_path!r}"
+            )
+
+    @property
+    def tls_enabled(self) -> bool:
+        return bool(self.tls_cert_path and self.tls_key_path)
 
 
 def load_config(config_dir: str | None = None) -> Config:
