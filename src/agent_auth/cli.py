@@ -10,8 +10,8 @@ import sys
 
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config, load_config
-from agent_auth.errors import KeyringError
-from agent_auth.keys import KeyManager, SigningKey
+from agent_auth.errors import KeyLossError, KeyringError
+from agent_auth.keys import KeyManager, SigningKey, check_key_integrity
 from agent_auth.scopes import parse_scope_arg
 from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair, generate_token_id
@@ -22,6 +22,11 @@ def _init_services(
 ) -> tuple[Config, SigningKey, TokenStore, AuditLogger, KeyManager]:
     config = load_config(config_dir)
     key_manager = KeyManager()
+    # Refuse to regenerate keys when an existing DB would be orphaned
+    # by a fresh key pair (see design/DESIGN.md "Key loss and recovery").
+    # The check runs before ``get_or_create_*`` so that first-time
+    # installs — DB absent, keyring absent — proceed normally.
+    check_key_integrity(config.db_path, key_manager)
     signing_key = key_manager.get_or_create_signing_key()
     encryption_key = key_manager.get_or_create_encryption_key()
     store = TokenStore(config.db_path, encryption_key)
@@ -337,7 +342,13 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
-    config, signing_key, store, audit, key_manager = _init_services(args.config_dir)
+    try:
+        config, signing_key, store, audit, key_manager = _init_services(args.config_dir)
+    except KeyLossError as exc:
+        # Surface the operator-facing message without a Python traceback —
+        # the recovery instructions are in the message itself.
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     if args.command == "serve":
         handle_serve(args, config, signing_key, store, audit, key_manager)

@@ -1076,6 +1076,84 @@ during production use is a signal to investigate — a looping
 agent, a runaway polling loop, or a legitimate workflow change —
 not a condition to refuse.
 
+## Key loss and recovery
+
+The signing and encryption keys are stored only in the system
+keyring. If that keyring is wiped or inaccessible (fresh OS
+install, keychain reset, new host, corrupted macOS Keychain entry)
+while the token store on disk persists, silently regenerating a
+new key pair would strand every live token and render encrypted
+columns unreadable — and the operator would have no signal that
+anything had changed until the next call failed.
+
+### Detection
+
+`agent_auth.keys.check_key_integrity(db_path, key_manager)` runs
+before any `get_or_create_*` call in `agent-auth`'s CLI
+entrypoint (`_init_services`). It opens the token-store DB
+read-only (no encryption key required — `token_families` is not
+a field-encrypted column) and raises `KeyLossError` when:
+
+- the DB file exists, and
+- the `token_families` table has at least one row, and
+- either the signing or the encryption key is absent from the
+  keyring.
+
+The DB-absent and DB-empty paths are the legitimate first-install
+and clean-start cases; the check stays silent and startup
+proceeds to `get_or_create_*`.
+
+### Operator-facing error
+
+`KeyLossError`'s message names the missing key(s), the DB path,
+and the two recovery options:
+
+- **Restore the keyring entry.** If the operator has a backup of
+  the `agent-auth` service entry (for example, via macOS Time
+  Machine restore of `~/Library/Keychains`), reinstalling it
+  brings the existing tokens back to life. No tooling is shipped
+  for this — it is operator-driven.
+- **Delete the token store.** Remove `tokens.db` and its
+  `-wal` / `-shm` siblings under `$XDG_DATA_HOME/agent-auth/`.
+  The next launch generates a fresh key pair and a fresh DB,
+  which invalidates every previously issued access and refresh
+  token. Clients must be reissued from scratch.
+
+The CLI catches `KeyLossError` at `main()` and prints the message
+verbatim to stderr with exit status 2 — Python tracebacks would
+bury the recovery instructions.
+
+### No backup tool in 1.0
+
+agent-auth deliberately does **not** ship a backup or export tool
+for the keys. Any first-party backup path would:
+
+- introduce a secondary store for 32-byte secrets, widening the
+  attack surface; and
+- need its own tamper-evidence, key-wrapping, and restore-
+  verification story that the QM/SIL declaration in
+  `design/ASSURANCE.md` does not cover.
+
+For a personal-use deployment the system keyring's own backup
+story (macOS Time Machine of `~/Library/Keychains`; `seahorse`
+export on Linux) is the intended path. This is revisitable if a
+future multi-user or remote-operator posture makes a first-party
+backup tool necessary.
+
+### Known gaps
+
+- Byte-for-byte corruption of the keyring entry (not absence) is
+  not detected: `check_key_integrity` verifies presence, not
+  validity. A corrupted entry surfaces later as a signature-
+  verification failure (`TokenInvalidError`) or an `AESGCM`
+  decryption `InvalidTag` error on the first authenticated
+  request. The operator-visible symptom is the same — every
+  live token suddenly looks invalid — and so is the mitigation
+  path (restore or wipe).
+- The check runs exactly once at startup. Key rotation while the
+  server is running is out of scope (`agent-auth` does not
+  implement key rotation in 1.0).
+
 ## Security Considerations
 
 - The signing key is stored in the system keyring (macOS Keychain or libsecret/gnome-keyring), never as a plaintext file. Only agent-auth reads it.
