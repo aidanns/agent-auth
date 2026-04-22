@@ -60,6 +60,7 @@ agent-auth,Things Bridge,"Expose authenticated Things 3 read operations over HTT
 Things Bridge,Delegate Token Validation,"Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation."
 Things Bridge,Fetch Things Data,"Retrieve the todos, projects, or areas requested by the client, translating typed errors into the ThingsError hierarchy."
 Things Bridge,Serve Bridge HTTP API,Expose Things 3 read operations as HTTP endpoints for the CLI client under the /things-bridge/ prefix.
+Things Bridge,Serve Bridge Health Endpoint,"Handle GET /things-bridge/health readiness probes; require an access token carrying the things-bridge:health scope, verify that the configured things_client_command is resolvable (with a short-lived cache to keep the probe cheap), return 200 when the bridge can reach its critical dependencies, 401 / 403 on missing / unscoped tokens, 502 when agent-auth is unreachable for probe authorization, and 503 when the things-client executable cannot be resolved."
 Things Bridge,Handle Bridge Graceful Shutdown,"Install SIGTERM / SIGINT handlers that stop accepting new connections, drain in-flight requests within shutdown_deadline_seconds, and exit 0. A watchdog force-exits the process if drain exceeds the deadline."
 agent-auth,Things CLI,"Thin CLI client for interacting with Things 3 via the things-bridge, runnable from host or devcontainer."
 Things CLI,Send Bridge Request,Send an authenticated HTTP request to the app bridge with the bearer token.

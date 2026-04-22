@@ -146,6 +146,12 @@ All data endpoints share the same authorization and Things-layer error codes:
 | `scope_denied`      | 403         | Token does not have the `things-bridge:health` scope. |
 | `authz_unavailable` | 502         | The agent-auth service is unreachable.                |
 
+A 503 body of `{"status": "unhealthy"}` (not an error code) indicates a
+critical downstream dependency is unavailable — currently that means the
+configured `things_client_command` executable cannot be resolved on PATH.
+agent-auth reachability surfaces as a 502 `authz_unavailable` from the
+probe-authorisation call itself rather than being re-checked here.
+
 ### `GET /things-bridge/metrics` *(unversioned)*
 
 | Error code          | HTTP status | Meaning                                                |

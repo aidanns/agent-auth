@@ -6,10 +6,12 @@
 
 import json
 import os
+import shutil
 import signal
 import sys
 import threading
 import time
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -44,6 +46,58 @@ _UNKNOWN_ROUTE = "/unknown"
 # Upper bound on ids accepted from URL paths. Things ids are short; reject
 # anything excessive before it ever reaches AppleScript.
 _MAX_ID_LEN = 128
+
+# How long a successful ``shutil.which`` resolution of the things-client
+# executable is trusted by the /health probe. Long enough that a probe
+# storm pays at most one PATH walk per window, short enough that a fresh
+# install is picked up on the next probe after that window.
+_HEALTH_THINGS_CLIENT_CACHE_TTL_SECONDS = 30.0
+
+
+class _HealthChecker:
+    """Evaluate the things-bridge's critical dependencies for /health.
+
+    Currently verifies that ``things_client_command[0]`` resolves to an
+    executable — either via PATH lookup (bare name) or as an absolute
+    path. ``auth_url`` reachability is *not* re-probed here: the /health
+    handler already round-trips through ``AgentAuthClient.validate`` to
+    authorise the probe token, and that call raises
+    ``AuthzUnavailableError`` → 502 if agent-auth is down. Adding a
+    second ping would only duplicate that signal.
+
+    The result is cached for ``_HEALTH_THINGS_CLIENT_CACHE_TTL_SECONDS``
+    so a high-frequency probe cadence doesn't turn into a stream of
+    filesystem walks.
+    """
+
+    def __init__(
+        self,
+        things_client_command: list[str],
+        *,
+        cache_ttl_seconds: float = _HEALTH_THINGS_CLIENT_CACHE_TTL_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+        resolver: Callable[[str], str | None] = shutil.which,
+    ):
+        if not things_client_command:
+            raise ValueError("_HealthChecker: things_client_command must not be empty")
+        self._executable = things_client_command[0]
+        self._cache_ttl_seconds = cache_ttl_seconds
+        self._clock = clock
+        self._resolver = resolver
+        self._cached_at: float | None = None
+        self._cached_resolvable: bool = False
+
+    def things_client_resolvable(self) -> bool:
+        """Return True iff ``things_client_command[0]`` currently resolves.
+
+        Cached for ``cache_ttl_seconds``; first call always queries.
+        """
+        now = self._clock()
+        if self._cached_at is not None and now - self._cached_at < self._cache_ttl_seconds:
+            return self._cached_resolvable
+        self._cached_resolvable = self._resolver(self._executable) is not None
+        self._cached_at = now
+        return self._cached_resolvable
 
 
 def _safe_id(raw: str | None) -> str | None:
@@ -193,6 +247,9 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             self._route_template = path
             if not self._validate(token, HEALTH_SCOPE, "things-bridge health check"):
                 return
+            if not self._bridge.health_checker.things_client_resolvable():
+                self._send_json(503, {"status": "unhealthy"})
+                return
             self._send_json(200, {"status": "ok"})
             return
 
@@ -340,12 +397,17 @@ class ThingsBridgeServer(ThreadingHTTPServer):
         authz: AgentAuthClient,
         registry: Registry,
         metrics: ThingsBridgeMetrics,
+        health_checker: _HealthChecker | None = None,
     ):
         self.config = config
         self.things = things
         self.authz = authz
         self.registry = registry
         self.metrics = metrics
+        # Default health checker reads from ``config.things_client_command``;
+        # tests can inject a pre-built checker with a stubbed resolver /
+        # clock to drive the failure path without mutating PATH.
+        self.health_checker = health_checker or _HealthChecker(config.things_client_command)
         super().__init__((config.host, config.port), ThingsBridgeHandler)
 
 
