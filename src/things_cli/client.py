@@ -5,6 +5,7 @@
 """HTTP client for the things-bridge with automatic token refresh and re-issuance."""
 
 import json
+import ssl
 from http.client import HTTPConnection, HTTPSConnection
 from typing import Any
 from urllib.parse import quote, urlencode, urlparse
@@ -38,10 +39,24 @@ class BridgeClient:
         store: CredentialStore,
         *,
         timeout_seconds: float = 30.0,
+        ca_cert_path: str = "",
     ):
         self._credentials = credentials
         self._store = store
         self._timeout = timeout_seconds
+        # Pre-build the TLS context once; reused for every HTTPS call.
+        # An explicit ``ca_cert_path`` means the operator trusts a
+        # self-signed or private CA (typical for a devcontainer-host
+        # deployment where the bridge and agent-auth serve TLS with a
+        # locally-generated cert). Empty falls back to the system trust
+        # store for public CAs or remains unused when every URL is
+        # plaintext HTTP on loopback.
+        if ca_cert_path:
+            self._ssl_context: ssl.SSLContext | None = ssl.create_default_context(
+                cafile=ca_cert_path
+            )
+        else:
+            self._ssl_context = None
 
     @property
     def credentials(self) -> Credentials:
@@ -179,7 +194,7 @@ class BridgeClient:
             raise BridgeUnavailableError(f"Invalid URL: {base_url!r}")
         host = parsed.hostname
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        conn_cls = HTTPSConnection if parsed.scheme == "https" else HTTPConnection
+        use_tls = parsed.scheme == "https"
 
         query = ""
         if params:
@@ -193,7 +208,11 @@ class BridgeClient:
             send_headers.setdefault("Content-Type", "application/json")
             send_headers["Content-Length"] = str(len(request_body))
 
-        conn = conn_cls(host, port, timeout=self._timeout)
+        conn: HTTPConnection
+        if use_tls:
+            conn = HTTPSConnection(host, port, timeout=self._timeout, context=self._ssl_context)
+        else:
+            conn = HTTPConnection(host, port, timeout=self._timeout)
         try:
             try:
                 conn.request(method, full_path, body=request_body, headers=send_headers)

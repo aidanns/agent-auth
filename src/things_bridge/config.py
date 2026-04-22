@@ -50,10 +50,34 @@ class Config:
     # Must fit inside the deployment's container ``stop_grace_period``.
     shutdown_deadline_seconds: float = 5.0
     log_path: str = ""
+    # TLS server-side config. Both paths must be set together to enable
+    # TLS; setting only one is a config error. Plaintext remains the
+    # default for the loopback-only deployment; TLS is required when the
+    # bridge is reached from a devcontainer over a virtual network
+    # interface (see ADR 0025 and SECURITY.md §SC-8).
+    tls_cert_path: str = ""
+    tls_key_path: str = ""
+    # PEM-encoded bundle used to verify ``auth_url`` when it is served
+    # over HTTPS with a self-signed or private CA. Empty means fall back
+    # to the system trust store (appropriate when ``auth_url`` uses a
+    # public CA, or plaintext HTTP on loopback).
+    auth_ca_cert_path: str = ""
 
     def __post_init__(self) -> None:
         if not self.log_path:
             self.log_path = os.path.join(_default_state_dir(), "server.log")
+        # Fail loudly on half-configured TLS; silently degrading to
+        # plaintext would break the SC-8 posture the field was added to
+        # guarantee (see ADR 0025).
+        if bool(self.tls_cert_path) != bool(self.tls_key_path):
+            raise ValueError(
+                "Config: tls_cert_path and tls_key_path must both be set or both be empty; "
+                f"got cert={self.tls_cert_path!r} key={self.tls_key_path!r}"
+            )
+
+    @property
+    def tls_enabled(self) -> bool:
+        return bool(self.tls_cert_path and self.tls_key_path)
 
 
 def load_config() -> Config:

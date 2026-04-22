@@ -7,6 +7,7 @@
 import json
 import os
 import signal
+import ssl
 import sys
 import threading
 import time
@@ -787,6 +788,20 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         )
 
 
+def _build_tls_context(cert_path: str, key_path: str) -> ssl.SSLContext:
+    """Build a server-side ``SSLContext`` loaded from PEM files.
+
+    Uses ``ssl.PROTOCOL_TLS_SERVER`` defaults (TLS 1.2+, curated cipher
+    suite, certificate required on the server side). Centralised here
+    so both agent-auth and things-bridge pick up the same posture;
+    adjusting the floor in one place is enough.
+    """
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(certfile=cert_path, keyfile=key_path)
+    return context
+
+
 class AgentAuthServer(ThreadingHTTPServer):
     """Threaded HTTP server with shared state for agent-auth."""
 
@@ -814,6 +829,14 @@ class AgentAuthServer(ThreadingHTTPServer):
         self.registry = registry
         self.metrics = metrics
         super().__init__((config.host, config.port), AgentAuthHandler)
+        if config.tls_enabled:
+            # Wrap the bound listening socket in a TLS context so every
+            # accepted connection speaks TLS. Handshake is deferred until
+            # the first read in the request handler thread, which is
+            # where ``ThreadingHTTPServer`` already dispatches.
+            self.socket = _build_tls_context(config.tls_cert_path, config.tls_key_path).wrap_socket(
+                self.socket, server_side=True
+            )
 
 
 def _bootstrap_management_token(
@@ -915,7 +938,8 @@ def run_server(
     # Read the bound port from ``server_address`` (populated during
     # ``server_bind``) so a ``port: 0`` config surfaces the real port.
     bound_port = server.server_address[1]
-    print(f"agent-auth server listening on {config.host}:{bound_port}", flush=True)
+    scheme = "https" if config.tls_enabled else "http"
+    print(f"agent-auth server listening on {scheme}://{config.host}:{bound_port}", flush=True)
     try:
         server.serve_forever()
     finally:

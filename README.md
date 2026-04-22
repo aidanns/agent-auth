@@ -259,6 +259,39 @@ whatever Docker the runner provides.
 - Sensitive fields (scopes, HMAC signatures) are encrypted at rest with AES-256-GCM
 - Refresh token reuse triggers automatic family-wide revocation
 - Request body size is capped at 1 MiB
+- Optional in-process TLS listener for devcontainer-to-host traffic — see "TLS for devcontainer-to-host traffic" below
+
+### TLS for devcontainer-to-host traffic
+
+Both servers bind plaintext HTTP on `127.0.0.1` by default — fine for a single-host deployment where loopback satisfies NIST SP 800-53 SC-8. When `things-cli` runs inside a devcontainer and reaches agent-auth / things-bridge on the host, the socket crosses a virtual network interface and plaintext traffic is visible to other bridge-networked containers. Configure TLS on both services to close that gap (see [ADR 0025](design/decisions/0025-tls-for-devcontainer-host-traffic.md)):
+
+1. Generate a self-signed cert good for `localhost` and `127.0.0.1`:
+
+   ```
+   openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem \
+     -days 365 -nodes -subj "/CN=localhost" \
+     -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+   ```
+
+2. Point each service at its cert/key via `config.yaml`:
+
+   ```yaml
+   tls_cert_path: /path/to/cert.pem
+   tls_key_path:  /path/to/key.pem
+   ```
+
+3. For `things-bridge`, also set `auth_ca_cert_path` so the bridge trusts agent-auth's self-signed cert when validating tokens.
+
+4. Inside the devcontainer, point `things-cli` at the HTTPS URLs and pass `--ca-cert` so it trusts the self-signed CA:
+
+   ```
+   things-cli --ca-cert /path/to/cert.pem \
+     login --bridge-url https://host.docker.internal:9200 \
+           --auth-url   https://host.docker.internal:9100 \
+           --access-token ... --refresh-token ... --family-id ...
+   ```
+
+Setting only one of `tls_cert_path` / `tls_key_path` is rejected at startup so the services cannot silently fall back to plaintext when TLS was intended.
 
 Every GitHub release ships an SPDX SBOM and keyless Sigstore cosign signatures
 for each artifact and SBOM. See

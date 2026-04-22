@@ -69,3 +69,5 @@ is linked from this index.
   — /health now returns 503 `{"status":"unhealthy"}` when `things_client_command[0]` fails PATH resolution; cached for 30s to keep the probe cheap. agent-auth reachability is covered implicitly by the probe-authorization call.
 - [ADR 0024 — Single-source audit trail at agent-auth with a cross-service resource envelope](0024-audit-log-shared-envelope.md)
   — keep things-bridge audit-free (authz traces come via agent-auth); add OTel `service.name` / `service.version` to every audit entry so a future second emitter drops in with no schema churn; mark HTTP-attribute fields as reserved until emission lands.
+- [ADR 0025 — Optional in-process TLS listener on agent-auth and things-bridge](0025-tls-for-devcontainer-host-traffic.md)
+  — close SC-8 for devcontainer-to-host traffic via a config-gated `ssl.SSLContext` wrap of the server socket (TLS 1.2+); plaintext stays the default for the loopback-only single-host deployment.

@@ -77,7 +77,7 @@ SHUTDOWN_DEADLINE_SECONDS = 1.0
 # assertion instead of silently running to the pytest timeout.
 WALL_TIME_BUDGET_SECONDS = 3.0
 
-_LISTENING_PATTERN = re.compile(r"listening on \d+\.\d+\.\d+\.\d+:(\d+)")
+_LISTENING_PATTERN = re.compile(r"listening on (?:https?://)?\d+\.\d+\.\d+\.\d+:(\d+)")
 
 
 @pytest.fixture
