@@ -11,6 +11,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0](https://github.com/aidanns/agent-auth/compare/agent-auth-v0.1.0...agent-auth-v0.2.0) (2026-04-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* ` → major, `feat:` → minor,
+
+### Features
+
+* add client-level FakeThingsClient for Linux e2e testing ([#53](https://github.com/aidanns/agent-auth/issues/53)) ([7013a0f](https://github.com/aidanns/agent-auth/commit/7013a0f786ff61fe43e500d0f766194d105bfde7))
+* add release artifacts — CHANGELOG, LICENSE, SECURITY, install.sh, release automation ([#96](https://github.com/aidanns/agent-auth/issues/96)) ([4bb02a3](https://github.com/aidanns/agent-auth/commit/4bb02a3a476b33a59f925f353f81f9e698e475f3))
+* add Taskfile.yml (go-task) as unified task runner ([#59](https://github.com/aidanns/agent-auth/issues/59)) ([d082a70](https://github.com/aidanns/agent-auth/commit/d082a70bd36ffd795b729862efd309dfacca92d2))
+* **api:** publish OpenAPI 3.1 specs for agent-auth and things-bridge ([#176](https://github.com/aidanns/agent-auth/issues/176)) ([b782b04](https://github.com/aidanns/agent-auth/commit/b782b047e377243a4bdb32ee3d95f8bdc664edbb))
+* **audit:** add schema_version field and stability policy ([#167](https://github.com/aidanns/agent-auth/issues/167)) ([eecc9d6](https://github.com/aidanns/agent-auth/commit/eecc9d62760f81f4b7cafc2b55fb0cd2567e2e54))
+* **audit:** attach OTel service.name/service.version to every audit entry ([#100](https://github.com/aidanns/agent-auth/issues/100)) ([#200](https://github.com/aidanns/agent-auth/issues/200)) ([ad72be7](https://github.com/aidanns/agent-auth/commit/ad72be7f54c1a4108df0cf008e710604a7aa763d))
+* **ci:** adopt mdformat, taplo, and keep-sorted tooling ([#75](https://github.com/aidanns/agent-auth/issues/75)) ([52258cc](https://github.com/aidanns/agent-auth/commit/52258cc309be12fa82f34fa4fbfb76edc0b041b3))
+* expose token management operations via HTTP API ([#97](https://github.com/aidanns/agent-auth/issues/97)) ([20b73a9](https://github.com/aidanns/agent-auth/commit/20b73a97fbb8383e449f359b8d6948dd2c15bd5a))
+* implement agent-auth server, CLI, and token management ([#4](https://github.com/aidanns/agent-auth/issues/4)) ([cded144](https://github.com/aidanns/agent-auth/commit/cded144537c4f3ce656982a50b0bbb9b6d4463a5))
+* implement things-bridge and things-cli (read-only) ([#9](https://github.com/aidanns/agent-auth/issues/9)) ([3b40c8e](https://github.com/aidanns/agent-auth/commit/3b40c8eaf91bc9180cb66cacc69f4b5b78c31666))
+* initial project scaffold with CLI entrypoint ([1070fbf](https://github.com/aidanns/agent-auth/commit/1070fbff32dd5c6527cbbec4bc050cb49c1935fd))
+* **metrics:** /agent-auth/metrics and /things-bridge/metrics Prometheus endpoints ([#26](https://github.com/aidanns/agent-auth/issues/26)) ([#186](https://github.com/aidanns/agent-auth/issues/186)) ([6d266fb](https://github.com/aidanns/agent-auth/commit/6d266fbbddfd78c94ebb708d28e39f2c72bed969))
+* migrate config to YAML, version APIs at /v1/, and add error/audit contract tests ([#126](https://github.com/aidanns/agent-auth/issues/126)) ([4c61c2a](https://github.com/aidanns/agent-auth/commit/4c61c2ae10f553ed115fd2bddbd3d2bfc483abe4))
+* **release:** add --yes flag and document non-interactive signing ([#123](https://github.com/aidanns/agent-auth/issues/123)) ([e87da4a](https://github.com/aidanns/agent-auth/commit/e87da4ad8734af1fa7bfe5e3e495ae1dd9115887))
+* **release:** attest SLSA Build L3 provenance on every release ([#109](https://github.com/aidanns/agent-auth/issues/109)) ([#180](https://github.com/aidanns/agent-auth/issues/180)) ([7eb1efd](https://github.com/aidanns/agent-auth/commit/7eb1efd3c35f86dcb8e6e69259ac08d3c710040c))
+* **release:** signed SBOMs, autorelease via Release Please, REUSE compliance ([#132](https://github.com/aidanns/agent-auth/issues/132)) ([38e257b](https://github.com/aidanns/agent-auth/commit/38e257b28bceba20c0110dddf01f020785f53974))
+* **security:** adopt OWASP ASVS v5 as application security standard ([#177](https://github.com/aidanns/agent-auth/issues/177)) ([de46858](https://github.com/aidanns/agent-auth/commit/de4685815f4bdca146c0f3049476c537a4374c62))
+* **server:** graceful SIGTERM / SIGINT shutdown for agent-auth and things-bridge ([#154](https://github.com/aidanns/agent-auth/issues/154)) ([#162](https://github.com/aidanns/agent-auth/issues/162)) ([600a901](https://github.com/aidanns/agent-auth/commit/600a9014a4a5989115cc24f157e137a524a73857))
+* **things-bridge:** deepen /health to verify things-client binary is resolvable ([#91](https://github.com/aidanns/agent-auth/issues/91)) ([#198](https://github.com/aidanns/agent-auth/issues/198)) ([4f93930](https://github.com/aidanns/agent-auth/commit/4f93930a833d916ca89156f9cdbee64c25356552))
+* **tls:** optional in-process TLS listener on both HTTP servers ([#101](https://github.com/aidanns/agent-auth/issues/101)) ([#201](https://github.com/aidanns/agent-auth/issues/201)) ([076fa6d](https://github.com/aidanns/agent-auth/commit/076fa6dd35f8bb3ed61881323aca36cff2c52fd3))
+* **typecheck:** ratchet agent_auth/* to strict mypy + pyright ([#164](https://github.com/aidanns/agent-auth/issues/164)) ([35a95e4](https://github.com/aidanns/agent-auth/commit/35a95e488a13177e11147471aaca39725fc4c25d))
+* **typecheck:** ratchet tests/ + tests_support/ under strict mypy + pyright ([#171](https://github.com/aidanns/agent-auth/issues/171)) ([f51a9f6](https://github.com/aidanns/agent-auth/commit/f51a9f6843aa73b831f1c8f4e56be46f84a364d2))
+* **typecheck:** ratchet things_bridge/* to strict mypy + pyright ([#156](https://github.com/aidanns/agent-auth/issues/156)) ([5f090a7](https://github.com/aidanns/agent-auth/commit/5f090a77fc3913e1cac489d76cbc0a4e5717b648))
+* **typecheck:** ratchet things_cli/* + things_client_common/* + things_models/* to strict ([#161](https://github.com/aidanns/agent-auth/issues/161)) ([b0f76f9](https://github.com/aidanns/agent-auth/commit/b0f76f9a86c8e3955625ca342fc426168022d17b))
+* **verify-standards:** gate graceful-shutdown standard ([#32](https://github.com/aidanns/agent-auth/issues/32)) ([#188](https://github.com/aidanns/agent-auth/issues/188)) ([563c297](https://github.com/aidanns/agent-auth/commit/563c29770706aeaef57637d4352d6f78fbc89140))
+* **verify-standards:** gate health-endpoint standard ([#25](https://github.com/aidanns/agent-auth/issues/25)) ([#179](https://github.com/aidanns/agent-auth/issues/179)) ([f01491f](https://github.com/aidanns/agent-auth/commit/f01491f943d6e1f68d1d278b177ec90497e20ed4))
+
+
+### Bug Fixes
+
+* move token management routes under /v1/ namespace ([#137](https://github.com/aidanns/agent-auth/issues/137)) ([#142](https://github.com/aidanns/agent-auth/issues/142)) ([0ead162](https://github.com/aidanns/agent-auth/commit/0ead162e6a037b767de8824256da23dd6411505e))
+* **scripts:** rebuild venv when pyproject.toml changes; add service tasks ([#73](https://github.com/aidanns/agent-auth/issues/73)) ([60c38b3](https://github.com/aidanns/agent-auth/commit/60c38b32ec5c99c003d93ceea969f42bb9db711b))
+* **server:** drain oversize request bodies before rejecting ([#144](https://github.com/aidanns/agent-auth/issues/144)) ([#199](https://github.com/aidanns/agent-auth/issues/199)) ([6c73ec1](https://github.com/aidanns/agent-auth/commit/6c73ec1e6b09c10c4ee37456155e4fab12777a94))
+* **things-bridge:** log osascript timeouts to stderr ([#57](https://github.com/aidanns/agent-auth/issues/57)) ([63d2bcd](https://github.com/aidanns/agent-auth/commit/63d2bcdb9f839acb06ab0619b22a7350d8c618f5))
+* **things-bridge:** repair AppleScript payload + log osascript failures ([#54](https://github.com/aidanns/agent-auth/issues/54)) ([29c3a39](https://github.com/aidanns/agent-auth/commit/29c3a39e77d31978881cb4d18596a7d063eb6408))
+
+
+### Performance Improvements
+
+* **things-bridge:** batch AppleScript property reads in list_todos ([#58](https://github.com/aidanns/agent-auth/issues/58)) ([53ea60d](https://github.com/aidanns/agent-auth/commit/53ea60d3869d70b3dde23fac453f6059e65c4800))
+
 ## [Unreleased]
 
 ### Added
