@@ -52,6 +52,23 @@ def test_schema_version_value(tmp_path):
     assert entry["schema_version"] == SCHEMA_VERSION
 
 
+def test_service_resource_attributes_on_every_entry(tmp_path):
+    # Pin the OTel resource envelope: downstream audit consumers rely
+    # on ``service.name`` / ``service.version`` being present with
+    # exactly those keys (dotted semconv names, not ``service_name``
+    # etc.) on every entry regardless of event kind. A rename breaks
+    # SIEM filter expressions.
+    logger = AuditLogger(_log_path(tmp_path))
+    logger.log_token_operation("token_created", family_id="fam-1")
+    logger.log_authorization_decision("validation_allowed", scope="x", tier="allow")
+    with open(_log_path(tmp_path)) as f:
+        lines = [json.loads(line) for line in f if line.strip()]
+    assert len(lines) == 2
+    for entry in lines:
+        assert entry["service.name"] == "agent-auth"
+        assert isinstance(entry["service.version"], str) and entry["service.version"]
+
+
 def _assert_base_fields(entry: dict[str, Any]) -> None:
     assert "timestamp" in entry
     assert "event" in entry
@@ -63,6 +80,15 @@ def _assert_base_fields(entry: dict[str, Any]) -> None:
     assert ts.endswith("+00:00") or ts.endswith("Z"), f"timestamp not UTC: {ts!r}"
     # Must parse as a datetime
     datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    # OTel resource attributes: every entry identifies its emitter so
+    # SIEMs joining multi-service audit trails don't need to infer
+    # service from the log path. ``service.name`` is constant today
+    # (agent-auth is the only emitter by design — see DESIGN.md §Log
+    # streams), but the schema reserves the field so a future emitter
+    # ships with a consistent envelope.
+    assert entry["service.name"] == "agent-auth"
+    assert isinstance(entry["service.version"], str)
+    assert entry["service.version"]  # non-empty
 
 
 # -- token operation events --

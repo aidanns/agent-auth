@@ -67,3 +67,5 @@ is linked from this index.
   — 1.0 ships without per-IP / per-token buckets; the loopback bind, 1 MiB body cap, and `ApprovalManager` serialisation cover the threat model until the trust boundary extends beyond localhost.
 - [ADR 0023 — Deepen `/things-bridge/health` to verify the Things-client binary is resolvable](0023-things-bridge-health-depth.md)
   — /health now returns 503 `{"status":"unhealthy"}` when `things_client_command[0]` fails PATH resolution; cached for 30s to keep the probe cheap. agent-auth reachability is covered implicitly by the probe-authorization call.
+- [ADR 0024 — Single-source audit trail at agent-auth with a cross-service resource envelope](0024-audit-log-shared-envelope.md)
+  — keep things-bridge audit-free (authz traces come via agent-auth); add OTel `service.name` / `service.version` to every audit entry so a future second emitter drops in with no schema churn; mark HTTP-attribute fields as reserved until emission lands.

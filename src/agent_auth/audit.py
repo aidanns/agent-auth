@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from agent_auth import __version__ as _agent_auth_version
+
 # Audit log schema version. Emitted on every entry so downstream consumers
 # (SIEM, compliance, forensics) can detect the schema at parse time.
 #
@@ -20,14 +22,26 @@ from typing import Any
 #     change; bump SCHEMA_VERSION and announce in CHANGELOG.md.
 SCHEMA_VERSION = 1
 
+# OTel resource attributes attached to every emitted entry. Allow audit
+# consumers joining trails across services (SIEM, forensics) to filter
+# by emitter without inferring it from the file path. things-bridge does
+# not emit its own audit log (see design/DESIGN.md §Log streams — all
+# bridge authorization traces come through agent-auth's validate
+# endpoint), so ``service.name`` is a constant here. The field exists
+# in the envelope so any future audit emitter in this project ships with
+# a consistent shape from day one.
+_SERVICE_NAME = "agent-auth"
+
 
 class AuditLogger:
     """Writes JSON-lines audit log entries to a file.
 
     The on-disk format is part of the project's public surface: one JSON
     object per line with at minimum ``timestamp`` (ISO 8601 UTC),
-    ``schema_version`` (int), and ``event`` keys, plus any event-specific
-    fields. See ``tests/test_audit_schema.py`` for the contract.
+    ``schema_version`` (int), ``service.name`` (string),
+    ``service.version`` (string), and ``event`` (string) keys, plus any
+    event-specific fields. See ``tests/test_audit_schema.py`` for the
+    contract.
     """
 
     def __init__(self, log_path: str):
@@ -40,6 +54,8 @@ class AuditLogger:
         entry = {
             "timestamp": datetime.now(UTC).isoformat(),
             "schema_version": SCHEMA_VERSION,
+            "service.name": _SERVICE_NAME,
+            "service.version": _agent_auth_version,
             "event": event,
             **details,
         }

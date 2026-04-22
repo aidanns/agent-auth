@@ -869,7 +869,12 @@ them would break downstream expectations:
 
 things-bridge emits no dedicated audit log — every request it
 handles traces back to agent-auth's audit trail via the delegated
-validation call, so audit coverage is single-sourced there.
+validation call, so audit coverage is single-sourced there. The
+audit envelope (OTel `service.name` / `service.version` resource
+attributes alongside `schema_version` / `timestamp` / `event`) is
+nonetheless shaped to work across services so any future emitter
+ships with the same wire format; today that envelope carries a
+constant `service.name = "agent-auth"`.
 
 ### Log levels
 
@@ -988,13 +993,25 @@ Contract tests in `tests/test_audit_schema.py` pin every documented
 event kind and fail if a field is renamed, removed, or re-typed
 without a version bump.
 
-Fields fall into two groups:
+Fields fall into three groups:
 
-**HTTP request attributes (OTel HTTP semconv keys)** — populated on
-events that originated from an HTTP request. Names and types follow
-the semconv HTTP conventions:
+**Resource attributes (OTel resource semconv keys)** — identify the
+emitter itself, not the request. Included on every entry so audit
+trails can be joined across services or retained through a file move:
 
-| Field                       | Type   | Source                                                                                                     |
+| Field             | Type   | Value                                                                                                                                                             |
+| ----------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `service.name`    | string | `agent-auth`. Constant today — things-bridge has no dedicated audit log (see §Log streams). The field is retained in the envelope for future audit emitters.      |
+| `service.version` | string | PEP 440 release version, read from `agent_auth.__version__` (i.e. `importlib.metadata.version("agent-auth")`). `0.0.0+unknown` when the package is not installed. |
+
+**HTTP request attributes (OTel HTTP semconv keys)** — *reserved for
+future events that originate from an HTTP request.* Not emitted today;
+authorization decisions currently carry only domain fields plus the
+resource envelope. Names and types below are the reservation; when
+events begin populating them, they will follow the semconv HTTP
+conventions verbatim:
+
+| Field                       | Type   | Source (when emitted)                                                                                      |
 | --------------------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
 | `http.request.method`       | string | e.g. `POST`                                                                                                |
 | `http.route`                | string | templated path, e.g. `/agent-auth/token/modify` (metrics-safe, low cardinality)                            |
@@ -1006,15 +1023,6 @@ the semconv HTTP conventions:
 | `network.protocol.version`  | string | e.g. `1.1` or `2`; lets audits distinguish HTTP/1.1 from HTTP/2 sessions                                   |
 | `server.address`            | string | local bind address                                                                                         |
 | `server.port`               | int    | local bind port                                                                                            |
-
-**Resource attributes (OTel resource semconv keys)** — identify the
-emitter itself, not the request. Included on every line so audit
-trails can be joined across services:
-
-| Field             | Type   | Source                          |
-| ----------------- | ------ | ------------------------------- |
-| `service.name`    | string | `agent-auth` or `things-bridge` |
-| `service.version` | string | PEP 440 release version         |
 
 **Domain fields (project-namespaced)** — describe authorization
 state, not HTTP mechanics. No OTel equivalent exists; these keep
