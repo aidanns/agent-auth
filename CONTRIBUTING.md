@@ -215,12 +215,12 @@ because it scopes to a single repo, exposes no human credential
 surface, and its private key can be rotated without touching a
 personal account.
 
-#### One-time: register the "Release agent-auth" GitHub App
+#### One-time: register the "semantic-release" GitHub App
 
 1. Go to
    [github.com/settings/apps/new](https://github.com/settings/apps/new)
    (user-owned App) and create an App with:
-   - **App name**: `Release agent-auth` (any identifier works; the
+   - **App name**: `semantic-release` (any identifier works; the
      name appears in the `chore(release):` commit author metadata).
    - **Homepage URL**:
      `https://github.com/aidanns/agent-auth`.

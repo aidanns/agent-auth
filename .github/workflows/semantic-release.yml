@@ -22,7 +22,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      # Mint a short-lived installation token from the "Release agent-auth"
+      # Mint a short-lived installation token from the "semantic-release"
       # GitHub App. Tags and releases created by the default GITHUB_TOKEN
       # do not fire downstream `on: push: tags:` workflow triggers, which
       # would silently break the chain into release-publish.yml — so we
