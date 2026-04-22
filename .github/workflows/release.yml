@@ -22,15 +22,14 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      # Mint a short-lived installation token from the "semantic-release"
+      # Create a short-lived installation token from the "semantic-release"
       # GitHub App. Tags and releases created by the default GITHUB_TOKEN
       # do not fire downstream `on: push: tags:` workflow triggers, which
       # would silently break the chain into release-publish.yml — so we
-      # need a non-GITHUB_TOKEN credential. The App has `contents: write`
-      # + `pull-requests: write` on this repo only; the token expires on
+      # need a non-GITHUB_TOKEN credential. The token expires on
       # workflow completion. Setup instructions: CONTRIBUTING.md § Release
       # process → Default path.
-      - name: Mint GitHub App installation token
+      - name: Create GitHub App token
         id: app-token
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
         with:
