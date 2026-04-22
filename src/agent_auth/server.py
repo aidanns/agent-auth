@@ -58,6 +58,19 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         if length == 0:
             return {}
         if length > self.MAX_BODY_SIZE:
+            # Drain the announced body before sending 400. Closing the
+            # socket mid-upload surfaces a BrokenPipeError on the
+            # client's sendall() instead of a clean status response —
+            # the observed flake in #144. Read in fixed chunks rather
+            # than buffering the whole body so an oversize
+            # Content-Length header can't still exhaust memory; the
+            # bytes are discarded.
+            remaining = length
+            while remaining > 0:
+                chunk = self.rfile.read(min(remaining, 65536))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
             return None
         body = self.rfile.read(length)
         try:
