@@ -274,6 +274,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: |
+            A critical downstream dependency is unavailable. Currently
+            indicates the configured `things_client_command[0]` cannot
+            be resolved on PATH.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthUnhealthy'
 
   /things-bridge/metrics:
     get:
@@ -343,6 +352,14 @@ components:
         status:
           type: string
           enum: [ok]
+
+    HealthUnhealthy:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [unhealthy]
 
     Area:
       type: object
