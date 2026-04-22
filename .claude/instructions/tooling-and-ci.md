@@ -79,7 +79,7 @@ language: `python.md`, `bash.md`.
   trailing comment to track upgrades and rewrites both the SHA and the
   comment on each bump, keeping the pin reviewable.
 
-  Scope today: `.github/workflows/semantic-release.yml`,
+  Scope today: `.github/workflows/release.yml`,
   `.github/workflows/release-publish.yml`, `.github/workflows/reuse.yml`
   (the REUSE gate is a release prerequisite), and
   `.github/actions/setup-toolchain/action.yml` (indirectly part of the

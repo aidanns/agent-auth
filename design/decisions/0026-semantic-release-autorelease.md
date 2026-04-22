@@ -79,7 +79,7 @@ This is a workflow-ergonomics decision, not a defect response.
 Replace Release Please with semantic-release as the autorelease
 driver on every push to `main`.
 
-- **Workflow**: `.github/workflows/semantic-release.yml` runs on
+- **Workflow**: `.github/workflows/release.yml` runs on
   `push: main` and `workflow_dispatch`. On a qualifying
   Conventional Commit since the last `vX.Y.Z` tag, it computes the
   next version, writes to `CHANGELOG.md`, creates a signed
@@ -119,7 +119,7 @@ driver on every push to `main`.
   preserved untouched as the local fallback path.
 - **Node runtime in CI**: semantic-release is a Node tool. The
   migration introduces `package.json` + `package-lock.json` at the
-  repo root and `actions/setup-node` into `semantic-release.yml`.
+  repo root and `actions/setup-node` into `release.yml`.
   Dependencies are pinned by SHA in the lockfile; Dependabot's
   existing `npm` ecosystem entry (added below under Consequences)
   surfaces updates.

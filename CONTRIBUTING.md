@@ -263,7 +263,7 @@ A follow-up rename to `RELEASE_APP_*` is tracked in
 [ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
 § Follow-ups.
 
-The workflow in `.github/workflows/semantic-release.yml` reads
+The workflow in `.github/workflows/release.yml` reads
 these two secrets at run time, mints an installation token via
 `actions/create-github-app-token`, and hands the token to
 `semantic-release` via the `GITHUB_TOKEN` env. The token is

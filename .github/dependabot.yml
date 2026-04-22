@@ -31,7 +31,7 @@ updates:
           - "patch"
 
   # npm tracks semantic-release and its plugins (used only by
-  # .github/workflows/semantic-release.yml). No runtime Node
+  # .github/workflows/release.yml). No runtime Node
   # dependency — the Python package is unaffected.
   - package-ecosystem: "npm"
     directory: "/"
