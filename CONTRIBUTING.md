@@ -165,7 +165,7 @@ they are demoted to a minor bump via
 § Pre-1.0 behaviour.
 
 Default branch is `main`; feature branches follow
-`aidanns/<feature-name>`. See the project [CLAUDE.md](CLAUDE.md) for
+`<username>/<feature-name>`. See the project [CLAUDE.md](CLAUDE.md) for
 the full working agreement.
 
 See also: [Commit signing](#commit-signing) — commit message format and GPG/SSH
@@ -336,13 +336,24 @@ normally map to a **major** bump is demoted to a **minor** bump until
 
 To cut a release:
 
-1. Move the entries under `## [Unreleased]` in `CHANGELOG.md` into a new
-   `## [X.Y.Z] - YYYY-MM-DD` section. If you don't know the version yet, run
-   `task release` once — it will print the auto-detected version (e.g.
-   `Auto-detected minor bump from commits since v0.1.0: v0.2.0`) then exit
-   asking you to update the CHANGELOG.
-2. Leave a fresh empty `## [Unreleased]` section above the new version.
+1. Determine the target version. Either pass it explicitly
+   (`task release -- 0.3.0`), or run `task release` with no argument —
+   it will print the auto-detected version (e.g.
+   `Auto-detected minor bump from commits since v0.2.0: v0.3.0`) and
+   exit asking you to update `CHANGELOG.md`.
+2. Write a `## [X.Y.Z] - YYYY-MM-DD` section at the top of
+   `CHANGELOG.md` (directly below the preamble, above the previous
+   version's heading) summarising user-visible changes since the last
+   tag. For consistency with the CI default path, preview what
+   semantic-release would produce — if the npm tooling is available
+   locally, `npx semantic-release --dry-run --no-ci` prints the
+   auto-generated release notes you can crib from. Otherwise walk
+   `git log vX.Y.Z..HEAD --oneline` and group by Conventional Commit
+   type.
 3. Commit and push: `git commit -m "chore: prepare release vX.Y.Z"`.
+   (`chore:` is in the no-release list in `.releaserc.json`, so the
+   CI release workflow will ignore this commit and won't race with
+   the break-glass path.)
 4. Run `task release` (auto-detect) or `task release -- X.Y.Z` (explicit).
    Add `-y` / `--yes` to skip the confirmation prompt
    (e.g. `task release -- -y X.Y.Z`) when you want a hands-off run — the
