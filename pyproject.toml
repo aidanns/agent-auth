@@ -41,6 +41,9 @@ dev = [
 # keep-sorted start
 agent-auth = "agent_auth.cli:main"
 agent-auth-notifier = "agent_auth_notifier.cli:main"
+gpg-backend-cli-host = "gpg_backend_cli_host.cli:main"
+gpg-bridge = "gpg_bridge.cli:main"
+gpg-cli = "gpg_cli.cli:main"
 things-bridge = "things_bridge.cli:main"
 things-cli = "things_cli.cli:main"
 things-client-cli-applescript = "things_client_applescript.cli:main"

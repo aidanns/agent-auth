@@ -115,3 +115,18 @@ tasks:
     desc: Run the things-client-cli-applescript CLI (macOS-only; e.g. `task things-client-applescript -- todos list`).
     cmds:
       - scripts/things-client-applescript.sh {{.CLI_ARGS}}
+
+  gpg-bridge:
+    desc: Run the gpg-bridge CLI (e.g. `task gpg-bridge -- serve`).
+    cmds:
+      - scripts/gpg-bridge.sh {{.CLI_ARGS}}
+
+  gpg-cli:
+    desc: Run the devcontainer gpg-cli (e.g. `task gpg-cli -- --version`).
+    cmds:
+      - scripts/gpg-cli.sh {{.CLI_ARGS}}
+
+  gpg-backend-host:
+    desc: Run the host gpg backend CLI directly (e.g. `task gpg-backend-host -- sign --local-user ...`).
+    cmds:
+      - scripts/gpg-backend-host.sh {{.CLI_ARGS}}
