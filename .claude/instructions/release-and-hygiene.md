@@ -45,8 +45,9 @@ Standard files, processes, and metadata every project should maintain.
 
 ## Repository metadata
 
-- **GitHub repo "About"** — populate the repository description, homepage,
-  and topics with a one-line description matching the README summary.
+- **GitHub repo "About"** — populate the repository description and topics
+  with a one-line description matching the README summary. Homepage is
+  optional and not gated by `verify-standards.sh`.
 
 ## Structured output schemas
 
