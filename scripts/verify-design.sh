@@ -28,12 +28,19 @@ systems-engineering product verify \
 # than into a temp dir + diff per file) keeps the error output
 # actionable — the developer sees `design/functional_decomposition.md`
 # in the diff and runs `task design:generate` to fix it.
+#
+# PNGs are excluded from the gate because the d2 rasteriser output is
+# not byte-stable across architectures and minor toolchain versions
+# (font metrics differ between the developer's macOS/aarch64 machine
+# and the Ubuntu x86_64 CI runner). PNGs are convenience previews for
+# a GitHub reader; the authoritative deterministic renders are the
+# `.d2` source and the `.svg` vector output, both gated below.
 cd "${REPO_ROOT}"
 "${SCRIPT_DIR}/design-generate.sh" >/dev/null
-if ! git diff --exit-code -- design/; then
+if ! git diff --exit-code -- design/ ':(exclude)design/*.png'; then
   echo "verify-design: design/ artefacts are out of date with functional_decomposition.yaml / product_breakdown.yaml." >&2
   echo "  Run 'task design:generate' and commit the result. See issue #141." >&2
   exit 1
 fi
 
-echo "verify-design: functional decomposition allocation checks pass and rendered design/ artefacts match the yaml."
+echo "verify-design: functional decomposition allocation checks pass and rendered design/ artefacts match the yaml (PNG excluded — see script comment)."
