@@ -617,6 +617,11 @@ and stores the refresh token in the OS keyring. Retrieve the refresh token via
 Errors returned when auth is missing or invalid: `401 missing_token`,
 `401 invalid_token`, `401 token_expired`, `403 scope_denied`.
 
+The management auth requirement composes with the server's default
+bind address (`127.0.0.1`, see ADR 0006): the combination of
+loopback-only listening and a scope-gated bearer token is the
+management trust boundary.
+
 ### POST /agent-auth/v1/token/create
 
 Create a new token family and return an access/refresh token pair.
@@ -639,9 +644,9 @@ Response (200):
 }
 ```
 
-Errors: `400 no_scopes` (empty or missing scopes), `400 invalid_tier` (tier not in `allow`/`prompt`/`deny`), `400 malformed_request`.
+Errors: `400 no_scopes` (empty or missing scopes), `400 invalid_tier` (tier not in `allow`/`prompt`/`deny`), `400 malformed_request`. Management auth errors: `401 missing_token`, `401 invalid_token`, `401 token_expired`, `403 scope_denied`.
 
-No authentication required. Trust boundary is the server's bind address (127.0.0.1 by default — see ADR 0006).
+Requires management auth — see [§ Management endpoint authentication](#management-endpoint-authentication).
 
 ### GET /agent-auth/v1/token/list
 
@@ -655,7 +660,7 @@ Response (200): JSON array of family objects.
 ]
 ```
 
-No authentication required.
+Requires management auth — see [§ Management endpoint authentication](#management-endpoint-authentication).
 
 ### POST /agent-auth/v1/token/modify
 
@@ -680,7 +685,7 @@ Response (200):
 {"family_id": "fff", "scopes": {"things:write": "prompt"}}
 ```
 
-Errors: `400 no_modifications`, `400 invalid_tier`, `400 malformed_request`, `404 family_not_found`, `409 family_revoked`. No authentication required.
+Errors: `400 no_modifications`, `400 invalid_tier`, `400 malformed_request`, `404 family_not_found`, `409 family_revoked`. Management auth errors: `401 missing_token`, `401 invalid_token`, `401 token_expired`, `403 scope_denied`. Requires management auth — see [§ Management endpoint authentication](#management-endpoint-authentication).
 
 ### POST /agent-auth/v1/token/revoke
 
@@ -698,7 +703,7 @@ Response (200):
 {"family_id": "fff", "revoked": true}
 ```
 
-Errors: `400 malformed_request`, `404 family_not_found`. No authentication required.
+Errors: `400 malformed_request`, `404 family_not_found`. Management auth errors: `401 missing_token`, `401 invalid_token`, `401 token_expired`, `403 scope_denied`. Requires management auth — see [§ Management endpoint authentication](#management-endpoint-authentication).
 
 ### POST /agent-auth/v1/token/rotate
 
@@ -723,7 +728,7 @@ Response (200):
 }
 ```
 
-Errors: `400 malformed_request`, `404 family_not_found`, `409 family_revoked`. No authentication required.
+Errors: `400 malformed_request`, `404 family_not_found`, `409 family_revoked`. Management auth errors: `401 missing_token`, `401 invalid_token`, `401 token_expired`, `403 scope_denied`. Requires management auth — see [§ Management endpoint authentication](#management-endpoint-authentication).
 
 ## Graceful shutdown
 
