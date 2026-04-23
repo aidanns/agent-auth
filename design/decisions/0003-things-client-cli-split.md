@@ -175,13 +175,23 @@ only disambiguates success from failure when the envelope is absent.
   scrubbed from HTTP response bodies and only forwarded to the
   bridge's own stderr for operator diagnostics. The bridge never
   reads subprocess stderr into a response body.
+- **Bounded stderr capture.** Stderr is forwarded to the bridge's
+  own stderr line-by-line as the child writes it, and only a fixed
+  tail (64 KiB) is retained for the timeout-diagnostic line. A
+  misbehaving or compromised client CLI that streams multi-megabyte
+  diagnostics therefore cannot pin bridge memory across the live
+  subprocess, even under the `ThreadingHTTPServer`'s per-thread
+  request model. Stdout remains unbounded because the JSON envelope
+  must be parsed in full; envelopes are small by construction and
+  malformed/oversize bodies still fail closed through the existing
+  error-taxonomy entries.
 - **STRIDE deltas.** Spoofing / Tampering: mitigated by the bridge
   controlling the argv and validating `things_client_command` at
   config load. Repudiation: subprocess invocations are logged at
   operator-diagnostic level on stderr. Info disclosure: unchanged
   (stderr scrubbing). DoS: a hung subprocess is bounded by
-  `request_timeout_seconds`. Elevation: no privilege boundary
-  crossed.
+  `request_timeout_seconds`; stderr capture is bounded to a fixed
+  tail. Elevation: no privilege boundary crossed.
 
 ### Performance
 
