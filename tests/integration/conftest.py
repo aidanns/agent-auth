@@ -10,9 +10,11 @@ port, and filesystem. The test talks to the mapped loopback port and
 drives state through the agent-auth HTTP API + the ``agent-auth`` CLI
 running inside the container.
 
-The Compose lifecycle is managed by ``testcontainers-python``; the
-session-scoped image build remains a direct ``docker build`` call so the
-test image is rebuilt once per pytest run off the working tree.
+Compose lifecycle is handled by :mod:`tests.integration.harness` — a
+fluent builder over ``docker compose`` (subprocess, no testcontainers).
+The session-scoped image build remains a direct ``docker build`` call so
+each per-service test image is rebuilt once per pytest run off the
+working tree.
 """
 
 from __future__ import annotations
@@ -29,18 +31,21 @@ from typing import Any, cast
 
 import pytest
 import yaml
-from testcontainers.compose import DockerCompose
 
 from agent_auth_client import AgentAuthClient
 from tests.integration._support import (
+    COMPOSE_FILE,
     DOCKER_DIR,
     PER_SERVICE_DOCKERFILES,
     build_test_image,
     docker_compose_available,
     phase_timer,
-    render_compose_file,
     seed_empty_fixtures_dir,
-    wait_until_server_ready,
+)
+from tests.integration.harness import (
+    DockerComposeCluster,
+    HealthChecks,
+    StartedCluster,
 )
 
 # The integration runner enables ``log_cli_level=INFO`` so the
@@ -49,7 +54,7 @@ from tests.integration._support import (
 # under noise unrelated to timing. Raise their floors to WARNING so
 # the CI log stays grep-friendly. Done unconditionally because this
 # module is only imported when the integration suite runs.
-for _noisy_logger in ("docker", "urllib3", "testcontainers", "asyncio"):
+for _noisy_logger in ("docker", "urllib3", "asyncio"):
     logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 
 BASELINE_CONFIG = DOCKER_DIR / "config.test.yaml"
@@ -69,19 +74,21 @@ APPROVAL_PLUGINS = {
 # DNS.
 NOTIFIER_SIDECAR_URL = "http://notifier:9150/"
 
+AGENT_AUTH_INTERNAL_PORT = 9100
+
 
 @dataclass
 class AgentAuthContainer:
     """Handle for a running agent-auth integration-test container.
 
-    The compose file is rendered per-test (every placeholder is
-    substituted in Python before docker compose ever sees the file), so
-    no env-var inheritance is required around ``exec_in_container`` or
-    teardown calls.
+    ``cluster`` is the started compose cluster the ``agent-auth`` service
+    belongs to. The external port is resolved lazily via the harness's
+    :class:`DockerPort` accessor so base_url construction never hand-rolls
+    a URL string.
     """
 
     base_url: str
-    compose: DockerCompose
+    cluster: StartedCluster
     service: str = "agent-auth"
     _mgmt_token_cache: str | None = field(default=None, init=False, repr=False, compare=False)
     _client_cache: AgentAuthClient | None = field(
@@ -110,16 +117,14 @@ class AgentAuthContainer:
         exit so pytest tracebacks show *why* the CLI failed rather than an
         opaque ``CalledProcessError``.
         """
-        stdout, stderr, exit_code = self.compose.exec_in_container(
-            ["agent-auth", *args],
-            service_name=self.service,
-        )
-        if exit_code != 0:
+        result = self.cluster.exec(self.service, ["agent-auth", *args])
+        if result.returncode != 0:
             raise RuntimeError(
                 f"`agent-auth {' '.join(args)}` failed: "
-                f"exit={exit_code} stdout={stdout!r} stderr={stderr!r}"
+                f"exit={result.returncode} stdout={result.stdout!r} "
+                f"stderr={result.stderr!r}"
             )
-        return cast(str, stdout)
+        return result.stdout
 
     def create_token(self, *scopes: str) -> dict[str, Any]:
         """Create a token family inside the container and return the parsed JSON.
@@ -238,17 +243,103 @@ def _write_test_config(config_dir: Path, **overrides: object) -> None:
     os.chmod(config_path, 0o644)
 
 
+def _compose_image_env(image_tags: dict[str, str]) -> dict[str, str]:
+    """Return the per-service image env vars the shared compose file reads.
+
+    Centralised so the agent-auth-only and bridge fixtures pass the
+    same keys — the compose file rejects a run that leaves a ``${VAR}``
+    unresolved.
+    """
+    return {
+        "AGENT_AUTH_TEST_IMAGE": image_tags["agent-auth"],
+        "THINGS_BRIDGE_TEST_IMAGE": image_tags["things-bridge"],
+        "THINGS_CLI_TEST_IMAGE": image_tags["things-cli"],
+    }
+
+
+def _agent_auth_cluster(
+    *,
+    project_name: str,
+    image_tags: dict[str, str],
+    config_dir: Path,
+    fixtures_dir: Path,
+    notifier_mode: str,
+    logs_dir: Path,
+) -> DockerComposeCluster:
+    """Build the per-test cluster definition for agent-auth integration tests.
+
+    Factored out so the bridge fixture (which uses the same compose file
+    but waits for ``things-bridge`` too) can extend it without copying
+    the env-var wiring.
+    """
+    builder = (
+        DockerComposeCluster.builder()
+        .project_name(project_name)
+        .file(COMPOSE_FILE)
+        .env("AGENT_AUTH_TEST_CONFIG_DIR", str(config_dir))
+        .env("THINGS_BRIDGE_TEST_FIXTURES_DIR", str(fixtures_dir))
+        .env("NOTIFIER_MODE", notifier_mode)
+    )
+    for key, value in _compose_image_env(image_tags).items():
+        builder = builder.env(key, value)
+    return (
+        builder.waiting_for_service(
+            "agent-auth",
+            HealthChecks.to_respond_over_http(
+                internal_port=AGENT_AUTH_INTERNAL_PORT,
+                url_format="http://$HOST:$EXTERNAL_PORT/agent-auth/health",
+                accept_statuses={401, 403},
+            ),
+        )
+        .save_logs_to(logs_dir, on_success=False)
+        .build()
+    )
+
+
+def _test_failed(request: pytest.FixtureRequest) -> bool:
+    """Return True if the pytest node that requested the fixture failed.
+
+    Relies on the ``makereport`` hook in this conftest setting
+    ``rep_setup`` / ``rep_call`` attributes on the test item. A missing
+    attribute means the test never reached the call phase (collection
+    failure or setup-time error), which we conservatively treat as a
+    failure so logs are still captured.
+    """
+    setup = getattr(request.node, "rep_setup", None)
+    call = getattr(request.node, "rep_call", None)
+    if setup is not None and setup.failed:
+        return True
+    if call is None:
+        return True
+    return bool(call.failed)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Expose the per-phase report on the item so fixtures can branch on test failure.
+
+    Required for ``save_logs_to(..., on_success=False)`` to see whether
+    the test passed or failed before teardown triggers log capture.
+    """
+    outcome = yield
+    report = outcome.get_result()
+    setattr(item, f"rep_{report.when}", report)
+
+
 @pytest.fixture
 def agent_auth_container_factory(
     _test_image_tags: dict[str, str],
     tmp_path_factory: pytest.TempPathFactory,
+    request: pytest.FixtureRequest,
 ) -> Generator[Callable[..., AgentAuthContainer], None, None]:
     """Factory fixture — spin up an agent-auth container with custom config.
 
     Each invocation starts a fresh Compose project. Teardown is registered
-    on the fixture so every container is removed at the end of the test.
+    on the fixture so every cluster is stopped at the end of the test.
+    Per-service ``docker compose logs`` are dumped into a tmpdir on
+    failure for CI to upload.
     """
-    started: list[tuple[str, DockerCompose]] = []
+    started: list[StartedCluster] = []
 
     def _factory(
         *,
@@ -272,54 +363,35 @@ def agent_auth_container_factory(
         )
 
         # The combined Compose file always starts the things-bridge
-        # container alongside agent-auth (its config is shipped inline
-        # by docker-compose.yaml), so we only need to satisfy the
-        # fixtures bind mount even when this test never drives the
-        # bridge. Tests that exercise the bridge use the
-        # things_bridge_stack fixture which writes its own fixture data.
+        # container alongside agent-auth, so we still need a fixtures
+        # dir even when this test never drives the bridge.
         bridge_fixtures_dir = tmp_path_factory.mktemp(f"tb-fix-{project_name}")
         seed_empty_fixtures_dir(bridge_fixtures_dir)
 
-        rendered_compose = render_compose_file(
-            tmp_path_factory.mktemp(f"compose-{project_name}"),
-            COMPOSE_PROJECT_NAME=project_name,
-            AGENT_AUTH_TEST_IMAGE=_test_image_tags["agent-auth"],
-            THINGS_BRIDGE_TEST_IMAGE=_test_image_tags["things-bridge"],
-            THINGS_CLI_TEST_IMAGE=_test_image_tags["things-cli"],
-            AGENT_AUTH_TEST_CONFIG_DIR=str(config_dir),
-            THINGS_BRIDGE_TEST_FIXTURES_DIR=str(bridge_fixtures_dir),
-            NOTIFIER_MODE=APPROVAL_PLUGINS[approval],
+        logs_dir = tmp_path_factory.mktemp(f"logs-{project_name}")
+        cluster = _agent_auth_cluster(
+            project_name=project_name,
+            image_tags=_test_image_tags,
+            config_dir=config_dir,
+            fixtures_dir=bridge_fixtures_dir,
+            notifier_mode=APPROVAL_PLUGINS[approval],
+            logs_dir=logs_dir,
         )
-
-        compose = DockerCompose(
-            context=str(rendered_compose.parent),
-            compose_file_name=rendered_compose.name,
-        )
-        started.append((project_name, compose))
         with phase_timer("compose_start", project=project_name, service="agent-auth"):
-            compose.start()
+            running = cluster.start()
+        started.append(running)
 
-        host = compose.get_service_host("agent-auth", 9100)
-        port = compose.get_service_port("agent-auth", 9100)
-        base_url = f"http://{host}:{port}"
-        # /agent-auth/health requires an ``agent-auth:health`` token,
-        # so an unauthenticated probe gets 401 (or 403 if the scope
-        # check ran). Either is a positive "server is up" signal.
-        wait_until_server_ready(
-            f"{base_url}/agent-auth/health",
-            accept_status=(401, 403),
-        )
-        return AgentAuthContainer(
-            base_url=base_url,
-            compose=compose,
-        )
+        port = running.service("agent-auth").port(AGENT_AUTH_INTERNAL_PORT)
+        base_url = port.in_format("http://$HOST:$EXTERNAL_PORT")
+        return AgentAuthContainer(base_url=base_url, cluster=running)
 
     yield _factory
 
-    for project_name, compose in started:
+    failed = _test_failed(request)
+    for running in started:
         try:
-            with phase_timer("compose_stop", project=project_name, service="agent-auth"):
-                compose.stop()
+            with phase_timer("compose_stop", project=running.project_name, service="agent-auth"):
+                running.stop(test_failed=failed)
         except Exception as e:
             print(f"warning: compose teardown failed: {e!r}")
 

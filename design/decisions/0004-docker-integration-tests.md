@@ -8,7 +8,13 @@ SPDX-License-Identifier: MIT
 
 ## Status
 
-Accepted — 2026-04-18.
+Accepted — 2026-04-18. The `testcontainers-python` implementation
+choice in § Decision is superseded by ADR 0034 (2026-04-24): the
+per-test Compose-project shape, session-scoped image build, and
+readiness-probe indirection carry over unchanged, but the Compose
+lifecycle is now driven by an in-tree subprocess harness under
+`tests/integration/harness/`. Read this ADR for the product
+motivation; read 0034 for the current harness shape.
 
 ## Context
 

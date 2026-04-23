@@ -4,34 +4,30 @@
 
 """Shared helpers for the per-service Docker integration test fixtures.
 
-Each per-service ``conftest.py`` imports the helpers here so the
-compose template renderer, container-readiness probe, and Docker
-availability check have a single implementation.
+Per-service conftests use the :mod:`tests.integration.harness` builder
+to drive the compose lifecycle. The helpers here cover everything
+adjacent to that: session-scoped per-service image builds (with
+optional GitHub Actions cache passthrough), the docker availability
+probe, the empty ``things.yaml`` seed for the bridge bind-mount, and
+the structured phase-timing logger.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import re
 import shutil
 import subprocess
 import time
-import urllib.error
-import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKER_DIR = REPO_ROOT / "docker"
-COMPOSE_TEMPLATE = DOCKER_DIR / "docker-compose.yaml"
-COMPOSE_FILE_NAME = "docker-compose.yaml"
-_PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}")
+COMPOSE_FILE = DOCKER_DIR / "docker-compose.yaml"
 
 DOCKER_BUILD_TIMEOUT_SECONDS = 600.0
-READY_POLL_TIMEOUT_SECONDS = 30.0
-READY_POLL_INTERVAL_SECONDS = 0.2
 
 # Mapping from service name (as used by the Compose topology) to the
 # per-service Dockerfile that builds its integration test image. One
@@ -85,82 +81,10 @@ def docker_compose_available() -> bool:
     return True
 
 
-def wait_until_server_ready(
-    health_url: str,
-    *,
-    accept_status: tuple[int, ...] = (401, 403),
-) -> None:
-    """Block until ``health_url`` answers, treating ``accept_status`` as up.
-
-    Both health endpoints (``agent-auth/health`` and
-    ``things-bridge/health``) require a scoped bearer token, so an
-    unauthenticated probe returns ``401``. The fixture treats that —
-    along with ``403`` (valid shape, scope missing) — as a positive
-    "server is up" signal.
-    """
-    with phase_timer("wait_until_server_ready", url=health_url):
-        deadline = time.monotonic() + READY_POLL_TIMEOUT_SECONDS
-        last_error: Exception | None = None
-        while time.monotonic() < deadline:
-            try:
-                with urllib.request.urlopen(health_url, timeout=2) as resp:
-                    if 200 <= resp.status < 300:
-                        return
-            except urllib.error.HTTPError as exc:
-                if exc.code in accept_status:
-                    return
-                last_error = exc
-            except (urllib.error.URLError, ConnectionError, TimeoutError) as exc:
-                last_error = exc
-            time.sleep(READY_POLL_INTERVAL_SECONDS)
-        raise RuntimeError(
-            f"Service never became reachable at {health_url} within "
-            f"{READY_POLL_TIMEOUT_SECONDS}s (last error: {last_error!r})"
-        )
-
-
-def render_compose_file(target_dir: Path, **substitutions: str) -> Path:
-    """Render the compose template with double-brace placeholders
-    substituted, writing the result into ``target_dir`` and returning
-    the rendered path.
-
-    The compose template carries every test-specific value as a
-    double-brace placeholder so the rendered file is self-contained:
-    docker compose never has to inherit env vars from the test runner,
-    and there is no shared mutable state between concurrent fixture
-    invocations.
-
-    Comment lines (those whose first non-whitespace char is ``#``) are
-    excluded from the leftover-placeholder check, so the template can
-    document its own substitution syntax in YAML comments without
-    tripping the guard.
-
-    Raises ``KeyError`` if a substitution doesn't match any placeholder
-    in the template (typo guard) or if the rendered output still
-    contains an unsubstituted placeholder outside a comment (forgotten
-    value guard).
-    """
-    template = COMPOSE_TEMPLATE.read_text()
-    for key, value in substitutions.items():
-        placeholder = f"{{{{ {key} }}}}"
-        if placeholder not in template:
-            raise KeyError(f"placeholder {placeholder!r} not found in {COMPOSE_TEMPLATE.name}")
-        template = template.replace(placeholder, value)
-    non_comment = "\n".join(
-        line for line in template.splitlines() if not line.lstrip().startswith("#")
-    )
-    leftover = sorted(set(_PLACEHOLDER_PATTERN.findall(non_comment)))
-    if leftover:
-        raise KeyError(f"unsubstituted placeholders in {COMPOSE_TEMPLATE.name}: {leftover}")
-    target = target_dir / COMPOSE_FILE_NAME
-    target.write_text(template)
-    return target
-
-
 def seed_empty_fixtures_dir(fixtures_dir: Path) -> None:
     """Write an empty ``things.yaml`` into ``fixtures_dir``.
 
-    The combined Compose file always starts the things-bridge container
+    The shared Compose file always starts the things-bridge container
     (even for agent-auth-only tests), and the bridge invokes the fake
     Things CLI which expects a fixture file. Tests that exercise the
     bridge overwrite this file via ``ThingsBridgeStack.write_fixture``.
