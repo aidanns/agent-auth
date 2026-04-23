@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.1](https://github.com/aidanns/agent-auth/compare/v0.2.0...v0.2.1) (2026-04-23)
+
+### Bug Fixes
+
+- **release:** run task format on semantic-release output ([#219](https://github.com/aidanns/agent-auth/issues/219)) ([f4ec2e1](https://github.com/aidanns/agent-auth/commit/f4ec2e1394f6bfcbe83dbd714dc719255325ecb0))
+
 ## [0.2.0](https://github.com/aidanns/agent-auth/compare/v0.1.0...v0.2.0) (2026-04-23)
 
 ### Features
