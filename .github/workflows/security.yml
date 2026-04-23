@@ -21,6 +21,10 @@ jobs:
       # Required so codeql-action/upload-sarif can post findings to the
       # repository's Security → Code scanning alerts tab.
       security-events: write
+      # Required so the scheduled-failure notifier can open/comment/close
+      # the dedupe issue tracking recurring pip-audit failures (see the
+      # "Report scheduled scan ..." steps at the end of this job).
+      issues: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -77,3 +81,32 @@ jobs:
 
       - name: Gate on pip-audit findings
         run: uvx pip-audit --strict -r pip-audit-requirements.txt
+
+      # The scheduled run is the only entry point that can silently miss
+      # advisories — PR / push failures already surface as red checks.
+      # On a scheduled failure we open (or comment on) a dedupe issue;
+      # on a scheduled success we close any prior open issue so the
+      # signal tracks reality.
+      - name: Report scheduled scan failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          scripts/ci/report-scan-failure.sh \
+            failed \
+            pip-audit-failure \
+            "pip-audit: scheduled scan failed" \
+            "${{ github.sha }}" \
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Report scheduled scan recovery
+        if: success() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          scripts/ci/report-scan-failure.sh \
+            succeeded \
+            pip-audit-failure \
+            "pip-audit: scheduled scan failed" \
+            "${{ github.sha }}" \
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
