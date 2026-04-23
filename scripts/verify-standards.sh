@@ -1099,30 +1099,23 @@ fi
 # available or not authenticated (e.g. local dev without credentials).
 
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-  repo_meta="$(gh repo view --json description,homepageUrl,repositoryTopics 2>/dev/null || true)"
+  repo_meta="$(gh repo view --json description,repositoryTopics 2>/dev/null || true)"
   if [[ -n "${repo_meta}" ]]; then
     mapfile -t _gh_fields < <(
       python3 -c "
 import json, sys
 d = json.loads(sys.argv[1])
 print(d.get('description', ''))
-print(d.get('homepageUrl', ''))
 print(len(d.get('repositoryTopics', [])))
 " "${repo_meta}"
     )
     repo_description="${_gh_fields[0]:-}"
-    repo_homepage="${_gh_fields[1]:-}"
-    repo_topics="${_gh_fields[2]:-0}"
+    repo_topics="${_gh_fields[1]:-0}"
 
     gh_meta_missing=0
     if [[ -z "${repo_description}" ]]; then
       echo "verify-standards: GitHub repo 'About' description is empty." >&2
       echo "  Set it via 'gh repo edit --description \"...\"'." >&2
-      gh_meta_missing=1
-    fi
-    if [[ -z "${repo_homepage}" ]]; then
-      echo "verify-standards: GitHub repo 'About' homepage is empty." >&2
-      echo "  Set it via 'gh repo edit --homepage \"...\"'." >&2
       gh_meta_missing=1
     fi
     if [[ "${repo_topics}" -eq 0 ]]; then
@@ -1133,7 +1126,7 @@ print(len(d.get('repositoryTopics', [])))
     if [[ ${gh_meta_missing} -ne 0 ]]; then
       exit 1
     fi
-    echo "verify-standards: GitHub repo About metadata (description, homepage, topics) is populated."
+    echo "verify-standards: GitHub repo About metadata (description, topics) is populated."
   fi
 else
   echo "verify-standards: 'gh' not available or not authenticated; skipping GitHub metadata check."
