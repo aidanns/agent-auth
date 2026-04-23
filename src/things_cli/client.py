@@ -7,13 +7,14 @@
 import json
 import ssl
 from http.client import HTTPConnection, HTTPSConnection
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote, urlencode, urlparse
 
 from things_cli.credentials import Credentials, CredentialStore
 from things_cli.errors import (
     BridgeForbiddenError,
     BridgeNotFoundError,
+    BridgeRateLimitedError,
     BridgeUnauthorizedError,
     BridgeUnavailableError,
 )
@@ -219,10 +220,30 @@ class BridgeClient:
                 response = conn.getresponse()
                 raw = response.read()
                 status = response.status
+                retry_after_header = response.getheader("Retry-After") or ""
             except (ConnectionError, TimeoutError, OSError) as exc:
                 raise BridgeUnavailableError(f"Connection to {base_url} failed: {exc}") from exc
         finally:
             conn.close()
+
+        # 429 is terminal and carries a ``Retry-After`` — raise here
+        # so every call site, including the refresh / reissue paths,
+        # surfaces it typed without needing its own mapping.
+        if status == 429:
+            try:
+                retry_after = max(1, int(retry_after_header)) if retry_after_header else 1
+            except ValueError:
+                retry_after = 1
+            parsed_err: dict[str, Any] = {}
+            if raw:
+                try:
+                    maybe = json.loads(raw)
+                except json.JSONDecodeError:
+                    maybe = None
+                if isinstance(maybe, dict):
+                    parsed_err = cast(dict[str, Any], maybe)
+            error_code = str(parsed_err.get("error") or "rate_limited")
+            raise BridgeRateLimitedError(error_code, retry_after_seconds=retry_after)
 
         if not raw:
             return status, None

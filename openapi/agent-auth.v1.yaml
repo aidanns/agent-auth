@@ -470,6 +470,7 @@ components:
         - no_modifications
         - no_scopes
         - not_found
+        - rate_limited
         - refresh_token_expired
         - refresh_token_reuse_detected
         - refresh_token_still_valid

@@ -7,6 +7,18 @@ SPDX-License-Identifier: MIT
 
 ## Status
 
+Superseded by [ADR 0027](0027-rate-limiting-implementation.md) — 2026-04-23.
+
+The deferral posture here held up until TLS landed for the
+devcontainer-to-host path (ADR 0025). With the trust boundary now
+allowed to extend beyond loopback, the "we're loopback-only"
+argument no longer applies, and the disk-growth vector called out by
+#102 (rapid token creation from a compromised caller) needed a
+concrete ceiling. ADR 0027 carries the implemented posture; the
+`rate_limit_per_minute: 0` opt-out keeps the original deferral
+option available for deployments that still match this ADR's
+assumptions.
+
 Accepted — 2026-04-21.
 
 ## Context

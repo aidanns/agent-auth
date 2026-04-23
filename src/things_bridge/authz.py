@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from things_bridge.errors import (
+    AuthzRateLimitedError,
     AuthzScopeDeniedError,
     AuthzTokenExpiredError,
     AuthzTokenInvalidError,
@@ -81,6 +82,7 @@ class AgentAuthClient:
                 )
                 response = conn.getresponse()
                 raw = response.read()
+                retry_after_header = response.getheader("Retry-After") or ""
             except (ConnectionError, TimeoutError, OSError) as exc:
                 raise AuthzUnavailableError(f"agent-auth unreachable: {exc}") from exc
         finally:
@@ -103,6 +105,18 @@ class AgentAuthClient:
             raise AuthzTokenInvalidError(error_code or "invalid_token")
         if response.status == 403:
             raise AuthzScopeDeniedError(error_code or "scope_denied")
+        if response.status == 429:
+            # Forward the ``Retry-After`` from agent-auth verbatim.
+            # Parse-failures fall back to 1s: the exhaustion refill
+            # rate is bounded by config; a conservative short default
+            # is safer for the client than no header at all.
+            try:
+                retry_after = max(1, int(retry_after_header)) if retry_after_header else 1
+            except ValueError:
+                retry_after = 1
+            raise AuthzRateLimitedError(
+                error_code or "rate_limited", retry_after_seconds=retry_after
+            )
         raise AuthzUnavailableError(
             f"unexpected agent-auth response {response.status}: {error_code or '<no body>'}"
         )

@@ -108,9 +108,10 @@ Successful scrapes return 200 with a Prometheus text exposition body
 
 ### Server-wide codes (any endpoint)
 
-| Error code  | HTTP status | Meaning                                      |
-| ----------- | ----------- | -------------------------------------------- |
-| `not_found` | 404         | Path does not match any registered endpoint. |
+| Error code     | HTTP status | Meaning                                                                                                                              |
+| -------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `not_found`    | 404         | Path does not match any registered endpoint.                                                                                         |
+| `rate_limited` | 429         | The token family is over its rate-limit budget (see ADR 0027). Retry after the integer seconds in the `Retry-After` response header. |
 
 ______________________________________________________________________
 
@@ -166,7 +167,8 @@ Successful scrapes return 200 with a Prometheus text exposition body
 
 ### Server-wide codes (any endpoint)
 
-| Error code           | HTTP status | Meaning                                            |
-| -------------------- | ----------- | -------------------------------------------------- |
-| `not_found`          | 404         | Path does not match any registered endpoint.       |
-| `method_not_allowed` | 405         | A non-GET method was used on a read-only endpoint. |
+| Error code           | HTTP status | Meaning                                                                                                                                                                        |
+| -------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `not_found`          | 404         | Path does not match any registered endpoint.                                                                                                                                   |
+| `method_not_allowed` | 405         | A non-GET method was used on a read-only endpoint.                                                                                                                             |
+| `rate_limited`       | 429         | Agent-auth refused the delegated `/validate` call for the bearer token's family (see ADR 0027). The bridge forwards the upstream `Retry-After`; retry after that many seconds. |

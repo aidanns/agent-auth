@@ -1047,13 +1047,41 @@ documented in the subsections above.
 ## Rate limiting and request budgets
 
 Both services run loopback-only by default (`127.0.0.1`) and are
-single-user on a host. `design/decisions/0022-rate-limiting-posture.md`
-records the decision to **defer application-layer rate limiting**
-for 1.0; the guards that remain are the 1 MiB request-body cap
-(`AgentAuthHandler.MAX_BODY_SIZE`), the 128-byte id-segment cap
-(`ThingsBridgeHandler._safe_id`), and `ApprovalManager`'s implicit
-per-family serialisation of JIT approvals via the notification
-plugin's blocking contract.
+single-user on a host.
+`design/decisions/0027-rate-limiting-implementation.md` (superseding
+ADR 0022) records the decision to enforce an **in-memory per-token-
+family token bucket** on every authenticated agent-auth endpoint. The
+defaults ship at `rate_limit_per_minute: 600` (≈ 10 rps sustained,
+with a full-minute burst allowed from a fresh family) and a value of
+`0` disables the limiter entirely for deployments that want to keep
+ADR 0022's deferral posture. An exhausted bucket surfaces as
+`429 {"error":"rate_limited"}` with an integer `Retry-After` header;
+the `rate_limited` audit event records `family_id` and (where
+applicable) `scope`, and
+`agent_auth_validation_outcomes_total{outcome="denied",reason="rate_limited"}`
+increments.
+
+The bucket is consumed **after** the token is validated and the
+family is confirmed to not be revoked, so an unauthenticated or
+otherwise-rejected request never touches the limiter state — only
+verified families can create entries in the bucket map. Buckets are
+evicted after 300 seconds of inactivity to bound memory to actively
+used families. Only one agent-auth process is assumed
+(`ApprovalManager` serialisation already carries that constraint),
+so the in-process state is sufficient.
+
+`things-bridge` has no independent limiter: every request it serves
+already calls agent-auth's `/validate`, which applies the bucket, and
+a 429 response is forwarded to the bridge client with the upstream
+`Retry-After` unchanged. `things-cli` maps the forwarded 429 to a
+`BridgeRateLimitedError` that surfaces at exit code 6 with a
+user-facing "retry after N seconds" message.
+
+Remaining non-limiter guards from ADR 0022 stay in place: the 1 MiB
+request-body cap (`AgentAuthHandler.MAX_BODY_SIZE`), the 128-byte
+id-segment cap (`ThingsBridgeHandler._safe_id`), and
+`ApprovalManager`'s implicit per-family serialisation of JIT
+approvals via the notification plugin's blocking contract.
 
 Expected request rate and ceiling per endpoint on a typical
 single-operator deployment:

@@ -56,6 +56,17 @@ class Config:
     # virtual network interface (see ADR 0025).
     tls_cert_path: str = ""
     tls_key_path: str = ""
+    # Per-token-family request ceiling in requests per minute. Each
+    # request that resolves a non-revoked ``family_id`` consumes one
+    # token from an in-memory bucket keyed on that family; an
+    # exhausted bucket surfaces as 429 with a ``Retry-After`` header.
+    # Bucket capacity equals the per-minute rate, so the first minute
+    # of a fresh family can burst the full quota. A value of 0
+    # disables rate limiting entirely (the deferred posture originally
+    # recorded in ADR 0022 and superseded by ADR 0026). The default of
+    # 600 (10 rps) is above any interactive workload but tight enough
+    # to bound a compromised-process DB-growth rate.
+    rate_limit_per_minute: int = 600
 
     def __post_init__(self) -> None:
         if not self.db_path:
