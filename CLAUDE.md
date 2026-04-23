@@ -43,6 +43,12 @@ simplifying for "personal project" scope.
   `ci:`. Breaking changes (`!` on the type — `feat!:` — or a
   `BREAKING CHANGE:` footer) are demoted to a minor bump while in
   0.x. `.releaserc.mjs` `releaseRules` is the source of truth.
+- Every PR commit needs a DCO `Signed-off-by:` trailer — use
+  `git commit -s` (or `git config --local format.signoff true` once).
+  Enforced by `.github/workflows/dco.yml`; forgetting it makes the
+  `DCO sign-off check` fail and the remedy is
+  `git rebase origin/main --signoff && git push --force-with-lease`.
+  See `CONTRIBUTING.md` → "DCO sign-off".
 
 ## Project-specific notes
 
