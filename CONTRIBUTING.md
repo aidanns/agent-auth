@@ -136,6 +136,39 @@ immediately. Rationale in
 - **Lowering the floor** (rare): only with a commit-message
   justification; never lower silently. The floor never goes below 0.
 
+### Schema migrations
+
+The token store's SQLite schema is managed by a hand-rolled
+numbered-SQL runner in `src/agent_auth/migrations/`. Alembic /
+yoyo would be disproportionate for a single-family schema and
+would add a runtime dependency the project intentionally keeps
+out (CLAUDE.md § Conventions). Rules:
+
+- **Never modify an applied migration in place.** Each entry in
+  `src/agent_auth/migrations/_catalogue.py::CATALOGUE` is a
+  pinned version. Changes land as a new `Migration(version=N+1, …)`
+  tuple.
+- **Every migration must be reversible.** Both `up_sql` and a
+  matching `down_sql` are required. The runner refuses a partial
+  rollback that would hit an irreversible step, so a missing
+  `down_sql` blocks the whole roll-back path.
+- **No `CREATE TABLE` / `ALTER TABLE` in application code.**
+  Schema DDL lives exclusively in `_catalogue.py`;
+  `scripts/verify-standards.sh` greps `src/agent_auth/store.py`
+  to enforce this.
+- **Test up-then-down.** `tests/test_migrations.py` asserts that
+  every declared migration can be applied and rolled back cleanly.
+  New catalogue entries should be covered by an equivalent test.
+
+Adding a migration:
+
+1. Append a `Migration(version=N, name="…", up_sql="…", down_sql="…")`
+   entry to `CATALOGUE`.
+2. Add or extend a test under `tests/test_migrations.py`.
+3. `scripts/verify-standards.sh` re-runs the up/down drift check
+   against an ephemeral DB on every PR — a stale catalogue or a
+   non-reversible entry fails CI.
+
 ## Commit conventions
 
 Use [Conventional Commit](https://www.conventionalcommits.org/) messages.
