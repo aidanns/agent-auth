@@ -23,19 +23,14 @@ from http.client import HTTPConnection, HTTPSConnection
 import pytest
 
 from agent_auth.approval import ApprovalManager
+from agent_auth.approval_client import ApprovalClient
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
 from agent_auth.metrics import build_registry
-from agent_auth.plugins import ApprovalResult, NotificationPlugin
 from agent_auth.server import AgentAuthServer
 from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair
 from tests._tls import generate_self_signed_cert
-
-
-class _DenyPlugin(NotificationPlugin):
-    def request_approval(self, scope, description, family_id):
-        return ApprovalResult(approved=False)
 
 
 def _issue_health_token(server, store):
@@ -58,7 +53,8 @@ def tls_server(tmp_path, tmp_dir, signing_key, encryption_key):
     )
     store = TokenStore(config.db_path, encryption_key)
     audit = AuditLogger(config.log_path)
-    approval_manager = ApprovalManager(_DenyPlugin(), store, audit)
+    # TLS tests never reach the approval path; empty URL = deny closed.
+    approval_manager = ApprovalManager(ApprovalClient(url=""), store, audit)
     registry, metrics = build_registry()
     server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
     port = server.server_address[1]

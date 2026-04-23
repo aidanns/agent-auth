@@ -8,8 +8,8 @@ import threading
 from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 
+from agent_auth.approval_client import ApprovalClient, ApprovalResult
 from agent_auth.audit import AuditLogger
-from agent_auth.plugins import ApprovalResult, NotificationPlugin
 from agent_auth.store import TokenStore
 
 
@@ -41,11 +41,11 @@ class ApprovalManager:
 
     def __init__(
         self,
-        plugin: NotificationPlugin,
+        approval_client: ApprovalClient,
         store: TokenStore,
         audit: AuditLogger,
     ):
-        self._plugin = plugin
+        self._approval_client = approval_client
         self._store = store
         self._audit = audit
         # Maps (family_id, scope) → absolute expiry for timed grants.
@@ -70,7 +70,7 @@ class ApprovalManager:
         if self.check_timed_grant(family_id, scope):
             return ApprovalResult(approved=True, grant_type="timed")
 
-        result = self._plugin.request_approval(scope, description, family_id)
+        result = self._approval_client.request_approval(family_id, scope, description)
 
         if result.approved:
             if result.grant_type == "timed":

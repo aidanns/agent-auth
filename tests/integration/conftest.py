@@ -54,13 +54,19 @@ for _noisy_logger in ("docker", "urllib3", "testcontainers", "asyncio"):
 BASELINE_CONFIG = DOCKER_DIR / "config.test.yaml"
 
 # Maps the integration-test factory's human-readable ``approval`` knob
-# onto the fully-qualified notification-plugin module the container
-# should load. Tests pass ``approve`` / ``deny``; the plugin name is
-# written into the per-test config.yaml.
+# onto the sidecar notifier mode (see docker/docker-compose.yaml).
+# Under #6 the notifier is a separate container the compose file
+# launches per-test; the URL the agent-auth container POSTs to is
+# the same regardless of mode.
 APPROVAL_PLUGINS = {
-    "approve": "tests_support.always_approve",
-    "deny": "tests_support.always_deny",
+    "approve": "approve",
+    "deny": "deny",
 }
+
+# The sidecar binds to 0.0.0.0:9150 inside the compose network and
+# every test's agent-auth container resolves ``notifier`` via Docker
+# DNS.
+NOTIFIER_SIDECAR_URL = "http://notifier:9150/"
 
 
 @dataclass
@@ -237,7 +243,7 @@ def agent_auth_container_factory(
             config_dir,
             access_token_ttl_seconds=access_token_ttl_seconds,
             refresh_token_ttl_seconds=refresh_token_ttl_seconds,
-            notification_plugin=APPROVAL_PLUGINS[approval],
+            notification_plugin_url=NOTIFIER_SIDECAR_URL,
         )
 
         # The combined Compose file always starts the things-bridge
@@ -255,6 +261,7 @@ def agent_auth_container_factory(
             AGENT_AUTH_TEST_IMAGE=_test_image_tag,
             AGENT_AUTH_TEST_CONFIG_DIR=str(config_dir),
             THINGS_BRIDGE_TEST_FIXTURES_DIR=str(bridge_fixtures_dir),
+            NOTIFIER_MODE=APPROVAL_PLUGINS[approval],
         )
 
         compose = DockerCompose(

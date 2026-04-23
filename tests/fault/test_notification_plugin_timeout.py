@@ -2,26 +2,34 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Fault-injection: notification plugin timeout / exception.
+"""Fault-injection: out-of-process notifier timeout / unavailable.
 
-The notification plugin is in-process (see #6 for the out-of-process
-migration), so a plugin that raises or never returns is today the
-single dominant JIT-approval failure mode. These tests assert that
-both behaviours propagate out of ``ApprovalManager.request_approval``
-rather than being silently converted to "approved" or "denied".
+After #6 the notifier is a separate HTTP process. Its failure modes
+are now connection errors (notifier not running), read timeouts
+(notifier hangs), non-2xx responses (notifier crashes mid-request),
+and malformed JSON (notifier returns garbage). ``ApprovalClient``
+must fail closed on all of them — silently approving on any notifier
+failure would defeat the whole trust-boundary goal #6 exists for.
 """
 
+from __future__ import annotations
+
 import contextlib
+import json
 import os
+import socket
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from agent_auth.approval import ApprovalManager
+from agent_auth.approval_client import ApprovalClient
 from agent_auth.audit import AuditLogger
 from agent_auth.keys import EncryptionKey
-from agent_auth.plugins import ApprovalResult, NotificationPlugin
 from agent_auth.store import TokenStore
 from tests.fault.conftest import read_audit_events
 
@@ -31,57 +39,106 @@ def store(tmp_path: Path) -> TokenStore:
     return TokenStore(str(tmp_path / "tokens.db"), EncryptionKey(os.urandom(32)))
 
 
-class _RaisingPlugin(NotificationPlugin):
-    def __init__(self, config: dict[str, Any] | None = None) -> None:
-        super().__init__(config)
-
-    def request_approval(
-        self, scope: str, description: str | None, family_id: str
-    ) -> ApprovalResult:
-        raise TimeoutError("notification plugin timed out after 30s")
+def _pick_closed_port() -> int:
+    """Return an ephemeral port the kernel handed us and then closed."""
+    with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
 
 
-class _GenericErrorPlugin(NotificationPlugin):
-    def __init__(self, config: dict[str, Any] | None = None) -> None:
-        super().__init__(config)
-
-    def request_approval(
-        self, scope: str, description: str | None, family_id: str
-    ) -> ApprovalResult:
-        raise RuntimeError("macOS Notification Center returned an error")
+def test_notifier_unreachable_denies_without_raising(store: TokenStore, audit: AuditLogger) -> None:
+    """Connecting to a closed port fails closed — no exception to caller."""
+    client = ApprovalClient(url=f"http://127.0.0.1:{_pick_closed_port()}/", timeout_seconds=1.0)
+    manager = ApprovalManager(client, store=store, audit=audit)
+    result = manager.request_approval("fam-1", "things:read", description="list todos")
+    assert result.approved is False
 
 
-def test_plugin_timeout_propagates(store: TokenStore, audit: AuditLogger) -> None:
-    """A TimeoutError from the plugin propagates out of ``request_approval``.
+def _start_hanging_notifier() -> tuple[str, ThreadingHTTPServer, threading.Thread]:
+    """Serve one notifier that sleeps past the client timeout."""
 
-    The manager must not silently convert the timeout into an approval
-    or a denial — the caller (the server validate handler) decides
-    how to translate the failure into an HTTP response.
-    """
-    manager = ApprovalManager(plugin=_RaisingPlugin(), store=store, audit=audit)
-    with pytest.raises(TimeoutError, match="timed out after 30s"):
-        manager.request_approval("fam-1", "things:read", description="list todos")
+    class _Hang(BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+        def do_POST(self) -> None:
+            # Sleep longer than the test's client timeout; the client
+            # must give up and return deny rather than hang the caller.
+            time.sleep(5.0)
+            body = json.dumps({"approved": True, "grant_type": "once"}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Hang)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    assert isinstance(host, str)
+    return f"http://{host}:{port}/", server, thread
 
 
-def test_plugin_exception_propagates(store: TokenStore, audit: AuditLogger) -> None:
-    """A generic plugin RuntimeError also propagates (not swallowed)."""
-    manager = ApprovalManager(plugin=_GenericErrorPlugin(), store=store, audit=audit)
-    with pytest.raises(RuntimeError, match="Notification Center returned an error"):
-        manager.request_approval("fam-1", "things:read", description="list todos")
+def test_notifier_timeout_denies_without_raising(store: TokenStore, audit: AuditLogger) -> None:
+    url, server, thread = _start_hanging_notifier()
+    try:
+        client = ApprovalClient(url=url, timeout_seconds=0.2)
+        manager = ApprovalManager(client, store=store, audit=audit)
+        result = manager.request_approval("fam-1", "things:read", description="list todos")
+        assert result.approved is False
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2.0)
 
 
-def test_plugin_failure_does_not_leave_stale_grant(
+def _start_error_notifier(status: int) -> tuple[str, ThreadingHTTPServer, threading.Thread]:
+    class _Err(BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+        def do_POST(self) -> None:
+            self.send_response(status)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Err)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    assert isinstance(host, str)
+    return f"http://{host}:{port}/", server, thread
+
+
+def test_notifier_500_denies_without_raising(store: TokenStore, audit: AuditLogger) -> None:
+    """An internal-server-error from the notifier must fail closed."""
+    url, server, thread = _start_error_notifier(500)
+    try:
+        client = ApprovalClient(url=url, timeout_seconds=2.0)
+        manager = ApprovalManager(client, store=store, audit=audit)
+        result = manager.request_approval("fam-1", "things:read", description="list todos")
+        assert result.approved is False
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2.0)
+
+
+def test_notifier_failure_does_not_leave_stale_grant(
     store: TokenStore, audit: AuditLogger, audit_log_path: Path
 ) -> None:
-    """A failed plugin call must not record an approval_granted audit event.
+    """A failed notifier call must not record an ``approval_granted`` event.
 
     The audit stream is the authoritative record of what actually
-    happened; emitting ``approval_granted`` on an exception would give
-    an operator a false "user approved this request" signal.
+    happened; emitting ``approval_granted`` on a notifier failure
+    would give an operator a false "user approved this request"
+    signal. The denied outcome is still audited as ``approval_denied``
+    so there's no silent gap.
     """
-    manager = ApprovalManager(plugin=_RaisingPlugin(), store=store, audit=audit)
-    with contextlib.suppress(TimeoutError):
-        manager.request_approval("fam-1", "things:read")
+    client = ApprovalClient(url=f"http://127.0.0.1:{_pick_closed_port()}/", timeout_seconds=1.0)
+    manager = ApprovalManager(client, store=store, audit=audit)
+    manager.request_approval("fam-1", "things:read")
 
     events = read_audit_events(audit_log_path)
     assert not any(e.get("event") == "approval_granted" for e in events)

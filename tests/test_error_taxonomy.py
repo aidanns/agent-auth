@@ -50,10 +50,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from agent_auth.approval import ApprovalManager
+from agent_auth.approval_client import ApprovalClient
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
 from agent_auth.metrics import build_registry as build_auth_registry
-from agent_auth.plugins import ApprovalResult, NotificationPlugin
 from agent_auth.server import AgentAuthServer
 from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair
@@ -75,11 +75,6 @@ from things_bridge.server import ThingsBridgeServer
 # -- test infrastructure --
 
 
-class _DenyPlugin(NotificationPlugin):
-    def request_approval(self, scope, description, family_id):
-        return ApprovalResult(approved=False)
-
-
 @pytest.fixture
 def auth_server(tmp_dir, signing_key, encryption_key):
     config = Config(
@@ -90,7 +85,10 @@ def auth_server(tmp_dir, signing_key, encryption_key):
     )
     store = TokenStore(config.db_path, encryption_key)
     audit = AuditLogger(config.log_path)
-    approval_manager = ApprovalManager(_DenyPlugin(), store, audit)
+    # Error-taxonomy tests exercise 400/401/403/404 paths; the notifier
+    # is only reached on prompt-tier approvals, which these tests don't
+    # cover. Fail-closed client keeps the fixture deterministic.
+    approval_manager = ApprovalManager(ApprovalClient(url=""), store, audit)
     registry, metrics = build_auth_registry()
     server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
     port = server.server_address[1]
@@ -448,7 +446,9 @@ def test_agent_auth_rate_limited(tmp_dir, signing_key, encryption_key):
     )
     store = TokenStore(config.db_path, encryption_key)
     audit = AuditLogger(config.log_path)
-    approval_manager = ApprovalManager(_DenyPlugin(), store, audit)
+    # Rate-limit test never hits the approval path; empty notifier URL
+    # denies closed without opening a socket.
+    approval_manager = ApprovalManager(ApprovalClient(url=""), store, audit)
     registry, metrics = build_auth_registry()
     server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
     port = server.server_address[1]

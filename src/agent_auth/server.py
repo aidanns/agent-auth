@@ -16,12 +16,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, ClassVar, cast
 
 from agent_auth.approval import ApprovalManager
+from agent_auth.approval_client import ApprovalClient
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
 from agent_auth.errors import ScopeDeniedError, TokenInvalidError
 from agent_auth.keys import KeyManager, SigningKey
 from agent_auth.metrics import AgentAuthMetrics, build_registry
-from agent_auth.plugins import load_plugin
 from agent_auth.rate_limit import RateLimiter
 from agent_auth.scopes import VALID_TIERS, check_scope
 from agent_auth.store import TokenStore
@@ -979,8 +979,17 @@ def run_server(
     process start does not replay journalled writes.
     """
     _bootstrap_management_token(store, signing_key, config, key_manager)
-    plugin = load_plugin(config.notification_plugin, config.notification_plugin_config)
-    approval_manager = ApprovalManager(plugin, store, audit)
+    approval_client = ApprovalClient(
+        url=config.notification_plugin_url,
+        timeout_seconds=config.notification_plugin_timeout_seconds,
+    )
+    if not approval_client.configured:
+        print(
+            "agent-auth: notification_plugin_url is empty; prompt-tier scopes will be denied",
+            file=sys.stderr,
+            flush=True,
+        )
+    approval_manager = ApprovalManager(approval_client, store, audit)
     registry, metrics = build_registry()
     server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
     drain_complete = _install_shutdown_handler(server, config.shutdown_deadline_seconds)

@@ -37,9 +37,9 @@ functions:
     description: Request and manage human approval for prompt-tier operations via a pluggable notification system.
     functions:
       - name: Request Approval
-        description: Hold a request pending and invoke the configured notification plugin to request user approval. The plugin is configured in agent-auth's configuration file (desktop notification by default).
-      - name: Load Notification Plugin
-        description: Load and initialize the configured notification plugin from agent-auth's configuration file.
+        description: Hold a request pending and POST the decision request to the configured out-of-process notifier URL to request user approval. The notifier is a separate HTTP endpoint specified by ``notification_plugin_url`` in agent-auth's configuration file.
+      - name: POST Approval Request to Notifier
+        description: Serialise the (family_id, scope, description) triple, POST it to ``notification_plugin_url``, parse the JSON response, and fail closed (deny) on timeout, connection error, non-2xx status, or malformed body.
       - name: Record Approval Grant
         description: Record an approval decision with its grant type (once or timed).
       - name: Check Existing Grant
@@ -87,6 +87,8 @@ functions:
         description: Handle GET /agent-auth/v1/token/status requests for token introspection.
       - name: Serve Health Endpoint
         description: Handle GET /agent-auth/health liveness / readiness probes; require an access token carrying the agent-auth:health scope, return 200 when the token store is reachable, 401 / 403 on missing / unscoped tokens, and 503 when the store is unreachable.
+      - name: Serve Metrics Endpoint
+        description: Handle GET /agent-auth/metrics Prometheus scrape requests; require an access token carrying the agent-auth:metrics scope, return 200 with text/plain exposition on success and 401 / 403 on missing / unscoped tokens.
       - name: Serve Token Create Endpoint
         description: Handle POST /agent-auth/v1/token/create requests to create a new token family and return an access/refresh token pair.
       - name: Serve Token List Endpoint

@@ -26,10 +26,10 @@ from unittest.mock import Mock
 import pytest
 
 from agent_auth.approval import ApprovalManager
+from agent_auth.approval_client import ApprovalClient
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
 from agent_auth.metrics import build_registry
-from agent_auth.plugins import ApprovalResult, NotificationPlugin
 from agent_auth.server import AgentAuthHandler, AgentAuthServer, _install_shutdown_handler
 from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair
@@ -37,9 +37,11 @@ from tests._http import get
 from tests._signals import invoke_installed_handler
 
 
-class _DenyPlugin(NotificationPlugin):
-    def request_approval(self, scope, description, family_id):
-        return ApprovalResult(approved=False)
+# Shutdown tests never exercise the approval path — an unconfigured
+# ``ApprovalClient`` (empty URL) denies without ever opening a socket,
+# which is the right deterministic behaviour for non-approval tests.
+def _deny_client() -> ApprovalClient:
+    return ApprovalClient(url="")
 
 
 def _wait_until(predicate, timeout: float = 2.0) -> None:
@@ -149,7 +151,7 @@ def _make_server(tmp_dir, signing_key, encryption_key):
     )
     store = TokenStore(config.db_path, encryption_key)
     audit = AuditLogger(config.log_path)
-    approval_manager = ApprovalManager(_DenyPlugin(), store, audit)
+    approval_manager = ApprovalManager(_deny_client(), store, audit)
     registry, metrics = build_registry()
     server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
     return config, store, server

@@ -25,10 +25,10 @@ import time
 import pytest
 
 from agent_auth.approval import ApprovalManager
+from agent_auth.approval_client import ApprovalClient
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
 from agent_auth.metrics import build_registry
-from agent_auth.plugins import ApprovalResult, NotificationPlugin
 from agent_auth.server import AgentAuthServer
 from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair
@@ -41,11 +41,6 @@ VALIDATE_P95_BUDGET_MS = 50.0
 SAMPLES = 100
 
 
-class _DenyPlugin(NotificationPlugin):
-    def request_approval(self, scope, description, family_id):
-        return ApprovalResult(approved=False)
-
-
 @pytest.fixture
 def perf_server(tmp_path, signing_key, encryption_key):
     config = Config(
@@ -56,7 +51,10 @@ def perf_server(tmp_path, signing_key, encryption_key):
     )
     store = TokenStore(config.db_path, encryption_key)
     audit = AuditLogger(config.log_path)
-    approval_manager = ApprovalManager(_DenyPlugin(), store, audit)
+    # Perf hot path is the validate endpoint's allow-tier branch, which
+    # never reaches the notifier — an unconfigured ApprovalClient
+    # denies without opening a socket and keeps the fixture fast.
+    approval_manager = ApprovalManager(ApprovalClient(url=""), store, audit)
     registry, metrics = build_registry()
     server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
     port = server.server_address[1]

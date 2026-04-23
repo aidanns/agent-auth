@@ -19,7 +19,8 @@ def test_default_config_when_file_absent(tmp_dir):
     assert config.port == 9100
     assert config.access_token_ttl_seconds == 900
     assert config.refresh_token_ttl_seconds == 28800
-    assert config.notification_plugin == "terminal"
+    assert config.notification_plugin_url == ""
+    assert config.notification_plugin_timeout_seconds == 30.0
     # Defaults must not be persisted — the config file is optional.
     assert not os.path.exists(os.path.join(tmp_dir, "config.yaml"))
 
@@ -34,11 +35,17 @@ def test_default_config_dir_roots_paths_when_no_file(tmp_dir):
 def test_loads_existing_config(tmp_dir):
     config_path = os.path.join(tmp_dir, "config.yaml")
     with open(config_path, "w") as f:
-        yaml.dump({"port": 9999, "notification_plugin": "desktop"}, f)
+        yaml.dump(
+            {
+                "port": 9999,
+                "notification_plugin_url": "http://127.0.0.1:9150/",
+            },
+            f,
+        )
 
     config = load_config(tmp_dir)
     assert config.port == 9999
-    assert config.notification_plugin == "desktop"
+    assert config.notification_plugin_url == "http://127.0.0.1:9150/"
 
 
 def test_non_mapping_yaml_root_raises_value_error(tmp_dir):
@@ -48,7 +55,7 @@ def test_non_mapping_yaml_root_raises_value_error(tmp_dir):
     # typo'd config file that users expect to take effect.
     config_path = os.path.join(tmp_dir, "config.yaml")
     with open(config_path, "w") as f:
-        f.write("- port: 9999\n- notification_plugin: desktop\n")
+        f.write("- port: 9999\n- notification_plugin_url: http://127.0.0.1:9150/\n")
 
     with pytest.raises(ValueError, match="YAML mapping"):
         load_config(tmp_dir)
