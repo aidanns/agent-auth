@@ -67,9 +67,38 @@ project-level decision made once, not a per-plan step. Implementation
 plans should verify compliance against the chosen standard (see
 `plan-template.md`).
 
+## Rendered design artefacts
+
+`functional_decomposition.yaml` and `product_breakdown.yaml` are the
+source of truth, but the repo also ships rendered variants for
+human browsing (`.md` tables, `.csv` exports, `.d2` / `.svg` / `.png`
+diagrams) so reviewers do not have to run the generator to read the
+design. Because these variants are generated, any change to the yaml
+makes them stale unless they are regenerated.
+
+Wire a generator task and a CI drift gate:
+
+- **Generator script** — a `scripts/design-generate.sh` that runs the
+  `systems-engineering` CLI over each yaml and writes the rendered
+  artefacts into `design/` in place. Expose it as
+  `task design:generate` so developers have one command to refresh
+  everything.
+- **CI drift gate** — extend the existing design-verification script
+  to run the generator and then `git diff --exit-code -- design/`.
+  If the checked-in artefacts differ from what the generator produces
+  right now, the workflow fails with a pointer at
+  `task design:generate`.
+- **Licensing** — the `systems-engineering` generator does not emit
+  inline SPDX headers. Cover the rendered variants with a REUSE.toml
+  override block rather than post-processing SPDX comments into the
+  generator output. Hand-written design docs (DESIGN.md, ASSURANCE.md,
+  etc.) keep their inline SPDX headers.
+
 ## Keeping design docs current
 
 After implementation, verify that the functional decomposition, product
 breakdown, and `design/DESIGN.md` reflect the current state of the system.
 Add new functions, components, or design sections as the system evolves.
-Remove entries for functionality that has been deleted.
+Remove entries for functionality that has been deleted. Regenerate the
+rendered artefacts (`task design:generate`) whenever the yaml changes;
+the CI drift gate fails otherwise.

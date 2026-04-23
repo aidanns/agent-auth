@@ -40,9 +40,14 @@ tasks:
       - scripts/typecheck.sh
 
   verify-design:
-    desc: Verify every leaf function in the functional decomposition is allocated in the product breakdown.
+    desc: Verify every leaf function in the functional decomposition is allocated in the product breakdown AND that design/ rendered artefacts (.md, .csv, .d2, .png, .svg) match the yaml.
     cmds:
       - scripts/verify-design.sh
+
+  design:generate:
+    desc: "Regenerate design/ rendered artefacts (.md, .csv, .d2, .png, .svg) from the sibling .yaml. See scripts/design-generate.sh."
+    cmds:
+      - scripts/design-generate.sh
 
   verify-function-tests:
     desc: Verify every leaf function in the functional decomposition has test coverage.

@@ -4,8 +4,14 @@
 #
 # SPDX-License-Identifier: MIT
 
-# Verify that all leaf functions in the functional decomposition are allocated
-# within the product breakdown.
+# Verify the design directory:
+#
+#   1. Every leaf function in functional_decomposition.yaml is allocated
+#      within product_breakdown.yaml (systems-engineering product verify).
+#   2. The rendered variants (.md, .csv, .d2, .png, .svg) match what
+#      scripts/design-generate.sh produces from the yaml — catches the
+#      "yaml updated, sibling artefacts forgotten" class of drift flagged
+#      in issue #141.
 
 set -euo pipefail
 
@@ -15,3 +21,19 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 systems-engineering product verify \
   -p "${REPO_ROOT}/design/product_breakdown.yaml" \
   -f "${REPO_ROOT}/design/functional_decomposition.yaml"
+
+# Regenerate the rendered variants into the worktree and assert the
+# checked-in files match. `git diff --exit-code` exits 1 on any diff,
+# which bubbles up through `set -e`. Writing into the worktree (rather
+# than into a temp dir + diff per file) keeps the error output
+# actionable — the developer sees `design/functional_decomposition.md`
+# in the diff and runs `task design:generate` to fix it.
+cd "${REPO_ROOT}"
+"${SCRIPT_DIR}/design-generate.sh" >/dev/null
+if ! git diff --exit-code -- design/; then
+  echo "verify-design: design/ artefacts are out of date with functional_decomposition.yaml / product_breakdown.yaml." >&2
+  echo "  Run 'task design:generate' and commit the result. See issue #141." >&2
+  exit 1
+fi
+
+echo "verify-design: functional decomposition allocation checks pass and rendered design/ artefacts match the yaml."
