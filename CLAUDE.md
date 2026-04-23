@@ -49,6 +49,12 @@ simplifying for "personal project" scope.
   an issue number by hand produces a duplicate parenthesized link in
   `CHANGELOG.md`. Link the issue with a `Closes #N` footer instead.
   See `CONTRIBUTING.md` § *Writing release-worthy commits*.
+- Every PR commit needs a DCO `Signed-off-by:` trailer — use
+  `git commit -s` (or `git config --local format.signoff true` once).
+  Enforced by `.github/workflows/dco.yml`; forgetting it makes the
+  `DCO sign-off check` fail and the remedy is
+  `git rebase origin/main --signoff && git push --force-with-lease`.
+  See `CONTRIBUTING.md` → "DCO sign-off".
 
 ## Project-specific notes
 
