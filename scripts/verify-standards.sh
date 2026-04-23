@@ -22,6 +22,12 @@
 #      tooling-and-ci.md Security). An ecosystem is "in use" when its
 #      manifest files are present; ecosystems without manifests are
 #      skipped rather than required.
+#   2a. Third-party GitHub Actions enumerated in PINNED_ACTIONS use the
+#      sha+trailing-comment pin form (see issue #83 and the OpenSSF
+#      Scorecard `pinned-dependencies` check).
+#   2b. Every astral-sh/setup-uv invocation passes an explicit
+#      `with.version` so the uv binary can't silently upgrade between
+#      runs (see issue #84).
 #   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
 #      lefthook per .claude/instructions/bash.md.
 #   4. Markdown (mdformat) and TOML (taplo) formatters are wired into
@@ -180,6 +186,110 @@ else
   done
 
   echo "verify-standards: dependabot.yml covers detected ecosystems (${required_ecosystems[*]}) with minor/patch grouping."
+fi
+
+# ---------------------------------------------------------------------------
+# Third-party actions are sha-pinned with a trailing ` # <tag>` comment.
+# ---------------------------------------------------------------------------
+# A bare `uses: owner/action@v6` satisfies no supply-chain control: the
+# tag can be force-moved upstream without touching this repo. The
+# project standard is `uses: owner/action@<sha> # v6` — the sha locks
+# the ref and the trailing comment documents the human-readable version
+# that Dependabot / Renovate bump together.
+#
+# PINNED_ACTIONS lists the third-party action prefixes that must be
+# sha-pinned. Add new actions here as follow-up PRs convert them to the
+# pinned form (see issue #83). Entries match against the full
+# `uses: <owner>/<action>` path — trailing slashes are stripped before
+# comparison so `github/codeql-action` can be added to catch any of its
+# sub-actions (analyze, init, upload-sarif).
+PINNED_ACTIONS=(
+  # keep-sorted start
+  actions/checkout
+  astral-sh/setup-uv
+  # keep-sorted end
+)
+
+pinned_drift=0
+for wf in .github/workflows/*.yml .github/actions/*/action.yml; do
+  [[ -f "${wf}" ]] || continue
+  while IFS= read -r line; do
+    # Capture the `uses: owner/name[/sub]@ref[ # tag]` tail after stripping
+    # leading whitespace and the optional `- ` list marker. Lines without
+    # `uses:` are already excluded by the grep filter below.
+    stripped="${line#"${line%%[![:space:]]*}"}" # ltrim
+    stripped="${stripped#- }"
+    stripped="${stripped#uses:}"
+    stripped="${stripped#"${stripped%%[![:space:]]*}"}" # ltrim again
+    # stripped is now e.g. "actions/checkout@v6" or
+    # "actions/checkout@<sha> # v6".
+    action_path="${stripped%@*}"
+    ref_and_comment="${stripped#*@}"
+    for pinned in "${PINNED_ACTIONS[@]}"; do
+      # Match on exact repo path or a `/`-prefixed sub-action (so
+      # "github/codeql-action" covers "github/codeql-action/analyze").
+      if [[ "${action_path}" == "${pinned}" ]] \
+        || [[ "${action_path}" == "${pinned}/"* ]]; then
+        if [[ ! "${ref_and_comment}" =~ ^[0-9a-f]{40}[[:space:]]+#[[:space:]]+.+$ ]]; then
+          echo "verify-standards: ${wf} has '${pinned}' reference not in sha+comment form: ${stripped}" >&2
+          pinned_drift=1
+        fi
+        break
+      fi
+    done
+  done < <(grep -nE "^\s*-?\s*uses:\s" "${wf}" | cut -d: -f2-)
+done
+
+if [[ ${pinned_drift} -ne 0 ]]; then
+  echo "  Expected: uses: <owner>/<action>@<40-char-sha> # <tag>" >&2
+  echo "  Rationale: a bare tag can be force-moved upstream without changing this repo. See issue #83." >&2
+  exit 1
+fi
+
+echo "verify-standards: third-party actions in PINNED_ACTIONS (${PINNED_ACTIONS[*]}) use sha+comment form."
+
+# ---------------------------------------------------------------------------
+# Every astral-sh/setup-uv invocation pins the uv binary version.
+# ---------------------------------------------------------------------------
+# Without an explicit `version:` input, setup-uv installs whatever
+# `uv-version` or `latest` resolves to at run time — drift we don't
+# want on a security-signing toolchain. The setup-toolchain composite
+# action exposes `uv-version` as a top-level input whose default feeds
+# `with.version`; direct workflow invocations hardcode the literal
+# until the central tool-versions manifest from #87 is available.
+uv_version_drift=0
+uv_version_matches=0
+for wf in .github/workflows/*.yml .github/actions/*/action.yml; do
+  [[ -f "${wf}" ]] || continue
+  # yq emits one document per `uses: astral-sh/setup-uv@...` step with
+  # its `with` block; absence of a `.with.version` key (or an empty
+  # string) is the drift signal.
+  while IFS=$'\t' read -r step_wf version_value; do
+    [[ -n "${step_wf}" ]] || continue
+    uv_version_matches=$((uv_version_matches + 1))
+    if [[ -z "${version_value}" || "${version_value}" == "null" ]]; then
+      echo "verify-standards: ${wf} invokes astral-sh/setup-uv without 'with.version' set." >&2
+      uv_version_drift=1
+    fi
+  done < <(
+    WF="${wf}" yq eval -o=tsv '
+      [.. | select(type == "!!map" and has("uses") and (.uses | test("^astral-sh/setup-uv@")))
+        | [(env(WF) // "wf"), (.with.version // "")]
+      ] | .[] | @tsv
+    ' "${wf}" 2>/dev/null
+  )
+done
+
+if [[ ${uv_version_drift} -ne 0 ]]; then
+  echo "  Expected: with.version: \"<pin>\" (or \${{ inputs.uv-version }} inside the composite action)." >&2
+  echo "  Rationale: pin the uv binary so CI can't silently upgrade. See issue #84." >&2
+  exit 1
+fi
+
+if [[ ${uv_version_matches} -eq 0 ]]; then
+  echo "verify-standards: no astral-sh/setup-uv invocations found — skipping uv-version pin check." >&2
+else
+  echo "verify-standards: all ${uv_version_matches} astral-sh/setup-uv invocations pin 'with.version'."
 fi
 
 # Bash tooling: shellcheck + shfmt must be wired into CI, treefmt, and
