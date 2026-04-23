@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+# SPDX-License-Identifier: MIT
+#
+# Integration-test image for the ``agent-auth`` service. Installs
+# ``agent-auth`` plus the ``keyrings.alt`` plaintext backend so the
+# server starts unattended. Never publish; never use in production.
+#
+# The sibling ``Dockerfile.things-*.test`` images are deliberately
+# independent: no shared base layer. Per ADR 0005 (amended), each
+# service's image is anchored to its own Dockerfile so the
+# pyproject-split (issue #105) only has to swap ``pip install .`` for
+# ``pip install ./packages/agent-auth/`` when it lands.
+#
+# Carries the ``tests_support`` package at ``/opt/tests-support/`` so
+# the out-of-process notifier sidecar (see ADR 0024, issue #6) can run
+# ``python -m tests_support.notifier`` against this image — the
+# notifier service in ``docker-compose.yaml`` reuses the agent-auth
+# test image rather than maintaining a fifth notifier-only image.
+
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HOME=/home/agent-auth \
+    XDG_CONFIG_HOME=/home/agent-auth/.config \
+    XDG_DATA_HOME=/home/agent-auth/.local/share \
+    XDG_STATE_HOME=/home/agent-auth/.local/state \
+    PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring \
+    PYTHONPATH=/opt/tests-support
+
+RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin agent-auth
+
+WORKDIR /src
+
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+
+RUN pip install --no-cache-dir . "keyrings.alt>=5.0" \
+ && mkdir -p /opt/tests-support \
+ && cp -r src/tests_support /opt/tests-support/tests_support
+
+RUN mkdir -p "$XDG_CONFIG_HOME/agent-auth" \
+             "$XDG_DATA_HOME/agent-auth" \
+             "$XDG_STATE_HOME/agent-auth" \
+             "$XDG_CONFIG_HOME/python_keyring" \
+    && chown -R agent-auth:agent-auth /home/agent-auth
+
+USER agent-auth
+
+EXPOSE 9100 9150
+
+ENTRYPOINT ["agent-auth", "serve"]

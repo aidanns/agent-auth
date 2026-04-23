@@ -25,7 +25,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKER_DIR = REPO_ROOT / "docker"
-DOCKERFILE = DOCKER_DIR / "Dockerfile.test"
 COMPOSE_TEMPLATE = DOCKER_DIR / "docker-compose.yaml"
 COMPOSE_FILE_NAME = "docker-compose.yaml"
 _PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}")
@@ -33,6 +32,18 @@ _PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}")
 DOCKER_BUILD_TIMEOUT_SECONDS = 600.0
 READY_POLL_TIMEOUT_SECONDS = 30.0
 READY_POLL_INTERVAL_SECONDS = 0.2
+
+# Mapping from service name (as used by the Compose topology) to the
+# per-service Dockerfile that builds its integration test image. One
+# image is built per entry on first use of the ``_test_image_tags``
+# session fixture; ``Dockerfile.<service>.test`` matches the on-disk
+# naming convention.
+PER_SERVICE_DOCKERFILES: dict[str, Path] = {
+    "agent-auth": DOCKER_DIR / "Dockerfile.agent-auth.test",
+    "things-bridge": DOCKER_DIR / "Dockerfile.things-bridge.test",
+    "things-cli": DOCKER_DIR / "Dockerfile.things-cli.test",
+    "things-client-applescript": DOCKER_DIR / "Dockerfile.things-client-applescript.test",
+}
 
 # Phase timings are emitted as INFO logs on the ``integration.timing``
 # logger so CI can surface them with ``-o log_cli=true``. The
@@ -159,19 +170,19 @@ def seed_empty_fixtures_dir(fixtures_dir: Path) -> None:
     os.chmod(fixtures_dir / "things.yaml", 0o644)
 
 
-def build_test_image(tag: str) -> None:
-    """Run ``docker build`` against ``DOCKERFILE`` and tag the result.
+def build_test_image(dockerfile: Path, tag: str) -> None:
+    """Run ``docker build -f <dockerfile>`` and tag the result.
 
     Raises ``RuntimeError`` with build output on a non-zero exit so
     pytest tracebacks show why the build failed.
     """
-    with phase_timer("build_test_image", tag=tag):
+    with phase_timer("build_test_image", dockerfile=dockerfile.name, tag=tag):
         result = subprocess.run(
             [
                 "docker",
                 "build",
                 "-f",
-                str(DOCKERFILE),
+                str(dockerfile),
                 "-t",
                 tag,
                 str(REPO_ROOT),
@@ -183,6 +194,6 @@ def build_test_image(tag: str) -> None:
         )
     if result.returncode != 0:
         raise RuntimeError(
-            f"`docker build` failed for {tag}: "
+            f"`docker build` failed for {tag} ({dockerfile.name}): "
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )

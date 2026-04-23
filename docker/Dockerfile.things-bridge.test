@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+# SPDX-License-Identifier: MIT
+#
+# Integration-test image for the ``things-bridge`` service. Never
+# publish; never use in production.
+#
+# Carries ``tests/things_client_fake/`` at ``/opt/tests-support/tests/``
+# because the bridge's configured ``things_client_command`` launches
+# ``python -m tests.things_client_fake --fixtures PATH`` as a
+# subprocess in this container during integration tests (see
+# ADR 0003). PYTHONPATH makes the module resolvable without shipping
+# it in the distributed wheel (``tests/`` is excluded from the
+# packaged distribution).
+
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HOME=/home/agent-auth \
+    XDG_CONFIG_HOME=/home/agent-auth/.config \
+    XDG_DATA_HOME=/home/agent-auth/.local/share \
+    XDG_STATE_HOME=/home/agent-auth/.local/state \
+    PYTHONPATH=/opt/tests-support
+
+RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin agent-auth
+
+WORKDIR /src
+
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+COPY tests/__init__.py ./tests/__init__.py
+COPY tests/things_client_fake/ ./tests/things_client_fake/
+
+RUN pip install --no-cache-dir . \
+ && mkdir -p /opt/tests-support/tests \
+ && cp tests/__init__.py /opt/tests-support/tests/__init__.py \
+ && cp -r tests/things_client_fake /opt/tests-support/tests/things_client_fake
+
+RUN mkdir -p "$XDG_CONFIG_HOME/things-bridge" \
+             "$XDG_STATE_HOME/things-bridge" \
+    && chown -R agent-auth:agent-auth /home/agent-auth
+
+USER agent-auth
+
+EXPOSE 9200
+
+ENTRYPOINT ["things-bridge", "serve"]

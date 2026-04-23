@@ -77,8 +77,17 @@ class FakeCliRunner:
 
 
 @pytest.fixture
-def fake_cli_runner(_test_image_tag, tmp_path_factory) -> FakeCliRunner:
+def fake_cli_runner(_test_image_tags, tmp_path_factory) -> FakeCliRunner:
+    # ``tests.things_client_fake`` ships in the
+    # ``things-client-applescript`` test image: it is the fake of the
+    # real CLI and stands in for it on Linux where osascript is
+    # unavailable. Using this image rather than the bridge's keeps the
+    # contract tests bound to the same image pyproject-split #105 will
+    # publish under the AppleScript CLI's release artefact.
     fixtures_dir = tmp_path_factory.mktemp(f"things-fix-{uuid.uuid4().hex[:8]}")
     # Default to an empty fixture so callers can opt in to writing one.
     (fixtures_dir / "things.yaml").write_text("todos: []\n")
-    return FakeCliRunner(image_tag=_test_image_tag, fixtures_dir=fixtures_dir)
+    return FakeCliRunner(
+        image_tag=_test_image_tags["things-client-applescript"],
+        fixtures_dir=fixtures_dir,
+    )
