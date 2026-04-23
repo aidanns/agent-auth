@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.1](https://github.com/aidanns/agent-auth/compare/v0.7.0...v0.7.1) (2026-04-23)
+
+### Bug Fixes
+
+- **things-bridge:** bound subprocess stderr capture ([#239](https://github.com/aidanns/agent-auth/issues/239))
+
 ## [0.7.0](https://github.com/aidanns/agent-auth/compare/v0.6.0...v0.7.0) (2026-04-23)
 
 ### ⚠ BREAKING CHANGES
