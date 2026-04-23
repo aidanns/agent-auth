@@ -221,6 +221,7 @@ PINNED_ACTIONS=(
   # keep-sorted start
   actions/checkout
   astral-sh/setup-uv
+  docker/setup-buildx-action
   # keep-sorted end
 )
 

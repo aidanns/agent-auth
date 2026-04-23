@@ -6,8 +6,9 @@
 image-tag resolution branch of ``tests.integration.conftest``.
 
 The docker-driving helpers require a live daemon and are exercised by
-the integration suite; the pieces tested here (``phase_timer`` and the
-``AGENT_AUTH_TEST_IMAGE_SESSION`` short-circuit) are the plumbing that
+the integration suite; the pieces tested here (``phase_timer``, the
+``AGENT_AUTH_TEST_IMAGE_SESSION`` short-circuit, and the
+``AGENT_AUTH_DOCKER_CACHE`` build-arg synthesis) are the plumbing that
 runs on the host, not in a container.
 """
 
@@ -15,9 +16,14 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 
 from tests.integration import conftest as integration_conftest
-from tests.integration._support import phase_timer
+from tests.integration._support import (
+    _cache_scope_for_dockerfile,
+    _gha_cache_args,
+    phase_timer,
+)
 
 
 def test_phase_timer_logs_phase_name_and_elapsed_seconds(caplog):
@@ -124,3 +130,54 @@ def test_resolve_test_image_tags_mints_fresh_session_per_call(monkeypatch):
     second, _ = integration_conftest._resolve_test_image_tags()
 
     assert first != second
+
+
+# ``AGENT_AUTH_DOCKER_CACHE=gha`` opts the build into buildx-backed
+# GitHub Actions caching. CI drives its own caching path via
+# .github/actions/build-integration-test-image, so these tests pin the
+# local / manual-opt-in contract: the env var is read at build time
+# (not import time), the scope is derived from the per-service
+# Dockerfile name, and disabling the env var yields no extra argv.
+
+
+def test_gha_cache_args_returns_empty_list_when_env_unset(monkeypatch):
+    monkeypatch.delenv("AGENT_AUTH_DOCKER_CACHE", raising=False)
+    assert _gha_cache_args(Path("docker/Dockerfile.agent-auth.test")) == []
+
+
+def test_gha_cache_args_returns_empty_list_when_env_not_gha(monkeypatch):
+    # Any value other than ``gha`` is treated as "no cache". Pins the
+    # contract against a future expansion adding other cache backends
+    # — a typo / wrong value must not silently enable buildx caching.
+    monkeypatch.setenv("AGENT_AUTH_DOCKER_CACHE", "local")
+    assert _gha_cache_args(Path("docker/Dockerfile.agent-auth.test")) == []
+
+
+def test_gha_cache_args_emits_buildx_cache_and_load_flags(monkeypatch):
+    monkeypatch.setenv("AGENT_AUTH_DOCKER_CACHE", "gha")
+
+    args = _gha_cache_args(Path("docker/Dockerfile.things-bridge.test"))
+
+    assert args == [
+        "--cache-from",
+        "type=gha,scope=things-bridge-test",
+        "--cache-to",
+        "type=gha,mode=max,scope=things-bridge-test",
+        # ``--load`` imports the built image into the local Docker
+        # daemon; omitting it leaves the image in buildx's internal
+        # cache and downstream ``docker compose`` can't find it.
+        "--load",
+    ]
+
+
+def test_cache_scope_strips_dockerfile_prefix_only():
+    # ``Dockerfile.<service>.test`` → ``<service>-test``. The suffix
+    # ``.test`` is preserved so the scope doesn't collide with a
+    # hypothetical non-test Dockerfile named ``Dockerfile.<svc>``.
+    assert (
+        _cache_scope_for_dockerfile(Path("docker/Dockerfile.agent-auth.test")) == "agent-auth-test"
+    )
+    assert (
+        _cache_scope_for_dockerfile(Path("docker/Dockerfile.things-client-applescript.test"))
+        == "things-client-applescript-test"
+    )
