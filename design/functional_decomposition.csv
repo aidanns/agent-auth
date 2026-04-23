@@ -14,8 +14,8 @@ Token Validation,Check Token Expiry,Verify that a token has not expired.
 Token Validation,Check Scope Authorization,Verify that a token carries the required scope for an operation.
 Token Validation,Resolve Access Tier,"Determine whether a scope is allow, prompt, or deny for a given token."
 agent-auth,JIT Approval,Request and manage human approval for prompt-tier operations via a pluggable notification system.
-JIT Approval,Request Approval,Hold a request pending and invoke the configured notification plugin to request user approval. The plugin is configured in agent-auth's configuration file (desktop notification by default).
-JIT Approval,POST Approval Request to Notifier,Load and initialize the configured notification plugin from agent-auth's configuration file.
+JIT Approval,Request Approval,Hold a request pending and POST the decision request to the configured out-of-process notifier URL to request user approval. The notifier is a separate HTTP endpoint specified by ``notification_plugin_url`` in agent-auth's configuration file.
+JIT Approval,POST Approval Request to Notifier,"Serialise the (family_id, scope, description) triple, POST it to ``notification_plugin_url``, parse the JSON response, and fail closed (deny) on timeout, connection error, non-2xx status, or malformed body."
 JIT Approval,Record Approval Grant,Record an approval decision with its grant type (once or timed).
 JIT Approval,Check Existing Grant,Check whether a prior approval grant covers the current request.
 JIT Approval,Expire Grants,Remove approval grants whose time-boxed duration has elapsed.
@@ -57,6 +57,7 @@ CLI Interface,Handle Token Revoke Command,Parse arguments and invoke token famil
 CLI Interface,Handle Token Rotate Command,Parse arguments and invoke token family rotation.
 CLI Interface,Handle Serve Command,Start the agent-auth HTTP server.
 CLI Interface,Handle Management Token Show Command,Retrieve the management refresh token from the OS keyring and print it (or surface a clean error and non-zero exit if the keyring is unavailable).
+CLI Interface,Handle Verify Audit Command,"Replay the HMAC chain of the audit log against the stored audit-chain key; exit 0 on verified, 1 on tampering, 2 on key/log access failure. See ADR 0028 for the chain contract."
 agent-auth,Things Bridge,"Expose authenticated Things 3 read operations over HTTP to the CLI client, delegating authorization to agent-auth."
 Things Bridge,Delegate Token Validation,"Forward the bearer token to agent-auth for validation, scope checking, and any JIT approval before executing an operation."
 Things Bridge,Fetch Things Data,"Retrieve the todos, projects, or areas requested by the client, translating typed errors into the ThingsError hierarchy."

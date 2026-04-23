@@ -51,6 +51,7 @@ components:
           - Handle Token Rotate Command
           - Handle Serve Command
           - Handle Management Token Show Command
+          - Handle Verify Audit Command
       - name: SQLite
         description: Third-party embedded relational database providing persistent storage for token families and tokens.
         functions:

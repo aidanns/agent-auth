@@ -13,6 +13,7 @@ through the CLI, it is not worth locking in with a test here.
 
 import contextlib
 import json
+import os
 import sys
 from io import StringIO
 from unittest.mock import patch
@@ -142,6 +143,38 @@ def test_management_token_show_keyring_error(cli_env):
         out, err = _run_cli("management-token", "show", config_dir=cli_env)
     assert out == ""
     assert "keyring backend unavailable" in err
+
+
+@pytest.mark.covers_function("Handle Verify Audit Command")
+def test_verify_audit_passes_on_untampered_log(cli_env):
+    # Create a token so the audit log has at least one chained entry,
+    # then verify — positive path must exit 0 and print a success
+    # summary that names the chain version.
+    _run_cli("token", "create", "--scope", "things:read=allow", config_dir=cli_env)
+    out, err = _run_cli("verify-audit", config_dir=cli_env)
+    assert err == ""
+    assert "verified" in out.lower()
+    assert "v2" in out
+
+
+@pytest.mark.covers_function("Handle Verify Audit Command")
+def test_verify_audit_detects_tampered_entry(cli_env, tmp_dir):
+    import json as _json
+
+    # Seed a chain with two entries via the real CLI path …
+    _run_cli("token", "create", "--scope", "things:read=allow", config_dir=cli_env)
+    _run_cli("token", "create", "--scope", "things:read=allow", config_dir=cli_env)
+    audit_path = os.path.join(tmp_dir, "audit.log")
+    # … then tamper the first entry without recomputing its hmac.
+    with open(audit_path) as f:
+        entries = [_json.loads(line) for line in f if line.strip()]
+    entries[0]["family_id"] = "fam-tampered"
+    with open(audit_path, "w") as f:
+        for entry in entries:
+            f.write(_json.dumps(entry) + "\n")
+    _, err = _run_cli("verify-audit", config_dir=cli_env)
+    assert "FAILED" in err
+    assert "line 1" in err
 
 
 @pytest.mark.covers_function("Handle Token Modify Command", "Modify Token Family Scopes")

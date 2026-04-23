@@ -143,7 +143,7 @@ f32.width: 400
 root -> f32
 f32_container: "" {
   grid-columns: 1
-  grid-rows: 12
+  grid-rows: 13
   grid-gap: 5
   style: {
     stroke-width: 0
@@ -158,29 +158,30 @@ f32_container: "" {
   f36: Serve Status Endpoint
   f36.width: 400
   f37: Serve Health Endpoint
-  f37a: Serve Metrics Endpoint
   f37.width: 400
-  f38: Serve Token Create Endpoint
+  f38: Serve Metrics Endpoint
   f38.width: 400
-  f39: Serve Token List Endpoint
+  f39: Serve Token Create Endpoint
   f39.width: 400
-  f40: Serve Token Modify Endpoint
+  f40: Serve Token List Endpoint
   f40.width: 400
-  f41: Serve Token Revoke Endpoint
+  f41: Serve Token Modify Endpoint
   f41.width: 400
-  f42: Serve Token Rotate Endpoint
+  f42: Serve Token Revoke Endpoint
   f42.width: 400
-  f43: Bootstrap Management Token
+  f43: Serve Token Rotate Endpoint
   f43.width: 400
-  f44: Handle Graceful Shutdown
+  f44: Bootstrap Management Token
   f44.width: 400
+  f45: Handle Graceful Shutdown
+  f45.width: 400
 }
 f32 -> f32_container
 
-f45: Audit Logging
-f45.width: 400
-root -> f45
-f45_container: "" {
+f46: Audit Logging
+f46.width: 400
+root -> f46
+f46_container: "" {
   grid-columns: 1
   grid-rows: 2
   grid-gap: 5
@@ -188,69 +189,47 @@ f45_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f46: Log Token Operation
-  f46.width: 400
-  f47: Log Authorization Decision
+  f47: Log Token Operation
   f47.width: 400
+  f48: Log Authorization Decision
+  f48.width: 400
 }
-f45 -> f45_container
+f46 -> f46_container
 
-f48: CLI Interface
-f48.width: 400
-root -> f48
-f48_container: "" {
+f49: CLI Interface
+f49.width: 400
+root -> f49
+f49_container: "" {
   grid-columns: 1
-  grid-rows: 7
+  grid-rows: 8
   grid-gap: 5
   style: {
     stroke-width: 0
     fill: transparent
   }
-  f49: Handle Token Create Command
-  f49.width: 400
-  f50: Handle Token List Command
+  f50: Handle Token Create Command
   f50.width: 400
-  f51: Handle Token Modify Command
+  f51: Handle Token List Command
   f51.width: 400
-  f52: Handle Token Revoke Command
+  f52: Handle Token Modify Command
   f52.width: 400
-  f53: Handle Token Rotate Command
+  f53: Handle Token Revoke Command
   f53.width: 400
-  f54: Handle Serve Command
+  f54: Handle Token Rotate Command
   f54.width: 400
-  f55: Handle Management Token Show Command
+  f55: Handle Serve Command
   f55.width: 400
-}
-f48 -> f48_container
-
-f56: Things Bridge
-f56.width: 400
-root -> f56
-f56_container: "" {
-  grid-columns: 1
-  grid-rows: 5
-  grid-gap: 5
-  style: {
-    stroke-width: 0
-    fill: transparent
-  }
-  f57: Delegate Token Validation
+  f56: Handle Management Token Show Command
+  f56.width: 400
+  f57: Handle Verify Audit Command
   f57.width: 400
-  f58: Fetch Things Data
-  f58.width: 400
-  f59: Serve Bridge HTTP API
-  f59.width: 400
-  f60: Serve Bridge Health Endpoint
-  f60.width: 400
-  f61: Handle Bridge Graceful Shutdown
-  f61.width: 400
 }
-f56 -> f56_container
+f49 -> f49_container
 
-f62: Things CLI
-f62.width: 400
-root -> f62
-f62_container: "" {
+f58: Things Bridge
+f58.width: 400
+root -> f58
+f58_container: "" {
   grid-columns: 1
   grid-rows: 5
   grid-gap: 5
@@ -258,15 +237,39 @@ f62_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f63: Send Bridge Request
+  f59: Delegate Token Validation
+  f59.width: 400
+  f60: Fetch Things Data
+  f60.width: 400
+  f61: Serve Bridge HTTP API
+  f61.width: 400
+  f62: Serve Bridge Health Endpoint
+  f62.width: 400
+  f63: Handle Bridge Graceful Shutdown
   f63.width: 400
-  f64: Auto Refresh Token
-  f64.width: 400
-  f65: Store CLI Credentials
-  f65.width: 400
-  f66: Handle App Commands
-  f66.width: 400
-  f67: Display Results
-  f67.width: 400
 }
-f62 -> f62_container
+f58 -> f58_container
+
+f64: Things CLI
+f64.width: 400
+root -> f64
+f64_container: "" {
+  grid-columns: 1
+  grid-rows: 5
+  grid-gap: 5
+  style: {
+    stroke-width: 0
+    fill: transparent
+  }
+  f65: Send Bridge Request
+  f65.width: 400
+  f66: Auto Refresh Token
+  f66.width: 400
+  f67: Store CLI Credentials
+  f67.width: 400
+  f68: Handle App Commands
+  f68.width: 400
+  f69: Display Results
+  f69.width: 400
+}
+f64 -> f64_container
