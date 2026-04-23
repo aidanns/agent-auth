@@ -1747,3 +1747,88 @@ if ! grep -qE "^## +Key loss and recovery\b" design/DESIGN.md; then
 fi
 
 echo "verify-standards: design/DESIGN.md documents key-loss detection and recovery."
+
+# DB schema migration system per
+# .claude/instructions/service-design.md ("DB schema migration strategy")
+# and the deterministic regression check from issue #29:
+#
+#   1. src/agent_auth/store.py contains no CREATE TABLE / ALTER TABLE —
+#      schema DDL lives exclusively in
+#      src/agent_auth/migrations/_catalogue.py and cannot drift from
+#      application code.
+#   2. At least one migration is declared in the catalogue (so the
+#      runner has something to apply) and the catalogue ships a
+#      reversible v=1 entry.
+#   3. Running the catalogue against an empty DB and then rolling back
+#      leaves the tracking table empty again ("up/down" drift check —
+#      the hand-rolled analogue of ``alembic check``).
+
+migrations_drift="$(
+  python3 - <<'PY'
+import pathlib
+import re
+import sqlite3
+import sys
+import tempfile
+
+errors: list[str] = []
+
+store_src = pathlib.Path("src/agent_auth/store.py").read_text()
+if re.search(r"\b(CREATE|ALTER)\s+TABLE\b", store_src, re.IGNORECASE):
+    errors.append(
+        "src/agent_auth/store.py contains CREATE TABLE / ALTER TABLE — "
+        "all schema DDL must live in src/agent_auth/migrations/_catalogue.py"
+    )
+
+catalogue_path = pathlib.Path("src/agent_auth/migrations/_catalogue.py")
+if not catalogue_path.is_file():
+    errors.append("src/agent_auth/migrations/_catalogue.py is missing")
+else:
+    sys.path.insert(0, "src")
+    from agent_auth.migrations import migrate_down, migrate_up
+    from agent_auth.migrations._catalogue import CATALOGUE
+
+    if not CATALOGUE:
+        errors.append(
+            "CATALOGUE in _catalogue.py is empty — declare at least the initial migration"
+        )
+    else:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = pathlib.Path(tmp) / "drift.db"
+            conn = sqlite3.connect(db)
+            try:
+                conn.execute("PRAGMA foreign_keys=ON")
+                applied = migrate_up(conn)
+                if [m.version for m in applied] != [m.version for m in CATALOGUE]:
+                    errors.append(
+                        "migrate_up did not apply every declared migration against an empty DB"
+                    )
+                reverted = migrate_down(conn, to_version=0)
+                if {m.version for m in reverted} != {m.version for m in CATALOGUE}:
+                    errors.append(
+                        "migrate_down did not revert every applied migration back to version 0"
+                    )
+                remaining = conn.execute(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='table' AND name != 'schema_migrations'"
+                ).fetchall()
+                if remaining:
+                    names = ", ".join(r[0] for r in remaining)
+                    errors.append(f"migrate_down left stray tables: {names}")
+            finally:
+                conn.close()
+
+for err in errors:
+    print(err)
+if errors:
+    sys.exit(1)
+PY
+)" || {
+  echo "verify-standards: migration system drift detected:" >&2
+  while IFS= read -r line; do
+    echo "  - ${line}" >&2
+  done <<<"${migrations_drift}"
+  exit 1
+}
+
+echo "verify-standards: schema DDL lives in migrations/_catalogue.py; up/down drift check passes."

@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from agent_auth.crypto import Ciphertext, decrypt_field, encrypt_field
 from agent_auth.keys import EncryptionKey
+from agent_auth.migrations import migrate_up
 
 
 class TokenStore:
@@ -26,7 +27,7 @@ class TokenStore:
         self._aesgcm = AESGCM(encryption_key)
         self._local = threading.local()
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._init_schema()
+        self._run_migrations()
 
     def _get_conn(self) -> sqlite3.Connection:
         if not hasattr(self._local, "conn"):
@@ -37,27 +38,16 @@ class TokenStore:
             self._local.conn = conn
         return cast(sqlite3.Connection, self._local.conn)
 
-    def _init_schema(self) -> None:
-        conn = self._get_conn()
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS token_families (
-                id TEXT PRIMARY KEY,
-                scopes BLOB NOT NULL,
-                created_at TEXT NOT NULL,
-                revoked INTEGER NOT NULL DEFAULT 0
-            );
+    def _run_migrations(self) -> None:
+        """Apply any pending schema migrations.
 
-            CREATE TABLE IF NOT EXISTS tokens (
-                id TEXT PRIMARY KEY,
-                hmac_signature BLOB NOT NULL,
-                family_id TEXT NOT NULL REFERENCES token_families(id),
-                type TEXT NOT NULL CHECK (type IN ('access', 'refresh')),
-                expires_at TEXT NOT NULL,
-                consumed INTEGER NOT NULL DEFAULT 0
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_tokens_family_id ON tokens(family_id);
-        """)
+        Schema DDL lives exclusively in
+        ``src/agent_auth/migrations/_catalogue.py``. Application code
+        here must not issue schema-modifying SQL directly; the
+        ``no-ddl-in-application-code`` rule is enforced by
+        ``scripts/verify-standards.sh``.
+        """
+        migrate_up(self._get_conn())
 
     def _encrypt(self, plaintext: str) -> Ciphertext:
         return encrypt_field(plaintext.encode("utf-8"), self._encryption_key, self._aesgcm)
