@@ -389,6 +389,55 @@ strip_comments() {
   sed -E 's/(^|[[:space:]])#.*$//' "$@"
 }
 
+# Build a tight word-boundary regex for a tool-invocation token.
+#
+# ERE `\b` treats `-` as a word boundary, so `\btask check\b` would
+# also match `task check-foo` (and `\bmy-task check\b` matches a
+# substring of `my-task check`). Substituting `[^-[:alnum:]_]` for
+# the boundary excludes hyphens on both sides, so a future
+# `task check-dry` cannot satisfy a gate looking for `task check`.
+#
+# Use this helper in preference to `\btoken\b` whenever the token
+# names a CLI tool, subcommand, or flag — anything that could grow
+# a hyphenated sibling. See issue #77.
+#
+# Tokens are inserted verbatim; pass plain words (`ruff`,
+# `ruff format --check`), not regexes. Regex metacharacters in the
+# token will be interpreted.
+tool_pattern() {
+  local token="$1"
+  printf '(^|[^-[:alnum:]_])%s([^-[:alnum:]_]|$)' "${token}"
+}
+
+# Self-test: lock in the behaviour that tool_pattern promises above so
+# a future refactor cannot silently regress it. The assertions run on
+# every invocation — they are O(microseconds) and save a whole class of
+# false-positive bugs.
+_tool_pattern_selftest() {
+  local pat
+  pat="$(tool_pattern "task check")"
+  # Exact token matches.
+  grep -qE "${pat}" <<<"task check" || return 1
+  grep -qE "${pat}" <<<"- run: task check" || return 2
+  grep -qE "${pat}" <<<"'task check'" || return 3
+  # Hyphenated suffix must NOT satisfy the pattern.
+  if grep -qE "${pat}" <<<"task check-dry"; then return 4; fi
+  # Hyphenated prefix must NOT satisfy the pattern.
+  if grep -qE "${pat}" <<<"my-task check"; then return 5; fi
+  # Same guarantees with a single-word token.
+  pat="$(tool_pattern "ruff")"
+  grep -qE "${pat}" <<<"- ruff check ." || return 6
+  if grep -qE "${pat}" <<<"ruff-lsp"; then return 7; fi
+  if grep -qE "${pat}" <<<"my-ruff"; then return 8; fi
+  return 0
+}
+if ! _tool_pattern_selftest; then
+  echo "verify-standards: tool_pattern self-test failed (code $?)." >&2
+  echo "  The helper in scripts/verify-standards.sh is broken. See issue #77." >&2
+  exit 1
+fi
+unset -f _tool_pattern_selftest
+
 # Collect comment-stripped content into variables so the match step
 # doesn't early-exit its upstream pipeline — `grep -q` exiting on first
 # match would otherwise SIGPIPE `sed`/`cat`, and `pipefail` turns that
@@ -412,7 +461,7 @@ scripts_stripped="$(find scripts -name '*.sh' -print0 2>/dev/null \
   | strip_comments)"
 
 for tool in shellcheck shfmt; do
-  if ! grep -qE "\\b${tool}\\b" <<<"${workflows_stripped}"; then
+  if ! grep -qE "$(tool_pattern "${tool}")" <<<"${workflows_stripped}"; then
     fail_bash_check "${tool}" ".github/workflows/*.yml" \
       "Add a workflow step that invokes '${tool}' (see .github/workflows/check.yml)."
   fi
@@ -425,8 +474,8 @@ for tool in shellcheck shfmt; do
   # lefthook is satisfied either by a direct invocation of the tool or by
   # invoking treefmt — treefmt runs the tool transitively via its
   # [formatter.${tool}] entry (asserted above).
-  if ! grep -qE "\\b${tool}\\b" <<<"${lefthook_stripped}" \
-    && ! grep -qE "\\btreefmt\\b" <<<"${lefthook_stripped}"; then
+  if ! grep -qE "$(tool_pattern "${tool}")" <<<"${lefthook_stripped}" \
+    && ! grep -qE "$(tool_pattern treefmt)" <<<"${lefthook_stripped}"; then
     fail_bash_check "${tool}" "lefthook.yml" \
       "Add a pre-commit command that invokes '${tool}' (or 'treefmt') to lefthook.yml."
   fi
@@ -619,7 +668,7 @@ if ! grep -qE "^\\[formatter\\.ruff\\]" <<<"${treefmt_stripped}"; then
     "Add a [formatter.ruff] entry to treefmt.toml."
 fi
 
-if ! grep -qE "\\bruff\\b" <<<"${lefthook_stripped}"; then
+if ! grep -qE "$(tool_pattern ruff)" <<<"${lefthook_stripped}"; then
   fail_ruff_check "lefthook.yml" \
     "Add pre-commit commands that invoke 'ruff check' and 'ruff format --check' to lefthook.yml."
 fi
@@ -628,9 +677,9 @@ fi
 # gate (it dispatches through scripts/lint.sh and scripts/format.sh
 # --check, each of which invokes ruff). Accept direct `ruff check` +
 # `ruff format --check` as an equivalent alternative.
-if ! grep -qE "\\btask check\\b" <<<"${workflows_stripped}" \
-  && ! { grep -qE "\\bruff check\\b" <<<"${workflows_stripped}" \
-    && grep -qE "\\bruff format --check\\b" <<<"${workflows_stripped}"; }; then
+if ! grep -qE "$(tool_pattern "task check")" <<<"${workflows_stripped}" \
+  && ! { grep -qE "$(tool_pattern "ruff check")" <<<"${workflows_stripped}" \
+    && grep -qE "$(tool_pattern "ruff format --check")" <<<"${workflows_stripped}"; }; then
   fail_ruff_check ".github/workflows/*.yml" \
     "Add a workflow step that runs 'task check' (or both 'ruff check' and 'ruff format --check' directly)."
 fi
