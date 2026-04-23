@@ -30,11 +30,6 @@
 - **release:** repair github plugin options and anchor CHANGELOG title ([#213](https://github.com/aidanns/agent-auth/issues/213)) ([7ffd296](https://github.com/aidanns/agent-auth/commit/7ffd296a0a030200f52b685784a7ce955ffad4b8))
 - **server:** drain oversize request bodies before rejecting ([#144](https://github.com/aidanns/agent-auth/issues/144)) ([#199](https://github.com/aidanns/agent-auth/issues/199)) ([6c73ec1](https://github.com/aidanns/agent-auth/commit/6c73ec1e6b09c10c4ee37456155e4fab12777a94)), closes [#139](https://github.com/aidanns/agent-auth/issues/139)
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
 ## [0.1.0] - 2026-04-19
 
 ### Added
