@@ -202,7 +202,9 @@ Default branch is `main`; feature branches follow
 the full working agreement.
 
 See also: [Commit signing](#commit-signing) — commit message format and GPG/SSH
-signing are sibling requirements, not the same thing.
+signing are sibling requirements, not the same thing. And
+[DCO sign-off](#dco-sign-off) — legal provenance via `Signed-off-by:`,
+distinct from both conventional-commit format and cryptographic signing.
 
 ## Release process
 
@@ -395,6 +397,46 @@ To cut a release:
 
 The version string embedded in the distributed package is derived from the git
 tag at build time via `setuptools-scm`; no other version file needs updating.
+
+## DCO sign-off
+
+Every commit on a pull request must carry a `Signed-off-by:` trailer
+that matches the commit author. The trailer asserts the
+[Developer Certificate of Origin](https://developercertificate.org) —
+that the contributor has the right to submit the change under the
+project's MIT licence. This is enforced by the `DCO` GitHub Actions
+workflow (`.github/workflows/dco.yml`), which fails any PR whose
+non-bot commits are missing the trailer.
+
+DCO is distinct from [Commit signing](#commit-signing):
+
+- **Sign-off** (DCO) is a legal-provenance declaration — a text
+  trailer in the commit message.
+- **Signing** (GPG / SSH) is cryptographic authorship — a detached
+  signature over the commit.
+
+Configure git to add the trailer automatically with `-s`:
+
+```bash
+git commit -s -m "feat(thing): new thing"
+```
+
+Or set it once per clone so every `git commit` includes it:
+
+```bash
+git config --local format.signoff true
+```
+
+Bot-authored commits (Dependabot, Release Please, the GitHub
+web-flow signer used on squash merges) are exempted by the workflow.
+
+If the check fails on a branch you've already pushed, add the
+trailer retroactively and force-push:
+
+```bash
+git rebase origin/main --signoff
+git push --force-with-lease
+```
 
 ## Commit signing
 
