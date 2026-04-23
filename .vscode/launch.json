@@ -1,0 +1,39 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "agent-auth serve",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "agent_auth.cli",
+      "args": [
+        "serve"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "things-bridge serve",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "things_bridge.cli",
+      "args": [
+        "serve"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "pytest: current file",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "${file}",
+        "-v"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ]
+}

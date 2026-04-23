@@ -75,6 +75,10 @@
 #      AND a scheduled CI workflow (.github/workflows/benchmark.yml)
 #      invokes it on `on: schedule:`, per
 #      .claude/instructions/testing-standards.md "Benchmark suite".
+#  16. .vscode/extensions.json, .vscode/settings.json, and
+#      .vscode/launch.json all exist so a fresh checkout opens with
+#      recommended extensions, formatter-on-save, and debug configs,
+#      per .claude/instructions/tooling-and-ci.md "IDE".
 
 set -euo pipefail
 
@@ -2104,3 +2108,29 @@ if [[ ${benchmark_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: benchmark suite exists under ${benchmarks_dir}/ and ${benchmark_workflow} runs it on a schedule."
+
+# ---------------------------------------------------------------------------
+# VS Code project scaffolding.
+# ---------------------------------------------------------------------------
+# .claude/instructions/tooling-and-ci.md (IDE — "VS Code project")
+# requires the repository to commit a .vscode/ directory covering
+# recommended extensions, formatter-on-save settings, and debug
+# configurations. The deterministic regression check asserts the
+# three files exist; it does not inspect content because a
+# partial/experimental settings.json should still open cleanly for
+# contributors.
+
+vscode_missing=0
+for vscode_file in .vscode/extensions.json .vscode/settings.json .vscode/launch.json; do
+  if [[ ! -f "${vscode_file}" ]]; then
+    echo "verify-standards: ${vscode_file} is missing." >&2
+    vscode_missing=1
+  fi
+done
+
+if [[ ${vscode_missing} -ne 0 ]]; then
+  echo "  Add the .vscode/ workspace per .claude/instructions/tooling-and-ci.md § IDE." >&2
+  exit 1
+fi
+
+echo "verify-standards: .vscode/ workspace provides extensions, settings, and launch configurations."

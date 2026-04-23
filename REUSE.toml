@@ -25,6 +25,9 @@ SPDX-License-Identifier = "MIT"
 [[annotations]]
 path = [
     ".releaserc.mjs",
+    ".vscode/extensions.json",
+    ".vscode/launch.json",
+    ".vscode/settings.json",
     "package-lock.json",
     "package.json",
     "pyrightconfig.json",
