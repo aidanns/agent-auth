@@ -50,6 +50,16 @@ jobs:
       - name: Install release tooling
         run: npm ci --ignore-scripts
 
+      # semantic-release's prepare step shells out to `task format` so the
+      # generated CHANGELOG.md is rewritten with the repo's mdformat
+      # conventions before @semantic-release/git commits it. That keeps the
+      # committed file identical to what a developer running `task format`
+      # locally would produce, so `task check` stays green on main after a
+      # release.
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+
       - name: Run semantic-release
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
