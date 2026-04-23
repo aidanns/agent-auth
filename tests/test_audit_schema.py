@@ -44,8 +44,10 @@ def _read_last_entry(path: str) -> dict[str, Any]:
 
 def test_schema_version_value(tmp_path):
     # The current wire-format schema version. A breaking change to the
-    # audit-log schema must bump this constant.
-    assert SCHEMA_VERSION == 1
+    # audit-log schema must bump this constant. v2 (#103) added the
+    # chain_hmac field — see tests/test_audit_chain.py for the chain
+    # contract.
+    assert SCHEMA_VERSION == 2
     logger = AuditLogger(_log_path(tmp_path))
     logger.log("token_created", family_id="fam-1")
     entry = _read_last_entry(_log_path(tmp_path))
@@ -80,6 +82,15 @@ def _assert_base_fields(entry: dict[str, Any]) -> None:
     assert ts.endswith("+00:00") or ts.endswith("Z"), f"timestamp not UTC: {ts!r}"
     # Must parse as a datetime
     datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    # HMAC chain (schema_version == 2): every entry carries a lowercase
+    # hex chain_hmac of SHA-256 width so a verifier can replay the chain
+    # without special-casing missing fields. See tests/test_audit_chain.py
+    # for the full chain contract (genesis seeding, tamper detection,
+    # rollover semantics).
+    assert "chain_hmac" in entry
+    assert isinstance(entry["chain_hmac"], str)
+    assert len(entry["chain_hmac"]) == 64  # SHA-256 hex
+    assert all(c in "0123456789abcdef" for c in entry["chain_hmac"])
     # OTel resource attributes: every entry identifies its emitter so
     # SIEMs joining multi-service audit trails don't need to infer
     # service from the log path. ``service.name`` is constant today

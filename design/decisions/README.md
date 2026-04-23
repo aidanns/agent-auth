@@ -75,3 +75,5 @@ is linked from this index.
   — semantic-release runs on every push to `main` and cuts a release immediately on any qualifying Conventional Commit; PR-merge review replaces the Release Please release-PR guardrail; setuptools-scm remains the runtime version source.
 - [ADR 0027 — In-memory per-token-family rate limiting](0027-rate-limiting-implementation.md)
   — supersedes ADR 0022. Every authenticated endpoint consumes from a token-bucket keyed on `family_id`; 429 `{"error":"rate_limited"}` with `Retry-After` on exhaustion. Default 600 req/min; set `rate_limit_per_minute: 0` to opt back into ADR 0022's deferral.
+- [ADR 0028 — HMAC-chained audit log for tamper-evident integrity](0028-audit-log-hmac-chain.md)
+  — closes AU-9. Every audit entry carries a `chain_hmac = HMAC-SHA256(audit_chain_key, prev_hmac || canonical(entry))`; `agent-auth verify-audit` detects modify / delete / insert. `SCHEMA_VERSION` bumps 1→2; v1 logs are rolled over to `<path>.pre-chain-v2-*` on upgrade.

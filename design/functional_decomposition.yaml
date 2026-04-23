@@ -127,6 +127,8 @@ functions:
         description: Start the agent-auth HTTP server.
       - name: Handle Management Token Show Command
         description: Retrieve the management refresh token from the OS keyring and print it (or surface a clean error and non-zero exit if the keyring is unavailable).
+      - name: Handle Verify Audit Command
+        description: Replay the HMAC chain of the audit log against the stored audit-chain key; exit 0 on verified, 1 on tampering, 2 on key/log access failure. See ADR 0028 for the chain contract.
   - name: Things Bridge
     description: Expose authenticated Things 3 read operations over HTTP to the CLI client, delegating authorization to agent-auth.
     functions:

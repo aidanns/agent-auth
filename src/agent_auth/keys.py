@@ -19,15 +19,17 @@ SERVICE_NAME = "agent-auth"
 # they are the names under which we store each key inside our service entry.
 SIGNING_KEY_NAME = "signing-key"
 ENCRYPTION_KEY_NAME = "encryption-key"
+AUDIT_CHAIN_KEY_NAME = "audit-chain-key"
 MANAGEMENT_REFRESH_TOKEN_NAME = "management-refresh-token"
 KEY_SIZE_BYTES = 32
 
-# Distinguish the two 32-byte secrets at the type level so a signing key
-# cannot accidentally be handed to AES-GCM (or vice versa). Runtime
-# representation is still ``bytes``; callers obtain instances only via
-# ``KeyManager``.
+# Distinguish the 32-byte secrets at the type level so a signing key
+# cannot accidentally be handed to AES-GCM (or vice versa), and the
+# audit-chain key cannot be reused for either. Runtime representation
+# is still ``bytes``; callers obtain instances only via ``KeyManager``.
 SigningKey = NewType("SigningKey", bytes)
 EncryptionKey = NewType("EncryptionKey", bytes)
+AuditChainKey = NewType("AuditChainKey", bytes)
 
 
 class KeyManager:
@@ -76,6 +78,11 @@ class KeyManager:
         raw = self._read_key(ENCRYPTION_KEY_NAME)
         return None if raw is None else EncryptionKey(raw)
 
+    def get_audit_chain_key(self) -> AuditChainKey | None:
+        """Return the audit-log chain HMAC key, or ``None`` if not yet provisioned."""
+        raw = self._read_key(AUDIT_CHAIN_KEY_NAME)
+        return None if raw is None else AuditChainKey(raw)
+
     def get_or_create_signing_key(self) -> SigningKey:
         """Return the HMAC signing key, generating it on first use."""
         return SigningKey(self._get_or_create_key(SIGNING_KEY_NAME))
@@ -83,6 +90,16 @@ class KeyManager:
     def get_or_create_encryption_key(self) -> EncryptionKey:
         """Return the AES-256-GCM encryption key, generating it on first use."""
         return EncryptionKey(self._get_or_create_key(ENCRYPTION_KEY_NAME))
+
+    def get_or_create_audit_chain_key(self) -> AuditChainKey:
+        """Return the audit-log chain HMAC key, generating it on first use.
+
+        Kept distinct from the token signing key so a compromise of
+        one does not silently pivot into tampered but valid-looking
+        audit chains (or the reverse: leaking the chain key does not
+        give an attacker the ability to mint tokens).
+        """
+        return AuditChainKey(self._get_or_create_key(AUDIT_CHAIN_KEY_NAME))
 
     def get_management_refresh_token(self) -> str | None:
         """Return the stored management refresh token, or None if not yet bootstrapped."""

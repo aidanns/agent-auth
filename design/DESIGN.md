@@ -1025,8 +1025,10 @@ surface.
 The audit log at `$XDG_STATE_HOME/agent-auth/audit.log` is JSON-lines.
 The on-disk format is part of the project's public surface and is
 versioned via the `schema_version` field emitted on every entry
-(current value: `1`; constant `SCHEMA_VERSION` in
-`src/agent_auth/audit.py`).
+(current value: `2`; constant `SCHEMA_VERSION` in
+`src/agent_auth/audit.py`). Schema v2 (#103, [ADR 0028](decisions/0028-audit-log-hmac-chain.md))
+adds the HMAC-chained `chain_hmac` field; see "Tamper-evident chain"
+below.
 
 **Stability policy** — downstream consumers (SIEM, compliance,
 forensics) can rely on the following guarantees within a given
@@ -1079,21 +1081,57 @@ conventions verbatim:
 state, not HTTP mechanics. No OTel equivalent exists; these keep
 their existing names:
 
-| Field            | Type   | Description                                                                                                                                                                                                                    |
-| ---------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `timestamp`      | string | ISO 8601 UTC emit time. Kept as `timestamp` (flat JSON, not an OTel LogRecord envelope).                                                                                                                                       |
-| `schema_version` | int    | Wire-format version of the audit-log schema (currently `1`). See the stability policy above.                                                                                                                                   |
-| `event`          | string | Discriminator — `validation_allowed`, `validation_denied`, `token_created`, `token_refreshed`, `token_reissued`, `token_revoked`, `token_rotated`, `scopes_modified`, `reissue_denied`, `approval_granted`, `approval_denied`. |
-| `token_id`       | string | Opaque token identifier.                                                                                                                                                                                                       |
-| `family_id`      | string | Opaque token-family identifier.                                                                                                                                                                                                |
-| `scope`          | string | The single requested scope.                                                                                                                                                                                                    |
-| `scopes`         | list   | Scopes on a family (on create / modify events).                                                                                                                                                                                |
-| `tier`           | string | `allow`, `prompt`, or `deny`.                                                                                                                                                                                                  |
-| `grant_type`     | string | JIT grant flavour on a `prompt`-tier approval.                                                                                                                                                                                 |
-| `reason`         | string | Denial reason code on `validation_denied` / `reissue_denied`.                                                                                                                                                                  |
+| Field            | Type   | Description                                                                                                                                                                                                                                    |
+| ---------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timestamp`      | string | ISO 8601 UTC emit time. Kept as `timestamp` (flat JSON, not an OTel LogRecord envelope).                                                                                                                                                       |
+| `schema_version` | int    | Wire-format version of the audit-log schema (currently `2`). See the stability policy above.                                                                                                                                                   |
+| `event`          | string | Discriminator — `validation_allowed`, `validation_denied`, `token_created`, `token_refreshed`, `token_reissued`, `token_revoked`, `token_rotated`, `scopes_modified`, `reissue_denied`, `approval_granted`, `approval_denied`, `rate_limited`. |
+| `chain_hmac`     | string | Lowercase hex SHA-256 HMAC of `prev_chain_hmac ‖ canonical(entry)` under the audit-chain key; 64 hex chars. Genesis seed is 32 zero bytes. Schema v2 only — see "Tamper-evident chain" below.                                                  |
+| `token_id`       | string | Opaque token identifier.                                                                                                                                                                                                                       |
+| `family_id`      | string | Opaque token-family identifier.                                                                                                                                                                                                                |
+| `scope`          | string | The single requested scope.                                                                                                                                                                                                                    |
+| `scopes`         | list   | Scopes on a family (on create / modify events).                                                                                                                                                                                                |
+| `tier`           | string | `allow`, `prompt`, or `deny`.                                                                                                                                                                                                                  |
+| `grant_type`     | string | JIT grant flavour on a `prompt`-tier approval.                                                                                                                                                                                                 |
+| `reason`         | string | Denial reason code on `validation_denied` / `reissue_denied`.                                                                                                                                                                                  |
 
 Log-level policy, log location, rotation, and retention are
 documented in the subsections above.
+
+### Tamper-evident chain
+
+Schema v2 links every entry into an HMAC chain so a local attacker
+with log-write access cannot silently modify, delete, or insert
+entries. The construction:
+
+- **Key.** 32-byte random audit-chain key, stored in the OS keyring
+  under the `audit-chain-key` service entry. Distinct from the
+  token signing key and the DB encryption key — a compromise of one
+  must not silently pivot into tampering with another.
+- **Chain formula.**
+  `chain_hmac_n = HMAC-SHA256(k, chain_hmac_{n-1} ‖ canonical(entry_n))`
+  where `canonical(e)` is `json.dumps(e, sort_keys=True, separators=(",", ":"))` over the entry *without* the
+  `chain_hmac` field.
+- **Genesis.** `chain_hmac_0 = 32 bytes of 0x00`. The verifier seeds
+  from the same constant.
+- **Resume on restart.** On startup `AuditLogger` reads the tail
+  line of the existing log and seeds `prev_chain_hmac` from it so
+  the chain survives process restarts.
+- **Rollover on upgrade.** If the tail is pre-chain (v1), malformed,
+  or missing `chain_hmac`, the file is renamed to
+  `<path>.pre-chain-v2-<UTC timestamp>` and a fresh chain starts at
+  genesis in the original path. Exact bytes of the v1 file are
+  preserved on disk for forensics.
+- **Verification.** `agent-auth verify-audit` reads the audit-chain
+  key from the keyring and replays the chain, reporting `verified`
+  (v2 entries whose `chain_hmac` matches), `legacy_skipped` (v1
+  entries, not chainable), and raising the failing line number on
+  first mismatch. Exit 0 on pass, 1 on mismatch, 2 on key / I/O
+  failure.
+
+Rationale and alternatives considered (Merkle tree, detached
+signatures, forward-secure MAC) are recorded in
+[ADR 0028](decisions/0028-audit-log-hmac-chain.md).
 
 ## Rate limiting and request budgets
 

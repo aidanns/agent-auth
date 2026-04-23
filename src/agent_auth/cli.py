@@ -8,7 +8,7 @@ import argparse
 import json
 import sys
 
-from agent_auth.audit import AuditLogger
+from agent_auth.audit import AuditLogger, ChainVerificationFailure, verify_audit_chain
 from agent_auth.config import Config, load_config
 from agent_auth.errors import KeyLossError, KeyringError
 from agent_auth.keys import KeyManager, SigningKey, check_key_integrity
@@ -29,8 +29,9 @@ def _init_services(
     check_key_integrity(config.db_path, key_manager)
     signing_key = key_manager.get_or_create_signing_key()
     encryption_key = key_manager.get_or_create_encryption_key()
+    audit_chain_key = key_manager.get_or_create_audit_chain_key()
     store = TokenStore(config.db_path, encryption_key)
-    audit = AuditLogger(config.log_path)
+    audit = AuditLogger(config.log_path, audit_chain_key=audit_chain_key)
     return config, signing_key, store, audit, key_manager
 
 
@@ -240,6 +241,50 @@ def handle_serve(
     run_server(config, signing_key, store, audit, key_manager)
 
 
+def handle_verify_audit(
+    args: argparse.Namespace,
+    config: Config,
+    signing_key: SigningKey,
+    store: TokenStore,
+    audit: AuditLogger,
+    key_manager: KeyManager,
+) -> None:
+    """Replay the HMAC chain of the audit log against the stored key.
+
+    Exit codes:
+      0 — chain verified (every v2 entry matches; legacy v1 entries
+          counted separately and not verifiable).
+      1 — chain mismatch or malformed entry detected; the line number
+          of the failure is written to stderr.
+      2 — audit-chain key is missing from the keyring or the log file
+          cannot be read.
+    """
+    try:
+        chain_key = key_manager.get_audit_chain_key()
+    except KeyringError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
+    if chain_key is None:
+        print(
+            "Error: audit-chain key not provisioned. "
+            "Start the server at least once so it is created in the keyring.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    try:
+        counts = verify_audit_chain(config.log_path, chain_key)
+    except ChainVerificationFailure as exc:
+        print(f"Audit chain verification FAILED at {exc}", file=sys.stderr)
+        sys.exit(1)
+    if args.json:
+        print(json.dumps({"status": "ok", **counts}))
+    else:
+        print(
+            f"Audit chain verified: {counts['verified']} v{2} entries, "
+            f"{counts['legacy_skipped']} pre-chain legacy entries skipped."
+        )
+
+
 def handle_management_token_show(
     args: argparse.Namespace,
     config: Config,
@@ -322,6 +367,12 @@ def build_parser() -> argparse.ArgumentParser:
     mgmt_sub = mgmt_parser.add_subparsers(dest="management_token_command")
     mgmt_sub.add_parser("show", help="Print the management refresh token")
 
+    # verify-audit subcommand
+    subparsers.add_parser(
+        "verify-audit",
+        help="Replay the HMAC chain of the audit log to detect tampering",
+    )
+
     return parser
 
 
@@ -378,6 +429,10 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
+        return
+
+    if args.command == "verify-audit":
+        handle_verify_audit(args, config, signing_key, store, audit, key_manager)
         return
 
     parser.print_help()
