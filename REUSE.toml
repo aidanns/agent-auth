@@ -13,8 +13,19 @@ precedence = "override"
 SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
 SPDX-License-Identifier = "MIT"
 
+# design/functional_decomposition.{d2,md} and design/product_breakdown.{d2,md}
+# are regenerated from the sibling yaml via `task design:generate`
+# (scripts/design-generate.sh). The `systems-engineering` generator does
+# not emit inline SPDX headers; post-processing the output would couple
+# the generator to this project's licensing policy, so the licensing
+# metadata lives here instead. Hand-written design docs (DESIGN.md,
+# ASSURANCE.md, etc.) keep their inline SPDX comments.
 [[annotations]]
 path = [
+    "design/functional_decomposition.d2",
+    "design/functional_decomposition.md",
+    "design/product_breakdown.d2",
+    "design/product_breakdown.md",
     "design/**.csv",
     "design/**.png",
     "design/**.svg",

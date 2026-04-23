@@ -1,9 +1,3 @@
-<!--
-SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
-
-SPDX-License-Identifier: MIT
--->
-
 # agent-auth
 
 | Parent        | Name                          | Type               | Description                                                                                                                                                                       | Functions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
