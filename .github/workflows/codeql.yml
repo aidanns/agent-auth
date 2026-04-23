@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ``python`` covers the src/ + tests/ Python surface; ``actions``
+        # ``python`` covers the packages/ + tests/ Python surface; ``actions``
         # covers workflow files under .github/ so a dangerous
         # script-injection pattern in a new workflow lands in the
         # Security tab rather than going unnoticed.

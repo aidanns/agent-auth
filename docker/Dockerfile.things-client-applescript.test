@@ -27,12 +27,15 @@ RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin agent-auth
 
 WORKDIR /src
 
-COPY pyproject.toml README.md ./
-COPY src/ ./src/
+COPY README.md ./
+COPY packages/agent-auth-common/ ./packages/agent-auth-common/
+COPY packages/things-client-cli-applescript/ ./packages/things-client-cli-applescript/
 COPY tests/__init__.py ./tests/__init__.py
 COPY tests/things_client_fake/ ./tests/things_client_fake/
 
-RUN pip install --no-cache-dir . \
+RUN pip install --no-cache-dir \
+        ./packages/agent-auth-common \
+        ./packages/things-client-cli-applescript \
  && mkdir -p /opt/tests-support/tests \
  && cp tests/__init__.py /opt/tests-support/tests/__init__.py \
  && cp -r tests/things_client_fake /opt/tests-support/tests/things_client_fake \

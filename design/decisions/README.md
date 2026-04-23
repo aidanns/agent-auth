@@ -83,3 +83,5 @@ is linked from this index.
   — `agent_auth_client` and `things_bridge_client` own the full HTTP surface of each service as first-class in-tree packages; production code and integration tests consume them directly, replacing the partial per-caller clients.
 - [ADR 0031 — Renovate custom managers + Dependency Submission API for CI tool bumps](0031-renovate-custom-managers-and-dependency-submission.md)
   — `.github/renovate.json` custom managers target `.github/tool-versions.yaml` so every CI tool (shellcheck, shfmt, ruff, taplo, keep-sorted, ripsecrets, treefmt, go-task, d2) gets automated bump PRs with sha256 recomputed by `scripts/renovate/recompute-sha256.sh`; `.github/workflows/dependency-submission.yml` POSTs a PURL snapshot so CVE alerts fire on the same ecosystem as Dependabot.
+- [ADR 0032 — Split services into a uv workspace of per-service subprojects](0032-monorepo-workspace-split.md)
+  — each service lives under `packages/<svc>/` with its own `pyproject.toml` + `install.sh`; `agent-auth-common` holds shared types; root `install.sh` is deleted and the README catalogues the per-service installers.

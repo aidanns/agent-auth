@@ -4,14 +4,23 @@
 #
 # SPDX-License-Identifier: MIT
 
-# Install or upgrade agent-auth, things-bridge, things-cli, and
-# things-client-cli-applescript from a GitHub release into a uv-managed tool
-# environment. Optionally uninstall with --uninstall.
+# Install or upgrade ``things-bridge`` (the HTTP bridge from
+# agent-auth-protected clients to the Things 3 API) from the monorepo
+# into a uv-managed tool environment. Optionally uninstall with
+# ``--uninstall``.
+#
+# Running this script installs only the ``things-bridge`` package and
+# its transitive dependencies (including the ``agent-auth-common``
+# workspace package). It does NOT install ``agent-auth`` itself or
+# any of the client CLIs — use the per-service installers under
+# ``packages/<service>/install.sh`` for those.
 
 set -euo pipefail
 
 GITHUB_REPO="aidanns/agent-auth"
 GITHUB_URL="https://github.com/${GITHUB_REPO}"
+TOOL_NAME="things-bridge"
+PACKAGE_SUBDIR="packages/things-bridge"
 
 # --- Argument parsing ---
 
@@ -34,12 +43,12 @@ done
 # --- Uninstall ---
 
 if ${UNINSTALL}; then
-  echo "Uninstalling agent-auth..."
-  uv tool uninstall agent-auth 2>/dev/null || true
+  echo "Uninstalling ${TOOL_NAME}..."
+  uv tool uninstall "${TOOL_NAME}" 2>/dev/null || true
   echo "Done."
   echo
   echo "To reinstall, run:"
-  echo "  curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/install.sh | bash"
+  echo "  curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/${PACKAGE_SUBDIR}/install.sh | bash"
   exit 0
 fi
 
@@ -74,30 +83,27 @@ if [[ -z "${VERSION}" ]]; then
 fi
 
 if [[ -n "${VERSION}" ]]; then
-  INSTALL_SOURCE="git+${GITHUB_URL}.git@${VERSION}"
+  INSTALL_SOURCE="git+${GITHUB_URL}.git@${VERSION}#subdirectory=${PACKAGE_SUBDIR}"
 else
-  INSTALL_SOURCE="git+${GITHUB_URL}.git"
+  INSTALL_SOURCE="git+${GITHUB_URL}.git#subdirectory=${PACKAGE_SUBDIR}"
 fi
 
 # --- Install ---
 
-echo "Installing agent-auth ${VERSION:-HEAD} from ${GITHUB_URL} ..."
+echo "Installing ${TOOL_NAME} ${VERSION:-HEAD} from ${GITHUB_URL} ..."
 uv tool install --force "${INSTALL_SOURCE}"
 
 # --- Verify ---
 
-if ! command -v agent-auth >/dev/null 2>&1; then
-  echo "install.sh: installation verification failed — 'agent-auth' not found on PATH." >&2
+if ! command -v "${TOOL_NAME}" >/dev/null 2>&1; then
+  echo "install.sh: installation verification failed — '${TOOL_NAME}' not found on PATH." >&2
   echo "  Run 'uv tool update-shell' to add the uv tool bin directory to your PATH." >&2
   exit 1
 fi
 
 echo
-echo "Installation complete. The following commands are now available:"
-echo "  agent-auth                    — token lifecycle management and HTTP server"
-echo "  things-bridge                 — Things 3 bridge HTTP server"
-echo "  things-cli                    — Things 3 client (via things-bridge)"
-echo "  things-client-cli-applescript — direct Things 3 CLI (macOS only)"
+echo "Installation complete. The following command is now available:"
+echo "  things-bridge — HTTP bridge from agent-auth-protected clients to Things 3"
 
 # --- PATH warning ---
 
@@ -114,4 +120,4 @@ esac
 
 echo
 echo "To uninstall, run:"
-echo "  curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/install.sh | bash -s -- --uninstall"
+echo "  curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/${PACKAGE_SUBDIR}/install.sh | bash -s -- --uninstall"

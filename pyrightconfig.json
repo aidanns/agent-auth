@@ -1,6 +1,10 @@
 {
   "include": [
-    "src",
+    "packages/agent-auth-common/src",
+    "packages/agent-auth/src",
+    "packages/things-bridge/src",
+    "packages/things-cli/src",
+    "packages/things-client-cli-applescript/src",
     "tests",
     "benchmarks"
   ],
@@ -34,7 +38,7 @@
       "reportMissingTypeStubs": "none"
     },
     {
-      "root": "src/tests_support",
+      "root": "packages/agent-auth-common/src/tests_support",
       "reportUnknownParameterType": "none",
       "reportUnknownVariableType": "none",
       "reportUnknownMemberType": "none",
@@ -52,6 +56,10 @@
   ],
   "extraPaths": [
     ".",
-    "src"
+    "packages/agent-auth-common/src",
+    "packages/agent-auth/src",
+    "packages/things-bridge/src",
+    "packages/things-cli/src",
+    "packages/things-client-cli-applescript/src"
   ]
 }

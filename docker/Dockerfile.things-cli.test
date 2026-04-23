@@ -29,10 +29,13 @@ RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin agent-auth
 
 WORKDIR /src
 
-COPY pyproject.toml README.md ./
-COPY src/ ./src/
+COPY README.md ./
+COPY packages/agent-auth-common/ ./packages/agent-auth-common/
+COPY packages/things-cli/ ./packages/things-cli/
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir \
+        ./packages/agent-auth-common \
+        ./packages/things-cli
 
 RUN mkdir -p "$XDG_CONFIG_HOME/things-cli" \
     && chown -R agent-auth:agent-auth /home/agent-auth

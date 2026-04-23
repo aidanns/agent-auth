@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-auth-common"
+dynamic = ["version"]
+description = "Shared types, HTTP clients, and helpers consumed by the agent-auth family of services"
+requires-python = ">=3.11"
+# Common has no non-stdlib runtime deps: every shipped module in this
+# package is stdlib-only. The per-service packages pull in their own
+# dependencies (cryptography, keyring, pyyaml, …); keeping this one
+# dependency-free makes it cheap to consume for CLIs that only need
+# the typed HTTP clients or the Things models.
+dependencies = []
+
+[project.optional-dependencies]
+# ``tests_support`` ships the HTTP notifier sidecar used by the Docker
+# integration tests. It is excluded from the shipped wheel by default
+# (see ``[tool.setuptools.packages.find].exclude``) and gated behind
+# this extra so an operator never pulls it in with a production
+# install. Callers that drive the integration harness (``Dockerfile.*
+# .test``, ``tests/integration/*``) opt in with
+# ``agent-auth-common[testing]``.
+testing = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+# ``tests_support`` lives under src/ for ergonomic in-tree development
+# but must never enter a production install. Excluded from the wheel
+# by default; the ``testing`` extra above lets Dockerfiles that run
+# the integration harness opt back in.
+exclude = ["tests_support*"]
+
+[tool.setuptools_scm]
+# Versioning currently follows the repo-wide ``v<X>.<Y>.<Z>`` tag the
+# semantic-release workflow produces at root. Per-package tag
+# namespaces (``agent-auth-common/v<X>.<Y>.<Z>``) are a follow-up; until
+# then every workspace package tracks the same root version, which is
+# fine because everything is developed in lockstep and nothing is yet
+# published independently.
+fallback_version = "0.0.0+unknown"
