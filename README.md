@@ -7,6 +7,7 @@ SPDX-License-Identifier: MIT
 # agent-auth
 
 [![REUSE status](https://api.reuse.software/badge/github.com/aidanns/agent-auth)](https://api.reuse.software/info/github.com/aidanns/agent-auth)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/aidanns/agent-auth/badge)](https://scorecard.dev/viewer/?uri=github.com/aidanns/agent-auth)
 
 Token-based authorization system for gating AI agent access to host applications.
 

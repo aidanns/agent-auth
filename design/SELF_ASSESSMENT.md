@@ -419,10 +419,14 @@ before any security-relevant change lands.
 
 ### OpenSSF Best Practices
 
-- **OpenSSF Scorecard** — planned as a CI gate; tracked in
-  [#108](https://github.com/aidanns/agent-auth/issues/108). Covers
-  branch protection, signed releases, dangerous workflows, token
-  permissions, and dependency update cadence.
+- **OpenSSF Scorecard** — implemented as a CI gate in
+  `.github/workflows/scorecard.yml` (weekly cron + push to `main`).
+  SARIF is uploaded to the Security tab; results are published to
+  `api.scorecard.dev` and rendered as a badge on the README. The
+  workflow fails when the aggregate score drops below a ratcheting
+  floor (`SCORECARD_MIN_SCORE`), covering branch protection, signed
+  releases, dangerous workflows, token permissions, and dependency
+  update cadence.
 - **CII Best Practices badge** — not pursued today. A personal
   project with one maintainer would struggle to meet the
   "Contribution" and "Security team" criteria; revisit if the

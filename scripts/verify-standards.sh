@@ -457,6 +457,30 @@ fi
 
 echo "verify-standards: pip-audit is wired into CI."
 
+# OpenSSF Scorecard must run on a schedule and gate on an aggregate
+# score floor, per design/SELF_ASSESSMENT.md → "OpenSSF Scorecard"
+# and the issue closure criteria for #108.
+scorecard_workflow=".github/workflows/scorecard.yml"
+if [[ ! -f ${scorecard_workflow} ]]; then
+  echo "verify-standards: ${scorecard_workflow} is missing." >&2
+  echo "  Add a Scorecard workflow using ossf/scorecard-action." >&2
+  exit 1
+fi
+if ! grep -qE "ossf/scorecard-action" "${scorecard_workflow}"; then
+  echo "verify-standards: ${scorecard_workflow} does not invoke ossf/scorecard-action." >&2
+  exit 1
+fi
+if ! grep -qE "^\s*-\s*cron:" "${scorecard_workflow}"; then
+  echo "verify-standards: ${scorecard_workflow} must run on a cron schedule." >&2
+  exit 1
+fi
+if ! grep -qE "SCORECARD_MIN_SCORE" "${scorecard_workflow}"; then
+  echo "verify-standards: ${scorecard_workflow} must gate on an aggregate score floor (SCORECARD_MIN_SCORE)." >&2
+  exit 1
+fi
+
+echo "verify-standards: OpenSSF Scorecard workflow is present, scheduled, and gated on SCORECARD_MIN_SCORE."
+
 # Type checking per .claude/instructions/python.md (Tooling: "mypy and
 # pyright — type checking. Run both in CI.") and the deterministic
 # regression check in issue #48:

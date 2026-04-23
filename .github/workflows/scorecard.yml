@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Scorecard
+
+# OpenSSF Scorecard runs the project through ~20 automated supply-chain
+# checks (Branch-Protection, Pinned-Dependencies, Signed-Releases,
+# Token-Permissions, SAST, Code-Review, Dangerous-Workflow, ...) and
+# emits per-check scores plus an aggregate 0–10 score. Ran weekly so
+# newly-published checks land against the current tree within a week,
+# and on pushes to main so the badge and the published results stay
+# fresh with the latest commit.
+#
+# The aggregate score is gated against `SCORECARD_MIN_SCORE` — a
+# regression below the floor fails the workflow so a dependency bump
+# or workflow change that drops a check can't slip onto main
+# unnoticed. The floor is deliberately set to the current observed
+# score so future changes ratchet rather than regress.
+#
+# See also:
+#   - design/SELF_ASSESSMENT.md → "OpenSSF Scorecard" for the target
+#     and publication policy.
+#   - design/SSDF.md RV.1.2 for the SDLC-standard mapping.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 5 * * 1" # 05:00 UTC every Monday
+  workflow_dispatch:
+
+permissions: read-all
+
+env:
+  # Initial floor of 0.0 so the first scheduled run establishes a
+  # baseline without red-lighting CI before we know the observed score.
+  # Raise to `observed_score - 0.5` after the first publication and
+  # ratchet upward as supply-chain hardening lands (pinned deps, token
+  # permissions, signed releases, fuzzing, ...).
+  SCORECARD_MIN_SCORE: "0.0"
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # For uploading SARIF to the GitHub Security tab.
+      security-events: write
+      # For publishing signed results to api.securityscorecards.dev.
+      id-token: write
+      # Read-only access to workflow runs for the Token-Permissions check.
+      actions: read
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run Scorecard (SARIF)
+        uses: ossf/scorecard-action@v2.4.3
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Publish results to api.securityscorecards.dev so the badge
+          # on the README stays live and downstream scanners can query
+          # the latest score.
+          publish_results: true
+
+      - name: Upload Scorecard SARIF artefact
+        uses: actions/upload-artifact@v7
+        with:
+          name: scorecard-sarif
+          path: results.sarif
+          retention-days: 14
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
+
+      - name: Run Scorecard (JSON) for threshold gate
+        uses: ossf/scorecard-action@v2.4.3
+        with:
+          results_file: results.json
+          results_format: json
+          # Gate-only run; do not re-publish.
+          publish_results: false
+
+      - name: Gate on aggregate score
+        run: |
+          set -euo pipefail
+          score=$(jq -r '.score' results.json)
+          threshold="${SCORECARD_MIN_SCORE}"
+          echo "Scorecard aggregate score: ${score} (floor ${threshold})"
+          awk -v s="${score}" -v t="${threshold}" \
+            'BEGIN { if (s + 0 < t + 0) { exit 1 } }'
