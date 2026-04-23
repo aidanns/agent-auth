@@ -87,7 +87,7 @@ class ApprovalClient:
 
     def __init__(self, url: str, timeout_seconds: float = 30.0):
         self._url = url
-        self._timeout = timeout_seconds
+        self._timeout_seconds = timeout_seconds
 
     @property
     def configured(self) -> bool:
@@ -122,7 +122,7 @@ class ApprovalClient:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            with urllib.request.urlopen(req, timeout=self._timeout_seconds) as resp:
                 if resp.status < 200 or resp.status >= 300:
                     _LOGGER.warning(
                         "notifier at %s returned non-2xx status=%d; denying",

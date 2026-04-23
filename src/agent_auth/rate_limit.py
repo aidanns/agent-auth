@@ -94,37 +94,37 @@ class RateLimiter:
         if not self.enabled:
             return RateLimitDecision(allowed=True)
 
-        now = self._clock()
+        now_seconds = self._clock()
         with self._lock:
-            self._evict_idle_locked(now)
+            self._evict_idle_locked(now_seconds)
             bucket = self._buckets.get(family_id)
             if bucket is None:
                 # Start full: the first N requests of a fresh family
                 # burst through without refill, matching the spirit
                 # of the configured per-minute rate.
-                bucket = _Bucket(tokens=self._capacity, last_refill=now)
+                bucket = _Bucket(tokens_count=self._capacity, last_refill_seconds=now_seconds)
                 self._buckets[family_id] = bucket
 
             # Refill: the number of tokens accrued since the last
             # update, capped at ``capacity``.
-            elapsed = max(0.0, now - bucket.last_refill)
-            bucket.tokens = min(
+            elapsed_seconds = max(0.0, now_seconds - bucket.last_refill_seconds)
+            bucket.tokens_count = min(
                 self._capacity,
-                bucket.tokens + elapsed * self._refill_rate_per_second,
+                bucket.tokens_count + elapsed_seconds * self._refill_rate_per_second,
             )
-            bucket.last_refill = now
+            bucket.last_refill_seconds = now_seconds
 
-            if bucket.tokens >= 1.0:
-                bucket.tokens -= 1.0
+            if bucket.tokens_count >= 1.0:
+                bucket.tokens_count -= 1.0
                 return RateLimitDecision(allowed=True)
 
             # Denied. Compute how long the caller must wait for a
             # whole token to refill — the minimum honest retry-after.
-            needed = 1.0 - bucket.tokens
-            retry_after = needed / self._refill_rate_per_second
-            return RateLimitDecision(allowed=False, retry_after_seconds=retry_after)
+            needed = 1.0 - bucket.tokens_count
+            retry_after_seconds = needed / self._refill_rate_per_second
+            return RateLimitDecision(allowed=False, retry_after_seconds=retry_after_seconds)
 
-    def _evict_idle_locked(self, now: float) -> None:
+    def _evict_idle_locked(self, now_seconds: float) -> None:
         """Remove buckets not touched in ``idle_eviction_seconds``.
 
         Keeps memory bounded by the set of actively-used families,
@@ -136,7 +136,7 @@ class RateLimiter:
         stale = [
             fid
             for fid, bucket in self._buckets.items()
-            if now - bucket.last_refill > self._idle_eviction_seconds
+            if now_seconds - bucket.last_refill_seconds > self._idle_eviction_seconds
         ]
         for fid in stale:
             del self._buckets[fid]
@@ -144,5 +144,5 @@ class RateLimiter:
 
 @dataclass
 class _Bucket:
-    tokens: float
-    last_refill: float
+    tokens_count: float
+    last_refill_seconds: float

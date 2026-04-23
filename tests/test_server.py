@@ -208,7 +208,7 @@ def test_malformed_json_returns_400(in_process_server):
 
 def test_oversize_body_returns_400(in_process_server):
     _, base, _ = in_process_server
-    payload = b'{"token":"' + b"x" * (AgentAuthHandler.MAX_BODY_SIZE + 1) + b'"}'
+    payload = b'{"token":"' + b"x" * (AgentAuthHandler.MAX_BODY_SIZE_BYTES + 1) + b'"}'
     status, body = post(f"{base}/agent-auth/v1/validate", raw=payload)
     assert status == 400
     assert body["error"] == "malformed_request"
