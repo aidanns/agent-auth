@@ -481,6 +481,25 @@ fi
 
 echo "verify-standards: OpenSSF Scorecard workflow is present, scheduled, and gated on SCORECARD_MIN_SCORE."
 
+# DCO sign-off must be checked on every PR per design/SSDF.md PS.1.1
+# and the issue closure criteria for #116.
+dco_workflow=".github/workflows/dco.yml"
+if [[ ! -f ${dco_workflow} ]]; then
+  echo "verify-standards: ${dco_workflow} is missing." >&2
+  echo "  Add a DCO sign-off check workflow (see CONTRIBUTING.md → 'DCO sign-off')." >&2
+  exit 1
+fi
+if ! grep -qE "^\s*-\s*pull_request\b|^\s*pull_request:" "${dco_workflow}"; then
+  echo "verify-standards: ${dco_workflow} must trigger on pull_request events." >&2
+  exit 1
+fi
+if ! grep -qE "Signed-off-by" "${dco_workflow}"; then
+  echo "verify-standards: ${dco_workflow} must check for a Signed-off-by trailer." >&2
+  exit 1
+fi
+
+echo "verify-standards: DCO sign-off workflow is present and triggers on pull_request."
+
 # Type checking per .claude/instructions/python.md (Tooling: "mypy and
 # pyright — type checking. Run both in CI.") and the deterministic
 # regression check in issue #48:

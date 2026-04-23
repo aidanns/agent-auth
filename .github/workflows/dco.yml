@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: DCO
+
+# Developer Certificate of Origin (https://developercertificate.org)
+# sign-off check. Every non-bot commit on a pull request must carry a
+# `Signed-off-by:` trailer so contributors assert the right to submit
+# the change under the project licence.
+#
+# DCO is distinct from GPG / SSH commit signing:
+#   - Signing (handled by git's commit.gpgsign / tag.gpgsign) proves
+#     authorship cryptographically.
+#   - Sign-off (this workflow) is the legal-provenance declaration.
+#
+# Bot-authored commits (Dependabot, Release Please, ...) are skipped —
+# their service account's submission implicitly carries the upstream
+# project's consent to the licence.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    name: DCO sign-off check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Need full PR history so `git rev-list base..head` resolves.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check Signed-off-by trailer on each PR commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+          while read -r sha; do
+            author_email=$(git log -1 --pretty=%ae "${sha}")
+            # Skip bot-authored commits. GitHub bots write their
+            # commits with a `[bot]@users.noreply.github.com` address
+            # so a simple suffix match covers Dependabot, Release Please,
+            # and the GitHub web-flow signer.
+            if [[ ${author_email} == *"[bot]@users.noreply.github.com" ]]; then
+              continue
+            fi
+            if ! git log -1 --pretty=%B "${sha}" |
+              grep -qE "^Signed-off-by: .+ <.+@.+>$"; then
+              missing+=("${sha}")
+            fi
+          done < <(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}")
+
+          if ((${#missing[@]} > 0)); then
+            {
+              echo "::error::Commits missing Signed-off-by trailer:"
+              for sha in "${missing[@]}"; do
+                echo "  $(git log -1 --oneline "${sha}")"
+              done
+              echo
+              echo "Add the trailer with 'git commit -s', or rebase the branch:"
+              echo "  git rebase origin/main --signoff && git push --force-with-lease"
+            } >&2
+            exit 1
+          fi
+          echo "All non-bot PR commits carry a Signed-off-by trailer."
