@@ -11,13 +11,14 @@
 
 FROM python:3.12-slim-bookworm
 
-# ``tests_support`` (always-approve / always-deny notification plugins)
-# and ``tests/things_client_fake`` (the fake things-client subprocess
-# the bridge invokes during integration tests) are intentionally
-# excluded from the ``agent-auth`` wheel so they can never ship to
-# production. The package files are copied into the image below;
-# pointing PYTHONPATH at ``/opt/tests-support`` lets
-# ``importlib.import_module("tests_support.always_*")`` and
+# ``tests_support.notifier`` (the approve / deny HTTP notifier
+# sidecar used by integration tests — see #6) and
+# ``tests/things_client_fake`` (the fake things-client subprocess the
+# bridge invokes during integration tests) are intentionally excluded
+# from the ``agent-auth`` wheel so they can never ship to production.
+# The package files are copied into the image below; pointing
+# PYTHONPATH at ``/opt/tests-support`` lets
+# ``python -m tests_support.notifier {approve,deny}`` and
 # ``python -m tests.things_client_fake`` resolve them without a real
 # installed distribution.
 ENV PYTHONDONTWRITEBYTECODE=1 \

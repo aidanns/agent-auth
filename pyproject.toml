@@ -39,6 +39,7 @@ dev = [
 [project.scripts]
 # keep-sorted start
 agent-auth = "agent_auth.cli:main"
+agent-auth-notifier = "agent_auth_notifier.cli:main"
 things-bridge = "things_bridge.cli:main"
 things-cli = "things_cli.cli:main"
 things-client-cli-applescript = "things_client_applescript.cli:main"
@@ -46,13 +47,11 @@ things-client-cli-applescript = "things_client_applescript.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-# ``tests_support`` ships the always-approve / always-deny notification
-# plugins used by the Docker integration tests. It lives under ``src/``
-# for ergonomic in-tree development but must never enter the distributed
-# wheel — a misconfigured production ``notification_plugin`` setting
-# could otherwise load ``AlwaysApprovePlugin`` by name. The integration
-# container imports it via ``PYTHONPATH`` instead of an installed
-# distribution (see ``docker/Dockerfile.test``).
+# ``tests_support`` ships the tests-only HTTP notifier sidecar (#6)
+# used by the Docker integration tests. It lives under ``src/`` for
+# ergonomic in-tree development but must never enter the distributed
+# wheel. The integration container picks it up via ``PYTHONPATH``
+# instead of an installed distribution (see ``docker/Dockerfile.test``).
 exclude = ["tests_support*"]
 
 [tool.setuptools_scm]

@@ -271,19 +271,65 @@ If no tier is specified, the default is `allow`.
 
 When a bridge calls agent-auth to validate a token for a `prompt`-tier scope:
 
-1. agent-auth requests user approval via the configured notification plugin (desktop notification by default if no other method is configured)
-2. The validation request blocks until the user responds
+1. agent-auth POSTs an approval request to the configured **out-of-process notifier** URL (`notification_plugin_url`)
+2. The validation request blocks until the notifier responds — or until the configured timeout elapses, whichever comes first
 3. On approval, agent-auth returns success and the bridge proceeds
-4. On denial, agent-auth returns forbidden and the bridge rejects the request
+4. On denial — including notifier unreachable, timeout, non-2xx response, or malformed body — agent-auth returns forbidden and the bridge rejects the request (fail-closed)
 
-The notification plugin is configured in agent-auth's configuration file, following a similar model to Claude Code hooks. This allows different notification methods (desktop notifications, Touch ID, YubiKey, custom scripts, etc.) to be swapped in without changing agent-auth itself.
+The notifier is an independent HTTP process with its own trust boundary. agent-auth no longer loads plugin Python code in-process — the pre-#6 `importlib.import_module` loader has been removed. This lets a notifier be written in any language (Touch ID helper, YubiKey broker, Slack bot, native macOS prompt) and run under its own process identity without extending the surface of the process that owns the signing and encryption keys.
+
+A reference notifier ships as `agent-auth-notifier terminal`: a tiny HTTP server that prompts the operator on stderr.
 
 Approval grants can be scoped:
 
 - **Once** — this specific invocation only
 - **Time-boxed** — allow for the next N minutes
 
-Time-boxed grants are held in memory on the agent-auth server. They do not modify the token and expire after their duration elapses or when the server restarts, whichever comes first. Notification plugins can surface "for this session" as a UX-level shortcut for a 60-minute time-boxed grant.
+Time-boxed grants are held in memory on the agent-auth server. They do not modify the token and expire after their duration elapses or when the server restarts, whichever comes first. Notifiers can surface "for this session" as a UX-level shortcut for a 60-minute time-boxed grant.
+
+#### Notification plugin wire protocol
+
+The notifier exposes a single endpoint reachable at
+`notification_plugin_url`. agent-auth POSTs a JSON body:
+
+```
+POST ${notification_plugin_url}
+Content-Type: application/json
+{
+  "family_id": "fam-abc123",
+  "scope":     "things:write",
+  "description": "Add todo 'ship PR'"
+}
+```
+
+The notifier responds with:
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+{
+  "approved":         true,
+  "grant_type":       "timed",
+  "duration_minutes": 60
+}
+```
+
+Contract:
+
+- `approved` (required, boolean) — the decision.
+- `grant_type` (optional, `"once"` | `"timed"`; defaults to `"once"`).
+- `duration_minutes` (optional, integer) — required when `grant_type == "timed"`; ignored otherwise.
+
+Failure handling (fail-closed):
+
+- Non-2xx response, connect error, read timeout past `notification_plugin_timeout_seconds`, malformed JSON body, or wrong shape → treated as deny with no grant. A warning is written to stderr with the notifier URL and the reason.
+- An empty `notification_plugin_url` — the default — means **every prompt-tier request is denied**. agent-auth emits a warning on startup.
+
+Security boundary:
+
+- The protocol is unauthenticated. The notifier is expected to bind loopback-only (the reference `agent-auth-notifier terminal` defaults to `127.0.0.1:9150`).
+- The notifier never sees the signing or encryption keys; it only receives the `(family_id, scope, description)` triple needed to render a prompt.
+- Adding mutual auth is follow-up if the plugin ever moves off-host — see the Rate-limiting / DoS section and ADR 0022.
 
 ## Request Flow
 

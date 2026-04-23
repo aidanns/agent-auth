@@ -23,19 +23,14 @@ from typing import Any
 import pytest
 
 from agent_auth.approval import ApprovalManager
+from agent_auth.approval_client import ApprovalClient
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
 from agent_auth.metrics import build_registry
-from agent_auth.plugins import ApprovalResult, NotificationPlugin
 from agent_auth.rate_limit import RateLimiter
 from agent_auth.server import MANAGEMENT_SCOPE, AgentAuthServer
 from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair
-
-
-class _AutoApprovePlugin(NotificationPlugin):
-    def request_approval(self, scope, description, family_id):
-        return ApprovalResult(approved=True, grant_type="once")
 
 
 def _get(url: str, headers: dict[str, str] | None = None) -> tuple[int, Any, dict[str, str]]:
@@ -87,7 +82,7 @@ def server_with_tight_rate_limit(tmp_dir, signing_key, encryption_key):
     )
     store = TokenStore(config.db_path, encryption_key)
     audit = AuditLogger(config.log_path)
-    approval_manager = ApprovalManager(_AutoApprovePlugin(), store, audit)
+    approval_manager = ApprovalManager(ApprovalClient(url=""), store, audit)
     registry, metrics = build_registry()
     server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
     port = server.server_address[1]
@@ -203,7 +198,7 @@ def test_disabled_limit_never_denies(tmp_dir, signing_key, encryption_key):
     )
     store = TokenStore(config.db_path, encryption_key)
     audit = AuditLogger(config.log_path)
-    approval_manager = ApprovalManager(_AutoApprovePlugin(), store, audit)
+    approval_manager = ApprovalManager(ApprovalClient(url=""), store, audit)
     registry, metrics = build_registry()
     server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
     port = server.server_address[1]
@@ -239,7 +234,7 @@ def test_rate_limiter_can_be_injected_for_determinism(tmp_dir, signing_key, encr
     )
     store = TokenStore(config.db_path, encryption_key)
     audit = AuditLogger(config.log_path)
-    approval_manager = ApprovalManager(_AutoApprovePlugin(), store, audit)
+    approval_manager = ApprovalManager(ApprovalClient(url=""), store, audit)
     registry, metrics = build_registry()
     server = AgentAuthServer(
         config,

@@ -11,6 +11,16 @@
 name: {{ COMPOSE_PROJECT_NAME }}
 
 services:
+  notifier:
+    image: {{ AGENT_AUTH_TEST_IMAGE }}
+    # Out-of-process approval notifier (see #6). Runs the
+    # tests_support sidecar in approve or deny mode; agent-auth
+    # POSTs each prompt-tier request to http://notifier:9150/.
+    # The mode is substituted per-test so one compose template
+    # serves both approve- and deny-path integration tests.
+    entrypoint: ["python", "-m", "tests_support.notifier", "{{ NOTIFIER_MODE }}", "--host", "0.0.0.0", "--port", "9150"]
+    stop_grace_period: 5s
+
   agent-auth:
     image: {{ AGENT_AUTH_TEST_IMAGE }}
     # Bind only on loopback so the container is never reachable from the
@@ -20,8 +30,10 @@ services:
     volumes:
       # Per-test tmpdir holding config.yaml. The fixture copies
       # docker/config.test.yaml here and applies any per-test overrides
-      # (TTLs, notification plugin) before starting the container.
+      # (TTLs, notifier URL) before starting the container.
       - {{ AGENT_AUTH_TEST_CONFIG_DIR }}:/home/agent-auth/.config/agent-auth:ro
+    depends_on:
+      - notifier
     stop_grace_period: 5s
 
   things-bridge:

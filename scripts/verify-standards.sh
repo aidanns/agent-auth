@@ -1869,3 +1869,45 @@ PY
 }
 
 echo "verify-standards: schema DDL lives in migrations/_catalogue.py; up/down drift check passes."
+
+# Notification plugin trust boundary per
+# .claude/instructions/service-design.md ("Plugin trust boundary") and
+# the deterministic regression check from issue #6:
+#
+#   1. src/agent_auth/server.py must not call importlib.import_module —
+#      the pre-#6 in-process plugin loader is gone for good, and
+#      re-introducing it widens the trust boundary to every plugin
+#      author. strip_comments guards against a stale mention
+#      satisfying the grep after the real call has been removed.
+#   2. src/agent_auth/config.py must declare notification_plugin_url
+#      (the URL-based field) — a revert of the schema to the old
+#      notification_plugin / notification_plugin_config module-name
+#      pair would silently re-enable in-process loading on the next
+#      loader change.
+
+notifier_drift=0
+server_stripped="$(strip_comments src/agent_auth/server.py)"
+if grep -qE "\\bimportlib\\.import_module\\b" <<<"${server_stripped}"; then
+  echo "verify-standards: src/agent_auth/server.py calls importlib.import_module." >&2
+  echo "  Notification plugins must be out-of-process HTTP endpoints (see #6 and" >&2
+  echo "  design/DESIGN.md § Notification plugin wire protocol)." >&2
+  notifier_drift=1
+fi
+
+config_stripped="$(strip_comments src/agent_auth/config.py)"
+if ! grep -qE "\\bnotification_plugin_url\\b" <<<"${config_stripped}"; then
+  echo "verify-standards: src/agent_auth/config.py is missing 'notification_plugin_url'." >&2
+  echo "  The notifier is a URL, not a Python module path — see #6." >&2
+  notifier_drift=1
+fi
+if grep -qE "\\bnotification_plugin[[:space:]]*:" <<<"${config_stripped}"; then
+  echo "verify-standards: src/agent_auth/config.py still declares the legacy 'notification_plugin:' module-name field." >&2
+  echo "  Replace with 'notification_plugin_url: str = \"\"'." >&2
+  notifier_drift=1
+fi
+
+if [[ ${notifier_drift} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: notification plugin is URL-based (out-of-process); no importlib.import_module in server.py."

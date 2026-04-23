@@ -118,7 +118,11 @@ def _write_agent_auth_config(
     """
     with BASELINE_CONFIG.open() as f:
         config = yaml.safe_load(f) or {}
-    config["notification_plugin"] = APPROVAL_PLUGINS[approval]
+    # Under #6 the notifier runs as a sidecar container; the URL is
+    # fixed across tests and the approve/deny variant is chosen by the
+    # NOTIFIER_MODE placeholder substitution (see render_compose_file
+    # call below and APPROVAL_PLUGINS in tests/integration/conftest.py).
+    config["notification_plugin_url"] = "http://notifier:9150/"
     config["access_token_ttl_seconds"] = access_token_ttl_seconds
     config["refresh_token_ttl_seconds"] = refresh_token_ttl_seconds
     config_path = config_dir / "config.yaml"
@@ -172,6 +176,7 @@ def things_bridge_stack_factory(
             AGENT_AUTH_TEST_IMAGE=_test_image_tag,
             AGENT_AUTH_TEST_CONFIG_DIR=str(agent_auth_config_dir),
             THINGS_BRIDGE_TEST_FIXTURES_DIR=str(fixtures_dir),
+            NOTIFIER_MODE=APPROVAL_PLUGINS[approval],
         )
 
         compose = DockerCompose(

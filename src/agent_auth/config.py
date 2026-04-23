@@ -11,7 +11,7 @@ Paths follow the XDG Base Directory Specification:
 """
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, cast
 
 import yaml
@@ -40,8 +40,13 @@ class Config:
     port: int = 9100
     access_token_ttl_seconds: int = 900
     refresh_token_ttl_seconds: int = 28800
-    notification_plugin: str = "terminal"
-    notification_plugin_config: dict[str, Any] = field(default_factory=dict[str, Any])
+    # URL of the out-of-process notifier that agent-auth POSTs to
+    # on a prompt-tier approval. Default empty = no notifier
+    # configured → prompt-tier scopes fail closed (deny). See ADR
+    # 0023 and `design/DESIGN.md` "Notification plugin wire
+    # protocol".
+    notification_plugin_url: str = ""
+    notification_plugin_timeout_seconds: float = 30.0
     db_path: str = ""
     log_path: str = ""
     # Upper bound on how long ``serve`` will wait for in-flight requests to

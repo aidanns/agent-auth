@@ -11,11 +11,11 @@ from unittest.mock import Mock
 import pytest
 
 from agent_auth.approval import ApprovalManager
+from agent_auth.approval_client import ApprovalClient
 from agent_auth.audit import AuditLogger
 from agent_auth.config import Config
 from agent_auth.keys import KeyManager
 from agent_auth.metrics import build_registry
-from agent_auth.plugins import ApprovalResult, NotificationPlugin
 from agent_auth.server import (
     MANAGEMENT_SCOPE,
     AgentAuthHandler,
@@ -38,13 +38,10 @@ def _health_headers(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-class _DenyPlugin(NotificationPlugin):
-    def request_approval(self, scope, description, family_id):
-        return ApprovalResult(approved=False)
-
-
 @pytest.fixture
 def in_process_server(tmp_dir, signing_key, encryption_key):
+    from tests._notifier_fake import NotifierFake
+
     config = Config(
         db_path=os.path.join(tmp_dir, "tokens.db"),
         log_path=os.path.join(tmp_dir, "audit.log"),
@@ -53,7 +50,9 @@ def in_process_server(tmp_dir, signing_key, encryption_key):
     )
     store = TokenStore(config.db_path, encryption_key)
     audit = AuditLogger(config.log_path)
-    approval_manager = ApprovalManager(_DenyPlugin(), store, audit)
+    notifier = NotifierFake(approved=False)
+    approval_client = ApprovalClient(url=notifier.url)
+    approval_manager = ApprovalManager(approval_client, store, audit)
     registry, metrics = build_registry()
     server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
     port = server.server_address[1]
@@ -69,6 +68,7 @@ def in_process_server(tmp_dir, signing_key, encryption_key):
         # session exit.
         server.server_close()
         thread.join(timeout=2)
+        notifier.stop()
 
 
 @pytest.mark.covers_function("Serve Health Endpoint")

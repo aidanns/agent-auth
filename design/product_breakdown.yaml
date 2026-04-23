@@ -23,7 +23,7 @@ components:
           - Check Scope Authorization
           - Resolve Access Tier
           - Request Approval
-          - Load Notification Plugin
+          - POST Approval Request to Notifier
           - Record Approval Grant
           - Check Existing Grant
           - Expire Grants
@@ -34,6 +34,7 @@ components:
           - Serve Reissue Endpoint
           - Serve Status Endpoint
           - Serve Health Endpoint
+          - Serve Metrics Endpoint
           - Serve Token Create Endpoint
           - Serve Token List Endpoint
           - Serve Token Modify Endpoint
