@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Central tool-version manifest — single source of truth consumed by
+# both .github/actions/setup-toolchain (CI) and
+# scripts/verify-dependencies.sh (local). Each tool entry carries the
+# pinned version and, for tools installed directly from GitHub Release
+# assets, the sha256 of the linux x86_64 binary/archive.
+#
+# CI consumes the pinned version exactly. verify-dependencies.sh treats
+# the pinned version as a minimum within the same major — local installs
+# that ship newer (brew, apt, asdf) pass as long as the major matches.
+#
+# Renovate custom managers (#205) target this file so bumps propagate to
+# both local and CI environments in one change.
+#
+# See .claude/instructions/tooling-and-ci.md § Central tool-version
+# manifest.
+
+go-task:
+  version: "3.50.0"
+
+uv:
+  version: "0.11.7"
+
+keep-sorted:
+  version: "0.8.0"
+  sha256_linux_x86_64: "0d9801785ac354232ea754bbfd8cc204a5e255905e14bcbff5fe8733e4dbd85c"
+
+mdformat:
+  version: "0.7.22"
+
+mdformat-gfm:
+  version: "1.0.0"
+
+mdformat-tables:
+  version: "1.0.0"
+
+shellcheck:
+  version: "0.10.0"
+  sha256_linux_x86_64: "6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87"
+
+ripsecrets:
+  version: "0.1.11"
+  sha256_linux_x86_64: "9daf017dfdea242a58f672450a2526f0406211afe9e872c740adc49b42feccf5"
+
+ruff:
+  version: "0.6.9"
+  sha256_linux_x86_64: "ed8ba4cac0c6dfc1c0e9c6c720daa5ea404a3bff0497a95d6e25293a7910e903"
+
+shfmt:
+  version: "3.8.0"
+  sha256_linux_x86_64: "27b3c6f9d9592fc5b4856c341d1ff2c88856709b9e76469313642a1d7b558fe0"
+
+taplo:
+  version: "0.10.0"
+  sha256_linux_x86_64: "8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156"
+
+treefmt:
+  version: "2.5.0"
+  sha256_linux_x86_64: "95f707bf9666d08b50888b116768fd77f042ad5af92aa3b795f063160e72758f"
+
+systems-engineering:
+  ref: "d8e664a5ad20c071d4ec1cd62377597f9404b6e9"
