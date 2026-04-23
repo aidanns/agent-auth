@@ -27,6 +27,7 @@ from things_bridge_client.errors import (
     ThingsBridgeUnauthorizedError,
     ThingsBridgeUnavailableError,
 )
+from things_models.models import AreaId, ProjectId, TodoId
 
 
 class ThingsBridgeClient:
@@ -73,7 +74,7 @@ class ThingsBridgeClient:
         """GET ``/things-bridge/v1/todos``, optionally filtered by query params."""
         return self._get_json("/things-bridge/v1/todos", access_token, params=params)
 
-    def get_todo(self, access_token: str | None, todo_id: str) -> dict[str, Any]:
+    def get_todo(self, access_token: str | None, todo_id: TodoId) -> dict[str, Any]:
         """GET ``/things-bridge/v1/todos/{id}``."""
         return self._get_json(f"/things-bridge/v1/todos/{quote(todo_id, safe='')}", access_token)
 
@@ -86,7 +87,7 @@ class ThingsBridgeClient:
         """GET ``/things-bridge/v1/projects``, optionally filtered by query params."""
         return self._get_json("/things-bridge/v1/projects", access_token, params=params)
 
-    def get_project(self, access_token: str | None, project_id: str) -> dict[str, Any]:
+    def get_project(self, access_token: str | None, project_id: ProjectId) -> dict[str, Any]:
         """GET ``/things-bridge/v1/projects/{id}``."""
         return self._get_json(
             f"/things-bridge/v1/projects/{quote(project_id, safe='')}", access_token
@@ -96,7 +97,7 @@ class ThingsBridgeClient:
         """GET ``/things-bridge/v1/areas``."""
         return self._get_json("/things-bridge/v1/areas", access_token)
 
-    def get_area(self, access_token: str | None, area_id: str) -> dict[str, Any]:
+    def get_area(self, access_token: str | None, area_id: AreaId) -> dict[str, Any]:
         """GET ``/things-bridge/v1/areas/{id}``."""
         return self._get_json(f"/things-bridge/v1/areas/{quote(area_id, safe='')}", access_token)
 

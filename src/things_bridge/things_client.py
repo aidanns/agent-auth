@@ -23,7 +23,7 @@ from things_models.errors import (
     ThingsNotFoundError,
     ThingsPermissionError,
 )
-from things_models.models import Area, Project, Todo
+from things_models.models import Area, AreaId, Project, ProjectId, Todo, TodoId
 
 STDERR_TAIL_MAX_CHARS = 64 * 1024
 """Upper bound on the stderr tail retained for diagnostic messages.
@@ -57,8 +57,8 @@ class ThingsSubprocessClient:
         self,
         *,
         list_id: str | None = None,
-        project_id: str | None = None,
-        area_id: str | None = None,
+        project_id: ProjectId | None = None,
+        area_id: AreaId | None = None,
         tag: str | None = None,
         status: str | None = None,
     ) -> list[Todo]:
@@ -76,18 +76,18 @@ class ThingsSubprocessClient:
         payload = self._invoke(argv)
         return [Todo.from_json(t) for t in payload.get("todos", [])]
 
-    def get_todo(self, todo_id: str) -> Todo:
+    def get_todo(self, todo_id: TodoId) -> Todo:
         payload = self._invoke(["todos", "show", todo_id])
         return Todo.from_json(payload["todo"])
 
-    def list_projects(self, *, area_id: str | None = None) -> list[Project]:
+    def list_projects(self, *, area_id: AreaId | None = None) -> list[Project]:
         argv = ["projects", "list"]
         if area_id is not None:
             argv.extend(["--area", area_id])
         payload = self._invoke(argv)
         return [Project.from_json(p) for p in payload.get("projects", [])]
 
-    def get_project(self, project_id: str) -> Project:
+    def get_project(self, project_id: ProjectId) -> Project:
         payload = self._invoke(["projects", "show", project_id])
         return Project.from_json(payload["project"])
 
@@ -95,7 +95,7 @@ class ThingsSubprocessClient:
         payload = self._invoke(["areas", "list"])
         return [Area.from_json(a) for a in payload.get("areas", [])]
 
-    def get_area(self, area_id: str) -> Area:
+    def get_area(self, area_id: AreaId) -> Area:
         payload = self._invoke(["areas", "show", area_id])
         return Area.from_json(payload["area"])
 

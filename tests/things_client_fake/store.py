@@ -18,7 +18,7 @@ from typing import Any
 import yaml
 
 from things_models.errors import ThingsError, ThingsNotFoundError
-from things_models.models import Area, Project, Todo
+from things_models.models import Area, AreaId, Project, ProjectId, Todo, TodoId
 from things_models.status import VALID_STATUSES, validate_status
 
 _ALLOWED_TOP_LEVEL_KEYS = {"areas", "projects", "todos", "list_memberships"}
@@ -50,8 +50,8 @@ class FakeThingsClient:
         self,
         *,
         list_id: str | None = None,
-        project_id: str | None = None,
-        area_id: str | None = None,
+        project_id: ProjectId | None = None,
+        area_id: AreaId | None = None,
         tag: str | None = None,
         status: str | None = None,
     ) -> list[Todo]:
@@ -73,18 +73,18 @@ class FakeThingsClient:
 
         return results
 
-    def get_todo(self, todo_id: str) -> Todo:
+    def get_todo(self, todo_id: TodoId) -> Todo:
         for todo in self._store.todos:
             if todo.id == todo_id:
                 return todo
         raise ThingsNotFoundError(f"todo {todo_id!r} not found")
 
-    def list_projects(self, *, area_id: str | None = None) -> list[Project]:
+    def list_projects(self, *, area_id: AreaId | None = None) -> list[Project]:
         if area_id is None:
             return list(self._store.projects)
         return [p for p in self._store.projects if p.area_id == area_id]
 
-    def get_project(self, project_id: str) -> Project:
+    def get_project(self, project_id: ProjectId) -> Project:
         for project in self._store.projects:
             if project.id == project_id:
                 return project
@@ -93,7 +93,7 @@ class FakeThingsClient:
     def list_areas(self) -> list[Area]:
         return list(self._store.areas)
 
-    def get_area(self, area_id: str) -> Area:
+    def get_area(self, area_id: AreaId) -> Area:
         for area in self._store.areas:
             if area.id == area_id:
                 return area

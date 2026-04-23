@@ -41,6 +41,7 @@ from things_bridge_client import (
     ThingsBridgeUnavailableError,
 )
 from things_cli.credentials import Credentials, CredentialStore
+from things_models.models import AreaId, ProjectId, TodoId
 
 
 class BridgeClient:
@@ -81,19 +82,19 @@ class BridgeClient:
     def list_todos(self, params: dict[str, str] | None = None) -> dict[str, Any]:
         return self._with_retry(lambda token: self._bridge.list_todos(token, params=params))
 
-    def get_todo(self, todo_id: str) -> dict[str, Any]:
+    def get_todo(self, todo_id: TodoId) -> dict[str, Any]:
         return self._with_retry(lambda token: self._bridge.get_todo(token, todo_id))
 
     def list_projects(self, params: dict[str, str] | None = None) -> dict[str, Any]:
         return self._with_retry(lambda token: self._bridge.list_projects(token, params=params))
 
-    def get_project(self, project_id: str) -> dict[str, Any]:
+    def get_project(self, project_id: ProjectId) -> dict[str, Any]:
         return self._with_retry(lambda token: self._bridge.get_project(token, project_id))
 
     def list_areas(self) -> dict[str, Any]:
         return self._with_retry(lambda token: self._bridge.list_areas(token))
 
-    def get_area(self, area_id: str) -> dict[str, Any]:
+    def get_area(self, area_id: AreaId) -> dict[str, Any]:
         return self._with_retry(lambda token: self._bridge.get_area(token, area_id))
 
     # -- internal --

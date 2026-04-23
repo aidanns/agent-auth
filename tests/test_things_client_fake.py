@@ -14,7 +14,7 @@ from tests.things_client_fake.store import (
     load_fake_store,
 )
 from things_models.errors import ThingsError, ThingsNotFoundError
-from things_models.models import Area
+from things_models.models import Area, AreaId, ProjectId, TodoId
 
 
 def test_list_todos_returns_all_without_filters():
@@ -32,7 +32,7 @@ def test_list_todos_filters_by_project_id():
         ]
     )
     client = FakeThingsClient(store)
-    assert [t.id for t in client.list_todos(project_id="p1")] == ["t1", "t3"]
+    assert [t.id for t in client.list_todos(project_id=ProjectId("p1"))] == ["t1", "t3"]
 
 
 def test_list_todos_filters_by_area_id():
@@ -43,7 +43,7 @@ def test_list_todos_filters_by_area_id():
         ]
     )
     client = FakeThingsClient(store)
-    assert [t.id for t in client.list_todos(area_id="a2")] == ["t2"]
+    assert [t.id for t in client.list_todos(area_id=AreaId("a2"))] == ["t2"]
 
 
 def test_list_todos_filters_by_tag():
@@ -104,20 +104,20 @@ def test_list_todos_combines_filters():
         ]
     )
     client = FakeThingsClient(store)
-    result = client.list_todos(project_id="p1", status="open", tag="A")
+    result = client.list_todos(project_id=ProjectId("p1"), status="open", tag="A")
     assert [t.id for t in result] == ["t1"]
 
 
 def test_get_todo_returns_match():
     store = FakeThingsStore(todos=[_todo(id="t1"), _todo(id="t2")])
     client = FakeThingsClient(store)
-    assert client.get_todo("t2").id == "t2"
+    assert client.get_todo(TodoId("t2")).id == "t2"
 
 
 def test_get_todo_raises_on_miss():
     client = FakeThingsClient(FakeThingsStore())
     with pytest.raises(ThingsNotFoundError):
-        client.get_todo("nope")
+        client.get_todo(TodoId("nope"))
 
 
 def test_list_projects_filters_by_area():
@@ -128,23 +128,23 @@ def test_list_projects_filters_by_area():
         ]
     )
     client = FakeThingsClient(store)
-    assert [p.id for p in client.list_projects(area_id="a2")] == ["p2"]
+    assert [p.id for p in client.list_projects(area_id=AreaId("a2"))] == ["p2"]
 
 
 def test_get_project_raises_on_miss():
     client = FakeThingsClient(FakeThingsStore())
     with pytest.raises(ThingsNotFoundError):
-        client.get_project("nope")
+        client.get_project(ProjectId("nope"))
 
 
 def test_list_areas_and_get_area():
-    area = Area(id="a1", name="Personal", tag_names=["home"])
+    area = Area(id=AreaId("a1"), name="Personal", tag_names=["home"])
     store = FakeThingsStore(areas=[area])
     client = FakeThingsClient(store)
     assert [a.id for a in client.list_areas()] == ["a1"]
-    assert client.get_area("a1").tag_names == ["home"]
+    assert client.get_area(AreaId("a1")).tag_names == ["home"]
     with pytest.raises(ThingsNotFoundError):
-        client.get_area("missing")
+        client.get_area(AreaId("missing"))
 
 
 def test_load_fake_store_reads_full_fixture(tmp_path):

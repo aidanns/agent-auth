@@ -23,6 +23,7 @@ from things_cli.errors import (
     CredentialsBackendError,
     CredentialsNotFoundError,
 )
+from things_models.models import AreaId, ProjectId, TodoId
 
 
 def _default_file_path() -> str:
@@ -98,7 +99,7 @@ def handle_todos_list(args: argparse.Namespace) -> int:
 
 def handle_todo_show(args: argparse.Namespace) -> int:
     client = _load_client(args)
-    data = client.get_todo(args.id)
+    data = client.get_todo(TodoId(args.id))
     output.print_todo(data["todo"], as_json=args.json)
     return 0
 
@@ -115,7 +116,7 @@ def handle_projects_list(args: argparse.Namespace) -> int:
 
 def handle_project_show(args: argparse.Namespace) -> int:
     client = _load_client(args)
-    data = client.get_project(args.id)
+    data = client.get_project(ProjectId(args.id))
     output.print_project(data["project"], as_json=args.json)
     return 0
 
@@ -129,7 +130,7 @@ def handle_areas_list(args: argparse.Namespace) -> int:
 
 def handle_area_show(args: argparse.Namespace) -> int:
     client = _load_client(args)
-    data = client.get_area(args.id)
+    data = client.get_area(AreaId(args.id))
     output.print_area(data["area"], as_json=args.json)
     return 0
 

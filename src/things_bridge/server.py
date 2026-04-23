@@ -38,6 +38,7 @@ from things_bridge.errors import (
 )
 from things_bridge.metrics import ThingsBridgeMetrics, build_registry
 from things_models.client import ThingsClient
+from things_models.models import AreaId, ProjectId, TodoId
 
 READ_SCOPE = "things:read"
 HEALTH_SCOPE = "things-bridge:health"
@@ -279,11 +280,13 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             self._route_template = path
             if not self._validate(token, READ_SCOPE, "List Things todos"):
                 return
+            project_filter = _first(params, "project")
+            area_filter = _first(params, "area")
             try:
                 todos = things.list_todos(
                     list_id=_first(params, "list"),
-                    project_id=_first(params, "project"),
-                    area_id=_first(params, "area"),
+                    project_id=ProjectId(project_filter) if project_filter is not None else None,
+                    area_id=AreaId(area_filter) if area_filter is not None else None,
                     tag=_first(params, "tag"),
                     status=_first(params, "status"),
                 )
@@ -295,10 +298,11 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
 
         if path.startswith("/things-bridge/v1/todos/"):
             self._route_template = "/things-bridge/v1/todos/{id}"
-            todo_id = _safe_id(path[len("/things-bridge/v1/todos/") :])
-            if todo_id is None:
+            safe_todo_id = _safe_id(path[len("/things-bridge/v1/todos/") :])
+            if safe_todo_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
+            todo_id = TodoId(safe_todo_id)
             if not self._validate(token, READ_SCOPE, f"Read Things todo {todo_id}"):
                 return
             try:
@@ -313,8 +317,13 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             self._route_template = path
             if not self._validate(token, READ_SCOPE, "List Things projects"):
                 return
+            project_area_filter = _first(params, "area")
             try:
-                projects = things.list_projects(area_id=_first(params, "area"))
+                projects = things.list_projects(
+                    area_id=AreaId(project_area_filter)
+                    if project_area_filter is not None
+                    else None,
+                )
             except ThingsError as exc:
                 self._send_things_error_response(exc)
                 return
@@ -323,10 +332,11 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
 
         if path.startswith("/things-bridge/v1/projects/"):
             self._route_template = "/things-bridge/v1/projects/{id}"
-            project_id = _safe_id(path[len("/things-bridge/v1/projects/") :])
-            if project_id is None:
+            safe_project_id = _safe_id(path[len("/things-bridge/v1/projects/") :])
+            if safe_project_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
+            project_id = ProjectId(safe_project_id)
             if not self._validate(token, READ_SCOPE, f"Read Things project {project_id}"):
                 return
             try:
@@ -351,10 +361,11 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
 
         if path.startswith("/things-bridge/v1/areas/"):
             self._route_template = "/things-bridge/v1/areas/{id}"
-            area_id = _safe_id(path[len("/things-bridge/v1/areas/") :])
-            if area_id is None:
+            safe_area_id = _safe_id(path[len("/things-bridge/v1/areas/") :])
+            if safe_area_id is None:
                 self._send_json(404, {"error": "not_found"})
                 return
+            area_id = AreaId(safe_area_id)
             if not self._validate(token, READ_SCOPE, f"Read Things area {area_id}"):
                 return
             try:

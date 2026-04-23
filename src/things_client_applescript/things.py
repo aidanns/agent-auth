@@ -22,7 +22,7 @@ from things_models.errors import (
     ThingsNotFoundError,
     ThingsPermissionError,
 )
-from things_models.models import Area, Project, Todo
+from things_models.models import Area, AreaId, Project, ProjectId, Todo, TodoId
 from things_models.status import validate_status
 
 TAB_PLACEHOLDER = "\u241e"
@@ -504,14 +504,16 @@ def _parse_rows(output: str, expected_cols: int) -> list[list[str]]:
 
 def _row_to_todo(row: list[str]) -> Todo:
     cols = dict(zip(_TODO_FIELDS, row, strict=False))
+    project_id_raw = _field(cols["project_id"])
+    area_id_raw = _field(cols["area_id"])
     return Todo(
-        id=_field(cols["id"]) or "",
+        id=TodoId(_field(cols["id"]) or ""),
         name=_field(cols["name"]) or "",
         notes=_field(cols["notes"]) or "",
         status=_field(cols["status"]) or "open",
-        project_id=_field(cols["project_id"]),
+        project_id=ProjectId(project_id_raw) if project_id_raw is not None else None,
         project_name=_field(cols["project_name"]),
-        area_id=_field(cols["area_id"]),
+        area_id=AreaId(area_id_raw) if area_id_raw is not None else None,
         area_name=_field(cols["area_name"]),
         tag_names=_tag_list(cols["tag_names"]),
         due_date=_field(cols["due_date"]),
@@ -525,12 +527,13 @@ def _row_to_todo(row: list[str]) -> Todo:
 
 def _row_to_project(row: list[str]) -> Project:
     cols = dict(zip(_PROJECT_FIELDS, row, strict=False))
+    area_id_raw = _field(cols["area_id"])
     return Project(
-        id=_field(cols["id"]) or "",
+        id=ProjectId(_field(cols["id"]) or ""),
         name=_field(cols["name"]) or "",
         notes=_field(cols["notes"]) or "",
         status=_field(cols["status"]) or "open",
-        area_id=_field(cols["area_id"]),
+        area_id=AreaId(area_id_raw) if area_id_raw is not None else None,
         area_name=_field(cols["area_name"]),
         tag_names=_tag_list(cols["tag_names"]),
         due_date=_field(cols["due_date"]),
@@ -545,7 +548,7 @@ def _row_to_project(row: list[str]) -> Project:
 def _row_to_area(row: list[str]) -> Area:
     cols = dict(zip(_AREA_FIELDS, row, strict=False))
     return Area(
-        id=_field(cols["id"]) or "",
+        id=AreaId(_field(cols["id"]) or ""),
         name=_field(cols["name"]) or "",
         tag_names=_tag_list(cols["tag_names"]),
     )

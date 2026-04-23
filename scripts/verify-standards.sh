@@ -38,6 +38,9 @@
 #   2e. .github/renovate.json exists and targets
 #      .github/tool-versions.yaml via customManagers — the auto-bump
 #      channel for every CI tool (see ADR 0031 and issue #205).
+#   2f. src/things_models/models.py defines TodoId, ProjectId, AreaId
+#      via typing.NewType so Things entity ids aren't interchangeable
+#      strings at the type checker's boundary (see issue #34).
 #   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
 #      lefthook per .claude/instructions/bash.md.
 #   4. Markdown (mdformat) and TOML (taplo) formatters are wired into
@@ -405,6 +408,34 @@ if ! grep -qF ".github/tool-versions.yaml" "${RENOVATE_CONFIG}"; then
 fi
 
 echo "verify-standards: ${RENOVATE_CONFIG} is present and targets ${TOOL_VERSIONS_MANIFEST}."
+
+# ---------------------------------------------------------------------------
+# Semantic types for Things entity identifiers.
+# ---------------------------------------------------------------------------
+# .claude/instructions/coding-standards.md § "Types and safety" requires
+# newtypes at semantic boundaries. Every Things entity id must be a
+# typing.NewType alias so a TodoId and ProjectId aren't interchangeable
+# from the type checker's perspective. See issue #34.
+ID_TYPES_FILE="src/things_models/models.py"
+if [[ ! -f "${ID_TYPES_FILE}" ]]; then
+  echo "verify-standards: ${ID_TYPES_FILE} is missing." >&2
+  exit 1
+fi
+
+id_newtype_missing=0
+for id_name in TodoId ProjectId AreaId; do
+  if ! grep -qE "^${id_name}[[:space:]]*=[[:space:]]*NewType\(" "${ID_TYPES_FILE}"; then
+    echo "verify-standards: ${ID_TYPES_FILE} does not define ${id_name} via typing.NewType." >&2
+    id_newtype_missing=1
+  fi
+done
+
+if [[ ${id_newtype_missing} -ne 0 ]]; then
+  echo "  See .claude/instructions/coding-standards.md § Types and safety and issue #34." >&2
+  exit 1
+fi
+
+echo "verify-standards: ${ID_TYPES_FILE} defines TodoId / ProjectId / AreaId via typing.NewType."
 
 # Bash tooling: shellcheck + shfmt must be wired into CI, treefmt, and
 # lefthook per .claude/instructions/bash.md. Strip comments before
