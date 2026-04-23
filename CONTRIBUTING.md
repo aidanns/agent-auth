@@ -248,8 +248,18 @@ bodies, not hand-edited. To get a rich CHANGELOG entry:
   notes) in the commit **body**, not a separate CHANGELOG edit. The
   body surfaces in the GitHub release notes even when the CHANGELOG
   keeps only the subject.
-- Reference the closing issue with `Closes #N` in the footer so the
-  generated section links back.
+- Do **not** append the linked issue number to the subject (no
+  `(#<issue>)` suffix). GitHub's squash-merge auto-appends the PR
+  number, and the `conventionalcommits` preset auto-links it in
+  `CHANGELOG.md` — a hand-typed issue number would render a second,
+  redundant link beside it. Link the issue via the `Closes #N` footer
+  below instead.
+- Reference the closing issue with `Closes #N` in the footer so
+  GitHub closes the issue when the PR merges and the PR page lists
+  the linkage. `CHANGELOG.md` intentionally does **not** render the
+  closed-issue link — see
+  [PR #220](https://github.com/aidanns/agent-auth/pull/220) for the
+  rationale.
 - Mark breaking changes with a `!` after the type (`feat!:`) or a
   `BREAKING CHANGE:` footer. Pre-1.0, these demote to a minor bump
   (see [ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
