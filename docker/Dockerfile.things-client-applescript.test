@@ -36,10 +36,17 @@ COPY tests/things_client_fake/ ./tests/things_client_fake/
 RUN pip install --no-cache-dir \
         ./packages/agent-auth-common \
         ./packages/things-client-cli-applescript \
+        "pyyaml>=6.0" \
  && mkdir -p /opt/tests-support/tests \
  && cp tests/__init__.py /opt/tests-support/tests/__init__.py \
  && cp -r tests/things_client_fake /opt/tests-support/tests/things_client_fake \
  && chown -R agent-auth:agent-auth /home/agent-auth
+
+# ``tests.things_client_fake.store`` reads YAML fixtures at startup.
+# The installed ``things-client-cli-applescript`` doesn't pull pyyaml
+# transitively (its runtime doesn't touch YAML), so the test image
+# adds it explicitly — a test-only dependency that belongs in the
+# test image, not the service's runtime distribution.
 
 USER agent-auth
 
