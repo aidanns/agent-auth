@@ -1705,3 +1705,21 @@ if [[ ${rate_limit_adr_found} -eq 0 ]]; then
 fi
 
 echo "verify-standards: rate-limiting / DoS posture is recorded in ${rate_limit_adr}."
+
+# Key-loss / recovery design per
+# .claude/instructions/service-design.md ("Key recovery and loss
+# scenarios") and the deterministic regression check from issue #31:
+#
+#   - design/DESIGN.md contains a documented "Key loss and recovery"
+#     section. A missing section would silently leave the project
+#     without a documented behaviour for the keyring-wiped-but-DB-
+#     persists scenario.
+
+if ! grep -qE "^## +Key loss and recovery\b" design/DESIGN.md; then
+  echo "verify-standards: design/DESIGN.md is missing a '## Key loss and recovery' section." >&2
+  echo "  Document detection, user warning, and recovery behaviour per" >&2
+  echo "  .claude/instructions/service-design.md § Key recovery and loss scenarios." >&2
+  exit 1
+fi
+
+echo "verify-standards: design/DESIGN.md documents key-loss detection and recovery."
