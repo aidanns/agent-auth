@@ -24,7 +24,7 @@ SPDX-License-Identifier = "MIT"
 
 [[annotations]]
 path = [
-    ".releaserc.json",
+    ".releaserc.mjs",
     "package-lock.json",
     "package.json",
     "pyrightconfig.json",
