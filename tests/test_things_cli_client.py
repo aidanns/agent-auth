@@ -24,6 +24,7 @@ from things_bridge_client import (
 )
 from things_cli.client import BridgeClient
 from things_cli.credentials import Credentials, FileStore
+from things_models.models import TodoId
 
 # -- Fake bridge --
 
@@ -224,7 +225,7 @@ def test_404_surfaces_as_not_found(servers, tmp_path):
     _BridgeHandler.queued_responses = [(404, {"error": "not_found"}, None)]
     client, _ = _make_client(servers, tmp_path)
     with pytest.raises(ThingsBridgeNotFoundError):
-        client.get_todo("unknown")
+        client.get_todo(TodoId("unknown"))
 
 
 def test_502_surfaces_as_unavailable(servers, tmp_path):

@@ -27,6 +27,7 @@ from things_bridge_client import (
     ThingsBridgeUnauthorizedError,
     ThingsBridgeUnavailableError,
 )
+from things_models.models import TodoId
 
 
 class _StubHandler(BaseHTTPRequestHandler):
@@ -116,7 +117,7 @@ def test_403_maps_to_forbidden(bridge_server):
     _StubHandler.body = {"error": "scope_denied"}
     client = ThingsBridgeClient(url, timeout_seconds=2.0)
     with pytest.raises(ThingsBridgeForbiddenError, match="scope_denied"):
-        client.get_todo("aa_abc", "t1")
+        client.get_todo("aa_abc", TodoId("t1"))
 
 
 def test_404_maps_to_not_found(bridge_server):
@@ -125,7 +126,7 @@ def test_404_maps_to_not_found(bridge_server):
     _StubHandler.body = {"error": "not_found"}
     client = ThingsBridgeClient(url, timeout_seconds=2.0)
     with pytest.raises(ThingsBridgeNotFoundError, match="not_found"):
-        client.get_todo("aa_abc", "missing")
+        client.get_todo("aa_abc", TodoId("missing"))
 
 
 def test_429_surfaces_retry_after(bridge_server):

@@ -10,7 +10,7 @@ bridge's subprocess client (which delegates to it through JSON).
 
 from typing import Protocol
 
-from things_models.models import Area, Project, Todo
+from things_models.models import Area, AreaId, Project, ProjectId, Todo, TodoId
 
 
 class ThingsClient(Protocol):
@@ -20,18 +20,18 @@ class ThingsClient(Protocol):
         self,
         *,
         list_id: str | None = None,
-        project_id: str | None = None,
-        area_id: str | None = None,
+        project_id: ProjectId | None = None,
+        area_id: AreaId | None = None,
         tag: str | None = None,
         status: str | None = None,
     ) -> list[Todo]: ...
 
-    def get_todo(self, todo_id: str) -> Todo: ...
+    def get_todo(self, todo_id: TodoId) -> Todo: ...
 
-    def list_projects(self, *, area_id: str | None = None) -> list[Project]: ...
+    def list_projects(self, *, area_id: AreaId | None = None) -> list[Project]: ...
 
-    def get_project(self, project_id: str) -> Project: ...
+    def get_project(self, project_id: ProjectId) -> Project: ...
 
     def list_areas(self) -> list[Area]: ...
 
-    def get_area(self, area_id: str) -> Area: ...
+    def get_area(self, area_id: AreaId) -> Area: ...

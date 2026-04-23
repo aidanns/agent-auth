@@ -7,15 +7,29 @@
 Shared between the bridge (which parses subprocess JSON back into these
 dataclasses before re-serialising for HTTP responses) and the client
 CLIs (which build and emit them).
+
+Entity identifiers use ``typing.NewType`` wrappers so a ``TodoId`` and
+a ``ProjectId`` are not interchangeable from the type checker's
+perspective. See ``.claude/instructions/coding-standards.md`` § *Types
+and safety*.
 """
 
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, NewType
+
+TodoId = NewType("TodoId", str)
+"""Stable identifier for a :class:`Todo`."""
+
+ProjectId = NewType("ProjectId", str)
+"""Stable identifier for a :class:`Project`."""
+
+AreaId = NewType("AreaId", str)
+"""Stable identifier for an :class:`Area`."""
 
 
 @dataclass
 class Area:
-    id: str
+    id: AreaId
     name: str
     tag_names: list[str]
 
@@ -25,7 +39,7 @@ class Area:
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> "Area":
         return cls(
-            id=data["id"],
+            id=AreaId(data["id"]),
             name=data["name"],
             tag_names=list(data.get("tag_names") or []),
         )
@@ -33,11 +47,11 @@ class Area:
 
 @dataclass
 class Project:
-    id: str
+    id: ProjectId
     name: str
     notes: str
     status: str  # "open" | "completed" | "canceled"
-    area_id: str | None
+    area_id: AreaId | None
     area_name: str | None
     tag_names: list[str]
     due_date: str | None  # ISO 8601 date (YYYY-MM-DD) or None
@@ -52,12 +66,13 @@ class Project:
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> "Project":
+        raw_area_id = data.get("area_id")
         return cls(
-            id=data["id"],
+            id=ProjectId(data["id"]),
             name=data["name"],
             notes=data.get("notes", ""),
             status=data.get("status", "open"),
-            area_id=data.get("area_id"),
+            area_id=AreaId(raw_area_id) if raw_area_id is not None else None,
             area_name=data.get("area_name"),
             tag_names=list(data.get("tag_names") or []),
             due_date=data.get("due_date"),
@@ -71,13 +86,13 @@ class Project:
 
 @dataclass
 class Todo:
-    id: str
+    id: TodoId
     name: str
     notes: str
     status: str  # "open" | "completed" | "canceled"
-    project_id: str | None
+    project_id: ProjectId | None
     project_name: str | None
-    area_id: str | None
+    area_id: AreaId | None
     area_name: str | None
     tag_names: list[str]
     due_date: str | None
@@ -92,14 +107,16 @@ class Todo:
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> "Todo":
+        raw_project_id = data.get("project_id")
+        raw_area_id = data.get("area_id")
         return cls(
-            id=data["id"],
+            id=TodoId(data["id"]),
             name=data["name"],
             notes=data.get("notes", ""),
             status=data.get("status", "open"),
-            project_id=data.get("project_id"),
+            project_id=ProjectId(raw_project_id) if raw_project_id is not None else None,
             project_name=data.get("project_name"),
-            area_id=data.get("area_id"),
+            area_id=AreaId(raw_area_id) if raw_area_id is not None else None,
             area_name=data.get("area_name"),
             tag_names=list(data.get("tag_names") or []),
             due_date=data.get("due_date"),

@@ -30,7 +30,7 @@ from things_bridge.errors import (
 )
 from things_bridge.metrics import build_registry as build_bridge_registry
 from things_bridge.server import ThingsBridgeServer, _HealthChecker
-from things_models.models import Area
+from things_models.models import Area, AreaId
 
 
 class FakeAuthz(AgentAuthClient):
@@ -466,14 +466,14 @@ def test_get_project_by_id(bridge):
 
 
 def test_get_areas_list(bridge):
-    bridge["store"].areas = [Area(id="a1", name="Personal", tag_names=[])]
+    bridge["store"].areas = [Area(id=AreaId("a1"), name="Personal", tag_names=[])]
     status, data = _get(f"{bridge['url']}/things-bridge/v1/areas")
     assert status == 200
     assert data["areas"][0]["id"] == "a1"
 
 
 def test_get_area_by_id(bridge):
-    bridge["store"].areas = [Area(id="a1", name="Personal", tag_names=["home"])]
+    bridge["store"].areas = [Area(id=AreaId("a1"), name="Personal", tag_names=["home"])]
     status, data = _get(f"{bridge['url']}/things-bridge/v1/areas/a1")
     assert status == 200
     assert data["area"]["tag_names"] == ["home"]

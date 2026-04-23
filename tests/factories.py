@@ -6,12 +6,12 @@
 
 from typing import Any
 
-from things_models.models import Area, Project, Todo
+from things_models.models import Area, AreaId, Project, ProjectId, Todo, TodoId
 
 
 def make_todo(**overrides: Any) -> Todo:
     defaults: dict[str, Any] = dict(
-        id="t1",
+        id=TodoId("t1"),
         name="",
         notes="",
         status="open",
@@ -33,7 +33,7 @@ def make_todo(**overrides: Any) -> Todo:
 
 def make_project(**overrides: Any) -> Project:
     defaults: dict[str, Any] = dict(
-        id="p1",
+        id=ProjectId("p1"),
         name="",
         notes="",
         status="open",
@@ -52,6 +52,6 @@ def make_project(**overrides: Any) -> Project:
 
 
 def make_area(**overrides: Any) -> Area:
-    defaults: dict[str, Any] = dict(id="a1", name="", tag_names=[])
+    defaults: dict[str, Any] = dict(id=AreaId("a1"), name="", tag_names=[])
     defaults.update(overrides)
     return Area(**defaults)
