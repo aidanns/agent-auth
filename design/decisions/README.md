@@ -79,3 +79,5 @@ is linked from this index.
   — closes AU-9. Every audit entry carries a `chain_hmac = HMAC-SHA256(audit_chain_key, prev_hmac || canonical(entry))`; `agent-auth verify-audit` detects modify / delete / insert. `SCHEMA_VERSION` bumps 1→2; v1 logs are rolled over to `<path>.pre-chain-v2-*` on upgrade.
 - [ADR 0029 — Benchmark suite with pytest-benchmark](0029-benchmark-suite.md)
   — weekly `benchmark.yml` workflow runs a `benchmarks/` pytest tree against a committed `ci-linux-x86_64.json` baseline with a 25 % mean-runtime regression gate; `scripts/verify-standards.sh` enforces the suite + workflow stay present.
+- [ADR 0030 — Host-delegated GPG signing via gpg-cli / gpg-bridge split](0030-gpg-bridge-cli-split.md)
+  — devcontainer `gpg-cli` forwards git's sign / verify requests over HTTPS to a host `gpg-bridge`, which validates with agent-auth (`gpg:sign` scope, `allowed_signing_keys` allowlist) and shells out to a host backend CLI that drives the real `gpg`. Private keys never leave the host; unblocks re-enabling `required_signatures` (#217).
