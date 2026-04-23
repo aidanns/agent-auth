@@ -56,8 +56,8 @@ runs:
         emit treefmt-sha256             '.treefmt.sha256_linux_x86_64'
         emit systems-engineering-ref              '.["systems-engineering"].ref'
         emit systems-engineering-install-sha256   '.["systems-engineering"].install_sha256'
-        emit d2-install-url                       '.d2.install_url'
-        emit d2-install-sha256                    '.d2.install_sha256'
+        emit d2-version                           '.d2.version'
+        emit d2-sha256                            '.d2.sha256_linux_x86_64'
 
     - name: Install uv
       uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
@@ -65,25 +65,26 @@ runs:
         version: ${{ steps.versions.outputs.uv-version }}
         enable-cache: true
 
+    # d2 has to land before the systems-engineering install script runs —
+    # that script probes `d2` on PATH and aborts if it's missing. Same
+    # fetch-release-asset shape the parallel-install step uses for
+    # shellcheck / ruff / etc., just in its own step so the ordering
+    # constraint is explicit.
     - name: Install d2
       shell: bash
       env:
-        D2_INSTALL_URL: ${{ steps.versions.outputs.d2-install-url }}
-        D2_INSTALL_SHA256: ${{ steps.versions.outputs.d2-install-sha256 }}
+        D2_VERSION: ${{ steps.versions.outputs.d2-version }}
+        D2_SHA256: ${{ steps.versions.outputs.d2-sha256 }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        # curl -> tmp file -> sha256 verify -> execute. Piping straight
-        # to `sh` would run whatever the network returns; a content
-        # change at the upstream CDN would silently execute. See #157.
         set -euo pipefail
-        curl -fsSL \
-          --retry 5 --retry-max-time 60 --retry-all-errors \
-          -o /tmp/d2-install.sh \
-          "${D2_INSTALL_URL}"
-        echo "${D2_INSTALL_SHA256}  /tmp/d2-install.sh" | sha256sum -c -
-        # The previous form `curl ... | sh -s --` passed `--` to sh
-        # (end-of-options), not to the install script, so execute the
-        # downloaded script with no trailing args.
-        sh /tmp/d2-install.sh
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/terrastruct/d2/releases/download/v${D2_VERSION}/d2-v${D2_VERSION}-linux-amd64.tar.gz" \
+          /tmp/d2.tar.gz \
+          "${D2_SHA256}"
+        tar -xzf /tmp/d2.tar.gz -C /tmp
+        sudo install -m0755 "/tmp/d2-v${D2_VERSION}/bin/d2" /usr/local/bin/d2
+        d2 --version
 
     - name: Install systems-engineering
       shell: bash

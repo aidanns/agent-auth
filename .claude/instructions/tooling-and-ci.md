@@ -71,6 +71,35 @@ language: `python.md`, `bash.md`.
   or a different major fails. Renovate custom managers target the
   manifest so a single bump propagates to both environments.
 
+  **Adding a tool to the manifest:** add an entry with `version:` and
+  (for release-binary installs) `sha256_linux_x86_64:`; wire the
+  install into `.github/actions/setup-toolchain/action.yml`; add a
+  matching `customManagers` block to `.github/renovate.json` with the
+  right `datasource` + `depName` for upstream releases; teach
+  `scripts/renovate/recompute-sha256.sh` the asset URL template; and
+  add the PURL template to
+  `scripts/ci/submit-dependency-snapshot.sh` so CVE alerts cover the
+  new tool. `scripts/verify-standards.sh` asserts the manifest and
+  Renovate config stay aligned.
+
+- **Renovate custom managers + Dependency Submission API** — Renovate
+  (installed as a GitHub App, configured via `.github/renovate.json`)
+  owns the automated bump channel for the tool-versions manifest;
+  Dependabot continues to own `pip`, `github-actions`, and `npm` (no
+  overlap). Each tool has a regex custom manager that captures its
+  `version:` literal and points at the upstream datasource; a
+  post-upgrade task runs `scripts/renovate/recompute-sha256.sh` so the
+  sibling sha256 is recomputed in the same PR. The
+  `recompute-sha256.sh` command must be added to
+  `allowedPostUpgradeCommands` in the Renovate installation's repo or
+  org settings.
+
+  In parallel, `.github/workflows/dependency-submission.yml` builds a
+  PURL snapshot from the manifest on push-to-main and weekly, then
+  POSTs it to the Dependency Graph. Dependabot Alerts ingest the
+  snapshot so CVEs for any listed tool fire on the standard alerts
+  surface. See ADR 0031.
+
 - **Pin sha256 for tool binary downloads** — any CI step that downloads a
   CLI binary directly (curl/wget from a release CDN) must verify the
   artefact against a sha256 pinned in the repository before extracting or
