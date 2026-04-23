@@ -16,6 +16,11 @@ on:
 jobs:
   pip-audit:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required so codeql-action/upload-sarif can post findings to the
+      # repository's Security → Code scanning alerts tab.
+      security-events: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -25,11 +30,50 @@ jobs:
           version: "0.11.7"
           enable-cache: true
 
-      - name: Run pip-audit
+      - name: Export third-party requirements
         # Export all third-party deps (including dev, excluding the local
         # project package) then audit them. --extra dev intentionally covers
         # dev deps — a vulnerable dev dep can still be exploited in CI.
+        # Written inside the workspace so the follow-up hashFiles() guards
+        # can see the artefacts (hashFiles() only matches paths under
+        # GITHUB_WORKSPACE).
         run: |
           uv export --extra dev --no-emit-project --format requirements-txt --no-hashes \
-            > /tmp/requirements.txt
-          uvx pip-audit --strict -r /tmp/requirements.txt
+            > pip-audit-requirements.txt
+
+      - name: Run pip-audit (JSON)
+        # Findings cause pip-audit to exit non-zero; continue so the SARIF
+        # still uploads and surfaces advisories in the Security tab. The
+        # strict gate below is the hard failure path.
+        # pip-audit doesn't emit SARIF natively (v2.10 supports only
+        # columns/json/cyclonedx/markdown), so we capture JSON here and
+        # convert to SARIF in the next step.
+        continue-on-error: true
+        run: |
+          uvx pip-audit -r pip-audit-requirements.txt \
+            --format json --output pip-audit.json
+
+      - name: Convert pip-audit JSON to SARIF
+        # The converter is a thin wrapper — it only runs stdlib. We invoke
+        # it with the system python so we don't spin up the project venv
+        # just to reshape a JSON document.
+        if: always() && hashFiles('pip-audit.json') != ''
+        run: |
+          python3 scripts/pip_audit_to_sarif.py \
+            pip-audit.json pip-audit.sarif
+
+      - name: Upload SARIF to GitHub Security tab
+        # always() so a vulnerable dep still appears in the Security tab
+        # even when the strict gate (below) has already failed. The
+        # hashFiles guard skips the upload if pip-audit itself errored out
+        # before writing the JSON (e.g. PyPI unreachable) — uploading an
+        # empty file would hide the previous day's findings behind a
+        # successful-looking upload.
+        if: always() && hashFiles('pip-audit.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: pip-audit.sarif
+          category: pip-audit
+
+      - name: Gate on pip-audit findings
+        run: uvx pip-audit --strict -r pip-audit-requirements.txt
