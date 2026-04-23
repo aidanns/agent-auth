@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.0](https://github.com/aidanns/agent-auth/compare/v0.3.0...v0.4.0) (2026-04-23)
+
+### Features
+
+- **store:** numbered-SQL migration runner for the token store ([#29](https://github.com/aidanns/agent-auth/issues/29)) ([#222](https://github.com/aidanns/agent-auth/issues/222))
+
 ## [0.3.0](https://github.com/aidanns/agent-auth/compare/v0.2.2...v0.3.0) (2026-04-23)
 
 ### Features
