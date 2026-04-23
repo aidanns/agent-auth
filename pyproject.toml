@@ -29,6 +29,7 @@ dev = [
     "openapi-spec-validator>=0.7",
     "pip-audit>=2.7",
     "pyright>=1.1.408",
+    "pytest-benchmark>=5.0",
     "pytest-cov>=5.0",
     "pytest>=8.0",
     "reuse>=4.0",
@@ -136,8 +137,8 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-# Point mypy at both trees. CLI invocation stays `mypy src tests`.
-files = ["src", "tests"]
+# Point mypy at the three trees. CLI invocation stays `mypy`.
+files = ["src", "tests", "benchmarks"]
 
 # Third-party imports without type stubs. These are separately
 # addressed by pulling in types-* packages as they become available;

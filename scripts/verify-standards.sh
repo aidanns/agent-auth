@@ -71,6 +71,10 @@
 #      operations AND at least one test carries the perf_budget
 #      pytest marker, per .claude/instructions/testing-standards.md
 #      "Performance budget".
+#  15. A benchmarks/ directory contains at least one test_*.py file
+#      AND a scheduled CI workflow (.github/workflows/benchmark.yml)
+#      invokes it on `on: schedule:`, per
+#      .claude/instructions/testing-standards.md "Benchmark suite".
 
 set -euo pipefail
 
@@ -2021,3 +2025,82 @@ if [[ ${notifier_drift} -ne 0 ]]; then
 fi
 
 echo "verify-standards: notification plugin is URL-based (out-of-process); no importlib.import_module in server.py."
+
+# ---------------------------------------------------------------------------
+# Benchmark suite with scheduled CI workflow.
+# ---------------------------------------------------------------------------
+# .claude/instructions/testing-standards.md (Performance — "Benchmark
+# suite") requires a maintained benchmark suite that runs in CI on a
+# schedule. The deterministic regression check asserts both sides
+# cannot silently drift apart:
+#
+#   1. benchmarks/ exists and contains at least one test_*.py file,
+#      so deleting the benchmarks but leaving the workflow behind
+#      fails the gate.
+#   2. .github/workflows/benchmark.yml exists, has an `on:` block
+#      containing a `schedule:` trigger, and its steps invoke either
+#      `task benchmark` or a direct pytest run against benchmarks/,
+#      so deleting the workflow (or accidentally narrowing it to
+#      workflow_dispatch-only) fails the gate.
+
+benchmark_missing=0
+
+fail_benchmark_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  benchmark_missing=1
+}
+
+benchmarks_dir="benchmarks"
+if [[ ! -d "${benchmarks_dir}" ]]; then
+  fail_benchmark_check \
+    "${benchmarks_dir}/ directory is missing." \
+    "Add a pytest-benchmark suite per .claude/instructions/testing-standards.md § Performance."
+else
+  # Accept any test_*.py under benchmarks/ so authors are free to
+  # split the suite across files. compgen keeps the shell-glob match
+  # compatible with `set -u`.
+  if ! compgen -G "${benchmarks_dir}/test_*.py" >/dev/null; then
+    fail_benchmark_check \
+      "${benchmarks_dir}/ contains no test_*.py benchmark files." \
+      "Add at least one pytest-benchmark test file (see benchmarks/README.md)."
+  fi
+fi
+
+benchmark_workflow=".github/workflows/benchmark.yml"
+if [[ ! -f "${benchmark_workflow}" ]]; then
+  fail_benchmark_check \
+    "${benchmark_workflow} is missing." \
+    "Add a scheduled GitHub Actions workflow that runs the benchmark suite."
+else
+  # Match ``on:`` and ``schedule:`` inside it. Allow either the
+  # short form (``on: [schedule]``) or the mapping form
+  # (``on:\n  schedule:``). Strip comments so a disabled sample
+  # does not satisfy the gate.
+  workflow_stripped="$(sed -E 's/(^|[[:space:]])#.*$//' "${benchmark_workflow}")"
+  if ! grep -qE "^on:" <<<"${workflow_stripped}"; then
+    fail_benchmark_check \
+      "${benchmark_workflow} has no 'on:' trigger block." \
+      "Add 'on:' with a 'schedule:' entry."
+  elif ! grep -qE "^[[:space:]]*schedule:" <<<"${workflow_stripped}"; then
+    fail_benchmark_check \
+      "${benchmark_workflow} does not trigger on 'schedule:'." \
+      "Add a 'schedule:' cron entry inside the 'on:' block."
+  fi
+
+  # The workflow must actually invoke the benchmark suite — accept
+  # either the ``task benchmark`` wrapper or a raw ``pytest
+  # benchmarks/`` invocation, so the gate does not mandate the
+  # Taskfile indirection specifically.
+  if ! grep -qE "task[[:space:]]+benchmark\b|pytest[[:space:]].*benchmarks/" <<<"${workflow_stripped}"; then
+    fail_benchmark_check \
+      "${benchmark_workflow} does not invoke the benchmark suite." \
+      "Call 'task benchmark' or run pytest against 'benchmarks/' in the workflow steps."
+  fi
+fi
+
+if [[ ${benchmark_missing} -ne 0 ]]; then
+  exit 1
+fi
+
+echo "verify-standards: benchmark suite exists under ${benchmarks_dir}/ and ${benchmark_workflow} runs it on a schedule."

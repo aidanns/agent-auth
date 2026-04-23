@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Benchmark
+
+# Benchmarks are too noisy on shared GitHub runners to gate every PR
+# (see ADR 0029 and benchmarks/README.md for the threshold rationale).
+# Run on a weekly schedule so regressions surface within a week of
+# landing, and expose workflow_dispatch so a reviewer can trigger a
+# run on-demand when refreshing the baseline.
+#
+# Schedule is offset from the Mutation workflow (Mon 04:00 UTC) to
+# avoid sharing a runner window on a single queue day. Sunday 05:00
+# UTC means the results land early in the week when they're most
+# likely to be noticed.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 0" # 05:00 UTC every Sunday
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    # Hard cap below the default 6h runner limit. A clean benchmark
+    # run is well under a minute; 30min gives head-room for runner
+    # warm-up and repeated rounds without burning compute on a
+    # run-away test.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare compare flags
+        id: compare
+        # The committed baseline is optional: on the first run after
+        # this workflow is added, the file will not yet exist. Only
+        # wire --benchmark-compare / --benchmark-compare-fail when
+        # the baseline is present so the initial run can land the
+        # results JSON as an artifact without failing.
+        run: |
+          baseline="benchmarks/baselines/ci-linux-x86_64.json"
+          if [[ -f "${baseline}" ]]; then
+            echo "flags=--benchmark-compare=ci-linux-x86_64 --benchmark-compare-fail=mean:25%" >> "${GITHUB_OUTPUT}"
+            echo "Baseline found at ${baseline} — gating on 25% mean regression."
+          else
+            echo "flags=" >> "${GITHUB_OUTPUT}"
+            echo "No baseline at ${baseline} — running in reporting-only mode." \
+                 "See benchmarks/README.md § 'Baseline refresh procedure'."
+          fi
+
+      - name: Run benchmark suite
+        run: |
+          task benchmark -- \
+            --benchmark-json=benchmarks/results.json \
+            ${{ steps.compare.outputs.flags }}
+
+      - name: Upload results artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-results
+          path: benchmarks/results.json
+          if-no-files-found: warn

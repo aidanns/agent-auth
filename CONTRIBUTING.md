@@ -74,6 +74,7 @@ Every repeatable operation is exposed through the task runner. Run
 | Task                                       | Description                                                                                                                                               |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task test`                                | Run the pytest suite with coverage (unit by default; pass `-- --fast`, `-- --integration`, or `-- --all`). Fails below the `--cov-fail-under` floor.      |
+| `task benchmark`                           | Run the pytest-benchmark suite under `benchmarks/` (scheduled weekly in CI; see `benchmarks/README.md`).                                                  |
 | `task lint`                                | Run all configured linters (shellcheck, ruff check, keep-sorted).                                                                                         |
 | `task format`                              | Run all configured formatters (shfmt, ruff format, mdformat, taplo). Pass `-- --check` for diff-only mode (CI uses this).                                 |
 | `task typecheck`                           | Run mypy + pyright (strict) on `src/` and `tests/`.                                                                                                       |
@@ -135,6 +136,18 @@ immediately. Rationale in
   below the new score (so fluctuation doesn't flake CI).
 - **Lowering the floor** (rare): only with a commit-message
   justification; never lower silently. The floor never goes below 0.
+
+### Benchmarks
+
+`task benchmark` runs the pytest-benchmark suite under `benchmarks/`
+covering the token hot path (`parse_token`, `sign_token`,
+`verify_token`, `create_token_pair`) and the SQLite store
+(`get_family` for a family with 200 scopes, `get_token`,
+`create_token`). The suite is scheduled weekly via
+`.github/workflows/benchmark.yml` — too noisy on shared runners to
+gate every PR. Rationale and baseline-refresh procedure in
+[`benchmarks/README.md`](benchmarks/README.md) and
+[ADR 0029](design/decisions/0029-benchmark-suite.md).
 
 ### Schema migrations
 

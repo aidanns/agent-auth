@@ -12,6 +12,11 @@ tasks:
     cmds:
       - scripts/test.sh {{.CLI_ARGS}}
 
+  benchmark:
+    desc: Run the pytest-benchmark suite under benchmarks/. See benchmarks/README.md for the regression threshold and baseline refresh procedure.
+    cmds:
+      - scripts/benchmark.sh {{.CLI_ARGS}}
+
   lint:
     desc: Run all configured linters.
     cmds:
