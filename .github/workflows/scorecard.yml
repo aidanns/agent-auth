@@ -31,14 +31,6 @@ on:
 
 permissions: read-all
 
-env:
-  # Initial floor of 0.0 so the first scheduled run establishes a
-  # baseline without red-lighting CI before we know the observed score.
-  # Raise to `observed_score - 0.5` after the first publication and
-  # ratchet upward as supply-chain hardening lands (pinned deps, token
-  # permissions, signed releases, fuzzing, ...).
-  SCORECARD_MIN_SCORE: "0.0"
-
 jobs:
   analysis:
     name: Scorecard analysis
@@ -88,6 +80,18 @@ jobs:
           publish_results: false
 
       - name: Gate on aggregate score
+        # Kept at step-level rather than workflow-level: scorecard-action's
+        # publish_results endpoint rejects workflows that declare a top-level
+        # `env:` or `defaults:` block (see ossf/scorecard-action workflow
+        # restrictions), and losing publication would break the README badge
+        # and the SELF_ASSESSMENT publication claim.
+        env:
+          # Initial floor of 0.0 so the first scheduled run establishes a
+          # baseline without red-lighting CI before we know the observed score.
+          # Raise to `observed_score - 0.5` after the first publication and
+          # ratchet upward as supply-chain hardening lands (pinned deps, token
+          # permissions, signed releases, fuzzing, ...).
+          SCORECARD_MIN_SCORE: "0.0"
         run: |
           set -euo pipefail
           score=$(jq -r '.score' results.json)
