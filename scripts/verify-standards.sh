@@ -32,6 +32,9 @@
 #      pinned tool versions — neither setup-toolchain/action.yml nor
 #      scripts/verify-dependencies.sh may hard-code a version literal
 #      that also appears in the manifest (see issue #87).
+#   2d. setup-toolchain/action.yml has no unverified `curl | sh|bash`
+#      pipes — every network-fetched install script must be
+#      sha256-checked before execution (see issue #157).
 #   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
 #      lefthook per .claude/instructions/bash.md.
 #   4. Markdown (mdformat) and TOML (taplo) formatters are wired into
@@ -347,6 +350,27 @@ if [[ ${manifest_drift} -ne 0 ]]; then
 fi
 
 echo "verify-standards: ${TOOL_VERSIONS_MANIFEST} consumers contain no hard-coded version literals."
+
+# ---------------------------------------------------------------------------
+# No unverified `curl ... | sh|bash` pipes in setup-toolchain.
+# ---------------------------------------------------------------------------
+# Piping an installer script directly from the network into a shell
+# executes whatever bytes the CDN returns — a content swap is silent.
+# Every install.sh fetch in setup-toolchain must go through the
+# download -> sha256-verify -> execute pattern gated by a pinned hash
+# in .github/tool-versions.yaml. See issue #157.
+SETUP_TOOLCHAIN=".github/actions/setup-toolchain/action.yml"
+if [[ -f "${SETUP_TOOLCHAIN}" ]]; then
+  # strip_comments() isn't yet defined at this point in the file; the
+  # inline sed below matches that function's body.
+  if sed -E 's/(^|[[:space:]])#.*$//' "${SETUP_TOOLCHAIN}" \
+    | grep -qE "curl[^|]*\|[[:space:]]*(bash|sh)\b"; then
+    echo "verify-standards: ${SETUP_TOOLCHAIN} pipes 'curl' directly into a shell." >&2
+    echo "  Download to a tmp file, verify the sha256 pinned in ${TOOL_VERSIONS_MANIFEST}, then execute. See issue #157." >&2
+    exit 1
+  fi
+  echo "verify-standards: ${SETUP_TOOLCHAIN} has no unverified 'curl | sh|bash' pipes."
+fi
 
 # Bash tooling: shellcheck + shfmt must be wired into CI, treefmt, and
 # lefthook per .claude/instructions/bash.md. Strip comments before

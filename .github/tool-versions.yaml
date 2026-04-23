@@ -63,3 +63,14 @@ treefmt:
 
 systems-engineering:
   ref: "d8e664a5ad20c071d4ec1cd62377597f9404b6e9"
+  # sha256 of the install.sh body fetched from the ref above. Bump
+  # this together with `ref`; setup-toolchain verifies the script
+  # before executing it. See issue #157.
+  install_sha256: "f83a266a0b5f1bb754cf67e7b5d0bb9f0d5610907c06e9cd6a81ff4acecefb9a"
+
+# d2 has no semver pin — the integrity check is the install.sh body
+# sha256 itself, which must be bumped together with any upstream
+# install-script change at d2lang.com. See issue #157.
+d2:
+  install_url: "https://d2lang.com/install.sh"
+  install_sha256: "2b7f4dd773a8d6ba57903f404d82d95e22f5efb618efb6b3c8d8142325a52ae2"

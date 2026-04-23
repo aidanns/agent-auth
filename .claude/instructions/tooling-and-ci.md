@@ -83,6 +83,16 @@ language: `python.md`, `bash.md`.
   checksum file would travel over the same TLS channel as the artefact
   it claims to verify.
 
+  The same rule applies to **install scripts fetched over the network**
+  (`curl ... | sh`, `curl ... | bash`). Replace the pipe with
+  download → `sha256sum -c` → execute, with the hash pinned in the
+  tool-versions manifest and bumped together with any upstream change.
+  A ref-pin alone (e.g. a commit SHA in the URL) is not sufficient: the
+  install.sh body at that ref is still editable if the upstream repo is
+  a moving target, and the pipe form never sees the bytes it ran.
+  `verify-standards.sh` asserts the absence of unverified pipes in
+  `setup-toolchain/action.yml`.
+
 - **Pin release-affecting GitHub Actions to commit SHAs** — third-party
   `uses:` references in any workflow that holds `id-token: write`,
   `contents: write`, or otherwise sits on the release path must be pinned
