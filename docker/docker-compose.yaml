@@ -55,11 +55,17 @@ services:
 
   things-cli:
     # Launched only by the things-cli integration tests via
-    # ``docker compose run --rm things-cli <argv>``. No host port
-    # mapping, no ``depends_on`` — the test brings the stack up through
-    # the ``things-bridge`` service first, then executes this one-shot
-    # container against it.
+    # ``docker compose run --rm things-cli <argv>``. The ``on-demand``
+    # profile keeps this service out of the default ``docker compose up
+    # --wait`` bring-up that every per-service test fixture triggers:
+    # the image has no long-running ENTRYPOINT, so including it in
+    # ``--wait`` would have the container exit immediately and trip
+    # ``--wait`` into returning non-zero. ``docker compose run`` does
+    # not require the target profile to be active, so the CLI test
+    # harness still reaches the service without passing ``--profile``.
     image: {{ THINGS_CLI_TEST_IMAGE }}
+    profiles:
+      - on-demand
     stop_grace_period: 5s
 
 # Bridge config is shipped inline rather than via a per-test bind mount.
