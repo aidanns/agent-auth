@@ -37,8 +37,14 @@ fi
 # Tools required on PATH but whose versions are not pinned in the
 # manifest (e.g. host tools supplied by the OS or devcontainer, or
 # tools pinned by ref/SHA rather than a semver).
+#
+# keep-sorted: the google/keep-sorted_linux release asset reports a
+# build commit sha + timestamp ("ac58172 (2026-03-05T18:52:35Z)")
+# rather than a semantic version, so a `>= manifest` check isn't
+# meaningful. Presence is the only signal we can assert.
 PRESENCE_TOOLS=(
   # keep-sorted start
+  keep-sorted
   python3
   systems-engineering
   yq
@@ -52,7 +58,6 @@ PRESENCE_TOOLS=(
 # of the command's combined stdout+stderr.
 VERSIONED_TOOLS=(
   # keep-sorted start
-  "keep-sorted|keep-sorted|keep-sorted --version|^v?([0-9]+\\.[0-9]+\\.[0-9]+)"
   "mdformat|mdformat|mdformat --version|mdformat ([0-9]+\\.[0-9]+\\.[0-9]+)"
   "ripsecrets|ripsecrets|ripsecrets --version|ripsecrets ([0-9]+\\.[0-9]+\\.[0-9]+)"
   "ruff|ruff|ruff --version|ruff ([0-9]+\\.[0-9]+\\.[0-9]+)"
