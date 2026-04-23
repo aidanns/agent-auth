@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.2](https://github.com/aidanns/agent-auth/compare/v0.2.1...v0.2.2) (2026-04-23)
+
+### Bug Fixes
+
+- **release:** drop commit-hash and closes-issue links from changelog ([#220](https://github.com/aidanns/agent-auth/issues/220))
+
 ## [0.2.1](https://github.com/aidanns/agent-auth/compare/v0.2.0...v0.2.1) (2026-04-23)
 
 ### Bug Fixes
