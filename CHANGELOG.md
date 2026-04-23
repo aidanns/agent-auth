@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.0](https://github.com/aidanns/agent-auth/compare/v0.6.0...v0.7.0) (2026-04-23)
+
+### ⚠ BREAKING CHANGES
+
+- **audit:** HMAC-chained audit log with verify-audit CLI (#103) (#230)
+
+### Features
+
+- **audit:** HMAC-chained audit log with verify-audit CLI ([#103](https://github.com/aidanns/agent-auth/issues/103)) ([#230](https://github.com/aidanns/agent-auth/issues/230))
+
 ## [0.6.0](https://github.com/aidanns/agent-auth/compare/v0.5.0...v0.6.0) (2026-04-23)
 
 ### ⚠ BREAKING CHANGES
