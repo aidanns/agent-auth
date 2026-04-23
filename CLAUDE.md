@@ -43,6 +43,12 @@ simplifying for "personal project" scope.
   `ci:`. Breaking changes (`!` on the type — `feat!:` — or a
   `BREAKING CHANGE:` footer) are demoted to a minor bump while in
   0.x. `.releaserc.mjs` `releaseRules` is the source of truth.
+- Commit subjects must not include the linked issue number
+  (no `(#<issue>)` suffix). GitHub's squash-merge appends the PR
+  number, which the `conventionalcommits` preset auto-links; adding
+  an issue number by hand produces a duplicate parenthesized link in
+  `CHANGELOG.md`. Link the issue with a `Closes #N` footer instead.
+  See `CONTRIBUTING.md` § *Writing release-worthy commits*.
 
 ## Project-specific notes
 
