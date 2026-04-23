@@ -2,23 +2,37 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Build integration test image
+name: Build integration test images
 description: |
-  Build docker/Dockerfile.test under a stable tag so integration jobs
-  can reuse it via AGENT_AUTH_TEST_IMAGE_TAG. Kept as a step (not bundled
-  into the test step) so the GHA step-timing UI shows build cost split
-  out from test wall-time.
+  Build every ``docker/Dockerfile.<service>.test`` image under a shared
+  session tag so the integration jobs can reuse them via
+  ``AGENT_AUTH_TEST_IMAGE_SESSION``. Kept as a composite action (not
+  bundled into the test step) so the GHA step-timing UI shows the
+  build cost split out from test wall-time.
+
+  The step builds every image every time the action is invoked; jobs
+  that only exercise a subset still pay the full build cost, but this
+  keeps the invocation contract trivial and consistent with the local
+  test harness that builds all images up front. Selective builds are
+  tracked under the caching work in issue #129.
 
 inputs:
-  tag:
-    description: Image tag to apply to the built image
+  session:
+    description: Shared session suffix applied to every image tag
     required: true
 
 runs:
   using: composite
   steps:
-    - name: docker build
+    - name: docker build (all services)
       shell: bash
       env:
-        IMAGE_TAG: ${{ inputs.tag }}
-      run: docker build -f docker/Dockerfile.test -t "$IMAGE_TAG" .
+        SESSION: ${{ inputs.session }}
+      run: |
+        set -euo pipefail
+        for service in agent-auth things-bridge things-cli things-client-applescript; do
+          docker build \
+            -f "docker/Dockerfile.${service}.test" \
+            -t "${service}-test:${SESSION}" \
+            .
+        done

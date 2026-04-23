@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+# SPDX-License-Identifier: MIT
+#
+# Integration-test image for the ``things-client-cli-applescript``
+# contract tests. Never publish; never use in production.
+#
+# The ``things-client-cli-applescript`` CLI's AppleScript backend is
+# macOS-only; a real end-to-end run lives in the Darwin-gated
+# ``tests/test_things_client_applescript_things.py`` suite. The Linux
+# integration tests under ``tests/integration/things_client_applescript/``
+# pin the shared JSON-on-stdout + exit-code envelope (see
+# ``things_client_common.cli``) against the in-tree fake at
+# ``tests.things_client_fake``. That module is carried in this image so
+# ``docker run <image> python -m tests.things_client_fake`` is the
+# contract's test harness.
+
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HOME=/home/agent-auth \
+    PYTHONPATH=/opt/tests-support
+
+RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin agent-auth
+
+WORKDIR /src
+
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+COPY tests/__init__.py ./tests/__init__.py
+COPY tests/things_client_fake/ ./tests/things_client_fake/
+
+RUN pip install --no-cache-dir . \
+ && mkdir -p /opt/tests-support/tests \
+ && cp tests/__init__.py /opt/tests-support/tests/__init__.py \
+ && cp -r tests/things_client_fake /opt/tests-support/tests/things_client_fake \
+ && chown -R agent-auth:agent-auth /home/agent-auth
+
+USER agent-auth
+
+ENTRYPOINT ["things-client-cli-applescript"]

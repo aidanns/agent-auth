@@ -8,7 +8,8 @@ SPDX-License-Identifier: MIT
 
 ## Status
 
-Accepted — 2026-04-19.
+Accepted — 2026-04-19. Amended 2026-04-23 (see *Amendment — 2026-04-23*
+below).
 
 ## Context
 
@@ -155,3 +156,61 @@ test image across all of them:
   AppleScript CLI against a stub Things 3 fixture (separate from this
   ADR; tracked alongside the ongoing JIT-approval out-of-process
   migration in #6).
+
+## Amendment — 2026-04-23
+
+The *"One Compose project per service, separate Dockerfiles"*
+alternative above was rejected on the basis that all four CLIs ship
+from the same `pyproject.toml`, so a shared image buys no isolation. That
+premise no longer holds: issue [#105](https://github.com/aidanns/agent-auth/issues/105)
+splits the repo into per-service subprojects, each with its own
+`pyproject.toml`, `install.sh`, and release tag namespace. Keeping a
+single `Dockerfile.test` across services would re-couple those
+deliverables at the test-image layer once #105 lands.
+
+Issue [#95](https://github.com/aidanns/agent-auth/issues/95) reverses the
+"one image" sub-decision as the enabling prep step for #105. The rest
+of ADR 0005 stands (per-test Compose project, in-container
+`things-cli` tests with a file-backed credential store, bridge config
+shipped inline via `configs:`, `scripts/verify-integration-isolation.sh`
+gating the topology).
+
+Concretely, the following sub-decisions change:
+
+- **Per-service Dockerfiles replace `docker/Dockerfile.test`.** Each
+  of `Dockerfile.agent-auth.test`, `Dockerfile.things-bridge.test`,
+  `Dockerfile.things-cli.test`, and
+  `Dockerfile.things-client-applescript.test` is fully self-contained
+  (no shared `Dockerfile.base.test`). `pip install .` installs the
+  whole project today; #105 swaps it to
+  `pip install ./packages/<service>/` per Dockerfile.
+- **Compose services point at per-service images.** The
+  `docker-compose.yaml` template now carries one placeholder per image
+  (`AGENT_AUTH_TEST_IMAGE`, `THINGS_BRIDGE_TEST_IMAGE`,
+  `THINGS_CLI_TEST_IMAGE`) and drops the `agent-auth` / `things-bridge`
+  `entrypoint` overrides (each image has its own default
+  `ENTRYPOINT`). The notifier sidecar continues to reuse the
+  agent-auth image with an explicit entrypoint override because it
+  runs `python -m tests_support.notifier`, a different process than
+  `agent-auth serve`.
+- **`things-cli` runs in its own short-lived container.** The test
+  harness calls `docker compose run --rm things-cli` against the new
+  `things-cli` Compose service instead of `docker compose exec`'ing
+  into the bridge. The 0600 credentials file is now owned by the
+  container's UID inside a per-test bind-mounted tmpdir on the host;
+  no shared-UID compromise is required.
+- **Per-session image tags.** The harness builds `<service>-test:<session>`
+  for each service at session start. CI exposes the session id via
+  `AGENT_AUTH_TEST_IMAGE_SESSION` (replacing the previous single
+  `AGENT_AUTH_TEST_IMAGE_TAG`); `scripts/verify-integration-isolation.sh`
+  enforces that every per-service Dockerfile exists and that the old
+  `Dockerfile.test` is absent.
+
+The `tests/things_client_fake/` module now lives in both the
+`things-bridge` image (invoked as the bridge's `things_client_command`
+subprocess) and the `things-client-applescript` image (the fake is the
+stand-in that image's contract tests exercise on Linux). The
+duplication is ~10 lines of Dockerfile and mirrors the production
+split: after #105, the fake will travel with the AppleScript CLI's
+test assets and the bridge will either pin a fixed test-helper package
+or continue to carry its own copy.
