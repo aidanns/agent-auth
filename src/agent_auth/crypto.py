@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from agent_auth.keys import EncryptionKey
 
-NONCE_SIZE = 12
+NONCE_SIZE_BYTES = 12
 
 # Distinguishes encrypted bytes from arbitrary plaintext bytes at the type
 # level. Runtime representation is still ``bytes`` (``nonce || ciphertext ||
@@ -27,7 +27,7 @@ def encrypt_field(plaintext: bytes, key: EncryptionKey, aesgcm: AESGCM | None = 
     Returns nonce (12 bytes) || ciphertext || tag (16 bytes).
     Pass a pre-constructed AESGCM instance to avoid recreating it per call.
     """
-    nonce = os.urandom(NONCE_SIZE)
+    nonce = os.urandom(NONCE_SIZE_BYTES)
     if aesgcm is None:
         aesgcm = AESGCM(key)
     ciphertext = aesgcm.encrypt(nonce, plaintext, None)
@@ -41,8 +41,8 @@ def decrypt_field(
 
     Pass a pre-constructed AESGCM instance to avoid recreating it per call.
     """
-    nonce = ciphertext[:NONCE_SIZE]
-    data = ciphertext[NONCE_SIZE:]
+    nonce = ciphertext[:NONCE_SIZE_BYTES]
+    data = ciphertext[NONCE_SIZE_BYTES:]
     if aesgcm is None:
         aesgcm = AESGCM(key)
     return aesgcm.decrypt(nonce, data, None)

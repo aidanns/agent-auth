@@ -50,7 +50,7 @@ _UNKNOWN_ROUTE = "/unknown"
 
 # Upper bound on ids accepted from URL paths. Things ids are short; reject
 # anything excessive before it ever reaches AppleScript.
-_MAX_ID_LEN = 128
+_MAX_ID_LEN_CHARS = 128
 
 # How long a successful ``shutil.which`` resolution of the things-client
 # executable is trusted by the /health probe. Long enough that a probe
@@ -113,7 +113,7 @@ def _safe_id(raw: str | None) -> str | None:
     Only printable ASCII (excluding ``/``) and non-ASCII characters above U+007F
     are permitted.
     """
-    if raw is None or not raw or len(raw) > _MAX_ID_LEN:
+    if raw is None or not raw or len(raw) > _MAX_ID_LEN_CHARS:
         return None
     for ch in raw:
         cp = ord(ch)

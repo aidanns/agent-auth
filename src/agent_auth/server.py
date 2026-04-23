@@ -53,13 +53,13 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
     def _server(self) -> "AgentAuthServer":
         return cast("AgentAuthServer", self.server)
 
-    MAX_BODY_SIZE = 1_048_576  # 1 MiB
+    MAX_BODY_SIZE_BYTES = 1_048_576  # 1 MiB
 
     def _read_json(self) -> dict[str, Any] | None:
         length = int(self.headers.get("Content-Length", 0))
         if length == 0:
             return {}
-        if length > self.MAX_BODY_SIZE:
+        if length > self.MAX_BODY_SIZE_BYTES:
             # Drain the announced body before sending 400. Closing the
             # socket mid-upload surfaces a BrokenPipeError on the
             # client's sendall() instead of a clean status response —

@@ -41,6 +41,10 @@
 #   2f. src/things_models/models.py defines TodoId, ProjectId, AreaId
 #      via typing.NewType so Things entity ids aren't interchangeable
 #      strings at the type checker's boundary (see issue #34).
+#   2g. Numeric parameters, dataclass fields, and module constants
+#      under src/ carry a unit suffix (_seconds, _bytes, _count, ...)
+#      per .claude/instructions/coding-standards.md § Units in names
+#      (AST audit; see issue #35).
 #   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
 #      lefthook per .claude/instructions/bash.md.
 #   4. Markdown (mdformat) and TOML (taplo) formatters are wired into
@@ -436,6 +440,160 @@ if [[ ${id_newtype_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: ${ID_TYPES_FILE} defines TodoId / ProjectId / AreaId via typing.NewType."
+
+# ---------------------------------------------------------------------------
+# Numeric names carry their unit (AST audit).
+# ---------------------------------------------------------------------------
+# .claude/instructions/coding-standards.md § "Units in names" requires
+# numeric parameters, dataclass fields, and module constants to encode
+# their unit in the name (`timeout_seconds`, `buffer_size_bytes`,
+# `max_retries_count`). Enforced via AST walk over src/; the allow-list
+# below covers stdlib-override conventions (HTTP status/code, signal
+# handler signum, Prometheus amount/value, etc.) that cannot or should
+# not be renamed. See issue #35.
+if ! python3 - <<'PY' 2>/tmp/verify-standards-units.err; then
+import ast
+import pathlib
+import sys
+
+# Suffixes that count as "carries a unit". Keep conservative — a rename
+# that adds _seconds / _bytes is cheaper than expanding the whitelist
+# and accepting ambiguous names forever.
+UNIT_SUFFIXES = (
+    # time
+    "_seconds", "_ms", "_us", "_ns", "_minutes", "_hours", "_days",
+    "_per_second", "_per_minute", "_hz",
+    # size / length
+    "_bytes", "_kb", "_mb", "_gb", "_bits", "_chars", "_len", "_length",
+    # counts and capacities
+    "_count", "_max", "_min", "_size", "_retries",
+    # identifiers / indexed values (numeric kinds sometimes unavoidable)
+    "_id", "_version", "_index", "_number", "_code",
+    # ratios
+    "_percent", "_ratio", "_fraction",
+    # network / OS
+    "_port", "_pid", "_fd",
+)
+
+# Bare names allowed despite carrying an implicit unit — standard-
+# library overrides, Prometheus-client idioms, and structural roles
+# where the name describes the role rather than a unit. Adding to this
+# list is a judgment call; prefer renaming to adding an exception.
+ALLOWED_BARE = {
+    "self", "cls",
+    # Prometheus-client conventions (amount=delta, value=observation)
+    "amount", "value", "buckets",
+    # BaseHTTPRequestHandler.send_response override
+    "code", "size",
+    # Private HTTP helpers use ``status`` for the status code. Rename
+    # to status_code would ripple through every handler; keep the name
+    # but block new usage in non-HTTP contexts via the allow-list.
+    "status",
+    # POSIX signal handler convention
+    "_signum",
+    # subprocess.Popen stdlib
+    "returncode",
+    # generic row/column count in tight parsers
+    "expected_cols",
+    # default value in env-reading helpers
+    "fallback",
+    # Prometheus-metric Histogram.__init__
+    "width",
+    # port is a universal network concept; rename to port_number adds
+    # no clarity and every networking library already uses "port".
+    "port",
+    # migration version number / seen-set of versions
+    "version", "seen",
+    # single-letter conventional counter
+    "n",
+}
+
+# Allow-list *prefixes* for module-level constants whose prefix already
+# encodes the unit/role (EXIT_OK, EXIT_NOT_FOUND, ...). Parameters and
+# fields still go through the suffix rule above.
+ALLOWED_CONSTANT_PREFIXES = ("EXIT_",)
+
+NUMERIC_NAMES = {"int", "float", "Decimal"}
+
+def is_numeric(ann):
+    if ann is None:
+        return False
+    if isinstance(ann, ast.Name):
+        return ann.id in NUMERIC_NAMES
+    if isinstance(ann, ast.BinOp):
+        return is_numeric(ann.left) or is_numeric(ann.right)
+    if isinstance(ann, ast.Subscript):
+        return is_numeric(ann.slice)
+    return False
+
+
+def has_unit(name: str) -> bool:
+    n = name.lower()
+    if n in ALLOWED_BARE:
+        return True
+    if n.startswith("num_") or n.startswith("n_"):
+        return True
+    return any(n.endswith(s) for s in UNIT_SUFFIXES)
+
+
+def looks_numeric_constant(value) -> bool:
+    # Constant literal (bare number or plain expression like 64 * 1024).
+    # BinOp requires BOTH operands numeric so `b"\x00" * 32` (bytes
+    # multiplied by an int) doesn't false-positive as a numeric
+    # constant.
+    if isinstance(value, ast.Constant):
+        return isinstance(value.value, (int, float)) and not isinstance(value.value, bool)
+    if isinstance(value, ast.BinOp):
+        return looks_numeric_constant(value.left) and looks_numeric_constant(value.right)
+    if isinstance(value, ast.UnaryOp):
+        return looks_numeric_constant(value.operand)
+    return False
+
+
+violations: list[str] = []
+
+for path in sorted(pathlib.Path("src").rglob("*.py")):
+    tree = ast.parse(path.read_text())
+    # Track class bodies so we know when an AnnAssign is a dataclass
+    # field vs a module-level constant.
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for arg in node.args.args + node.args.kwonlyargs:
+                if is_numeric(arg.annotation) and not has_unit(arg.arg):
+                    violations.append(
+                        f"{path}:{arg.lineno}: numeric parameter `{arg.arg}` in {node.name}() has no unit suffix"
+                    )
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            tgt = node.target.id
+            if is_numeric(node.annotation) and not has_unit(tgt):
+                violations.append(
+                    f"{path}:{node.lineno}: numeric field/constant `{tgt}` has no unit suffix"
+                )
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            tgt = node.targets[0].id
+            # Module-level uppercase constant with a numeric value.
+            if tgt.isupper() and not tgt.startswith("__") and looks_numeric_constant(node.value):
+                if any(tgt.startswith(p) for p in ALLOWED_CONSTANT_PREFIXES):
+                    continue
+                if not has_unit(tgt):
+                    violations.append(
+                        f"{path}:{node.lineno}: numeric module constant `{tgt}` has no unit suffix"
+                    )
+
+for v in violations:
+    print(v)
+if violations:
+    print(f"--- {len(violations)} violation(s) ---", file=sys.stderr)
+    sys.exit(1)
+PY
+  echo "verify-standards: numeric name unit audit (see .claude/instructions/coding-standards.md § Units in names and issue #35):" >&2
+  cat /tmp/verify-standards-units.err >&2
+  rm -f /tmp/verify-standards-units.err
+  exit 1
+fi
+rm -f /tmp/verify-standards-units.err
+
+echo "verify-standards: numeric parameters, fields, and module constants carry a unit suffix."
 
 # Bash tooling: shellcheck + shfmt must be wired into CI, treefmt, and
 # lefthook per .claude/instructions/bash.md. Strip comments before
