@@ -28,6 +28,10 @@
 #   2b. Every astral-sh/setup-uv invocation passes an explicit
 #      `with.version` so the uv binary can't silently upgrade between
 #      runs (see issue #84).
+#   2c. .github/tool-versions.yaml is the single source of truth for
+#      pinned tool versions — neither setup-toolchain/action.yml nor
+#      scripts/verify-dependencies.sh may hard-code a version literal
+#      that also appears in the manifest (see issue #87).
 #   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
 #      lefthook per .claude/instructions/bash.md.
 #   4. Markdown (mdformat) and TOML (taplo) formatters are wired into
@@ -291,6 +295,54 @@ if [[ ${uv_version_matches} -eq 0 ]]; then
 else
   echo "verify-standards: all ${uv_version_matches} astral-sh/setup-uv invocations pin 'with.version'."
 fi
+
+# ---------------------------------------------------------------------------
+# Central tool-versions manifest is the only source of truth.
+# ---------------------------------------------------------------------------
+# .github/tool-versions.yaml is consumed by both
+# .github/actions/setup-toolchain/action.yml (CI) and
+# scripts/verify-dependencies.sh (local). Drift canary: assert no version
+# pinned in the manifest appears as a literal string in either consumer.
+# A bump to the manifest must propagate automatically; a literal slips
+# through this gate and surfaces on the next drift.
+TOOL_VERSIONS_MANIFEST=".github/tool-versions.yaml"
+TOOL_VERSIONS_CONSUMERS=(
+  ".github/actions/setup-toolchain/action.yml"
+  "scripts/verify-dependencies.sh"
+)
+
+if [[ ! -f "${TOOL_VERSIONS_MANIFEST}" ]]; then
+  echo "verify-standards: ${TOOL_VERSIONS_MANIFEST} is missing — consumers cannot resolve pinned versions." >&2
+  exit 1
+fi
+
+manifest_drift=0
+# sed here strips trailing `# ...` comments so a commented-out mention
+# ("# bump: 0.11.7 -> ...") doesn't trip the canary. strip_comments()
+# isn't yet defined at this point in the file, so this inlines the
+# same sed invocation.
+while IFS=$'\t' read -r tool_name version; do
+  [[ -n "${version}" && "${version}" != "null" ]] || continue
+  for consumer in "${TOOL_VERSIONS_CONSUMERS[@]}"; do
+    [[ -f "${consumer}" ]] || continue
+    # Match the version inside quotes or after `@v` so a fragment that
+    # coincides with a sha256 byte sequence can't false-positive.
+    if sed -E 's/(^|[[:space:]])#.*$//' "${consumer}" \
+      | grep -qE "[\"']${version//./\\.}[\"']|@v${version//./\\.}([^0-9.]|$)"; then
+      echo "verify-standards: ${consumer} hard-codes '${version}' (pinned as '${tool_name}' in ${TOOL_VERSIONS_MANIFEST})." >&2
+      manifest_drift=1
+    fi
+  done
+done < <(
+  yq -r '. | to_entries | .[] | [.key, (.value.version // "")] | @tsv' "${TOOL_VERSIONS_MANIFEST}"
+)
+
+if [[ ${manifest_drift} -ne 0 ]]; then
+  echo "  Both consumers must read ${TOOL_VERSIONS_MANIFEST} via yq — no duplicated literals. See issue #87." >&2
+  exit 1
+fi
+
+echo "verify-standards: ${TOOL_VERSIONS_MANIFEST} consumers contain no hard-coded version literals."
 
 # Bash tooling: shellcheck + shfmt must be wired into CI, treefmt, and
 # lefthook per .claude/instructions/bash.md. Strip comments before

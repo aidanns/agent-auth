@@ -57,6 +57,20 @@ language: `python.md`, `bash.md`.
 - **Wire all check scripts into CI** — every repeatable check script must
   have a CI workflow.
 
+- **Central tool-versions manifest** — pinned CLI tool versions live in a
+  single YAML file at `.github/tool-versions.yaml`. Both the CI composite
+  action (`.github/actions/setup-toolchain/action.yml`) and the local
+  preflight (`scripts/verify-dependencies.sh`) read this file; neither
+  consumer may hard-code a version literal that also lives in the
+  manifest. `scripts/verify-standards.sh` enforces that canary.
+
+  CI installs the exact manifest version for reproducibility.
+  `verify-dependencies.sh` enforces the pin as a **minimum within the
+  same major** — local dev environments (brew, apt, asdf) frequently
+  ship ahead of CI, so `>= manifest_version` passes, an older version
+  or a different major fails. Renovate custom managers target the
+  manifest so a single bump propagates to both environments.
+
 - **Pin sha256 for tool binary downloads** — any CI step that downloads a
   CLI binary directly (curl/wget from a release CDN) must verify the
   artefact against a sha256 pinned in the repository before extracting or
