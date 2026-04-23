@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.10.0](https://github.com/aidanns/agent-auth/compare/v0.9.1...v0.10.0) (2026-04-23)
+
+### Features
+
+- **design:** wire generator + CI drift gate for design/\*.yaml renders ([#256](https://github.com/aidanns/agent-auth/issues/256))
+
 ## [0.9.1](https://github.com/aidanns/agent-auth/compare/v0.9.0...v0.9.1) (2026-04-23)
 
 ### Bug Fixes
