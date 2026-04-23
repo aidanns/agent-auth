@@ -424,3 +424,16 @@ This is a personal project. If you find a security issue, **do not open a
 public GitHub issue.** Use
 [GitHub private vulnerability reporting](https://github.com/aidanns/agent-auth/security/advisories/new)
 to disclose the issue confidentially.
+
+### Post-incident review
+
+Every confirmed vulnerability that reaches committed state earns a
+structured post-incident review (PIR) in
+[`design/vulnerability-reviews/`](design/vulnerability-reviews/). The
+review is part of the remediation PR, captures root cause, similar-
+vulnerability search, remediation, and preventive follow-ups, and maps
+onto NIST SSDF RV.2 / RV.3 practices. See
+[`design/vulnerability-reviews/README.md`](design/vulnerability-reviews/README.md)
+for the when-to-write and how-to-write guidance, and
+[`design/vulnerability-reviews/TEMPLATE.md`](design/vulnerability-reviews/TEMPLATE.md)
+for the template.

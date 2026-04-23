@@ -20,6 +20,12 @@ defaults where nothing is already in place.
 - **Threat model** — produce or refresh a STRIDE / attack-tree threat model
   in `SECURITY.md` before making security-relevant changes. The threat model
   drives standards compliance, rate limiting, and key recovery design.
+- **Post-incident review (PIR)** — when a plan is remediating a confirmed
+  vulnerability (private advisory, internal finding, or an exploited upstream
+  dep), copy `design/vulnerability-reviews/TEMPLATE.md` to
+  `design/vulnerability-reviews/NNNN-slug.md` and fill every section as
+  part of the fix PR. Add an index entry in the sibling `README.md`. See
+  `design/vulnerability-reviews/README.md` for when a PIR is required.
 - **Architecture Decision Records** — for each significant design decision,
   write a short ADR in `design/decisions/`. Capture the context, decision,
   and consequences so the rationale survives beyond commit messages.
