@@ -19,7 +19,7 @@ def test_health_endpoint_reports_ok_when_called_with_the_health_scope(agent_auth
 @pytest.mark.covers_function("Serve Health Endpoint")
 def test_health_endpoint_rejects_unauthenticated_callers(agent_auth_container):
     with pytest.raises(AuthzTokenInvalidError, match="missing_token"):
-        agent_auth_container.client().check_health("")
+        agent_auth_container.client().check_health(None)
 
 
 @pytest.mark.covers_function("Serve Health Endpoint")
