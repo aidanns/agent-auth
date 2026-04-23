@@ -38,17 +38,17 @@
 #   2e. .github/renovate.json exists and targets
 #      .github/tool-versions.yaml via customManagers — the auto-bump
 #      channel for every CI tool (see ADR 0031 and issue #205).
-#   2f. src/things_models/models.py defines TodoId, ProjectId, AreaId
+#   2f. packages/agent-auth-common/src/things_models/models.py defines TodoId, ProjectId, AreaId
 #      via typing.NewType so Things entity ids aren't interchangeable
 #      strings at the type checker's boundary (see issue #34).
 #   2g. Numeric parameters, dataclass fields, and module constants
 #      under src/ carry a unit suffix (_seconds, _bytes, _count, ...)
 #      per .claude/instructions/coding-standards.md § Units in names
 #      (AST audit; see issue #35).
-#   2h. src/things_bridge/server.py defines a ``SafeId`` NewType that
+#   2h. packages/things-bridge/src/things_bridge/server.py defines a ``SafeId`` NewType that
 #      ``_safe_id`` returns, so validated ids carry a distinct type
 #      at the trust boundary (see issue #36).
-#   2i. src/things_bridge/types.py defines ``ThingsClientCommand`` as a
+#   2i. packages/things-bridge/src/things_bridge/types.py defines ``ThingsClientCommand`` as a
 #      typing.NewType plus a factory that enforces the non-empty /
 #      all-str invariant at the config / subprocess boundary (see
 #      issue #70).
@@ -427,7 +427,7 @@ echo "verify-standards: ${RENOVATE_CONFIG} is present and targets ${TOOL_VERSION
 # newtypes at semantic boundaries. Every Things entity id must be a
 # typing.NewType alias so a TodoId and ProjectId aren't interchangeable
 # from the type checker's perspective. See issue #34.
-ID_TYPES_FILE="src/things_models/models.py"
+ID_TYPES_FILE="packages/agent-auth-common/src/things_models/models.py"
 if [[ ! -f "${ID_TYPES_FILE}" ]]; then
   echo "verify-standards: ${ID_TYPES_FILE} is missing." >&2
   exit 1
@@ -458,13 +458,13 @@ echo "verify-standards: ${ID_TYPES_FILE} defines TodoId / ProjectId / AreaId via
 # concatenating the id into audit/JIT descriptions. A ``SafeId``
 # NewType makes the invariant visible at every call site. See issue
 # #36.
-if ! grep -qE "^SafeId[[:space:]]*=[[:space:]]*NewType\(" src/things_bridge/server.py; then
-  echo "verify-standards: src/things_bridge/server.py does not define SafeId via typing.NewType." >&2
+if ! grep -qE "^SafeId[[:space:]]*=[[:space:]]*NewType\(" packages/things-bridge/src/things_bridge/server.py; then
+  echo "verify-standards: packages/things-bridge/src/things_bridge/server.py does not define SafeId via typing.NewType." >&2
   echo "  See .claude/instructions/coding-standards.md § Types and safety and issue #36." >&2
   exit 1
 fi
 
-echo "verify-standards: src/things_bridge/server.py defines SafeId via typing.NewType."
+echo "verify-standards: packages/things-bridge/src/things_bridge/server.py defines SafeId via typing.NewType."
 
 # ---------------------------------------------------------------------------
 # ThingsClientCommand NewType at the config / subprocess boundary.
@@ -474,18 +474,18 @@ echo "verify-standards: src/things_bridge/server.py defines SafeId via typing.Ne
 # committed to a ThingsClientCommand newtype wrapping the argv list.
 # See issue #70. The check asserts the NewType + its factory are still
 # defined; mypy/pyright catch misuse at call sites.
-if ! grep -qE "^ThingsClientCommand[[:space:]]*=[[:space:]]*NewType\(" src/things_bridge/types.py; then
-  echo "verify-standards: src/things_bridge/types.py does not define ThingsClientCommand via typing.NewType." >&2
+if ! grep -qE "^ThingsClientCommand[[:space:]]*=[[:space:]]*NewType\(" packages/things-bridge/src/things_bridge/types.py; then
+  echo "verify-standards: packages/things-bridge/src/things_bridge/types.py does not define ThingsClientCommand via typing.NewType." >&2
   echo "  See .claude/instructions/coding-standards.md § Types and safety and issue #70." >&2
   exit 1
 fi
-if ! grep -qE "^def make_things_client_command\(" src/things_bridge/types.py; then
-  echo "verify-standards: src/things_bridge/types.py does not expose make_things_client_command()." >&2
+if ! grep -qE "^def make_things_client_command\(" packages/things-bridge/src/things_bridge/types.py; then
+  echo "verify-standards: packages/things-bridge/src/things_bridge/types.py does not expose make_things_client_command()." >&2
   echo "  The factory centralises the non-empty / all-str invariant; see issue #70." >&2
   exit 1
 fi
 
-echo "verify-standards: src/things_bridge/types.py defines ThingsClientCommand + make_things_client_command."
+echo "verify-standards: packages/things-bridge/src/things_bridge/types.py defines ThingsClientCommand + make_things_client_command."
 
 # ---------------------------------------------------------------------------
 # Numeric names carry their unit (AST audit).
