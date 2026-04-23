@@ -175,12 +175,24 @@ def build_test_image(dockerfile: Path, tag: str) -> None:
 
     Raises ``RuntimeError`` with build output on a non-zero exit so
     pytest tracebacks show why the build failed.
+
+    When ``AGENT_AUTH_DOCKER_CACHE=gha`` is set, the build opts in to
+    GitHub Actions cache via buildx (``--cache-from`` /
+    ``--cache-to type=gha``) under a per-service scope derived from
+    the Dockerfile name (``Dockerfile.<service>.test`` →
+    ``<service>-test``). The CI integration jobs go through
+    ``.github/actions/build-integration-test-image`` today, so this
+    branch is primarily a local-dev / non-CI-script escape hatch. Any
+    other value of the env var falls back to classic ``docker build``
+    so local runs without buildx don't pay the setup cost.
     """
+    cache_args = _gha_cache_args(dockerfile)
     with phase_timer("build_test_image", dockerfile=dockerfile.name, tag=tag):
         result = subprocess.run(
             [
                 "docker",
                 "build",
+                *cache_args,
                 "-f",
                 str(dockerfile),
                 "-t",
@@ -197,3 +209,39 @@ def build_test_image(dockerfile: Path, tag: str) -> None:
             f"`docker build` failed for {tag} ({dockerfile.name}): "
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
+
+
+def _gha_cache_args(dockerfile: Path) -> list[str]:
+    """Return buildx cache flags appropriate for the ambient env.
+
+    Caller sets ``AGENT_AUTH_DOCKER_CACHE=gha`` to opt in. The cache
+    scope is derived from the Dockerfile's per-service suffix so a
+    Dockerfile edit on one service doesn't evict the cache for the
+    others. Returns ``[]`` when caching is disabled; callers splat
+    the result into their ``docker build`` argv with ``*``.
+    """
+    if os.environ.get("AGENT_AUTH_DOCKER_CACHE") != "gha":
+        return []
+    scope = _cache_scope_for_dockerfile(dockerfile)
+    return [
+        "--cache-from",
+        f"type=gha,scope={scope}",
+        "--cache-to",
+        f"type=gha,mode=max,scope={scope}",
+        "--load",
+    ]
+
+
+def _cache_scope_for_dockerfile(dockerfile: Path) -> str:
+    """Return the cache scope string for ``dockerfile``.
+
+    Matches the scope used by
+    ``.github/actions/build-integration-test-image`` so a local run
+    under ``AGENT_AUTH_DOCKER_CACHE=gha`` shares the same cache key
+    space as CI — useful for anyone driving a GHA-cache-backed
+    buildx builder locally.
+    """
+    # ``Dockerfile.things-bridge.test`` → scope ``things-bridge-test``.
+    stem = dockerfile.stem  # ``Dockerfile.things-bridge``
+    service = stem.removeprefix("Dockerfile.")
+    return f"{service}-test"
