@@ -7,7 +7,7 @@
 import argparse
 import sys
 
-from things_bridge.authz import AgentAuthClient
+from agent_auth_client import AgentAuthClient
 from things_bridge.config import load_config
 from things_bridge.server import run_server
 from things_bridge.things_client import ThingsSubprocessClient

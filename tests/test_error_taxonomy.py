@@ -57,15 +57,17 @@ from agent_auth.metrics import build_registry as build_auth_registry
 from agent_auth.server import AgentAuthServer
 from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair
-from tests._http import get, post
-from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
-from things_bridge.authz import AgentAuthClient
-from things_bridge.config import Config as BridgeConfig
-from things_bridge.errors import (
+from agent_auth_client import (
+    AgentAuthClient,
     AuthzRateLimitedError,
     AuthzScopeDeniedError,
     AuthzTokenExpiredError,
     AuthzUnavailableError,
+)
+from tests._http import get, post
+from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
+from things_bridge.config import Config as BridgeConfig
+from things_bridge.errors import (
     ThingsError,
     ThingsPermissionError,
 )

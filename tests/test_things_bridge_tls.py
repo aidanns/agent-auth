@@ -18,9 +18,9 @@ from http.client import HTTPConnection, HTTPSConnection
 
 import pytest
 
+from agent_auth_client import AgentAuthClient
 from tests._tls import generate_self_signed_cert
 from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
-from things_bridge.authz import AgentAuthClient
 from things_bridge.config import Config
 from things_bridge.metrics import build_registry as build_bridge_registry
 from things_bridge.server import ThingsBridgeServer

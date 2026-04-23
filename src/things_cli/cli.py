@@ -8,16 +8,18 @@ import argparse
 import os
 import sys
 
+from things_bridge_client import (
+    ThingsBridgeClientError,
+    ThingsBridgeForbiddenError,
+    ThingsBridgeNotFoundError,
+    ThingsBridgeRateLimitedError,
+    ThingsBridgeUnauthorizedError,
+    ThingsBridgeUnavailableError,
+)
 from things_cli import output
 from things_cli.client import BridgeClient
 from things_cli.credentials import Credentials, CredentialStore, select_store
 from things_cli.errors import (
-    BridgeError,
-    BridgeForbiddenError,
-    BridgeNotFoundError,
-    BridgeRateLimitedError,
-    BridgeUnauthorizedError,
-    BridgeUnavailableError,
     CredentialsBackendError,
     CredentialsNotFoundError,
 )
@@ -253,22 +255,22 @@ def main(argv: list[str] | None = None) -> int:
     except (CredentialsNotFoundError, CredentialsBackendError) as exc:
         output.error(str(exc))
         return 2
-    except BridgeUnauthorizedError as exc:
+    except ThingsBridgeUnauthorizedError as exc:
         output.error(f"authentication failed: {exc}. Try `things-cli login` again.")
         return 2
-    except BridgeForbiddenError as exc:
+    except ThingsBridgeForbiddenError as exc:
         output.error(f"scope denied: {exc}")
         return 3
-    except BridgeNotFoundError as exc:
+    except ThingsBridgeNotFoundError as exc:
         output.error(f"not found: {exc}")
         return 4
-    except BridgeRateLimitedError as exc:
+    except ThingsBridgeRateLimitedError as exc:
         output.error(f"rate limited: {exc}. Retry after {exc.retry_after_seconds}s.")
         return 6
-    except BridgeUnavailableError as exc:
+    except ThingsBridgeUnavailableError as exc:
         output.error(f"bridge unavailable: {exc}")
         return 5
-    except BridgeError as exc:
+    except ThingsBridgeClientError as exc:
         output.error(str(exc))
         return 5
 

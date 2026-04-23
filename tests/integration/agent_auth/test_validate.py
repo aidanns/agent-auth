@@ -6,39 +6,28 @@
 
 import pytest
 
-from tests._http import post
+from agent_auth_client import AuthzScopeDeniedError, AuthzTokenInvalidError
 
 
 @pytest.mark.covers_function("Serve Validate Endpoint", "Check Token Expiry")
 def test_validate_allows_scope_at_allow_tier(agent_auth_container):
     tokens = agent_auth_container.create_token("things:read=allow")
-    status, body = post(
-        agent_auth_container.url("validate"),
-        {"token": tokens["access_token"], "required_scope": "things:read"},
-    )
-    assert status == 200
-    assert body["valid"] is True
+    # No exception == validate() returned normally; there is no other
+    # success signal to assert on.
+    agent_auth_container.client().validate(tokens["access_token"], "things:read")
 
 
 @pytest.mark.covers_function("Serve Validate Endpoint")
 def test_validate_rejects_garbage_token(agent_auth_container):
-    status, body = post(
-        agent_auth_container.url("validate"),
-        {"token": "aa_fake_bad", "required_scope": "things:read"},
-    )
-    assert status == 401
-    assert body["valid"] is False
+    with pytest.raises(AuthzTokenInvalidError):
+        agent_auth_container.client().validate("aa_fake_bad", "things:read")
 
 
 @pytest.mark.covers_function("Serve Validate Endpoint")
 def test_validate_denies_scope_not_granted(agent_auth_container):
     tokens = agent_auth_container.create_token("things:read=allow")
-    status, body = post(
-        agent_auth_container.url("validate"),
-        {"token": tokens["access_token"], "required_scope": "things:write"},
-    )
-    assert status == 403
-    assert body["error"] == "scope_denied"
+    with pytest.raises(AuthzScopeDeniedError, match="scope_denied"):
+        agent_auth_container.client().validate(tokens["access_token"], "things:write")
 
 
 @pytest.mark.covers_function("Serve Validate Endpoint", "Request Approval")
@@ -47,16 +36,11 @@ def test_validate_prompt_tier_succeeds_when_plugin_approves(
 ):
     container = agent_auth_container_factory(approval="approve")
     tokens = container.create_token("things:write=prompt")
-    status, body = post(
-        container.url("validate"),
-        {
-            "token": tokens["access_token"],
-            "required_scope": "things:write",
-            "description": "Complete todo: Buy milk",
-        },
+    container.client().validate(
+        tokens["access_token"],
+        "things:write",
+        description="Complete todo: Buy milk",
     )
-    assert status == 200
-    assert body["valid"] is True
 
 
 @pytest.mark.covers_function("Serve Validate Endpoint", "Request Approval")
@@ -65,9 +49,5 @@ def test_validate_prompt_tier_denied_when_plugin_denies(
 ):
     container = agent_auth_container_factory(approval="deny")
     tokens = container.create_token("things:write=prompt")
-    status, body = post(
-        container.url("validate"),
-        {"token": tokens["access_token"], "required_scope": "things:write"},
-    )
-    assert status == 403
-    assert body["error"] == "scope_denied"
+    with pytest.raises(AuthzScopeDeniedError, match="scope_denied"):
+        container.client().validate(tokens["access_token"], "things:write")

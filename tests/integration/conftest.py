@@ -31,7 +31,7 @@ import pytest
 import yaml
 from testcontainers.compose import DockerCompose
 
-from tests._http import post
+from agent_auth_client import AgentAuthClient
 from tests.integration._support import (
     DOCKER_DIR,
     build_test_image,
@@ -83,21 +83,22 @@ class AgentAuthContainer:
     compose: DockerCompose
     service: str = "agent-auth"
     _mgmt_token_cache: str | None = field(default=None, init=False, repr=False, compare=False)
+    _client_cache: AgentAuthClient | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
-    def url(self, path: str) -> str:
-        """Return ``{base_url}/agent-auth/v1/{path}``."""
-        return f"{self.base_url}/agent-auth/v1/{path.lstrip('/')}"
-
-    def health_url(self) -> str:
-        """Return the unversioned health endpoint URL."""
-        return f"{self.base_url}/agent-auth/health"
+    def client(self) -> AgentAuthClient:
+        """Return a shared :class:`AgentAuthClient` bound to this container."""
+        if self._client_cache is None:
+            self._client_cache = AgentAuthClient(self.base_url, timeout_seconds=10.0)
+        return self._client_cache
 
     def management_token(self) -> str:
         """Return a valid management access token, refreshed from keyring on first call."""
         if self._mgmt_token_cache is None:
             result = json.loads(self.exec_cli("--json", "management-token", "show"))
-            _, body = post(self.url("token/refresh"), {"refresh_token": result["refresh_token"]})
-            self._mgmt_token_cache = body["access_token"]
+            refreshed = self.client().refresh(result["refresh_token"])
+            self._mgmt_token_cache = refreshed.access_token
         assert self._mgmt_token_cache is not None
         return self._mgmt_token_cache
 
@@ -120,7 +121,15 @@ class AgentAuthContainer:
         return cast(str, stdout)
 
     def create_token(self, *scopes: str) -> dict[str, Any]:
-        """Create a token family inside the container and return the parsed JSON."""
+        """Create a token family inside the container and return the parsed JSON.
+
+        Uses the ``agent-auth`` CLI — not the HTTP client — because the
+        management refresh token is stored in the container's keyring
+        and never crosses the HTTP boundary. Tests that specifically
+        need to exercise ``POST /token/create`` do so through
+        :meth:`client` with the token returned by
+        :meth:`management_token`.
+        """
         if not scopes:
             raise ValueError("at least one scope required")
         scope_args = []

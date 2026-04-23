@@ -43,6 +43,7 @@ from tests.integration.conftest import (
     BASELINE_CONFIG,
     AgentAuthContainer,
 )
+from things_bridge_client import ThingsBridgeClient
 
 AGENT_AUTH_PORT = 9100
 THINGS_BRIDGE_PORT = 9200
@@ -68,13 +69,9 @@ class ThingsBridgeStack:
     fixtures_dir: Path
     compose_file: str
 
-    def url(self, path: str) -> str:
-        """Return ``{base_url}/things-bridge/v1/{path}``."""
-        return f"{self.base_url}/things-bridge/v1/{path.lstrip('/')}"
-
-    def health_url(self) -> str:
-        """Return the unversioned health endpoint URL."""
-        return f"{self.base_url}/things-bridge/health"
+    def client(self) -> ThingsBridgeClient:
+        """Return a :class:`ThingsBridgeClient` bound to this stack's bridge URL."""
+        return ThingsBridgeClient(self.base_url, timeout_seconds=10.0)
 
     def write_fixture(self, fixture: dict[str, Any]) -> None:
         """Write/replace ``things.yaml`` in the bind-mounted fixtures dir."""

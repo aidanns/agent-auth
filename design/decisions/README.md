@@ -79,3 +79,5 @@ is linked from this index.
   — closes AU-9. Every audit entry carries a `chain_hmac = HMAC-SHA256(audit_chain_key, prev_hmac || canonical(entry))`; `agent-auth verify-audit` detects modify / delete / insert. `SCHEMA_VERSION` bumps 1→2; v1 logs are rolled over to `<path>.pre-chain-v2-*` on upgrade.
 - [ADR 0029 — Benchmark suite with pytest-benchmark](0029-benchmark-suite.md)
   — weekly `benchmark.yml` workflow runs a `benchmarks/` pytest tree against a committed `ci-linux-x86_64.json` baseline with a 25 % mean-runtime regression gate; `scripts/verify-standards.sh` enforces the suite + workflow stay present.
+- [ADR 0030 — Extract per-service HTTP client libraries](0030-per-service-http-client-libraries.md)
+  — `agent_auth_client` and `things_bridge_client` own the full HTTP surface of each service as first-class in-tree packages; production code and integration tests consume them directly, replacing the partial per-caller clients.

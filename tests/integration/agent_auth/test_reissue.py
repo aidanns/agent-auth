@@ -13,7 +13,7 @@ import time
 
 import pytest
 
-from tests._http import post
+from agent_auth_client import FamilyRevokedError, ReissueDeniedError
 
 REFRESH_TTL_SECONDS = 1
 EXPIRY_SLEEP_SECONDS = REFRESH_TTL_SECONDS + 1
@@ -29,13 +29,9 @@ def test_reissue_succeeds_after_refresh_expiry_when_plugin_approves(
     tokens = container.create_token("things:read=allow")
     time.sleep(EXPIRY_SLEEP_SECONDS)
 
-    status, body = post(
-        container.url("token/reissue"),
-        {"family_id": tokens["family_id"]},
-    )
-    assert status == 200
-    assert "access_token" in body
-    assert "refresh_token" in body
+    reissued = container.client().reissue(tokens["family_id"])
+    assert reissued.access_token
+    assert reissued.refresh_token
 
 
 @pytest.mark.covers_function("Serve Reissue Endpoint", "Request Approval")
@@ -46,12 +42,8 @@ def test_reissue_denied_when_plugin_denies(agent_auth_container_factory):
     tokens = container.create_token("things:read=allow")
     time.sleep(EXPIRY_SLEEP_SECONDS)
 
-    status, body = post(
-        container.url("token/reissue"),
-        {"family_id": tokens["family_id"]},
-    )
-    assert status == 403
-    assert body["error"] == "reissue_denied"
+    with pytest.raises(ReissueDeniedError, match="reissue_denied"):
+        container.client().reissue(tokens["family_id"])
 
 
 @pytest.mark.covers_function("Serve Reissue Endpoint", "Revoke Token Family")
@@ -59,9 +51,5 @@ def test_reissue_rejects_revoked_family(agent_auth_container):
     tokens = agent_auth_container.create_token("things:read=allow")
     agent_auth_container.exec_cli("token", "revoke", tokens["family_id"])
 
-    status, body = post(
-        agent_auth_container.url("token/reissue"),
-        {"family_id": tokens["family_id"]},
-    )
-    assert status == 401
-    assert body["error"] == "family_revoked"
+    with pytest.raises(FamilyRevokedError, match="family_revoked"):
+        agent_auth_container.client().reissue(tokens["family_id"])
