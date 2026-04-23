@@ -5,6 +5,8 @@
 # keep-sorted start
 *.egg-info/
 *.pyc
+.claude/scheduled_tasks.lock
+.claude/worktrees/
 .coverage
 .coverage.*
 .eggs/
