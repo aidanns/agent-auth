@@ -500,6 +500,31 @@ fi
 
 echo "verify-standards: DCO sign-off workflow is present and triggers on pull_request."
 
+# Post-incident review template must exist per design/SSDF.md RV.2.1 /
+# RV.3.1 / RV.3.2 / RV.3.3 / RV.3.4 and the issue closure criteria for
+# #131. The directory hosts TEMPLATE.md + README.md plus any numbered
+# PIR files; only the scaffolding is enforced here.
+pir_dir="design/vulnerability-reviews"
+if [[ ! -d ${pir_dir} ]]; then
+  echo "verify-standards: ${pir_dir}/ directory is missing." >&2
+  echo "  Add the post-incident review scaffolding (see SECURITY.md → Post-incident review)." >&2
+  exit 1
+fi
+for pir_file in TEMPLATE.md README.md; do
+  if [[ ! -f "${pir_dir}/${pir_file}" ]]; then
+    echo "verify-standards: ${pir_dir}/${pir_file} is missing." >&2
+    exit 1
+  fi
+done
+for pir_section in "Root cause" "Similar-vulnerability search" "Patterns over time" "Remediation" "Preventive follow-ups"; do
+  if ! grep -qF "## ${pir_section}" "${pir_dir}/TEMPLATE.md"; then
+    echo "verify-standards: ${pir_dir}/TEMPLATE.md missing required section '## ${pir_section}'." >&2
+    exit 1
+  fi
+done
+
+echo "verify-standards: post-incident review template is present with all required sections."
+
 # Type checking per .claude/instructions/python.md (Tooling: "mypy and
 # pyright — type checking. Run both in CI.") and the deterministic
 # regression check in issue #48:
