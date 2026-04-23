@@ -48,6 +48,10 @@
 #   2h. src/things_bridge/server.py defines a ``SafeId`` NewType that
 #      ``_safe_id`` returns, so validated ids carry a distinct type
 #      at the trust boundary (see issue #36).
+#   2i. src/things_bridge/types.py defines ``ThingsClientCommand`` as a
+#      typing.NewType plus a factory that enforces the non-empty /
+#      all-str invariant at the config / subprocess boundary (see
+#      issue #70).
 #   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
 #      lefthook per .claude/instructions/bash.md.
 #   4. Markdown (mdformat) and TOML (taplo) formatters are wired into
@@ -461,6 +465,27 @@ if ! grep -qE "^SafeId[[:space:]]*=[[:space:]]*NewType\(" src/things_bridge/serv
 fi
 
 echo "verify-standards: src/things_bridge/server.py defines SafeId via typing.NewType."
+
+# ---------------------------------------------------------------------------
+# ThingsClientCommand NewType at the config / subprocess boundary.
+# ---------------------------------------------------------------------------
+# .claude/instructions/coding-standards.md § "Newtypes at security /
+# trust boundaries" and the PR #66 standards-review checkpoint both
+# committed to a ThingsClientCommand newtype wrapping the argv list.
+# See issue #70. The check asserts the NewType + its factory are still
+# defined; mypy/pyright catch misuse at call sites.
+if ! grep -qE "^ThingsClientCommand[[:space:]]*=[[:space:]]*NewType\(" src/things_bridge/types.py; then
+  echo "verify-standards: src/things_bridge/types.py does not define ThingsClientCommand via typing.NewType." >&2
+  echo "  See .claude/instructions/coding-standards.md § Types and safety and issue #70." >&2
+  exit 1
+fi
+if ! grep -qE "^def make_things_client_command\(" src/things_bridge/types.py; then
+  echo "verify-standards: src/things_bridge/types.py does not expose make_things_client_command()." >&2
+  echo "  The factory centralises the non-empty / all-str invariant; see issue #70." >&2
+  exit 1
+fi
+
+echo "verify-standards: src/things_bridge/types.py defines ThingsClientCommand + make_things_client_command."
 
 # ---------------------------------------------------------------------------
 # Numeric names carry their unit (AST audit).

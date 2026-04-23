@@ -37,6 +37,7 @@ from things_bridge.errors import (
     ThingsPermissionError,
 )
 from things_bridge.metrics import ThingsBridgeMetrics, build_registry
+from things_bridge.types import ThingsClientCommand
 from things_models.client import ThingsClient
 from things_models.models import AreaId, ProjectId, TodoId
 
@@ -88,12 +89,15 @@ class _HealthChecker:
 
     def __init__(
         self,
-        things_client_command: list[str],
+        things_client_command: ThingsClientCommand,
         *,
         cache_ttl_seconds: float = _HEALTH_THINGS_CLIENT_CACHE_TTL_SECONDS,
         clock: Callable[[], float] = time.monotonic,
         resolver: Callable[[str], str | None] = shutil.which,
     ):
+        # ThingsClientCommand NewType guarantees non-empty + all-str;
+        # the defensive check stays as a belt-and-braces guard against
+        # a raw list slipping past the type checker.
         if not things_client_command:
             raise ValueError("_HealthChecker: things_client_command must not be empty")
         self._executable = things_client_command[0]

@@ -30,6 +30,7 @@ from things_bridge.errors import (
 )
 from things_bridge.metrics import build_registry as build_bridge_registry
 from things_bridge.server import ThingsBridgeServer, _HealthChecker
+from things_bridge.types import ThingsClientCommand, make_things_client_command
 from things_models.models import Area, AreaId
 
 
@@ -220,7 +221,9 @@ def _stop_bridge(handle: dict[str, Any]) -> None:
 @pytest.mark.covers_function("Serve Bridge Health Endpoint")
 def test_health_returns_503_when_things_client_unresolvable():
     resolver = _ResolverStub(resolves=False)
-    checker = _HealthChecker(["things-client-cli-applescript"], resolver=resolver)
+    checker = _HealthChecker(
+        make_things_client_command(["things-client-cli-applescript"]), resolver=resolver
+    )
     handle = _bridge_with_health_checker(checker)
     try:
         status, data = _get(f"{handle['url']}/things-bridge/health")
@@ -234,7 +237,9 @@ def test_health_returns_503_when_things_client_unresolvable():
 @pytest.mark.covers_function("Serve Bridge Health Endpoint")
 def test_health_returns_200_when_things_client_resolvable():
     resolver = _ResolverStub(resolves=True)
-    checker = _HealthChecker(["things-client-cli-applescript"], resolver=resolver)
+    checker = _HealthChecker(
+        make_things_client_command(["things-client-cli-applescript"]), resolver=resolver
+    )
     handle = _bridge_with_health_checker(checker)
     try:
         status, data = _get(f"{handle['url']}/things-bridge/health")
@@ -252,7 +257,7 @@ def test_health_checker_caches_resolution_within_ttl():
     now = [100.0]
     resolver = _ResolverStub(resolves=True)
     checker = _HealthChecker(
-        ["things-client-cli-applescript"],
+        make_things_client_command(["things-client-cli-applescript"]),
         cache_ttl_seconds=30.0,
         clock=lambda: now[0],
         resolver=resolver,
@@ -271,7 +276,7 @@ def test_health_checker_requeries_after_ttl_expires():
     now = [100.0]
     resolver = _ResolverStub(resolves=True)
     checker = _HealthChecker(
-        ["things-client-cli-applescript"],
+        make_things_client_command(["things-client-cli-applescript"]),
         cache_ttl_seconds=30.0,
         clock=lambda: now[0],
         resolver=resolver,
@@ -286,8 +291,10 @@ def test_health_checker_requeries_after_ttl_expires():
 def test_health_checker_rejects_empty_command():
     # Defensive: an empty ``things_client_command`` is a config bug.
     # Fail loud at construction rather than silently reporting healthy.
+    # The NewType permits an empty tuple cast; _HealthChecker still
+    # rejects it at runtime as a belt-and-braces guard.
     with pytest.raises(ValueError):
-        _HealthChecker([])
+        _HealthChecker(ThingsClientCommand(()))
 
 
 # -- /metrics ---------------------------------------------------------------

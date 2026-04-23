@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 
 from things_bridge.things_client import STDERR_TAIL_MAX_CHARS, ThingsSubprocessClient
+from things_bridge.types import ThingsClientCommand, make_things_client_command
 from things_models.errors import (
     ThingsError,
     ThingsNotFoundError,
@@ -67,7 +68,9 @@ class _FakePopen:
 
 @pytest.fixture
 def client() -> ThingsSubprocessClient:
-    return ThingsSubprocessClient(command=["fake-client"], timeout_seconds=1.0)
+    return ThingsSubprocessClient(
+        command=make_things_client_command(["fake-client"]), timeout_seconds=1.0
+    )
 
 
 def _patch_popen(monkeypatch, **fake_kwargs) -> list[list[str]]:
@@ -84,8 +87,22 @@ def _patch_popen(monkeypatch, **fake_kwargs) -> list[list[str]]:
 
 @pytest.mark.covers_function("Fetch Things Data")
 def test_empty_command_rejected():
+    # An empty tuple can still be cast to the NewType — the defensive
+    # check inside ThingsSubprocessClient catches that belt-and-braces.
     with pytest.raises(ValueError):
-        ThingsSubprocessClient(command=[], timeout_seconds=1.0)
+        ThingsSubprocessClient(command=ThingsClientCommand(()), timeout_seconds=1.0)
+
+
+@pytest.mark.covers_function("Fetch Things Data")
+def test_make_things_client_command_rejects_empty():
+    with pytest.raises(ValueError):
+        make_things_client_command([])
+
+
+@pytest.mark.covers_function("Fetch Things Data")
+def test_make_things_client_command_rejects_non_string_element():
+    with pytest.raises(TypeError):
+        make_things_client_command(["things-client-cli-applescript", 42])
 
 
 @pytest.mark.covers_function("Fetch Things Data")

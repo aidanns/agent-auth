@@ -18,6 +18,7 @@ import sys
 import threading
 from typing import IO, Any, cast
 
+from things_bridge.types import ThingsClientCommand
 from things_models.errors import (
     ThingsError,
     ThingsNotFoundError,
@@ -38,19 +39,25 @@ writing a structured error.
 class ThingsSubprocessClient:
     """Invoke a configured Things client CLI as a subprocess per request.
 
-    ``command`` is the argv prefix (e.g. ``["things-client-cli-applescript"]``
-    or ``[sys.executable, "-m", "tests.things_client_fake", "--fixtures", P]``);
-    sub-commands matching the request are appended. ``timeout_seconds`` caps
-    the per-call wall clock. Subprocess stderr is forwarded to the bridge's
-    own stderr line-by-line as the child writes it, so a misbehaving client
-    cannot pin bridge memory by streaming multi-megabyte diagnostics. The
-    HTTP response body never contains subprocess output.
+    ``command`` is a validated argv prefix (e.g.
+    ``make_things_client_command(["things-client-cli-applescript"])`` or
+    ``make_things_client_command([sys.executable, "-m",
+    "tests.things_client_fake", "--fixtures", P])``); sub-commands
+    matching the request are appended. ``timeout_seconds`` caps the
+    per-call wall clock. Subprocess stderr is forwarded to the bridge's
+    own stderr line-by-line as the child writes it, so a misbehaving
+    client cannot pin bridge memory by streaming multi-megabyte
+    diagnostics. The HTTP response body never contains subprocess
+    output.
     """
 
-    def __init__(self, command: list[str], timeout_seconds: float = 35.0):
+    def __init__(self, command: ThingsClientCommand, timeout_seconds: float = 35.0):
+        # The NewType invariant guarantees non-empty + all-str; no
+        # re-validation needed here. Keep the defensive check cheap so
+        # a raw list slipping past the type checker still fails loud.
         if not command:
             raise ValueError("ThingsSubprocessClient: command must not be empty")
-        self._command = list(command)
+        self._command = command
         self._timeout_seconds = timeout_seconds
 
     def list_todos(
