@@ -34,22 +34,6 @@
       "reportMissingTypeStubs": "none"
     },
     {
-      "root": "benchmarks",
-      "reportUnknownParameterType": "none",
-      "reportUnknownVariableType": "none",
-      "reportUnknownMemberType": "none",
-      "reportUnknownArgumentType": "none",
-      "reportUnknownLambdaType": "none",
-      "reportMissingParameterType": "none",
-      "reportMissingTypeArgument": "none",
-      "reportPrivateUsage": "none",
-      "reportUnusedImport": "none",
-      "reportUnusedFunction": "none",
-      "reportUnnecessaryCast": "none",
-      "reportUnnecessaryComparison": "none",
-      "reportMissingTypeStubs": "none"
-    },
-    {
       "root": "src/tests_support",
       "reportUnknownParameterType": "none",
       "reportUnknownVariableType": "none",
