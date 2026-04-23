@@ -18,6 +18,7 @@ from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
 from things_bridge.authz import AgentAuthClient
 from things_bridge.config import Config
 from things_bridge.errors import (
+    AuthzRateLimitedError,
     AuthzScopeDeniedError,
     AuthzTokenExpiredError,
     AuthzTokenInvalidError,
@@ -398,6 +399,26 @@ def test_get_todos_authz_unavailable_maps_to_502(bridge):
     status, data = _get(f"{bridge['url']}/things-bridge/v1/todos")
     assert status == 502
     assert data["error"] == "authz_unavailable"
+
+
+def test_get_todos_authz_rate_limited_forwards_429_and_retry_after(bridge):
+    # Pin the contract: agent-auth is the sole rate-limit authority,
+    # and the bridge passes both the 429 and the upstream Retry-After
+    # through verbatim so clients can pace themselves without
+    # re-negotiating against the bridge's own (non-existent) bucket.
+    bridge["authz"].raise_on_validate = AuthzRateLimitedError("rate_limited", retry_after_seconds=9)
+    req = urllib.request.Request(
+        f"{bridge['url']}/things-bridge/v1/todos",
+        headers={"Authorization": "Bearer aa_test_token"},
+    )
+    try:
+        urllib.request.urlopen(req, timeout=5)
+    except urllib.error.HTTPError as exc:
+        assert exc.code == 429
+        assert json.loads(exc.read()) == {"error": "rate_limited"}
+        assert exc.headers.get("Retry-After") == "9"
+    else:
+        raise AssertionError("bridge did not return 429")
 
 
 def test_get_todos_things_error_maps_to_502(bridge):

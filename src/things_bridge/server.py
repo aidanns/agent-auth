@@ -25,6 +25,7 @@ from server_metrics import (
 from things_bridge.authz import AgentAuthClient
 from things_bridge.config import Config
 from things_bridge.errors import (
+    AuthzRateLimitedError,
     AuthzScopeDeniedError,
     AuthzTokenExpiredError,
     AuthzTokenInvalidError,
@@ -167,6 +168,16 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "unauthorized"})
         except AuthzScopeDeniedError:
             self._send_json(403, {"error": "scope_denied"})
+        except AuthzRateLimitedError as exc:
+            # Passthrough the upstream Retry-After so clients pace
+            # themselves against agent-auth's bucket, not the bridge's.
+            body = json.dumps({"error": "rate_limited"}).encode("utf-8")
+            self.send_response(429)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Retry-After", str(exc.retry_after_seconds))
+            self.end_headers()
+            self.wfile.write(body)
         except AuthzUnavailableError:
             self._send_json(502, {"error": "authz_unavailable"})
         return False

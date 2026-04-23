@@ -22,6 +22,7 @@ from agent_auth.errors import ScopeDeniedError, TokenInvalidError
 from agent_auth.keys import KeyManager, SigningKey
 from agent_auth.metrics import AgentAuthMetrics, build_registry
 from agent_auth.plugins import load_plugin
+from agent_auth.rate_limit import RateLimiter
 from agent_auth.scopes import VALID_TIERS, check_scope
 from agent_auth.store import TokenStore
 from agent_auth.tokens import (
@@ -89,6 +90,52 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _check_rate_limit(
+        self,
+        family_id: str,
+        *,
+        scope: str | None = None,
+    ) -> bool:
+        """Consume one rate-limit token for ``family_id``.
+
+        Returns ``True`` when the request is allowed. On denial writes
+        a 429 response with ``Retry-After`` and a ``rate_limited``
+        audit entry, and returns ``False`` — the caller must return
+        immediately without doing further work. ``scope`` is recorded
+        on the audit entry when the event originated on a scoped
+        endpoint so the audit trail carries the same dimension as
+        ``validation_denied``.
+        """
+        decision = self._server.rate_limiter.consume(family_id)
+        if decision.allowed:
+            return True
+        # Audit + metrics must be recorded *before* the HTTP response
+        # is written. ``wfile.write`` flushes to the client, and a
+        # client that reads the 429 immediately would otherwise race
+        # the log append — project convention across every other
+        # handler is audit-then-respond for exactly this reason.
+        audit: AuditLogger = self._server.audit
+        details: dict[str, Any] = {"family_id": family_id}
+        if scope:
+            details["scope"] = scope
+        audit.log_authorization_decision("rate_limited", **details)
+        metrics = self._server.metrics
+        metrics.validation_outcomes.inc(outcome="denied", reason="rate_limited")
+        # Round up to at least 1 second — the HTTP header carries
+        # integer seconds per RFC 7231 §7.1.3. A sub-second shortfall
+        # still asks the client to wait a full second, which is fine:
+        # the bucket is empty, so retrying immediately would just fail
+        # again.
+        retry_after = max(1, int(decision.retry_after_seconds) + 1)
+        body = json.dumps({"error": "rate_limited"}).encode("utf-8")
+        self.send_response(429)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Retry-After", str(retry_after))
+        self.end_headers()
+        self.wfile.write(body)
+        return False
 
     def log_message(self, format: str, *args: Any) -> None:
         pass
@@ -217,6 +264,9 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"valid": False, "error": "token_revoked"})
             return
 
+        if not self._check_rate_limit(family["id"], scope=required_scope):
+            return
+
         try:
             tier = check_scope(required_scope, family["scopes"])
         except ScopeDeniedError:
@@ -298,6 +348,9 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "family_revoked"})
             return
 
+        if not self._check_rate_limit(token_record["family_id"]):
+            return
+
         now = datetime.now(UTC)
         expires_at = datetime.fromisoformat(token_record["expires_at"])
         if now >= expires_at:
@@ -358,6 +411,9 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "family_revoked"})
             return
 
+        if not self._check_rate_limit(family_id):
+            return
+
         # Per design: reissue is only available when the refresh token has expired
         # (not consumed by reuse detection). Verify a refresh token exists and is expired.
         family_tokens = store.get_tokens_by_family(family_id)
@@ -401,12 +457,20 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             },
         )
 
-    def _require_management_auth(self) -> bool:
-        """Validate management bearer token. Sends 401/403 and returns False if invalid."""
+    def _require_management_auth(self) -> str | None:
+        """Validate management bearer token.
+
+        Returns the resolved ``family_id`` on success. On failure
+        sends the appropriate 401 / 403 / 429 response and returns
+        ``None``; caller must return immediately. Rate limiting is
+        consulted after the token is verified and the family is
+        known to exist and not be revoked — probing unknown
+        ``family_id`` values therefore cannot inflate the bucket map.
+        """
         auth_header = self.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             self._send_json(401, {"error": "missing_token"})
-            return False
+            return None
 
         token_raw = auth_header[7:]
         store: TokenStore = self._server.store
@@ -416,32 +480,35 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             prefix, token_id = verify_token(token_raw, signing_key)
         except TokenInvalidError:
             self._send_json(401, {"error": "invalid_token"})
-            return False
+            return None
         if prefix != PREFIX_ACCESS:
             self._send_json(401, {"error": "invalid_token"})
-            return False
+            return None
 
         token_record = store.get_token(token_id)
         if token_record is None:
             self._send_json(401, {"error": "invalid_token"})
-            return False
+            return None
 
         family = store.get_family(token_record["family_id"])
         if family is None or family["revoked"]:
             self._send_json(401, {"error": "invalid_token"})
-            return False
+            return None
 
         now = datetime.now(UTC)
         expires_at = datetime.fromisoformat(token_record["expires_at"])
         if now >= expires_at:
             self._send_json(401, {"error": "token_expired"})
-            return False
+            return None
 
         if family["scopes"].get(MANAGEMENT_SCOPE) != "allow":
             self._send_json(403, {"error": "scope_denied"})
-            return False
+            return None
 
-        return True
+        if not self._check_rate_limit(token_record["family_id"], scope=MANAGEMENT_SCOPE):
+            return None
+
+        return cast(str, token_record["family_id"])
 
     def _get_active_family(self, store: TokenStore, family_id: str) -> dict[str, Any] | None:
         """Return family if it exists and is not revoked; send 404/409 and return None otherwise."""
@@ -455,7 +522,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         return family
 
     def _handle_token_create(self) -> None:
-        if not self._require_management_auth():
+        if self._require_management_auth() is None:
             return
         data = self._read_json()
         if data is None:
@@ -494,14 +561,14 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_token_list(self) -> None:
-        if not self._require_management_auth():
+        if self._require_management_auth() is None:
             return
         store: TokenStore = self._server.store
         families = [f for f in store.list_families() if MANAGEMENT_SCOPE not in f.get("scopes", {})]
         self._send_json(200, families)
 
     def _handle_token_modify(self) -> None:
-        if not self._require_management_auth():
+        if self._require_management_auth() is None:
             return
         data = self._read_json()
         if data is None:
@@ -562,7 +629,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         self._send_json(200, {"family_id": family_id, "scopes": scopes})
 
     def _handle_token_revoke(self) -> None:
-        if not self._require_management_auth():
+        if self._require_management_auth() is None:
             return
         data = self._read_json()
         if data is None:
@@ -588,7 +655,7 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         self._send_json(200, {"family_id": family_id, "revoked": True})
 
     def _handle_token_rotate(self) -> None:
-        if not self._require_management_auth():
+        if self._require_management_auth() is None:
             return
         data = self._read_json()
         if data is None:
@@ -636,18 +703,20 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
 
     HEALTH_SCOPE = "agent-auth:health"
 
-    def _authenticate_bearer_scope(self, scope: str) -> bool:
-        """Validate the ``Bearer`` token and check it carries ``scope``.
+    def _authenticate_bearer_scope(self, scope: str) -> str | None:
+        """Validate the bearer token, scope, and rate-limit bucket.
 
-        Writes the appropriate 401 / 403 JSON response and returns
-        ``False`` on failure. Used by ``/health`` and ``/metrics`` —
-        both are unversioned, operator-facing endpoints gated by a
-        scoped access token.
+        Returns the resolved ``family_id`` on success. On failure
+        writes the appropriate 401 / 403 / 429 response and returns
+        ``None``. Used by ``/health`` and ``/metrics``; the rate-
+        limit path also applies to these operational endpoints — an
+        operator running a high-cadence probe must tune
+        ``rate_limit_per_minute`` to match.
         """
         auth_header = self.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             self._send_json(401, {"error": "missing_token"})
-            return False
+            return None
 
         token_raw = auth_header[7:]
         store: TokenStore = self._server.store
@@ -657,36 +726,39 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
             prefix, token_id = verify_token(token_raw, signing_key)
         except TokenInvalidError:
             self._send_json(401, {"error": "invalid_token"})
-            return False
+            return None
         if prefix != PREFIX_ACCESS:
             self._send_json(401, {"error": "invalid_token"})
-            return False
+            return None
 
         token_record = store.get_token(token_id)
         if token_record is None:
             self._send_json(401, {"error": "invalid_token"})
-            return False
+            return None
 
         family = store.get_family(token_record["family_id"])
         if family is None or family["revoked"]:
             self._send_json(401, {"error": "invalid_token"})
-            return False
+            return None
 
         now = datetime.now(UTC)
         expires_at = datetime.fromisoformat(token_record["expires_at"])
         if now >= expires_at:
             self._send_json(401, {"error": "token_expired"})
-            return False
+            return None
 
         try:
             check_scope(scope, family["scopes"])
         except ScopeDeniedError:
             self._send_json(403, {"error": "scope_denied"})
-            return False
-        return True
+            return None
+
+        if not self._check_rate_limit(token_record["family_id"], scope=scope):
+            return None
+        return cast(str, token_record["family_id"])
 
     def _handle_metrics(self) -> None:
-        if not self._authenticate_bearer_scope(METRICS_SCOPE):
+        if self._authenticate_bearer_scope(METRICS_SCOPE) is None:
             return
         registry: Registry = self._server.registry
         body = render_prometheus_text(registry).encode("utf-8")
@@ -697,46 +769,9 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _handle_health(self) -> None:
-        auth_header = self.headers.get("Authorization", "")
-        if not auth_header.startswith("Bearer "):
-            self._send_json(401, {"error": "missing_token"})
+        if self._authenticate_bearer_scope(self.HEALTH_SCOPE) is None:
             return
-
-        token_raw = auth_header[7:]
         store: TokenStore = self._server.store
-        signing_key: SigningKey = self._server.signing_key
-
-        try:
-            prefix, token_id = verify_token(token_raw, signing_key)
-        except TokenInvalidError:
-            self._send_json(401, {"error": "invalid_token"})
-            return
-        if prefix != PREFIX_ACCESS:
-            self._send_json(401, {"error": "invalid_token"})
-            return
-
-        token_record = store.get_token(token_id)
-        if token_record is None:
-            self._send_json(401, {"error": "invalid_token"})
-            return
-
-        family = store.get_family(token_record["family_id"])
-        if family is None or family["revoked"]:
-            self._send_json(401, {"error": "invalid_token"})
-            return
-
-        now = datetime.now(UTC)
-        expires_at = datetime.fromisoformat(token_record["expires_at"])
-        if now >= expires_at:
-            self._send_json(401, {"error": "token_expired"})
-            return
-
-        try:
-            check_scope(self.HEALTH_SCOPE, family["scopes"])
-        except ScopeDeniedError:
-            self._send_json(403, {"error": "scope_denied"})
-            return
-
         try:
             store.ping()
         except Exception:
@@ -768,6 +803,13 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         family = store.get_family(token_record["family_id"])
         if family is None:
             self._send_json(401, {"error": "invalid_token"})
+            return
+
+        # ``_handle_status`` is scope-less (introspection is available
+        # for any valid token in a family that still exists) but still
+        # rate-limit-bucketed on the resolved family so repeated
+        # status polls can't bypass the ceiling.
+        if not self._check_rate_limit(token_record["family_id"]):
             return
 
         now = datetime.now(UTC)
@@ -820,6 +862,7 @@ class AgentAuthServer(ThreadingHTTPServer):
         approval_manager: ApprovalManager,
         registry: Registry,
         metrics: AgentAuthMetrics,
+        rate_limiter: RateLimiter | None = None,
     ):
         self.config = config
         self.signing_key = signing_key
@@ -828,6 +871,12 @@ class AgentAuthServer(ThreadingHTTPServer):
         self.approval_manager = approval_manager
         self.registry = registry
         self.metrics = metrics
+        # Per-family rate limiter built from config by default; tests
+        # can inject a pre-built one with a stubbed clock to drive the
+        # refill path deterministically. ``rate_limit_per_minute=0``
+        # in the Config disables the gate (backwards-compatible with
+        # the deferred posture in ADR 0022).
+        self.rate_limiter = rate_limiter or RateLimiter(config.rate_limit_per_minute)
         super().__init__((config.host, config.port), AgentAuthHandler)
         if config.tls_enabled:
             # Wrap the bound listening socket in a TLS context so every

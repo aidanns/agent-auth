@@ -13,6 +13,7 @@ import pytest
 
 from things_bridge.authz import AgentAuthClient
 from things_bridge.errors import (
+    AuthzRateLimitedError,
     AuthzScopeDeniedError,
     AuthzTokenExpiredError,
     AuthzTokenInvalidError,
@@ -23,6 +24,7 @@ from things_bridge.errors import (
 class _Responder(BaseHTTPRequestHandler):
     status = 200
     body: ClassVar[dict[str, Any]] = {"valid": True}
+    extra_headers: ClassVar[dict[str, str]] = {}
     last_request_body: bytes | None = None
     last_request_path: str | None = None
 
@@ -37,6 +39,8 @@ class _Responder(BaseHTTPRequestHandler):
         self.send_response(_Responder.status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        for header_name, header_value in _Responder.extra_headers.items():
+            self.send_header(header_name, header_value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -95,9 +99,38 @@ def test_validate_unexpected_status_raises_unavailable(auth_server):
     _, url = auth_server
     _Responder.status = 502
     _Responder.body = {"error": "bad_gateway"}
+    _Responder.extra_headers = {}
     client = AgentAuthClient(url, timeout_seconds=2.0)
     with pytest.raises(AuthzUnavailableError):
         client.validate("aa_xxx_yyy", "things:read")
+
+
+def test_validate_rate_limited_raises_with_retry_after(auth_server):
+    # Agent-auth returns 429 for a rate-limited family; the authz client
+    # must surface it as AuthzRateLimitedError carrying the Retry-After
+    # header so the bridge can pass it through unchanged to its caller.
+    _, url = auth_server
+    _Responder.status = 429
+    _Responder.body = {"error": "rate_limited"}
+    _Responder.extra_headers = {"Retry-After": "7"}
+    client = AgentAuthClient(url, timeout_seconds=2.0)
+    with pytest.raises(AuthzRateLimitedError) as exc_info:
+        client.validate("aa_xxx_yyy", "things:read")
+    assert exc_info.value.retry_after_seconds == 7
+
+
+def test_validate_rate_limited_defaults_retry_after_when_header_missing(auth_server):
+    # A 429 without a Retry-After header (malformed upstream) must not
+    # crash the client; fall back to a conservative 1s default so the
+    # caller has a sane pacing hint.
+    _, url = auth_server
+    _Responder.status = 429
+    _Responder.body = {"error": "rate_limited"}
+    _Responder.extra_headers = {}
+    client = AgentAuthClient(url, timeout_seconds=2.0)
+    with pytest.raises(AuthzRateLimitedError) as exc_info:
+        client.validate("aa_xxx_yyy", "things:read")
+    assert exc_info.value.retry_after_seconds == 1
 
 
 def test_validate_unreachable_raises_unavailable():

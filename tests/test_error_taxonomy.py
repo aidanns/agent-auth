@@ -27,7 +27,7 @@ agent-auth /metrics (unversioned):
   missing_token (401), invalid_token (401), token_expired (401),
   scope_denied (403).
 agent-auth server-wide:
-  not_found (404).
+  not_found (404), rate_limited (429).
 things-bridge /v1/* data endpoints:
   unauthorized (401), token_expired (401), scope_denied (403),
   authz_unavailable (502), not_found (404),
@@ -39,7 +39,7 @@ things-bridge /metrics (unversioned):
   unauthorized (401), token_expired (401), scope_denied (403),
   authz_unavailable (502).
 things-bridge server-wide:
-  not_found (404), method_not_allowed (405).
+  not_found (404), method_not_allowed (405), rate_limited (429).
 """
 
 import os
@@ -62,6 +62,7 @@ from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
 from things_bridge.authz import AgentAuthClient
 from things_bridge.config import Config as BridgeConfig
 from things_bridge.errors import (
+    AuthzRateLimitedError,
     AuthzScopeDeniedError,
     AuthzTokenExpiredError,
     AuthzUnavailableError,
@@ -434,6 +435,42 @@ def test_agent_auth_not_found(auth_server):
     assert body["error"] == "not_found"
 
 
+def test_agent_auth_rate_limited(tmp_dir, signing_key, encryption_key):
+    # Spin up a server with a tiny 1-request-per-minute budget so the
+    # taxonomy-coverage gate has a 429 call site without needing to
+    # hammer the default-rate limiter.
+    config = Config(
+        db_path=os.path.join(tmp_dir, "tokens.db"),
+        log_path=os.path.join(tmp_dir, "audit.log"),
+        host="127.0.0.1",
+        port=0,
+        rate_limit_per_minute=1,
+    )
+    store = TokenStore(config.db_path, encryption_key)
+    audit = AuditLogger(config.log_path)
+    approval_manager = ApprovalManager(_DenyPlugin(), store, audit)
+    registry, metrics = build_auth_registry()
+    server = AgentAuthServer(config, signing_key, store, audit, approval_manager, registry, metrics)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        family_id = "fam-rl-tax"
+        store.create_family(family_id, {"agent-auth:health": "allow"})
+        access_token, _ = create_token_pair(signing_key, store, family_id, config)
+        headers = _bearer(access_token)
+        # First call drains the bucket; the second lands on 429.
+        status, _ = get(f"http://127.0.0.1:{port}/agent-auth/health", headers)
+        assert status == 200
+        status, body = get(f"http://127.0.0.1:{port}/agent-auth/health", headers)
+        assert status == 429
+        assert body["error"] == "rate_limited"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 # == things-bridge: GET /things-bridge/v1/todos (authorization errors) ==
 
 
@@ -481,6 +518,17 @@ def test_bridge_things_permission_denied(bridge_server):
     status, body = get(f"{base}/things-bridge/v1/todos", _bearer("tok"))
     assert status == 503
     assert body["error"] == "things_permission_denied"
+
+
+def test_bridge_rate_limited(bridge_server):
+    # Coverage for the 429 passthrough path — agent-auth returns 429,
+    # the bridge maps AuthzRateLimitedError back to 429 with the same
+    # Retry-After (see ADR 0027).
+    authz, _, base = bridge_server
+    authz.exc = AuthzRateLimitedError("rate_limited", retry_after_seconds=3)
+    status, body = get(f"{base}/things-bridge/v1/todos", _bearer("tok"))
+    assert status == 429
+    assert body["error"] == "rate_limited"
 
 
 def test_bridge_things_unavailable(bridge_server):

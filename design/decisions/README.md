@@ -64,7 +64,7 @@ is linked from this index.
 - [ADR 0021 — Mutation testing on security-critical modules](0021-mutation-testing-security-critical.md)
   — nightly mutmut pass on tokens/crypto/keys/scopes/store gated by a ratcheting score floor; `scripts/verify-standards.sh` enforces `[tool.mutmut]` config and scheduled workflow stay present.
 - [ADR 0022 — Defer application-layer rate limiting; rely on loopback-only bind and bounded request bodies](0022-rate-limiting-posture.md)
-  — 1.0 ships without per-IP / per-token buckets; the loopback bind, 1 MiB body cap, and `ApprovalManager` serialisation cover the threat model until the trust boundary extends beyond localhost.
+  — *superseded by ADR 0027.* Originally deferred rate limiting on loopback-only grounds; TLS-for-devcontainer (ADR 0025) invalidated the loopback premise.
 - [ADR 0023 — Deepen `/things-bridge/health` to verify the Things-client binary is resolvable](0023-things-bridge-health-depth.md)
   — /health now returns 503 `{"status":"unhealthy"}` when `things_client_command[0]` fails PATH resolution; cached for 30s to keep the probe cheap. agent-auth reachability is covered implicitly by the probe-authorization call.
 - [ADR 0024 — Single-source audit trail at agent-auth with a cross-service resource envelope](0024-audit-log-shared-envelope.md)
@@ -73,3 +73,5 @@ is linked from this index.
   — close SC-8 for devcontainer-to-host traffic via a config-gated `ssl.SSLContext` wrap of the server socket (TLS 1.2+); plaintext stays the default for the loopback-only single-host deployment.
 - [ADR 0026 — Migrate autorelease driver from Release Please to semantic-release](0026-semantic-release-autorelease.md)
   — semantic-release runs on every push to `main` and cuts a release immediately on any qualifying Conventional Commit; PR-merge review replaces the Release Please release-PR guardrail; setuptools-scm remains the runtime version source.
+- [ADR 0027 — In-memory per-token-family rate limiting](0027-rate-limiting-implementation.md)
+  — supersedes ADR 0022. Every authenticated endpoint consumes from a token-bucket keyed on `family_id`; 429 `{"error":"rate_limited"}` with `Retry-After` on exhaustion. Default 600 req/min; set `rate_limit_per_minute: 0` to opt back into ADR 0022's deferral.

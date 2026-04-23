@@ -332,6 +332,7 @@ components:
         - authz_unavailable
         - method_not_allowed
         - not_found
+        - rate_limited
         - scope_denied
         - things_permission_denied
         - things_unavailable

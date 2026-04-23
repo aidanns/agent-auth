@@ -15,6 +15,7 @@ from things_cli.errors import (
     BridgeError,
     BridgeForbiddenError,
     BridgeNotFoundError,
+    BridgeRateLimitedError,
     BridgeUnauthorizedError,
     BridgeUnavailableError,
     CredentialsBackendError,
@@ -261,6 +262,9 @@ def main(argv: list[str] | None = None) -> int:
     except BridgeNotFoundError as exc:
         output.error(f"not found: {exc}")
         return 4
+    except BridgeRateLimitedError as exc:
+        output.error(f"rate limited: {exc}. Retry after {exc.retry_after_seconds}s.")
+        return 6
     except BridgeUnavailableError as exc:
         output.error(f"bridge unavailable: {exc}")
         return 5
