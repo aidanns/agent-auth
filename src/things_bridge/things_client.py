@@ -11,10 +11,12 @@ stdout. This module is the only place the bridge reasons about the
 subprocess protocol.
 """
 
+import contextlib
 import json
 import subprocess
 import sys
-from typing import Any, cast
+import threading
+from typing import IO, Any, cast
 
 from things_models.errors import (
     ThingsError,
@@ -22,6 +24,15 @@ from things_models.errors import (
     ThingsPermissionError,
 )
 from things_models.models import Area, Project, Todo
+
+STDERR_TAIL_MAX_CHARS = 64 * 1024
+"""Upper bound on the stderr tail retained for diagnostic messages.
+
+The bridge forwards client stderr to its own stderr *live* so nothing is
+buffered indefinitely in memory. The tail only exists so the timeout
+diagnostic can include a last-gasp excerpt when the child hung before
+writing a structured error.
+"""
 
 
 class ThingsSubprocessClient:
@@ -31,8 +42,9 @@ class ThingsSubprocessClient:
     or ``[sys.executable, "-m", "tests.things_client_fake", "--fixtures", P]``);
     sub-commands matching the request are appended. ``timeout_seconds`` caps
     the per-call wall clock. Subprocess stderr is forwarded to the bridge's
-    own stderr for operator diagnostics; the HTTP response body never
-    contains subprocess output.
+    own stderr line-by-line as the child writes it, so a misbehaving client
+    cannot pin bridge memory by streaming multi-megabyte diagnostics. The
+    HTTP response body never contains subprocess output.
     """
 
     def __init__(self, command: list[str], timeout_seconds: float = 35.0):
@@ -90,21 +102,42 @@ class ThingsSubprocessClient:
     def _invoke(self, argv: list[str]) -> dict[str, Any]:
         full_command = [*self._command, *argv]
         try:
-            result = subprocess.run(
+            process = subprocess.Popen(
                 full_command,
-                capture_output=True,
-                text=True,
-                timeout=self._timeout_seconds,
                 stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
             )
         except FileNotFoundError as exc:
             raise ThingsError(f"things client not found at {self._command[0]!r}") from exc
+
+        stdout_parts: list[str] = []
+        stderr_tail = _BoundedTail(STDERR_TAIL_MAX_CHARS)
+
+        stdout_thread = threading.Thread(
+            target=_drain_stdout,
+            args=(process.stdout, stdout_parts),
+            daemon=True,
+        )
+        stderr_thread = threading.Thread(
+            target=_drain_stderr_forward_and_tail,
+            args=(process.stderr, stderr_tail),
+            daemon=True,
+        )
+        stdout_thread.start()
+        stderr_thread.start()
+
+        try:
+            process.wait(timeout=self._timeout_seconds)
         except subprocess.TimeoutExpired as exc:
-            raw_stderr = exc.stderr
-            if isinstance(raw_stderr, bytes):
-                partial = raw_stderr.decode("utf-8", errors="replace").strip()
-            else:
-                partial = (raw_stderr or "").strip()
+            process.kill()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=1.0)
+            stdout_thread.join(timeout=1.0)
+            stderr_thread.join(timeout=1.0)
+            partial = stderr_tail.text().strip()
             print(
                 f"things-bridge: things client subprocess timed out after "
                 f"{self._timeout_seconds}s: {partial or '<empty stderr>'}",
@@ -115,23 +148,73 @@ class ThingsSubprocessClient:
                 f"things client subprocess timed out after {self._timeout_seconds}s"
             ) from exc
 
-        stderr = (result.stderr or "").strip()
-        if stderr:
-            # Forward client stderr so operators see osascript diagnostics,
-            # fixture-load errors, etc. HTTP responses never include it.
-            print(stderr, file=sys.stderr, flush=True)
+        stdout_thread.join(timeout=1.0)
+        stderr_thread.join(timeout=1.0)
 
-        payload = _parse_payload(result.stdout or "", full_command, result.returncode)
+        stdout = "".join(stdout_parts)
+        payload = _parse_payload(stdout, full_command, process.returncode)
 
         if "error" in payload:
             raise _error_from_payload(payload)
 
-        if result.returncode != 0:
+        if process.returncode != 0:
             raise ThingsError(
-                f"things client exited {result.returncode} without a structured error body"
+                f"things client exited {process.returncode} without a structured error body"
             )
 
         return payload
+
+
+class _BoundedTail:
+    """Append-only tail buffer that drops oldest content past a char cap."""
+
+    def __init__(self, max_chars: int):
+        if max_chars <= 0:
+            raise ValueError("_BoundedTail: max_chars must be positive")
+        self._max = max_chars
+        self._parts: list[str] = []
+        self._size = 0
+        self._lock = threading.Lock()
+
+    def append(self, chunk: str) -> None:
+        if not chunk:
+            return
+        with self._lock:
+            if len(chunk) >= self._max:
+                self._parts = [chunk[-self._max :]]
+                self._size = len(self._parts[0])
+                return
+            self._parts.append(chunk)
+            self._size += len(chunk)
+            while self._size > self._max and self._parts:
+                dropped = self._parts.pop(0)
+                self._size -= len(dropped)
+
+    def text(self) -> str:
+        with self._lock:
+            return "".join(self._parts)
+
+
+def _drain_stdout(stream: IO[str] | None, sink: list[str]) -> None:
+    if stream is None:
+        return
+    try:
+        for chunk in iter(lambda: stream.read(4096), ""):
+            sink.append(chunk)
+    finally:
+        stream.close()
+
+
+def _drain_stderr_forward_and_tail(stream: IO[str] | None, tail: _BoundedTail) -> None:
+    if stream is None:
+        return
+    try:
+        for chunk in iter(lambda: stream.read(4096), ""):
+            sys.stderr.write(chunk)
+            sys.stderr.flush()
+            tail.append(chunk)
+    finally:
+        stream.close()
 
 
 def _parse_payload(stdout: str, command: list[str], returncode: int) -> dict[str, Any]:
