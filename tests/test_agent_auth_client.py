@@ -2,7 +2,12 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Tests for the things-bridge authz client."""
+"""Tests for :class:`agent_auth_client.AgentAuthClient`.
+
+Focus here is on the validate() path that previously lived in
+``things_bridge.authz``; broader endpoint coverage lives in the
+integration suite under ``tests/integration/agent_auth/``.
+"""
 
 import json
 import threading
@@ -11,8 +16,8 @@ from typing import Any, ClassVar
 
 import pytest
 
-from things_bridge.authz import AgentAuthClient
-from things_bridge.errors import (
+from agent_auth_client import (
+    AgentAuthClient,
     AuthzRateLimitedError,
     AuthzScopeDeniedError,
     AuthzTokenExpiredError,

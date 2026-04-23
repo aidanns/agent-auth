@@ -12,17 +12,19 @@ from typing import Any
 
 import pytest
 
-from tests.factories import make_project as _project
-from tests.factories import make_todo as _todo
-from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
-from things_bridge.authz import AgentAuthClient
-from things_bridge.config import Config
-from things_bridge.errors import (
+from agent_auth_client import (
+    AgentAuthClient,
     AuthzRateLimitedError,
     AuthzScopeDeniedError,
     AuthzTokenExpiredError,
     AuthzTokenInvalidError,
     AuthzUnavailableError,
+)
+from tests.factories import make_project as _project
+from tests.factories import make_todo as _todo
+from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
+from things_bridge.config import Config
+from things_bridge.errors import (
     ThingsError,
     ThingsPermissionError,
 )

@@ -17,19 +17,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from server_metrics import (
-    PROMETHEUS_CONTENT_TYPE,
-    Registry,
-    render_prometheus_text,
-)
-from things_bridge.authz import AgentAuthClient
-from things_bridge.config import Config
-from things_bridge.errors import (
+from agent_auth_client import (
+    AgentAuthClient,
     AuthzRateLimitedError,
     AuthzScopeDeniedError,
     AuthzTokenExpiredError,
     AuthzTokenInvalidError,
     AuthzUnavailableError,
+)
+from server_metrics import (
+    PROMETHEUS_CONTENT_TYPE,
+    Registry,
+    render_prometheus_text,
+)
+from things_bridge.config import Config
+from things_bridge.errors import (
     ThingsError,
     ThingsNotFoundError,
     ThingsPermissionError,
