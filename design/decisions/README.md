@@ -77,3 +77,5 @@ is linked from this index.
   — supersedes ADR 0022. Every authenticated endpoint consumes from a token-bucket keyed on `family_id`; 429 `{"error":"rate_limited"}` with `Retry-After` on exhaustion. Default 600 req/min; set `rate_limit_per_minute: 0` to opt back into ADR 0022's deferral.
 - [ADR 0028 — HMAC-chained audit log for tamper-evident integrity](0028-audit-log-hmac-chain.md)
   — closes AU-9. Every audit entry carries a `chain_hmac = HMAC-SHA256(audit_chain_key, prev_hmac || canonical(entry))`; `agent-auth verify-audit` detects modify / delete / insert. `SCHEMA_VERSION` bumps 1→2; v1 logs are rolled over to `<path>.pre-chain-v2-*` on upgrade.
+- [ADR 0029 — Benchmark suite with pytest-benchmark](0029-benchmark-suite.md)
+  — weekly `benchmark.yml` workflow runs a `benchmarks/` pytest tree against a committed `ci-linux-x86_64.json` baseline with a 25 % mean-runtime regression gate; `scripts/verify-standards.sh` enforces the suite + workflow stay present.
