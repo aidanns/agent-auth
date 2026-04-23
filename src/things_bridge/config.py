@@ -15,6 +15,8 @@ from typing import Any, cast
 
 import yaml
 
+from things_bridge.types import ThingsClientCommand, make_things_client_command
+
 
 def _xdg_dir(env_var: str, fallback_segments: tuple[str, ...]) -> str:
     base = os.environ.get(env_var) or os.path.join(os.path.expanduser("~"), *fallback_segments)
@@ -29,8 +31,8 @@ def _default_state_dir() -> str:
     return _xdg_dir("XDG_STATE_HOME", (".local", "state"))
 
 
-def _default_things_client_command() -> list[str]:
-    return ["things-client-cli-applescript"]
+def _default_things_client_command() -> ThingsClientCommand:
+    return make_things_client_command(["things-client-cli-applescript"])
 
 
 @dataclass
@@ -41,7 +43,9 @@ class Config:
     # Argv prefix for the Things client subprocess. The bridge appends the
     # request-specific sub-command (``todos list --status open``, etc.)
     # before invoking. Tests override this to point at the in-tree fake.
-    things_client_command: list[str] = field(default_factory=_default_things_client_command)
+    things_client_command: ThingsClientCommand = field(
+        default_factory=_default_things_client_command
+    )
     # Kept above the shipped CLI's own 30s osascript timeout so the child can
     # surface a structured timeout envelope before the bridge kills it.
     request_timeout_seconds: float = 35.0
@@ -98,4 +102,11 @@ def load_config() -> Config:
         raw = yaml.safe_load(f)
     data: dict[str, Any] = cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
     kwargs = {k: v for k, v in data.items() if k in valid_fields}
+    # YAML loads ``things_client_command`` as ``list[str]``; validate and
+    # wrap at this one edge so downstream consumers receive the NewType
+    # and don't have to re-check the shape.
+    if "things_client_command" in kwargs:
+        kwargs["things_client_command"] = make_things_client_command(
+            kwargs["things_client_command"]
+        )
     return Config(**kwargs)
