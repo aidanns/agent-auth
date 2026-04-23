@@ -45,6 +45,9 @@
 #      under src/ carry a unit suffix (_seconds, _bytes, _count, ...)
 #      per .claude/instructions/coding-standards.md § Units in names
 #      (AST audit; see issue #35).
+#   2h. src/things_bridge/server.py defines a ``SafeId`` NewType that
+#      ``_safe_id`` returns, so validated ids carry a distinct type
+#      at the trust boundary (see issue #36).
 #   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
 #      lefthook per .claude/instructions/bash.md.
 #   4. Markdown (mdformat) and TOML (taplo) formatters are wired into
@@ -440,6 +443,24 @@ if [[ ${id_newtype_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: ${ID_TYPES_FILE} defines TodoId / ProjectId / AreaId via typing.NewType."
+
+# ---------------------------------------------------------------------------
+# SafeId NewType at the things-bridge validation boundary.
+# ---------------------------------------------------------------------------
+# .claude/instructions/coding-standards.md § "Prefer explicit typing to
+# prevent misuse" requires validated / sanitised values to wear a
+# distinct type. ``_safe_id`` rejects ids that don't match the allow-
+# list of safe characters; its callers depend on that invariant before
+# concatenating the id into audit/JIT descriptions. A ``SafeId``
+# NewType makes the invariant visible at every call site. See issue
+# #36.
+if ! grep -qE "^SafeId[[:space:]]*=[[:space:]]*NewType\(" src/things_bridge/server.py; then
+  echo "verify-standards: src/things_bridge/server.py does not define SafeId via typing.NewType." >&2
+  echo "  See .claude/instructions/coding-standards.md § Types and safety and issue #36." >&2
+  exit 1
+fi
+
+echo "verify-standards: src/things_bridge/server.py defines SafeId via typing.NewType."
 
 # ---------------------------------------------------------------------------
 # Numeric names carry their unit (AST audit).

@@ -14,7 +14,7 @@ import threading
 import time
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, NewType
 from urllib.parse import parse_qs, urlsplit
 
 from agent_auth_client import (
@@ -51,6 +51,17 @@ _UNKNOWN_ROUTE = "/unknown"
 # Upper bound on ids accepted from URL paths. Things ids are short; reject
 # anything excessive before it ever reaches AppleScript.
 _MAX_ID_LEN_CHARS = 128
+
+
+SafeId = NewType("SafeId", str)
+"""A raw id string that has passed ``_safe_id`` validation.
+
+Carries the invariant "safe characters only, length <= _MAX_ID_LEN_CHARS"
+— every downstream helper that expects a pre-validated id accepts a
+``SafeId`` rather than a raw ``str``, so passing the unvalidated input by
+mistake is a type error. See ``.claude/instructions/coding-standards.md``
+§ *Prefer explicit typing to prevent misuse*.
+"""
 
 # How long a successful ``shutil.which`` resolution of the things-client
 # executable is trusted by the /health probe. Long enough that a probe
@@ -105,13 +116,13 @@ class _HealthChecker:
         return self._cached_resolvable
 
 
-def _safe_id(raw: str | None) -> str | None:
+def _safe_id(raw: str | None) -> SafeId | None:
     """Reject ids that don't match the allow-list of safe characters.
 
-    Returns the id unchanged if safe, ``None`` otherwise. Used before building
-    audit/JIT description strings and before passing to ThingsApplescriptClient.
-    Only printable ASCII (excluding ``/``) and non-ASCII characters above U+007F
-    are permitted.
+    Returns the id wrapped in :class:`SafeId` if safe, ``None`` otherwise.
+    Used before building audit/JIT description strings and before passing to
+    ThingsApplescriptClient. Only printable ASCII (excluding ``/``) and
+    non-ASCII characters above U+007F are permitted.
     """
     if raw is None or not raw or len(raw) > _MAX_ID_LEN_CHARS:
         return None
@@ -122,7 +133,7 @@ def _safe_id(raw: str | None) -> str | None:
             continue
         if cp < 0x20 or cp == 0x7F or ch == "/":
             return None
-    return raw
+    return SafeId(raw)
 
 
 class ThingsBridgeHandler(BaseHTTPRequestHandler):
