@@ -42,7 +42,7 @@ simplifying for "personal project" scope.
   types: `docs:`, `style:`, `chore:`, `refactor:`, `test:`, `build:`,
   `ci:`. Breaking changes (`!` on the type — `feat!:` — or a
   `BREAKING CHANGE:` footer) are demoted to a minor bump while in
-  0.x. `.releaserc.json` `releaseRules` is the source of truth.
+  0.x. `.releaserc.mjs` `releaseRules` is the source of truth.
 
 ## Project-specific notes
 

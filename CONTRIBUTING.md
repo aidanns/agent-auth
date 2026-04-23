@@ -141,7 +141,7 @@ immediately. Rationale in
 Use [Conventional Commit](https://www.conventionalcommits.org/) messages.
 Semantic-release reads the commit type to decide whether and how to cut
 a release — the full set of accepted types and their release impact
-(mirrors `.releaserc.json` `releaseRules`):
+(mirrors `.releaserc.mjs` `releaseRules`):
 
 | Type        | Release impact | Use for                                             |
 | ----------- | -------------- | --------------------------------------------------- |
@@ -300,7 +300,7 @@ is required.
    workflow cuts a new release. Otherwise it exits cleanly with no
    side effects.
 3. There is **no release PR to review**. Pre-1.0 risk is mitigated
-   by (a) a `releaseRules` policy in `.releaserc.json` that demotes
+   by (a) a `releaseRules` policy in `.releaserc.mjs` that demotes
    `BREAKING CHANGE:` to a minor bump and (b) commit-review
    discipline at PR merge time — the PR *is* the review gate.
 4. Semantic-release pushes the `vX.Y.Z` tag. The tag push triggers
@@ -351,7 +351,7 @@ To cut a release:
    `git log vX.Y.Z..HEAD --oneline` and group by Conventional Commit
    type.
 3. Commit and push: `git commit -m "chore: prepare release vX.Y.Z"`.
-   (`chore:` is in the no-release list in `.releaserc.json`, so the
+   (`chore:` is in the no-release list in `.releaserc.mjs`, so the
    CI release workflow will ignore this commit and won't race with
    the break-glass path.)
 4. Run `task release` (auto-detect) or `task release -- X.Y.Z` (explicit).

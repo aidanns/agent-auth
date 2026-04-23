@@ -86,14 +86,14 @@ driver on every push to `main`.
   `vX.Y.Z` tag, pushes a `chore(release): ${version}` commit back
   to `main`, and creates a GitHub release. Non-qualifying pushes
   exit cleanly.
-- **Configuration**: `.releaserc.json` with the standard plugin
+- **Configuration**: `.releaserc.mjs` with the standard plugin
   chain — `commit-analyzer`, `release-notes-generator`,
   `changelog`, `github`, `git` — driven by the
   `conventionalcommits` preset.
 - **Pre-1.0 behaviour**: `commit-analyzer.releaseRules` demotes
   `BREAKING CHANGE:` from major to minor while in the 0.x range.
   Graduating to 1.0.0 means removing that rule from
-  `.releaserc.json` and manually cutting the 1.0.0 tag (either
+  `.releaserc.mjs` and manually cutting the 1.0.0 tag (either
   via `task release -- 1.0.0` or by letting the next breaking
   commit trigger semantic-release once the rule is gone).
 - **Versioning**: `setuptools-scm` remains the runtime version
@@ -187,7 +187,7 @@ driver on every push to `main`.
   follow-up.
 - Graduating to 1.0.0: remove
   `{"breaking": true, "release": "minor"}` from
-  `.releaserc.json` and run
+  `.releaserc.mjs` and run
   `task release -- 1.0.0` once to anchor the new major baseline.
 
 <!-- REUSE-IgnoreEnd -->
