@@ -56,34 +56,14 @@ runs:
         emit treefmt-sha256             '.treefmt.sha256_linux_x86_64'
         emit systems-engineering-ref              '.["systems-engineering"].ref'
         emit systems-engineering-install-sha256   '.["systems-engineering"].install_sha256'
-        emit d2-install-url                       '.d2.install_url'
-        emit d2-install-sha256                    '.d2.install_sha256'
+        emit d2-version                           '.d2.version'
+        emit d2-sha256                            '.d2.sha256_linux_x86_64'
 
     - name: Install uv
       uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
       with:
         version: ${{ steps.versions.outputs.uv-version }}
         enable-cache: true
-
-    - name: Install d2
-      shell: bash
-      env:
-        D2_INSTALL_URL: ${{ steps.versions.outputs.d2-install-url }}
-        D2_INSTALL_SHA256: ${{ steps.versions.outputs.d2-install-sha256 }}
-      run: |
-        # curl -> tmp file -> sha256 verify -> execute. Piping straight
-        # to `sh` would run whatever the network returns; a content
-        # change at the upstream CDN would silently execute. See #157.
-        set -euo pipefail
-        curl -fsSL \
-          --retry 5 --retry-max-time 60 --retry-all-errors \
-          -o /tmp/d2-install.sh \
-          "${D2_INSTALL_URL}"
-        echo "${D2_INSTALL_SHA256}  /tmp/d2-install.sh" | sha256sum -c -
-        # The previous form `curl ... | sh -s --` passed `--` to sh
-        # (end-of-options), not to the install script, so execute the
-        # downloaded script with no trailing args.
-        sh /tmp/d2-install.sh
 
     - name: Install systems-engineering
       shell: bash
@@ -134,6 +114,8 @@ runs:
     - name: Install release binaries
       shell: bash
       env:
+        D2_VERSION: ${{ steps.versions.outputs.d2-version }}
+        D2_SHA256: ${{ steps.versions.outputs.d2-sha256 }}
         KEEP_SORTED_VERSION: ${{ steps.versions.outputs.keep-sorted-version }}
         KEEP_SORTED_SHA256: ${{ steps.versions.outputs.keep-sorted-sha256 }}
         RIPSECRETS_VERSION: ${{ steps.versions.outputs.ripsecrets-version }}
@@ -197,11 +179,16 @@ runs:
           /tmp/treefmt.tar.gz \
           "${TREEFMT_SHA256}" >/tmp/treefmt.fetch.log 2>&1 &
         pids[treefmt]=$!
+        scripts/ci/fetch-release-asset.sh \
+          "https://github.com/terrastruct/d2/releases/download/v${D2_VERSION}/d2-v${D2_VERSION}-linux-amd64.tar.gz" \
+          /tmp/d2.tar.gz \
+          "${D2_SHA256}" >/tmp/d2.fetch.log 2>&1 &
+        pids[d2]=$!
 
         # Iterate a fixed tool list (not "${!pids[@]}") so the replayed
         # log order is deterministic across runs.
         fail=0
-        for tool in shellcheck shfmt ruff taplo keep-sorted ripsecrets treefmt; do
+        for tool in shellcheck shfmt ruff taplo keep-sorted ripsecrets treefmt d2; do
           if wait "${pids[$tool]}"; then
             status=OK
           else
@@ -252,6 +239,12 @@ runs:
         tar -xzf /tmp/treefmt.tar.gz -C /tmp
         sudo install -m0755 /tmp/treefmt /usr/local/bin/treefmt
         treefmt --version
+        echo "::endgroup::"
+
+        echo "::group::Install d2"
+        tar -xzf /tmp/d2.tar.gz -C /tmp
+        sudo install -m0755 "/tmp/d2-v${D2_VERSION}/bin/d2" /usr/local/bin/d2
+        d2 --version
         echo "::endgroup::"
 
     - name: Verify Required Tooling

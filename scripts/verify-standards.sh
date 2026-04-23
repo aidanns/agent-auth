@@ -35,6 +35,9 @@
 #   2d. setup-toolchain/action.yml has no unverified `curl | sh|bash`
 #      pipes — every network-fetched install script must be
 #      sha256-checked before execution (see issue #157).
+#   2e. .github/renovate.json exists and targets
+#      .github/tool-versions.yaml via customManagers — the auto-bump
+#      channel for every CI tool (see ADR 0031 and issue #205).
 #   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
 #      lefthook per .claude/instructions/bash.md.
 #   4. Markdown (mdformat) and TOML (taplo) formatters are wired into
@@ -371,6 +374,36 @@ if [[ -f "${SETUP_TOOLCHAIN}" ]]; then
   fi
   echo "verify-standards: ${SETUP_TOOLCHAIN} has no unverified 'curl | sh|bash' pipes."
 fi
+
+# ---------------------------------------------------------------------------
+# Renovate config exists and targets the tool-versions manifest.
+# ---------------------------------------------------------------------------
+# .github/renovate.json owns the automated bump channel for
+# .github/tool-versions.yaml (see ADR 0031 and issue #205). A dropped
+# config would silently regress the whole policy: Dependabot has no
+# visibility into the manifest, and upstream releases (shellcheck,
+# shfmt, ruff, ...) would stop landing as PRs. The presence check is
+# intentionally narrow — validity belongs to Renovate's own
+# config-validator, not to this script.
+RENOVATE_CONFIG=".github/renovate.json"
+if [[ ! -f "${RENOVATE_CONFIG}" ]]; then
+  echo "verify-standards: ${RENOVATE_CONFIG} is missing." >&2
+  echo "  Renovate custom managers own the auto-bump channel for the tool-versions manifest." >&2
+  echo "  See ADR 0031." >&2
+  exit 1
+fi
+
+if ! grep -qF '"customManagers"' "${RENOVATE_CONFIG}"; then
+  echo "verify-standards: ${RENOVATE_CONFIG} has no 'customManagers' key — tool-versions.yaml bumps won't fire." >&2
+  exit 1
+fi
+
+if ! grep -qF ".github/tool-versions.yaml" "${RENOVATE_CONFIG}"; then
+  echo "verify-standards: ${RENOVATE_CONFIG} does not reference .github/tool-versions.yaml as a managed file." >&2
+  exit 1
+fi
+
+echo "verify-standards: ${RENOVATE_CONFIG} is present and targets ${TOOL_VERSIONS_MANIFEST}."
 
 # Bash tooling: shellcheck + shfmt must be wired into CI, treefmt, and
 # lefthook per .claude/instructions/bash.md. Strip comments before

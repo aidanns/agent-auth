@@ -68,9 +68,6 @@ systems-engineering:
   # before executing it. See issue #157.
   install_sha256: "f83a266a0b5f1bb754cf67e7b5d0bb9f0d5610907c06e9cd6a81ff4acecefb9a"
 
-# d2 has no semver pin — the integrity check is the install.sh body
-# sha256 itself, which must be bumped together with any upstream
-# install-script change at d2lang.com. See issue #157.
 d2:
-  install_url: "https://d2lang.com/install.sh"
-  install_sha256: "2b7f4dd773a8d6ba57903f404d82d95e22f5efb618efb6b3c8d8142325a52ae2"
+  version: "0.7.1"
+  sha256_linux_x86_64: "eb172adf59f38d1e5a70ab177591356754ffaf9bebb84e0ca8b767dfb421dad7"
