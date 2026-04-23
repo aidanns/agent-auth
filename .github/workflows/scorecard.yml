@@ -18,6 +18,14 @@ name: Scorecard
 # unnoticed. The floor is deliberately set to the current observed
 # score so future changes ratchet rather than regress.
 #
+# Split into two jobs because scorecard-action's publish endpoint
+# rejects any publishing job that contains a non-`uses:` step (see
+# https://github.com/ossf/scorecard-action#workflow-restrictions).
+# `publish` holds only `uses:` steps so the signed publication to
+# api.securityscorecards.dev succeeds; `gate` re-runs scorecard-action
+# without publication so it can pair the JSON output with a `run:`
+# threshold check.
+#
 # See also:
 #   - design/SELF_ASSESSMENT.md → "OpenSSF Scorecard" for the target
 #     and publication policy.
@@ -32,8 +40,8 @@ on:
 permissions: read-all
 
 jobs:
-  analysis:
-    name: Scorecard analysis
+  publish:
+    name: Scorecard analysis (publish)
     runs-on: ubuntu-latest
     permissions:
       # For uploading SARIF to the GitHub Security tab.
@@ -71,20 +79,30 @@ jobs:
         with:
           sarif_file: results.sarif
 
-      - name: Run Scorecard (JSON) for threshold gate
+  gate:
+    name: Scorecard threshold gate
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      # scorecard-action reads workflow runs for the Token-Permissions check
+      # even when publish_results is false.
+      actions: read
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run Scorecard (JSON)
         uses: ossf/scorecard-action@v2.4.3
         with:
           results_file: results.json
           results_format: json
-          # Gate-only run; do not re-publish.
+          # Gate-only run; publication happens in the `publish` job.
           publish_results: false
 
       - name: Gate on aggregate score
-        # Kept at step-level rather than workflow-level: scorecard-action's
-        # publish_results endpoint rejects workflows that declare a top-level
-        # `env:` or `defaults:` block (see ossf/scorecard-action workflow
-        # restrictions), and losing publication would break the README badge
-        # and the SELF_ASSESSMENT publication claim.
         env:
           # Initial floor of 0.0 so the first scheduled run establishes a
           # baseline without red-lighting CI before we know the observed score.
