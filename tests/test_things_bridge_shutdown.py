@@ -22,10 +22,10 @@ from unittest.mock import Mock
 
 import pytest
 
+from agent_auth_client import AgentAuthClient
 from tests._signals import invoke_installed_handler
 from tests.factories import make_area
 from tests.things_client_fake.store import FakeThingsClient, FakeThingsStore
-from things_bridge.authz import AgentAuthClient
 from things_bridge.config import Config
 from things_bridge.metrics import build_registry as build_bridge_registry
 from things_bridge.server import (

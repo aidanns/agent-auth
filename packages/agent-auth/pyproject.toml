@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-auth"
+dynamic = ["version"]
+description = "Token-based authorization for AI agent access to macOS applications"
+requires-python = ">=3.11"
+dependencies = [
+    # keep-sorted start
+    "agent-auth-common",
+    "cryptography>=42.0",
+    "keyring>=25.0",
+    "pyyaml>=6.0",
+    # keep-sorted end
+]
+
+[project.scripts]
+# keep-sorted start
+agent-auth = "agent_auth.cli:main"
+agent-auth-notifier = "agent_auth_notifier.cli:main"
+# keep-sorted end
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+fallback_version = "0.0.0+unknown"
+
+[tool.uv.sources]
+# Resolve ``agent-auth-common`` from the workspace during development;
+# a published version can override this in a release build via
+# ``pip install`` against PyPI.
+agent-auth-common = { workspace = true }

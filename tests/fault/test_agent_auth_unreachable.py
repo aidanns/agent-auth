@@ -13,8 +13,7 @@ response.
 
 import pytest
 
-from things_bridge.authz import AgentAuthClient
-from things_bridge.errors import AuthzUnavailableError
+from agent_auth_client import AgentAuthClient, AuthzUnavailableError
 
 
 def test_connection_refused_raises_unavailable() -> None:

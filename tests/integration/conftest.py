@@ -31,9 +31,10 @@ import pytest
 import yaml
 from testcontainers.compose import DockerCompose
 
-from tests._http import post
+from agent_auth_client import AgentAuthClient
 from tests.integration._support import (
     DOCKER_DIR,
+    PER_SERVICE_DOCKERFILES,
     build_test_image,
     docker_compose_available,
     phase_timer,
@@ -83,21 +84,22 @@ class AgentAuthContainer:
     compose: DockerCompose
     service: str = "agent-auth"
     _mgmt_token_cache: str | None = field(default=None, init=False, repr=False, compare=False)
+    _client_cache: AgentAuthClient | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
-    def url(self, path: str) -> str:
-        """Return ``{base_url}/agent-auth/v1/{path}``."""
-        return f"{self.base_url}/agent-auth/v1/{path.lstrip('/')}"
-
-    def health_url(self) -> str:
-        """Return the unversioned health endpoint URL."""
-        return f"{self.base_url}/agent-auth/health"
+    def client(self) -> AgentAuthClient:
+        """Return a shared :class:`AgentAuthClient` bound to this container."""
+        if self._client_cache is None:
+            self._client_cache = AgentAuthClient(self.base_url, timeout_seconds=10.0)
+        return self._client_cache
 
     def management_token(self) -> str:
         """Return a valid management access token, refreshed from keyring on first call."""
         if self._mgmt_token_cache is None:
             result = json.loads(self.exec_cli("--json", "management-token", "show"))
-            _, body = post(self.url("token/refresh"), {"refresh_token": result["refresh_token"]})
-            self._mgmt_token_cache = body["access_token"]
+            refreshed = self.client().refresh(result["refresh_token"])
+            self._mgmt_token_cache = refreshed.access_token
         assert self._mgmt_token_cache is not None
         return self._mgmt_token_cache
 
@@ -120,7 +122,15 @@ class AgentAuthContainer:
         return cast(str, stdout)
 
     def create_token(self, *scopes: str) -> dict[str, Any]:
-        """Create a token family inside the container and return the parsed JSON."""
+        """Create a token family inside the container and return the parsed JSON.
+
+        Uses the ``agent-auth`` CLI — not the HTTP client — because the
+        management refresh token is stored in the container's keyring
+        and never crosses the HTTP boundary. Tests that specifically
+        need to exercise ``POST /token/create`` do so through
+        :meth:`client` with the token returned by
+        :meth:`management_token`.
+        """
         if not scopes:
             raise ValueError("at least one scope required")
         scope_args = []
@@ -151,45 +161,60 @@ def _docker_required():
         )
 
 
-def _resolve_test_image_tag() -> tuple[str, bool]:
-    """Resolve the image tag to use this session and whether to own it.
+def _resolve_test_image_tags() -> tuple[dict[str, str], bool]:
+    """Resolve the per-service image tags for this session.
 
-    Returns ``(tag, managed)``. ``managed`` is ``True`` when the caller
-    must build and clean up the image, ``False`` when the tag was
-    supplied externally (typically via ``AGENT_AUTH_TEST_IMAGE_TAG`` set
-    by a CI step that ran ``docker build`` itself) and the caller must
-    not build or remove it.
+    Returns ``(tags, managed)``. ``tags`` maps each service name (as
+    used in :data:`PER_SERVICE_DOCKERFILES`) to the full ``name:tag``
+    reference callers should pass to ``docker compose``. ``managed`` is
+    ``True`` when the caller must build and clean up the images,
+    ``False`` when they were supplied externally by a CI step that ran
+    ``docker build`` itself.
 
-    A session-unique tag in the managed case prevents parallel sessions
-    (two worktrees, two CI jobs sharing a runner) from clobbering each
-    other's image under a shared mutable tag — without which one
-    session could boot another's image while still using its own
-    Compose project.
+    External override is ``AGENT_AUTH_TEST_IMAGE_SESSION``: a non-empty
+    string is used verbatim as the shared tag suffix across every
+    per-service image (e.g. ``ci`` → ``agent-auth-test:ci``,
+    ``things-bridge-test:ci``, …). The managed case picks a
+    per-session random suffix so parallel sessions (two worktrees, two
+    CI jobs sharing a runner) don't clobber each other's images under
+    a shared mutable tag.
     """
-    prebuilt = os.environ.get("AGENT_AUTH_TEST_IMAGE_TAG")
+    prebuilt = os.environ.get("AGENT_AUTH_TEST_IMAGE_SESSION")
     if prebuilt:
-        return prebuilt, False
-    return f"agent-auth-test:pytest-{uuid.uuid4().hex[:8]}", True
+        return _tags_from_suffix(prebuilt), False
+    return _tags_from_suffix(f"pytest-{uuid.uuid4().hex[:8]}"), True
+
+
+def _tags_from_suffix(suffix: str) -> dict[str, str]:
+    """Return the per-service image tag map anchored at ``suffix``."""
+    return {service: f"{service}-test:{suffix}" for service in PER_SERVICE_DOCKERFILES}
 
 
 @pytest.fixture(scope="session")
-def _test_image_tag(_docker_required):
-    """Yield the integration-test image tag for this session, building
-    and cleaning it up when the fixture owns the image."""
-    tag, managed = _resolve_test_image_tag()
+def _test_image_tags(_docker_required):
+    """Yield the per-service integration-test image tags for this session.
+
+    Builds and cleans up every image the fixture owns; in the externally-
+    supplied path (CI), the images are left to the caller. A managed
+    build is sequenced per-service so a failure surfaces the failing
+    Dockerfile in the traceback rather than an aggregated error.
+    """
+    tags, managed = _resolve_test_image_tags()
     if not managed:
-        yield tag
+        yield tags
         return
-    build_test_image(tag)
+    for service, tag in tags.items():
+        build_test_image(PER_SERVICE_DOCKERFILES[service], tag)
     try:
-        yield tag
+        yield tags
     finally:
-        subprocess.run(
-            ["docker", "rmi", "-f", tag],
-            capture_output=True,
-            check=False,
-            timeout=60,
-        )
+        for tag in tags.values():
+            subprocess.run(
+                ["docker", "rmi", "-f", tag],
+                capture_output=True,
+                check=False,
+                timeout=60,
+            )
 
 
 def _write_test_config(config_dir: Path, **overrides: object) -> None:
@@ -198,7 +223,7 @@ def _write_test_config(config_dir: Path, **overrides: object) -> None:
 
     The directory and file are chmod'd world-readable because the config
     is bind-mounted into a container that runs as UID 1001 (see
-    ``docker/Dockerfile.test``), while ``tmp_path_factory.mktemp`` on
+    ``docker/Dockerfile.agent-auth.test``), while ``tmp_path_factory.mktemp`` on
     Linux defaults to mode 0700 owned by the host test runner's UID. If
     those UIDs disagree (common in devcontainers and some CI configs)
     the container user cannot read ``config.yaml`` and ``agent-auth
@@ -215,7 +240,7 @@ def _write_test_config(config_dir: Path, **overrides: object) -> None:
 
 @pytest.fixture
 def agent_auth_container_factory(
-    _test_image_tag: str,
+    _test_image_tags: dict[str, str],
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Generator[Callable[..., AgentAuthContainer], None, None]:
     """Factory fixture — spin up an agent-auth container with custom config.
@@ -258,7 +283,9 @@ def agent_auth_container_factory(
         rendered_compose = render_compose_file(
             tmp_path_factory.mktemp(f"compose-{project_name}"),
             COMPOSE_PROJECT_NAME=project_name,
-            AGENT_AUTH_TEST_IMAGE=_test_image_tag,
+            AGENT_AUTH_TEST_IMAGE=_test_image_tags["agent-auth"],
+            THINGS_BRIDGE_TEST_IMAGE=_test_image_tags["things-bridge"],
+            THINGS_CLI_TEST_IMAGE=_test_image_tags["things-cli"],
             AGENT_AUTH_TEST_CONFIG_DIR=str(config_dir),
             THINGS_BRIDGE_TEST_FIXTURES_DIR=str(bridge_fixtures_dir),
             NOTIFIER_MODE=APPROVAL_PLUGINS[approval],

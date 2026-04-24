@@ -11,10 +11,11 @@ on:
     branches: [main]
 
 # Shared across every integration-* job: the composite build action and
-# the pytest session resolve the pre-built image through this tag, so
-# they must agree.
+# the pytest session resolve every per-service image at ``<svc>-test:ci``
+# via this shared session suffix. Each job still builds its own copy of
+# every image today (caching is tracked under issue #129).
 env:
-  AGENT_AUTH_TEST_IMAGE_TAG: agent-auth-test:ci
+  AGENT_AUTH_TEST_IMAGE_SESSION: ci
 
 jobs:
   unit:
@@ -40,7 +41,7 @@ jobs:
 
       - uses: ./.github/actions/build-integration-test-image
         with:
-          tag: ${{ env.AGENT_AUTH_TEST_IMAGE_TAG }}
+          session: ${{ env.AGENT_AUTH_TEST_IMAGE_SESSION }}
 
       - name: Run agent-auth integration tests
         run: task test -- --integration agent-auth
@@ -56,7 +57,7 @@ jobs:
 
       - uses: ./.github/actions/build-integration-test-image
         with:
-          tag: ${{ env.AGENT_AUTH_TEST_IMAGE_TAG }}
+          session: ${{ env.AGENT_AUTH_TEST_IMAGE_SESSION }}
 
       - name: Run things-bridge integration tests
         run: task test -- --integration things-bridge
@@ -72,7 +73,7 @@ jobs:
 
       - uses: ./.github/actions/build-integration-test-image
         with:
-          tag: ${{ env.AGENT_AUTH_TEST_IMAGE_TAG }}
+          session: ${{ env.AGENT_AUTH_TEST_IMAGE_SESSION }}
 
       - name: Run things-cli integration tests
         run: task test -- --integration things-cli
@@ -88,7 +89,7 @@ jobs:
 
       - uses: ./.github/actions/build-integration-test-image
         with:
-          tag: ${{ env.AGENT_AUTH_TEST_IMAGE_TAG }}
+          session: ${{ env.AGENT_AUTH_TEST_IMAGE_SESSION }}
 
       - name: Run things-client-applescript integration tests
         run: task test -- --integration things-client-applescript

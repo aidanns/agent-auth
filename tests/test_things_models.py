@@ -4,18 +4,18 @@
 
 """Tests for the shared Things dataclass models."""
 
-from things_models.models import Area, Project, Todo
+from things_models.models import Area, AreaId, Project, ProjectId, Todo, TodoId
 
 
 def test_todo_to_json_round_trips_all_fields():
     todo = Todo(
-        id="abc",
+        id=TodoId("abc"),
         name="Buy milk",
         notes="2L",
         status="open",
         project_id=None,
         project_name=None,
-        area_id="area-1",
+        area_id=AreaId("area-1"),
         area_name="Personal",
         tag_names=["Errand", "P1"],
         due_date="2026-05-01",
@@ -35,7 +35,7 @@ def test_todo_to_json_round_trips_all_fields():
 
 def test_project_to_json_handles_missing_area():
     project = Project(
-        id="p1",
+        id=ProjectId("p1"),
         name="Q2 Planning",
         notes="",
         status="open",
@@ -55,5 +55,5 @@ def test_project_to_json_handles_missing_area():
 
 
 def test_area_to_json_minimal():
-    area = Area(id="a1", name="Personal", tag_names=["home"])
+    area = Area(id=AreaId("a1"), name="Personal", tag_names=["home"])
     assert area.to_json() == {"id": "a1", "name": "Personal", "tag_names": ["home"]}

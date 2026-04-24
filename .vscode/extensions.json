@@ -1,0 +1,14 @@
+{
+  "recommendations": [
+    "charliermarsh.ruff",
+    "editorconfig.editorconfig",
+    "foxundermoon.shell-format",
+    "github.vscode-github-actions",
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "redhat.vscode-yaml",
+    "tamasfe.even-better-toml",
+    "terrastruct.d2",
+    "timonwong.shellcheck"
+  ]
+}

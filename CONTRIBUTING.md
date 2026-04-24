@@ -210,6 +210,78 @@ they are demoted to a minor bump via
 [ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
 § Pre-1.0 behaviour.
 
+`.releaserc.mjs` `releaseRules` is the authoritative source for the
+release-impact column — if this table disagrees with that file, the
+file wins. Raise a PR to fix the docs.
+
+### Picking a type
+
+The table above is enough for obvious cases. The recurring judgment
+calls:
+
+- **User-visible incorrect behaviour wins over everything.** A change
+  that makes a broken thing work is `fix:` (patch bump) even when the
+  implementation looks like a refactor, a perf improvement, or a test
+  addition. Example: tightening an HMAC comparison that was previously
+  timing-leaky is `fix(tokens):`, not `perf(tokens):`.
+- **`fix(deps):` vs `chore(deps):`.** Use `fix(deps):` when the bump
+  patches a CVE that our code path actually reaches, or when the
+  dependency update repairs wrong behaviour we observe. Routine version
+  drift on Dependabot PRs — no security advisory, no behaviour change
+  — is `chore(deps):` (no release). Dev-only dependency bumps are
+  `chore(deps-dev):` regardless.
+- **`refactor:` vs `fix:`.** Internal restructuring that incidentally
+  fixes a latent bug — split it if the diff allows: one `refactor:`
+  for the restructure, one `fix:` for the defect. If splitting is
+  artificial, pick `fix:` (the user-visible correction wins).
+- **`build:` vs `ci:` vs `chore:`.** `build:` is for packaging / wheel
+  / Dockerfile content that ships with the distribution. `ci:` is for
+  `.github/workflows/**` and composite actions under `.github/actions/`.
+  `chore:` covers everything else that is neither — Taskfile, scripts,
+  lefthook, dev-only tooling glue. A change to `.github/dependabot.yml`
+  is `ci:` (configures a GitHub-Actions-adjacent tool); a change to
+  `pyproject.toml` dep constraints is `build:` (affects the shipped
+  wheel); a change to `pyproject.toml` `[tool.ruff]` config is
+  `chore:` (dev ergonomics only).
+- **`test:` vs `fix:` on a test file.** A test change that fixes a
+  **product** bug surfaced by the test is `fix:` — the commit
+  qualifies for a patch release. A test change that fixes the test
+  itself (flake, setup bug, asserting the wrong thing) is `test:`
+  (no release).
+- **`perf:` and `feat:` together.** If a perf improvement changes
+  user-observable semantics (new endpoint, new config knob, changed
+  defaults), it is `feat:`; the perf win is a side-effect described
+  in the body. Pure perf changes (same contract, better numbers) are
+  `perf:`.
+
+### Allowed scopes
+
+Scopes are drawn from a known set so `CHANGELOG.md` and `git log`
+stay browsable. Adding a new scope is a CONTRIBUTING edit, not an
+ad-hoc invention in a PR — if none of the scopes below fit, raise a
+PR to add one.
+
+- **Subsystem scopes** — the module or surface the commit touches.
+  `agent-auth`, `things-bridge`, `things-cli`,
+  `things-client-cli-applescript`, `server`, `audit`, `store`,
+  `keys`, `scopes`, `rate-limit`, `tls`, `notifier`, `metrics`, `api`,
+  `benchmark`, `observability`.
+- **Area scopes** — cross-cutting concerns.
+  `release` (release automation, CHANGELOG, versioning), `ci` (CI
+  workflow / composite action changes), `deps` (runtime dep bumps),
+  `deps-dev` (dev dep bumps), `docs` (README, CONTRIBUTING,
+  CLAUDE.md, SECURITY.md, SUPPORT.md), `design` (`design/**`, ADRs),
+  `security` (SECURITY.md content, security controls, scorecard, dco,
+  supply-chain), `typecheck` (mypy / pyright), `verify-standards`
+  (`scripts/verify-standards.sh`), `python` (ruff, pytest, project
+  Python config), `setup-toolchain` (`.github/actions/setup-toolchain`),
+  `docker` (Dockerfiles, compose, image pipeline), `vscode`
+  (`.vscode/`), `claude` (CLAUDE.md / `.claude/instructions/`).
+
+Bare (no-scope) commits are reserved for changes that genuinely
+don't fit a single scope — a sweeping rename, a repo-wide lint pass.
+Prefer a scope when one applies.
+
 Default branch is `main`; feature branches follow
 `<username>/<feature-name>`. See the project [CLAUDE.md](CLAUDE.md) for
 the full working agreement.

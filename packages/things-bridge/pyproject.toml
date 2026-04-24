@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "things-bridge"
+dynamic = ["version"]
+description = "HTTP bridge from agent-auth-protected clients to the Things 3 API"
+requires-python = ">=3.11"
+dependencies = [
+    # keep-sorted start
+    "agent-auth-common",
+    "pyyaml>=6.0",
+    # keep-sorted end
+]
+
+[project.scripts]
+things-bridge = "things_bridge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+fallback_version = "0.0.0+unknown"
+
+[tool.uv.sources]
+agent-auth-common = { workspace = true }

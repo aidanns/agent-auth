@@ -43,6 +43,7 @@ from tests.integration.conftest import (
     BASELINE_CONFIG,
     AgentAuthContainer,
 )
+from things_bridge_client import ThingsBridgeClient
 
 AGENT_AUTH_PORT = 9100
 THINGS_BRIDGE_PORT = 9200
@@ -68,13 +69,9 @@ class ThingsBridgeStack:
     fixtures_dir: Path
     compose_file: str
 
-    def url(self, path: str) -> str:
-        """Return ``{base_url}/things-bridge/v1/{path}``."""
-        return f"{self.base_url}/things-bridge/v1/{path.lstrip('/')}"
-
-    def health_url(self) -> str:
-        """Return the unversioned health endpoint URL."""
-        return f"{self.base_url}/things-bridge/health"
+    def client(self) -> ThingsBridgeClient:
+        """Return a :class:`ThingsBridgeClient` bound to this stack's bridge URL."""
+        return ThingsBridgeClient(self.base_url, timeout_seconds=10.0)
 
     def write_fixture(self, fixture: dict[str, Any]) -> None:
         """Write/replace ``things.yaml`` in the bind-mounted fixtures dir."""
@@ -133,7 +130,7 @@ def _write_agent_auth_config(
 
 @pytest.fixture
 def things_bridge_stack_factory(
-    _test_image_tag: str,
+    _test_image_tags: dict[str, str],
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Generator[Callable[..., ThingsBridgeStack], None, None]:
     """Factory fixture — spin up the agent-auth + things-bridge pair.
@@ -173,7 +170,9 @@ def things_bridge_stack_factory(
         rendered_compose = render_compose_file(
             tmp_path_factory.mktemp(f"compose-{project_name}"),
             COMPOSE_PROJECT_NAME=project_name,
-            AGENT_AUTH_TEST_IMAGE=_test_image_tag,
+            AGENT_AUTH_TEST_IMAGE=_test_image_tags["agent-auth"],
+            THINGS_BRIDGE_TEST_IMAGE=_test_image_tags["things-bridge"],
+            THINGS_CLI_TEST_IMAGE=_test_image_tags["things-cli"],
             AGENT_AUTH_TEST_CONFIG_DIR=str(agent_auth_config_dir),
             THINGS_BRIDGE_TEST_FIXTURES_DIR=str(fixtures_dir),
             NOTIFIER_MODE=APPROVAL_PLUGINS[approval],

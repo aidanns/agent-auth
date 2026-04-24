@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+# SPDX-License-Identifier: MIT
+#
+# Integration-test image for the ``things-cli`` binary. Never publish;
+# never use in production.
+#
+# Unlike the ``agent-auth`` and ``things-bridge`` images this one does
+# not carry any ``tests_support`` / ``tests.things_client_fake`` — the
+# CLI has no test-only subprocess dependencies; it only speaks HTTP to
+# the in-compose ``things-bridge`` and ``agent-auth`` services.
+#
+# No ``ENTRYPOINT`` because the integration test suite invokes this
+# image via ``docker compose run --rm things-cli things-cli <args>``:
+# docker compose's ``run`` verb accepts an explicit command after the
+# service name, so locking the entrypoint here buys nothing and makes
+# a caller that wants a different binary (debug shell, --help probe)
+# pay an ``--entrypoint`` override.
+
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HOME=/home/agent-auth \
+    XDG_CONFIG_HOME=/home/agent-auth/.config
+
+RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin agent-auth
+
+WORKDIR /src
+
+COPY README.md ./
+COPY packages/agent-auth-common/ ./packages/agent-auth-common/
+COPY packages/things-cli/ ./packages/things-cli/
+
+RUN pip install --no-cache-dir \
+        ./packages/agent-auth-common \
+        ./packages/things-cli
+
+RUN mkdir -p "$XDG_CONFIG_HOME/things-cli" \
+    && chown -R agent-auth:agent-auth /home/agent-auth
+
+USER agent-auth
