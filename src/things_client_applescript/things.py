@@ -503,7 +503,12 @@ def _parse_rows(output: str, expected_cols: int) -> list[list[str]]:
 
 
 def _row_to_todo(row: list[str]) -> Todo:
-    cols = dict(zip(_TODO_FIELDS, row, strict=False))
+    # strict=True enforces the column-count invariant at the helper
+    # boundary as a belt-and-braces complement to ``_parse_rows``'s
+    # length check. A future direct caller that skips _parse_rows gets
+    # a hard ValueError instead of a silent dict-key lookup failure on
+    # the first missing column. See issue #76.
+    cols = dict(zip(_TODO_FIELDS, row, strict=True))
     project_id_raw = _field(cols["project_id"])
     area_id_raw = _field(cols["area_id"])
     return Todo(
@@ -526,7 +531,9 @@ def _row_to_todo(row: list[str]) -> Todo:
 
 
 def _row_to_project(row: list[str]) -> Project:
-    cols = dict(zip(_PROJECT_FIELDS, row, strict=False))
+    # See _row_to_todo: strict=True guards against a direct caller
+    # bypassing _parse_rows.
+    cols = dict(zip(_PROJECT_FIELDS, row, strict=True))
     area_id_raw = _field(cols["area_id"])
     return Project(
         id=ProjectId(_field(cols["id"]) or ""),
@@ -546,7 +553,9 @@ def _row_to_project(row: list[str]) -> Project:
 
 
 def _row_to_area(row: list[str]) -> Area:
-    cols = dict(zip(_AREA_FIELDS, row, strict=False))
+    # See _row_to_todo: strict=True guards against a direct caller
+    # bypassing _parse_rows.
+    cols = dict(zip(_AREA_FIELDS, row, strict=True))
     return Area(
         id=AreaId(_field(cols["id"]) or ""),
         name=_field(cols["name"]) or "",

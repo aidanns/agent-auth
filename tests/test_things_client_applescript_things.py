@@ -28,6 +28,9 @@ from things_client_applescript.things import (
     TAB_PLACEHOLDER,
     AppleScriptRunner,
     ThingsApplescriptClient,
+    _row_to_area,
+    _row_to_project,
+    _row_to_todo,
 )
 from things_models.errors import ThingsError, ThingsNotFoundError
 
@@ -391,6 +394,44 @@ def test_malformed_row_raises_things_error():
     client = ThingsApplescriptClient(runner)
     with pytest.raises(ThingsError):
         client.list_todos()
+
+
+# The zip(strict=True) in each _row_to_* helper guards against a future
+# direct caller that skips _parse_rows: without it, a mismatched row
+# would silently truncate to the shorter sequence and then explode on
+# the first missing cols[...] lookup. Exercise both the too-short and
+# too-long cases per helper so a regression to strict=False is
+# immediately visible.
+
+
+def test_row_to_todo_rejects_too_few_cols():
+    with pytest.raises(ValueError):
+        _row_to_todo(["t1"] + [""] * (len(_TODO_FIELDS) - 2))
+
+
+def test_row_to_todo_rejects_too_many_cols():
+    with pytest.raises(ValueError):
+        _row_to_todo(["t1"] + [""] * len(_TODO_FIELDS))
+
+
+def test_row_to_project_rejects_too_few_cols():
+    with pytest.raises(ValueError):
+        _row_to_project(["p1"] + [""] * (len(_PROJECT_FIELDS) - 2))
+
+
+def test_row_to_project_rejects_too_many_cols():
+    with pytest.raises(ValueError):
+        _row_to_project(["p1"] + [""] * len(_PROJECT_FIELDS))
+
+
+def test_row_to_area_rejects_too_few_cols():
+    with pytest.raises(ValueError):
+        _row_to_area(["a1"] + [""] * (len(_AREA_FIELDS) - 2))
+
+
+def test_row_to_area_rejects_too_many_cols():
+    with pytest.raises(ValueError):
+        _row_to_area(["a1"] + [""] * len(_AREA_FIELDS))
 
 
 # -- AppleScript injection guards --
