@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# PR-time dependency CVE gate. Uses the Dependency Graph diff between
+# base and head to reject PRs that introduce direct or transitive deps
+# carrying known HIGH or CRITICAL advisories (GHSA, same feed Dependabot
+# ingests).
+#
+# Together with Dependabot alerts (continuous, post-merge backstop) and
+# the Dependency Submission workflow that keeps CI-tool PURLs flowing
+# into the Dependency Graph (#205 / PR #251), this replaces the
+# PR-gating role pip-audit plays today. Removal of pip-audit is tracked
+# in #264; it stays in place until this gate is proven operational
+# (Dependency Graph enabled, this check added to required status
+# checks, Dependabot alerts firing).
+#
+# Requires Dependency Graph to be enabled on the repository
+# (Settings → Code security and analysis → Dependency graph). Without
+# it, the action fails closed on the Dep Graph diff call, same 404
+# surface the Dependency Submission workflow hits today.
+
+name: Dependency Review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  # Read-only access to the Dependency Graph diff — this is the scanner input.
+  contents: read
+  # Required by comment-summary-in-pr so the action can post the inline
+  # findings summary on the PR conversation.
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Review PR dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          # HIGH/CRITICAL is the industry-standard gating bar and matches
+          # what Dependabot alerts prioritise for notification. Dropping to
+          # moderate produces a false-positive treadmill on transitive
+          # deps for a solo-maintained project — can be revisited if the
+          # noise/value trade flips.
+          fail-on-severity: high
+          # Post a human-readable summary on the PR so the action's
+          # findings are visible without clicking through to the check
+          # details page.
+          comment-summary-in-pr: always
