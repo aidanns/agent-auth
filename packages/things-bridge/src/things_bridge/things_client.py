@@ -13,9 +13,11 @@ subprocess protocol.
 
 import contextlib
 import json
+import os
 import subprocess
 import sys
 import threading
+from collections.abc import Mapping
 from typing import IO, Any, cast
 
 from things_bridge.types import ThingsClientCommand
@@ -34,6 +36,56 @@ buffered indefinitely in memory. The tail only exists so the timeout
 diagnostic can include a last-gasp excerpt when the child hung before
 writing a structured error.
 """
+
+SUBPROCESS_ENV_EXACT_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "LANG",
+        "TZ",
+    }
+)
+"""Environment variable names passed through to the client subprocess verbatim.
+
+The bridge process may hold secrets in its environment — agent-auth
+bearer tokens the operator sets via ``AGENT_AUTH_*``, future signing-key
+env fallbacks, unrelated API keys a shell happened to export. The
+client CLI runs as the same local user, so no privilege boundary is
+crossed by the spawn, but a buggy or rogue client binary inherits read
+access to any env var it was handed. Starting from an empty env and
+adding only what the shipped client documents it reads prevents that
+quiet disclosure. Anything outside this set plus the prefix allowlist
+is dropped.
+"""
+
+SUBPROCESS_ENV_PREFIX_ALLOWLIST: tuple[str, ...] = (
+    "LC_",
+    "THINGS_CLIENT_",
+)
+"""Prefix families forwarded to the client subprocess.
+
+``LC_*`` covers every locale category (``LC_ALL``, ``LC_CTYPE``, …) in
+one rule so a user with a non-default locale doesn't see surprise
+mojibake in the child's output. ``THINGS_CLIENT_*`` is the documented
+knob surface of ``things-client-cli-applescript`` (e.g.
+``THINGS_CLIENT_OSASCRIPT_PATH``, ``THINGS_CLIENT_TIMEOUT_SECONDS``) —
+stripping these would silently break operator overrides.
+"""
+
+
+def build_subprocess_env(parent_env: Mapping[str, str]) -> dict[str, str]:
+    """Return the env dict the client subprocess should see.
+
+    Callers pass the parent environment (typically ``os.environ``); the
+    returned dict is a fresh copy containing only allowlisted names.
+    """
+    env: dict[str, str] = {}
+    for name, value in parent_env.items():
+        if name in SUBPROCESS_ENV_EXACT_ALLOWLIST or name.startswith(
+            SUBPROCESS_ENV_PREFIX_ALLOWLIST
+        ):
+            env[name] = value
+    return env
 
 
 class ThingsSubprocessClient:
@@ -114,6 +166,7 @@ class ThingsSubprocessClient:
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                env=build_subprocess_env(os.environ),
                 text=True,
                 bufsize=1,
             )
@@ -252,4 +305,9 @@ def _error_from_payload(payload: dict[str, Any]) -> ThingsError:
     return ThingsError(message)
 
 
-__all__ = ["ThingsSubprocessClient"]
+__all__ = [
+    "SUBPROCESS_ENV_EXACT_ALLOWLIST",
+    "SUBPROCESS_ENV_PREFIX_ALLOWLIST",
+    "ThingsSubprocessClient",
+    "build_subprocess_env",
+]

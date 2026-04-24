@@ -168,9 +168,18 @@ only disambiguates success from failure when the envelope is absent.
 - **New subprocess trust relationship.** The bridge now trusts the
   stdout of a process it spawned from a command line it controls. The
   `things_client_command` is validated at config load time and cannot
-  be set from HTTP. The subprocess inherits the bridge's environment
-  but runs as the same local user, so no privilege boundary is
-  crossed.
+  be set from HTTP. The subprocess runs as the same local user, so no
+  privilege boundary is crossed.
+- **Subprocess environment is allowlisted.** The client CLI is spawned
+  with an explicit `env=` built from `SUBPROCESS_ENV_EXACT_ALLOWLIST`
+  (`PATH`, `HOME`, `LANG`, `TZ`) and `SUBPROCESS_ENV_PREFIX_ALLOWLIST`
+  (`LC_*`, `THINGS_CLIENT_*`). Secrets the operator has in the bridge
+  env — agent-auth bearer tokens, unrelated API keys, future
+  signing-key env fallbacks — therefore never reach the child. The
+  allowlist is tested in `test_things_subprocess_client.py`; extending
+  it (e.g. `TMPDIR`, `__CFPREFERENCES_*`) requires evidence that an
+  osascript execution path actually needs the variable, not
+  speculative inclusion. Tracked in #68.
 - **Information disclosure.** Subprocess stderr continues to be
   scrubbed from HTTP response bodies and only forwarded to the
   bridge's own stderr for operator diagnostics. The bridge never
