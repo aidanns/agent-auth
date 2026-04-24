@@ -84,7 +84,7 @@ tasks:
   verify-token-cli-http-parity:
     desc: Verify every `agent-auth token *` CLI subcommand has a matching HTTP route.
     cmds:
-      - scripts/verify-token-cli-http-parity.sh
+      - packages/agent-auth/scripts/verify-token-cli-http-parity.sh
 
   build:
     desc: Build sdist and wheel distributions into dist/.
