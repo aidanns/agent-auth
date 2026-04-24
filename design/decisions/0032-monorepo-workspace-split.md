@@ -204,7 +204,10 @@ Negative, unresolved:
 - Per-package release automation: namespaced tags
   (`agent-auth/v<X>.<Y>.<Z>`), per-package `CHANGELOG.md`, per-package
   `SECURITY.md` where relevant, independent semantic-release
-  configuration. Tracked separately once the workspace has settled.
+  configuration. Decision recorded in
+  [ADR 0035](0035-workspace-release-model.md): keep the single
+  workspace-wide train for now; revisit on external-consumer
+  pinning, independent 1.0 readiness, or divergent cadence.
 - PyPI publishing: once per-package releases are in place, each
   package can publish its wheel independently. Until then, the
   per-service `install.sh` scripts install straight from the Git
