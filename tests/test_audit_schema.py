@@ -11,7 +11,7 @@ present with the correct names and types.
 Breaking schema changes (renaming a field, removing a field) will fail
 these tests, which is the intent: the on-disk format is public API.
 A breaking change must also bump ``SCHEMA_VERSION`` in
-``src/agent_auth/audit.py`` and announce in ``CHANGELOG.md`` (see
+``packages/agent-auth/src/agent_auth/audit.py`` and announce in ``CHANGELOG.md`` (see
 ``design/DESIGN.md`` "Audit log fields").
 
 Documented events

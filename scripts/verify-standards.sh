@@ -38,17 +38,17 @@
 #   2e. .github/renovate.json exists and targets
 #      .github/tool-versions.yaml via customManagers — the auto-bump
 #      channel for every CI tool (see ADR 0031 and issue #205).
-#   2f. src/things_models/models.py defines TodoId, ProjectId, AreaId
+#   2f. packages/agent-auth-common/src/things_models/models.py defines TodoId, ProjectId, AreaId
 #      via typing.NewType so Things entity ids aren't interchangeable
 #      strings at the type checker's boundary (see issue #34).
 #   2g. Numeric parameters, dataclass fields, and module constants
 #      under src/ carry a unit suffix (_seconds, _bytes, _count, ...)
 #      per .claude/instructions/coding-standards.md § Units in names
 #      (AST audit; see issue #35).
-#   2h. src/things_bridge/server.py defines a ``SafeId`` NewType that
+#   2h. packages/things-bridge/src/things_bridge/server.py defines a ``SafeId`` NewType that
 #      ``_safe_id`` returns, so validated ids carry a distinct type
 #      at the trust boundary (see issue #36).
-#   2i. src/things_bridge/types.py defines ``ThingsClientCommand`` as a
+#   2i. packages/things-bridge/src/things_bridge/types.py defines ``ThingsClientCommand`` as a
 #      typing.NewType plus a factory that enforces the non-empty /
 #      all-str invariant at the config / subprocess boundary (see
 #      issue #70).
@@ -427,7 +427,7 @@ echo "verify-standards: ${RENOVATE_CONFIG} is present and targets ${TOOL_VERSION
 # newtypes at semantic boundaries. Every Things entity id must be a
 # typing.NewType alias so a TodoId and ProjectId aren't interchangeable
 # from the type checker's perspective. See issue #34.
-ID_TYPES_FILE="src/things_models/models.py"
+ID_TYPES_FILE="packages/agent-auth-common/src/things_models/models.py"
 if [[ ! -f "${ID_TYPES_FILE}" ]]; then
   echo "verify-standards: ${ID_TYPES_FILE} is missing." >&2
   exit 1
@@ -458,13 +458,13 @@ echo "verify-standards: ${ID_TYPES_FILE} defines TodoId / ProjectId / AreaId via
 # concatenating the id into audit/JIT descriptions. A ``SafeId``
 # NewType makes the invariant visible at every call site. See issue
 # #36.
-if ! grep -qE "^SafeId[[:space:]]*=[[:space:]]*NewType\(" src/things_bridge/server.py; then
-  echo "verify-standards: src/things_bridge/server.py does not define SafeId via typing.NewType." >&2
+if ! grep -qE "^SafeId[[:space:]]*=[[:space:]]*NewType\(" packages/things-bridge/src/things_bridge/server.py; then
+  echo "verify-standards: packages/things-bridge/src/things_bridge/server.py does not define SafeId via typing.NewType." >&2
   echo "  See .claude/instructions/coding-standards.md § Types and safety and issue #36." >&2
   exit 1
 fi
 
-echo "verify-standards: src/things_bridge/server.py defines SafeId via typing.NewType."
+echo "verify-standards: packages/things-bridge/src/things_bridge/server.py defines SafeId via typing.NewType."
 
 # ---------------------------------------------------------------------------
 # ThingsClientCommand NewType at the config / subprocess boundary.
@@ -474,18 +474,18 @@ echo "verify-standards: src/things_bridge/server.py defines SafeId via typing.Ne
 # committed to a ThingsClientCommand newtype wrapping the argv list.
 # See issue #70. The check asserts the NewType + its factory are still
 # defined; mypy/pyright catch misuse at call sites.
-if ! grep -qE "^ThingsClientCommand[[:space:]]*=[[:space:]]*NewType\(" src/things_bridge/types.py; then
-  echo "verify-standards: src/things_bridge/types.py does not define ThingsClientCommand via typing.NewType." >&2
+if ! grep -qE "^ThingsClientCommand[[:space:]]*=[[:space:]]*NewType\(" packages/things-bridge/src/things_bridge/types.py; then
+  echo "verify-standards: packages/things-bridge/src/things_bridge/types.py does not define ThingsClientCommand via typing.NewType." >&2
   echo "  See .claude/instructions/coding-standards.md § Types and safety and issue #70." >&2
   exit 1
 fi
-if ! grep -qE "^def make_things_client_command\(" src/things_bridge/types.py; then
-  echo "verify-standards: src/things_bridge/types.py does not expose make_things_client_command()." >&2
+if ! grep -qE "^def make_things_client_command\(" packages/things-bridge/src/things_bridge/types.py; then
+  echo "verify-standards: packages/things-bridge/src/things_bridge/types.py does not expose make_things_client_command()." >&2
   echo "  The factory centralises the non-empty / all-str invariant; see issue #70." >&2
   exit 1
 fi
 
-echo "verify-standards: src/things_bridge/types.py defines ThingsClientCommand + make_things_client_command."
+echo "verify-standards: packages/things-bridge/src/things_bridge/types.py defines ThingsClientCommand + make_things_client_command."
 
 # ---------------------------------------------------------------------------
 # Numeric names carry their unit (AST audit).
@@ -1170,11 +1170,21 @@ for override in pyproject.get("tool", {}).get("mypy", {}).get("overrides", []):
 
 def module_to_path(mod: str) -> str:
     path = mod.replace(".", "/")
-    candidates = [
-        f"src/{path}.py",
-        f"src/{path}",
-        f"{path}",
-    ]
+    # ``packages/*/src/<mod>`` covers the per-subproject workspace
+    # layout from #105; the pre-split ``src/<mod>`` path is kept as a
+    # fallback so historical pyrightconfig.json entries still resolve
+    # during the migration.
+    candidates: list[str] = []
+    for pkg_src in sorted(pathlib.Path("packages").glob("*/src")):
+        candidates.append(f"{pkg_src}/{path}.py")
+        candidates.append(f"{pkg_src}/{path}")
+    candidates.extend(
+        [
+            f"src/{path}.py",
+            f"src/{path}",
+            f"{path}",
+        ]
+    )
     for c in candidates:
         if pathlib.Path(c).exists():
             return c
@@ -1570,22 +1580,50 @@ fi
 
 echo "verify-standards: SECURITY.md exists with all required sections including the cybersecurity, SDLC, and application security standards."
 
-# install.sh must exist at the repo root and be executable per
-# .claude/instructions/release-and-hygiene.md.
+# Every per-service package must ship an executable ``install.sh`` per
+# .claude/instructions/release-and-hygiene.md. Under the per-subproject
+# layout introduced in #105, the root no longer carries a meta-installer;
+# each ``packages/<service>/install.sh`` is the only supported entry
+# point for that service.
 
-if [[ ! -f install.sh ]]; then
-  echo "verify-standards: install.sh is missing from the repo root." >&2
-  echo "  Add install.sh following the bash script conventions in .claude/instructions/bash.md." >&2
+if [[ -f install.sh ]]; then
+  echo "verify-standards: root install.sh re-introduced — per-service" >&2
+  echo "  installers under packages/<service>/install.sh are the only" >&2
+  echo "  supported entry points since #105." >&2
   exit 1
 fi
 
-if [[ ! -x install.sh ]]; then
-  echo "verify-standards: install.sh exists but is not executable." >&2
-  echo "  Run 'chmod +x install.sh' and commit the mode change." >&2
+installer_drift=0
+shopt -s nullglob
+for pkg_dir in packages/*/; do
+  [[ -d "${pkg_dir}" ]] || continue
+  pkg_name="${pkg_dir%/}"
+  pkg_name="${pkg_name##*/}"
+  # ``agent-auth-common`` is a library-only workspace package with no
+  # console-script: users install it transitively via any service.
+  if [[ "${pkg_name}" == "agent-auth-common" ]]; then
+    continue
+  fi
+  script="${pkg_dir}install.sh"
+  if [[ ! -f "${script}" ]]; then
+    echo "verify-standards: ${script} is missing." >&2
+    installer_drift=1
+    continue
+  fi
+  if [[ ! -x "${script}" ]]; then
+    echo "verify-standards: ${script} exists but is not executable." >&2
+    installer_drift=1
+  fi
+done
+shopt -u nullglob
+
+if [[ "${installer_drift}" -ne 0 ]]; then
+  echo "  Add / fix the per-service install.sh following the bash" >&2
+  echo "  script conventions in .claude/instructions/bash.md." >&2
   exit 1
 fi
 
-echo "verify-standards: install.sh exists and is executable."
+echo "verify-standards: every packages/<service>/install.sh exists and is executable."
 
 # lefthook hooks must be installed locally so the pre-commit commands
 # configured in lefthook.yml actually fire. Skipped when CI=true — CI
@@ -1647,7 +1685,7 @@ fi
 # config format: config.py files must not reference config.json or use json.load
 # (.claude/instructions/service-design.md — YAML config).
 config_json_bad=0
-for cfg_file in src/agent_auth/config.py src/things_bridge/config.py; do
+for cfg_file in packages/agent-auth/src/agent_auth/config.py packages/things-bridge/src/things_bridge/config.py; do
   if [[ -f "${cfg_file}" ]]; then
     if grep -qE "config\.json|json\.load" "${cfg_file}"; then
       echo "verify-standards: ${cfg_file} references 'config.json' or uses json.load." >&2
@@ -1672,7 +1710,7 @@ echo "verify-standards: config files use YAML (no config.json or json.load in co
 # bare `path ==` / `path.startswith` — both patterns are checked.
 unversioned_routes=$(grep -En \
   '(self\.path|[^_]path) (==|\.startswith\() "/' \
-  src/agent_auth/server.py src/things_bridge/server.py 2>/dev/null \
+  packages/agent-auth/src/agent_auth/server.py packages/things-bridge/src/things_bridge/server.py 2>/dev/null \
   | grep -v '/health' \
   | grep -v '/metrics' \
   | grep -v '/v[0-9]\+/' \
@@ -1779,8 +1817,8 @@ echo "verify-standards: openapi/*.v1.yaml exist and ${openapi_contract_test} ref
 # ("Health endpoint") and the deterministic regression check from
 # issue #25:
 #
-#   - /agent-auth/health is registered in src/agent_auth/server.py
-#     and /things-bridge/health is registered in src/things_bridge/server.py.
+#   - /agent-auth/health is registered in packages/agent-auth/src/agent_auth/server.py
+#     and /things-bridge/health is registered in packages/things-bridge/src/things_bridge/server.py.
 #   - At least one test function per route asserts a healthy (200)
 #     response, and at least one asserts an unhealthy subsystem-failure
 #     response (503 for agent-auth when the store ping fails; 502 for
@@ -1801,8 +1839,8 @@ import sys
 # integration fixtures expose the latter to let tests flip between
 # direct and in-process transports without hard-coding the path.
 SERVICES = (
-    ("agent-auth", "src/agent_auth/server.py", 503),
-    ("things-bridge", "src/things_bridge/server.py", 502),
+    ("agent-auth", "packages/agent-auth/src/agent_auth/server.py", 503),
+    ("things-bridge", "packages/things-bridge/src/things_bridge/server.py", 502),
 )
 
 def function_blocks(source: str) -> list[str]:
@@ -1955,8 +1993,8 @@ echo "verify-standards: mutation testing configured ([tool.mutmut] / [tool.mutat
 # ("Metrics endpoint") and the deterministic regression check from
 # issue #26:
 #
-#   - /agent-auth/metrics is registered in src/agent_auth/server.py
-#     and /things-bridge/metrics is registered in src/things_bridge/server.py.
+#   - /agent-auth/metrics is registered in packages/agent-auth/src/agent_auth/server.py
+#     and /things-bridge/metrics is registered in packages/things-bridge/src/things_bridge/server.py.
 #   - At least one test function per route scrapes the endpoint (200
 #     response) and validates that every declared metric name appears
 #     in the response body. Name lists are hard-coded below so a
@@ -1980,8 +2018,8 @@ THINGS_BRIDGE_METRICS = (
     "http_server_active_requests",
 )
 SERVICES = (
-    ("agent-auth", "src/agent_auth/server.py", AGENT_AUTH_METRICS),
-    ("things-bridge", "src/things_bridge/server.py", THINGS_BRIDGE_METRICS),
+    ("agent-auth", "packages/agent-auth/src/agent_auth/server.py", AGENT_AUTH_METRICS),
+    ("things-bridge", "packages/things-bridge/src/things_bridge/server.py", THINGS_BRIDGE_METRICS),
 )
 
 
@@ -2038,8 +2076,8 @@ echo "verify-standards: /agent-auth/metrics and /things-bridge/metrics are regis
 # .claude/instructions/service-design.md ("Graceful shutdown") and the
 # deterministic regression check from issue #32:
 #
-#   - Both server modules (src/agent_auth/server.py,
-#     src/things_bridge/server.py) install a SIGTERM handler.
+#   - Both server modules (packages/agent-auth/src/agent_auth/server.py,
+#     packages/things-bridge/src/things_bridge/server.py) install a SIGTERM handler.
 #   - At least one test under tests/ exercises SIGTERM shutdown
 #     behaviour (grepping the literal token SIGTERM — the existing
 #     subprocess-driven tests in tests/test_server_shutdown.py and
@@ -2057,7 +2095,7 @@ fail_shutdown_check() {
   shutdown_missing=1
 }
 
-for server_file in src/agent_auth/server.py src/things_bridge/server.py; do
+for server_file in packages/agent-auth/src/agent_auth/server.py packages/things-bridge/src/things_bridge/server.py; do
   if [[ ! -f "${server_file}" ]]; then
     fail_shutdown_check \
       "${server_file} is missing." \
@@ -2301,9 +2339,9 @@ echo "verify-standards: design/DESIGN.md documents key-loss detection and recove
 # .claude/instructions/service-design.md ("DB schema migration strategy")
 # and the deterministic regression check from issue #29:
 #
-#   1. src/agent_auth/store.py contains no CREATE TABLE / ALTER TABLE —
+#   1. packages/agent-auth/src/agent_auth/store.py contains no CREATE TABLE / ALTER TABLE —
 #      schema DDL lives exclusively in
-#      src/agent_auth/migrations/_catalogue.py and cannot drift from
+#      packages/agent-auth/src/agent_auth/migrations/_catalogue.py and cannot drift from
 #      application code.
 #   2. At least one migration is declared in the catalogue (so the
 #      runner has something to apply) and the catalogue ships a
@@ -2322,18 +2360,18 @@ import tempfile
 
 errors: list[str] = []
 
-store_src = pathlib.Path("src/agent_auth/store.py").read_text()
+store_src = pathlib.Path("packages/agent-auth/src/agent_auth/store.py").read_text()
 if re.search(r"\b(CREATE|ALTER)\s+TABLE\b", store_src, re.IGNORECASE):
     errors.append(
-        "src/agent_auth/store.py contains CREATE TABLE / ALTER TABLE — "
-        "all schema DDL must live in src/agent_auth/migrations/_catalogue.py"
+        "packages/agent-auth/src/agent_auth/store.py contains CREATE TABLE / ALTER TABLE — "
+        "all schema DDL must live in packages/agent-auth/src/agent_auth/migrations/_catalogue.py"
     )
 
-catalogue_path = pathlib.Path("src/agent_auth/migrations/_catalogue.py")
+catalogue_path = pathlib.Path("packages/agent-auth/src/agent_auth/migrations/_catalogue.py")
 if not catalogue_path.is_file():
-    errors.append("src/agent_auth/migrations/_catalogue.py is missing")
+    errors.append("packages/agent-auth/src/agent_auth/migrations/_catalogue.py is missing")
 else:
-    sys.path.insert(0, "src")
+    sys.path.insert(0, "packages/agent-auth/src")
     from agent_auth.migrations import migrate_down, migrate_up
     from agent_auth.migrations._catalogue import CATALOGUE
 
@@ -2386,34 +2424,34 @@ echo "verify-standards: schema DDL lives in migrations/_catalogue.py; up/down dr
 # .claude/instructions/service-design.md ("Plugin trust boundary") and
 # the deterministic regression check from issue #6:
 #
-#   1. src/agent_auth/server.py must not call importlib.import_module —
+#   1. packages/agent-auth/src/agent_auth/server.py must not call importlib.import_module —
 #      the pre-#6 in-process plugin loader is gone for good, and
 #      re-introducing it widens the trust boundary to every plugin
 #      author. strip_comments guards against a stale mention
 #      satisfying the grep after the real call has been removed.
-#   2. src/agent_auth/config.py must declare notification_plugin_url
+#   2. packages/agent-auth/src/agent_auth/config.py must declare notification_plugin_url
 #      (the URL-based field) — a revert of the schema to the old
 #      notification_plugin / notification_plugin_config module-name
 #      pair would silently re-enable in-process loading on the next
 #      loader change.
 
 notifier_drift=0
-server_stripped="$(strip_comments src/agent_auth/server.py)"
+server_stripped="$(strip_comments packages/agent-auth/src/agent_auth/server.py)"
 if grep -qE "\\bimportlib\\.import_module\\b" <<<"${server_stripped}"; then
-  echo "verify-standards: src/agent_auth/server.py calls importlib.import_module." >&2
+  echo "verify-standards: packages/agent-auth/src/agent_auth/server.py calls importlib.import_module." >&2
   echo "  Notification plugins must be out-of-process HTTP endpoints (see #6 and" >&2
   echo "  design/DESIGN.md § Notification plugin wire protocol)." >&2
   notifier_drift=1
 fi
 
-config_stripped="$(strip_comments src/agent_auth/config.py)"
+config_stripped="$(strip_comments packages/agent-auth/src/agent_auth/config.py)"
 if ! grep -qE "\\bnotification_plugin_url\\b" <<<"${config_stripped}"; then
-  echo "verify-standards: src/agent_auth/config.py is missing 'notification_plugin_url'." >&2
+  echo "verify-standards: packages/agent-auth/src/agent_auth/config.py is missing 'notification_plugin_url'." >&2
   echo "  The notifier is a URL, not a Python module path — see #6." >&2
   notifier_drift=1
 fi
 if grep -qE "\\bnotification_plugin[[:space:]]*:" <<<"${config_stripped}"; then
-  echo "verify-standards: src/agent_auth/config.py still declares the legacy 'notification_plugin:' module-name field." >&2
+  echo "verify-standards: packages/agent-auth/src/agent_auth/config.py still declares the legacy 'notification_plugin:' module-name field." >&2
   echo "  Replace with 'notification_plugin_url: str = \"\"'." >&2
   notifier_drift=1
 fi

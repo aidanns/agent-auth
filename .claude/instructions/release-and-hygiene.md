@@ -33,9 +33,14 @@ Standard files, processes, and metadata every project should maintain.
   guide.
 - **Release task** — automate version bumping, tagging, and posting the
   GitHub release as a task in the project's task runner.
-- **`install.sh`** — for user-facing binaries/daemons, add an install script
-  at the repo root and document the `curl -fsSL <url> | bash` idiom in the
-  README.
+- **Per-service `install.sh`** — for user-facing binaries/daemons in a
+  monorepo, add a dedicated install script under each `packages/<svc>/`
+  so `curl -fsSL <raw-url>/packages/<svc>/install.sh | bash` installs
+  only that service's dependency closure (see #105). The root must not
+  carry a meta-installer — a single top-level `install.sh` re-couples
+  services at the install layer and is rejected by
+  `scripts/verify-standards.sh`. Document each per-service idiom under
+  an "Installation" section in the root README.
 
 ## Commit and PR conventions
 

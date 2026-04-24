@@ -7,14 +7,45 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
+[manifest]
+members = [
+    "agent-auth",
+    "agent-auth-common",
+    "agent-auth-workspace",
+    "things-bridge",
+    "things-cli",
+    "things-client-cli-applescript",
+]
+
 [[package]]
 name = "agent-auth"
-source = { editable = "." }
+source = { editable = "packages/agent-auth" }
 dependencies = [
+    { name = "agent-auth-common" },
     { name = "cryptography" },
     { name = "keyring" },
     { name = "pyyaml" },
 ]
+
+[package.metadata]
+requires-dist = [
+    { name = "agent-auth-common", editable = "packages/agent-auth-common" },
+    { name = "cryptography", specifier = ">=42.0" },
+    { name = "keyring", specifier = ">=25.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[[package]]
+name = "agent-auth-common"
+source = { editable = "packages/agent-auth-common" }
+
+[package.metadata]
+provides-extras = ["testing"]
+
+[[package]]
+name = "agent-auth-workspace"
+version = "0.0.0"
+source = { virtual = "." }
 
 [package.optional-dependencies]
 dev = [
@@ -32,11 +63,18 @@ dev = [
     { name = "testcontainers" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "agent-auth" },
+    { name = "agent-auth-common" },
+    { name = "things-bridge" },
+    { name = "things-cli" },
+    { name = "things-client-cli-applescript" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.0" },
-    { name = "cryptography", specifier = ">=42.0" },
-    { name = "keyring", specifier = ">=25.0" },
     { name = "keyrings-alt", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "mutmut", marker = "extra == 'dev'", specifier = ">=3.5" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.20" },
@@ -46,11 +84,19 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-benchmark", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
     { name = "reuse", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "testcontainers", extras = ["compose"], marker = "extra == 'dev'", specifier = ">=4" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "agent-auth", editable = "packages/agent-auth" },
+    { name = "agent-auth-common", extras = ["testing"], editable = "packages/agent-auth-common" },
+    { name = "things-bridge", editable = "packages/things-bridge" },
+    { name = "things-cli", editable = "packages/things-cli" },
+    { name = "things-client-cli-applescript", editable = "packages/things-client-cli-applescript" },
+]
 
 [[package]]
 name = "annotated-types"
@@ -1969,6 +2015,46 @@ sdist = { url = "https://files.pythonhosted.org/packages/19/89/bec5709fb759f9c78
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5c/32/02932f0d597cdbb34e34bf24266ff0f2cf292ccb3aafc37dd9efcb0cc416/textual-8.2.4-py3-none-any.whl", hash = "sha256:a83bd3f0cc7125ca203845af753f9d6b6be030025ecd1b05cc75ebe645b9c4ba", size = 724390, upload-time = "2026-04-19T04:20:49.968Z" },
 ]
+
+[[package]]
+name = "things-bridge"
+source = { editable = "packages/things-bridge" }
+dependencies = [
+    { name = "agent-auth-common" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agent-auth-common", editable = "packages/agent-auth-common" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[[package]]
+name = "things-cli"
+source = { editable = "packages/things-cli" }
+dependencies = [
+    { name = "agent-auth-common" },
+    { name = "keyring" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agent-auth-common", editable = "packages/agent-auth-common" },
+    { name = "keyring", specifier = ">=25.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[[package]]
+name = "things-client-cli-applescript"
+source = { editable = "packages/things-client-cli-applescript" }
+dependencies = [
+    { name = "agent-auth-common" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "agent-auth-common", editable = "packages/agent-auth-common" }]
 
 [[package]]
 name = "tomli"

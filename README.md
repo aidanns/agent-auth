@@ -25,18 +25,36 @@ agent-auth provides a local authorization layer between AI agents (e.g. Claude C
 
 ## Installation
 
-### One-line install
+Each service in this repository ships as its own installable Python
+package under [`packages/`](packages/). There is no top-level meta
+installer — install only the pieces you need via the per-service
+`install.sh` scripts below. Every installer is a `uv tool install`
+wrapper, so it writes into a uv-managed environment and adds the CLI
+to your PATH.
 
-Requires [uv](https://docs.astral.sh/uv/) (`brew install uv` on macOS, or
-`curl -LsSf https://astral.sh/uv/install.sh | sh`):
+Requires [uv](https://docs.astral.sh/uv/) (`brew install uv` on macOS,
+or `curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/aidanns/agent-auth/main/install.sh | bash
-```
+### Per-service installers
 
-This installs `agent-auth`, `things-bridge`, `things-cli`, and
-`things-client-cli-applescript` into a uv-managed tool environment and adds
-them to your PATH.
+- [`agent-auth`](packages/agent-auth) — token server, token CLI, and
+  out-of-process approval notifier:
+  `curl -fsSL https://raw.githubusercontent.com/aidanns/agent-auth/main/packages/agent-auth/install.sh | bash`
+- [`things-bridge`](packages/things-bridge) — HTTP bridge from
+  agent-auth-protected clients to Things 3:
+  `curl -fsSL https://raw.githubusercontent.com/aidanns/agent-auth/main/packages/things-bridge/install.sh | bash`
+- [`things-cli`](packages/things-cli) — read-only Things 3 command-line
+  client (talks to `things-bridge`):
+  `curl -fsSL https://raw.githubusercontent.com/aidanns/agent-auth/main/packages/things-cli/install.sh | bash`
+- [`things-client-cli-applescript`](packages/things-client-cli-applescript)
+  — macOS-only AppleScript-backed Things 3 CLI (invoked by
+  `things-bridge` as a subprocess):
+  `curl -fsSL https://raw.githubusercontent.com/aidanns/agent-auth/main/packages/things-client-cli-applescript/install.sh | bash`
+
+The [`agent-auth-common`](packages/agent-auth-common) workspace
+package ships shared types (Things models, HTTP clients, Prometheus
+metrics helper); it has no CLI of its own and is pulled in
+transitively by every service installer.
 
 ### From source (development)
 

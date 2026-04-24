@@ -35,7 +35,7 @@ tasks:
       - scripts/verify-integration-isolation.sh
 
   typecheck:
-    desc: Run mypy + pyright on src/ and tests/.
+    desc: Run mypy + pyright on every packages/<svc>/src tree and tests/.
     cmds:
       - scripts/typecheck.sh
 

@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "things-cli"
+dynamic = ["version"]
+description = "Command-line client for the Things 3 bridge (read-only)"
+requires-python = ">=3.11"
+dependencies = [
+    # keep-sorted start
+    "agent-auth-common",
+    "keyring>=25.0",
+    "pyyaml>=6.0",
+    # keep-sorted end
+]
+
+[project.scripts]
+things-cli = "things_cli.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+fallback_version = "0.0.0+unknown"
+
+[tool.uv.sources]
+agent-auth-common = { workspace = true }

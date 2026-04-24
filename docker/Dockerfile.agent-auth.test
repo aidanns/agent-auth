@@ -2,14 +2,17 @@
 # SPDX-License-Identifier: MIT
 #
 # Integration-test image for the ``agent-auth`` service. Installs
-# ``agent-auth`` plus the ``keyrings.alt`` plaintext backend so the
-# server starts unattended. Never publish; never use in production.
+# ``agent-auth`` plus its ``agent-auth-common`` workspace dependency
+# (with the ``testing`` extra so the HTTP notifier sidecar's
+# ``tests_support`` module is present) and the ``keyrings.alt``
+# plaintext backend so the server starts unattended. Never publish;
+# never use in production.
 #
 # The sibling ``Dockerfile.things-*.test`` images are deliberately
-# independent: no shared base layer. Per ADR 0005 (amended), each
-# service's image is anchored to its own Dockerfile so the
-# pyproject-split (issue #105) only has to swap ``pip install .`` for
-# ``pip install ./packages/agent-auth/`` when it lands.
+# independent: no shared base layer. Per ADR 0005 (amended, #95) and
+# the per-subproject split in #105, each service's image is anchored
+# to its own Dockerfile and each ``pip install`` only pulls in its
+# own service's dependency closure.
 #
 # Carries the ``tests_support`` package at ``/opt/tests-support/`` so
 # the out-of-process notifier sidecar (see ADR 0024, issue #6) can run
@@ -34,12 +37,20 @@ RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin agent-auth
 
 WORKDIR /src
 
-COPY pyproject.toml README.md ./
-COPY src/ ./src/
+# Copy the ``agent-auth-common`` workspace package first so the
+# ``pip install ./packages/agent-auth`` line below can resolve the
+# common dep from the same filesystem path. ``README.md`` is
+# referenced by each pyproject; the pip build step fails without it.
+COPY README.md ./
+COPY packages/agent-auth-common/ ./packages/agent-auth-common/
+COPY packages/agent-auth/ ./packages/agent-auth/
 
-RUN pip install --no-cache-dir . "keyrings.alt>=5.0" \
+RUN pip install --no-cache-dir \
+        "./packages/agent-auth-common" \
+        ./packages/agent-auth \
+        "keyrings.alt>=5.0" \
  && mkdir -p /opt/tests-support \
- && cp -r src/tests_support /opt/tests-support/tests_support
+ && cp -r packages/agent-auth-common/src/tests_support /opt/tests-support/tests_support
 
 RUN mkdir -p "$XDG_CONFIG_HOME/agent-auth" \
              "$XDG_DATA_HOME/agent-auth" \

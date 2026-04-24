@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "things-client-cli-applescript"
+dynamic = ["version"]
+description = "macOS-only AppleScript-backed implementation of the things-client contract"
+requires-python = ">=3.11"
+dependencies = [
+    # keep-sorted start
+    "agent-auth-common",
+    # keep-sorted end
+]
+
+[project.scripts]
+things-client-cli-applescript = "things_client_applescript.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+fallback_version = "0.0.0+unknown"
+
+[tool.uv.sources]
+agent-auth-common = { workspace = true }
