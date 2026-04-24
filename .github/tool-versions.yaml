@@ -63,3 +63,11 @@ treefmt:
 
 systems-engineering:
   ref: "d8e664a5ad20c071d4ec1cd62377597f9404b6e9"
+  # sha256 of the install.sh body fetched from the ref above. Bump
+  # this together with `ref`; setup-toolchain verifies the script
+  # before executing it. See issue #157.
+  install_sha256: "f83a266a0b5f1bb754cf67e7b5d0bb9f0d5610907c06e9cd6a81ff4acecefb9a"
+
+d2:
+  version: "0.7.1"
+  sha256_linux_x86_64: "eb172adf59f38d1e5a70ab177591356754ffaf9bebb84e0ca8b767dfb421dad7"

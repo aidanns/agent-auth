@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Submit a Dependency Graph snapshot built from .github/tool-versions.yaml
+# so GitHub Dependabot Alerts fire for CVEs in the CI tools the repo
+# pins (shellcheck, shfmt, ruff, taplo, keep-sorted, ripsecrets,
+# treefmt, go-task, d2, uv, mdformat + plugins). See ADR 0031.
+#
+# Renovate owns the bump channel (custom managers in .github/renovate.json);
+# this workflow owns the CVE-alert channel. Runs on push to main and on
+# a weekly cron so the snapshot stays current. No pull_request trigger —
+# a PR cannot rewrite the snapshot for its own sha.
+
+name: Dependency Submission
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly at 04:00 UTC on Mondays — same cadence as Renovate bump runs
+    # so alerts surface against freshly-bumped versions.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  # Required to POST to /repos/{owner}/{repo}/dependency-graph/snapshots.
+  contents: write
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Build and submit snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MANIFEST_PATH: .github/tool-versions.yaml
+        run: bash scripts/ci/submit-dependency-snapshot.sh

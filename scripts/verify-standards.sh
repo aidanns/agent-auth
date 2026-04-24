@@ -32,6 +32,26 @@
 #      pinned tool versions — neither setup-toolchain/action.yml nor
 #      scripts/verify-dependencies.sh may hard-code a version literal
 #      that also appears in the manifest (see issue #87).
+#   2d. setup-toolchain/action.yml has no unverified `curl | sh|bash`
+#      pipes — every network-fetched install script must be
+#      sha256-checked before execution (see issue #157).
+#   2e. .github/renovate.json exists and targets
+#      .github/tool-versions.yaml via customManagers — the auto-bump
+#      channel for every CI tool (see ADR 0031 and issue #205).
+#   2f. packages/agent-auth-common/src/things_models/models.py defines TodoId, ProjectId, AreaId
+#      via typing.NewType so Things entity ids aren't interchangeable
+#      strings at the type checker's boundary (see issue #34).
+#   2g. Numeric parameters, dataclass fields, and module constants
+#      under src/ carry a unit suffix (_seconds, _bytes, _count, ...)
+#      per .claude/instructions/coding-standards.md § Units in names
+#      (AST audit; see issue #35).
+#   2h. packages/things-bridge/src/things_bridge/server.py defines a ``SafeId`` NewType that
+#      ``_safe_id`` returns, so validated ids carry a distinct type
+#      at the trust boundary (see issue #36).
+#   2i. packages/things-bridge/src/things_bridge/types.py defines ``ThingsClientCommand`` as a
+#      typing.NewType plus a factory that enforces the non-empty /
+#      all-str invariant at the config / subprocess boundary (see
+#      issue #70).
 #   3. Bash gating (shellcheck, shfmt) is wired into CI, treefmt, and
 #      lefthook per .claude/instructions/bash.md.
 #   4. Markdown (mdformat) and TOML (taplo) formatters are wired into
@@ -79,6 +99,10 @@
 #      AND a scheduled CI workflow (.github/workflows/benchmark.yml)
 #      invokes it on `on: schedule:`, per
 #      .claude/instructions/testing-standards.md "Benchmark suite".
+#  16. .vscode/extensions.json, .vscode/settings.json, and
+#      .vscode/launch.json all exist so a fresh checkout opens with
+#      recommended extensions, formatter-on-save, and debug configs,
+#      per .claude/instructions/tooling-and-ci.md "IDE".
 
 set -euo pipefail
 
@@ -211,6 +235,7 @@ PINNED_ACTIONS=(
   # keep-sorted start
   actions/checkout
   astral-sh/setup-uv
+  docker/setup-buildx-action
   # keep-sorted end
 )
 
@@ -344,6 +369,278 @@ fi
 
 echo "verify-standards: ${TOOL_VERSIONS_MANIFEST} consumers contain no hard-coded version literals."
 
+# ---------------------------------------------------------------------------
+# No unverified `curl ... | sh|bash` pipes in setup-toolchain.
+# ---------------------------------------------------------------------------
+# Piping an installer script directly from the network into a shell
+# executes whatever bytes the CDN returns — a content swap is silent.
+# Every install.sh fetch in setup-toolchain must go through the
+# download -> sha256-verify -> execute pattern gated by a pinned hash
+# in .github/tool-versions.yaml. See issue #157.
+SETUP_TOOLCHAIN=".github/actions/setup-toolchain/action.yml"
+if [[ -f "${SETUP_TOOLCHAIN}" ]]; then
+  # strip_comments() isn't yet defined at this point in the file; the
+  # inline sed below matches that function's body.
+  if sed -E 's/(^|[[:space:]])#.*$//' "${SETUP_TOOLCHAIN}" \
+    | grep -qE "curl[^|]*\|[[:space:]]*(bash|sh)\b"; then
+    echo "verify-standards: ${SETUP_TOOLCHAIN} pipes 'curl' directly into a shell." >&2
+    echo "  Download to a tmp file, verify the sha256 pinned in ${TOOL_VERSIONS_MANIFEST}, then execute. See issue #157." >&2
+    exit 1
+  fi
+  echo "verify-standards: ${SETUP_TOOLCHAIN} has no unverified 'curl | sh|bash' pipes."
+fi
+
+# ---------------------------------------------------------------------------
+# Renovate config exists and targets the tool-versions manifest.
+# ---------------------------------------------------------------------------
+# .github/renovate.json owns the automated bump channel for
+# .github/tool-versions.yaml (see ADR 0031 and issue #205). A dropped
+# config would silently regress the whole policy: Dependabot has no
+# visibility into the manifest, and upstream releases (shellcheck,
+# shfmt, ruff, ...) would stop landing as PRs. The presence check is
+# intentionally narrow — validity belongs to Renovate's own
+# config-validator, not to this script.
+RENOVATE_CONFIG=".github/renovate.json"
+if [[ ! -f "${RENOVATE_CONFIG}" ]]; then
+  echo "verify-standards: ${RENOVATE_CONFIG} is missing." >&2
+  echo "  Renovate custom managers own the auto-bump channel for the tool-versions manifest." >&2
+  echo "  See ADR 0031." >&2
+  exit 1
+fi
+
+if ! grep -qF '"customManagers"' "${RENOVATE_CONFIG}"; then
+  echo "verify-standards: ${RENOVATE_CONFIG} has no 'customManagers' key — tool-versions.yaml bumps won't fire." >&2
+  exit 1
+fi
+
+if ! grep -qF ".github/tool-versions.yaml" "${RENOVATE_CONFIG}"; then
+  echo "verify-standards: ${RENOVATE_CONFIG} does not reference .github/tool-versions.yaml as a managed file." >&2
+  exit 1
+fi
+
+echo "verify-standards: ${RENOVATE_CONFIG} is present and targets ${TOOL_VERSIONS_MANIFEST}."
+
+# ---------------------------------------------------------------------------
+# Semantic types for Things entity identifiers.
+# ---------------------------------------------------------------------------
+# .claude/instructions/coding-standards.md § "Types and safety" requires
+# newtypes at semantic boundaries. Every Things entity id must be a
+# typing.NewType alias so a TodoId and ProjectId aren't interchangeable
+# from the type checker's perspective. See issue #34.
+ID_TYPES_FILE="packages/agent-auth-common/src/things_models/models.py"
+if [[ ! -f "${ID_TYPES_FILE}" ]]; then
+  echo "verify-standards: ${ID_TYPES_FILE} is missing." >&2
+  exit 1
+fi
+
+id_newtype_missing=0
+for id_name in TodoId ProjectId AreaId; do
+  if ! grep -qE "^${id_name}[[:space:]]*=[[:space:]]*NewType\(" "${ID_TYPES_FILE}"; then
+    echo "verify-standards: ${ID_TYPES_FILE} does not define ${id_name} via typing.NewType." >&2
+    id_newtype_missing=1
+  fi
+done
+
+if [[ ${id_newtype_missing} -ne 0 ]]; then
+  echo "  See .claude/instructions/coding-standards.md § Types and safety and issue #34." >&2
+  exit 1
+fi
+
+echo "verify-standards: ${ID_TYPES_FILE} defines TodoId / ProjectId / AreaId via typing.NewType."
+
+# ---------------------------------------------------------------------------
+# SafeId NewType at the things-bridge validation boundary.
+# ---------------------------------------------------------------------------
+# .claude/instructions/coding-standards.md § "Prefer explicit typing to
+# prevent misuse" requires validated / sanitised values to wear a
+# distinct type. ``_safe_id`` rejects ids that don't match the allow-
+# list of safe characters; its callers depend on that invariant before
+# concatenating the id into audit/JIT descriptions. A ``SafeId``
+# NewType makes the invariant visible at every call site. See issue
+# #36.
+if ! grep -qE "^SafeId[[:space:]]*=[[:space:]]*NewType\(" packages/things-bridge/src/things_bridge/server.py; then
+  echo "verify-standards: packages/things-bridge/src/things_bridge/server.py does not define SafeId via typing.NewType." >&2
+  echo "  See .claude/instructions/coding-standards.md § Types and safety and issue #36." >&2
+  exit 1
+fi
+
+echo "verify-standards: packages/things-bridge/src/things_bridge/server.py defines SafeId via typing.NewType."
+
+# ---------------------------------------------------------------------------
+# ThingsClientCommand NewType at the config / subprocess boundary.
+# ---------------------------------------------------------------------------
+# .claude/instructions/coding-standards.md § "Newtypes at security /
+# trust boundaries" and the PR #66 standards-review checkpoint both
+# committed to a ThingsClientCommand newtype wrapping the argv list.
+# See issue #70. The check asserts the NewType + its factory are still
+# defined; mypy/pyright catch misuse at call sites.
+if ! grep -qE "^ThingsClientCommand[[:space:]]*=[[:space:]]*NewType\(" packages/things-bridge/src/things_bridge/types.py; then
+  echo "verify-standards: packages/things-bridge/src/things_bridge/types.py does not define ThingsClientCommand via typing.NewType." >&2
+  echo "  See .claude/instructions/coding-standards.md § Types and safety and issue #70." >&2
+  exit 1
+fi
+if ! grep -qE "^def make_things_client_command\(" packages/things-bridge/src/things_bridge/types.py; then
+  echo "verify-standards: packages/things-bridge/src/things_bridge/types.py does not expose make_things_client_command()." >&2
+  echo "  The factory centralises the non-empty / all-str invariant; see issue #70." >&2
+  exit 1
+fi
+
+echo "verify-standards: packages/things-bridge/src/things_bridge/types.py defines ThingsClientCommand + make_things_client_command."
+
+# ---------------------------------------------------------------------------
+# Numeric names carry their unit (AST audit).
+# ---------------------------------------------------------------------------
+# .claude/instructions/coding-standards.md § "Units in names" requires
+# numeric parameters, dataclass fields, and module constants to encode
+# their unit in the name (`timeout_seconds`, `buffer_size_bytes`,
+# `max_retries_count`). Enforced via AST walk over src/; the allow-list
+# below covers stdlib-override conventions (HTTP status/code, signal
+# handler signum, Prometheus amount/value, etc.) that cannot or should
+# not be renamed. See issue #35.
+if ! python3 - <<'PY' 2>/tmp/verify-standards-units.err; then
+import ast
+import pathlib
+import sys
+
+# Suffixes that count as "carries a unit". Keep conservative — a rename
+# that adds _seconds / _bytes is cheaper than expanding the whitelist
+# and accepting ambiguous names forever.
+UNIT_SUFFIXES = (
+    # time
+    "_seconds", "_ms", "_us", "_ns", "_minutes", "_hours", "_days",
+    "_per_second", "_per_minute", "_hz",
+    # size / length
+    "_bytes", "_kb", "_mb", "_gb", "_bits", "_chars", "_len", "_length",
+    # counts and capacities
+    "_count", "_max", "_min", "_size", "_retries",
+    # identifiers / indexed values (numeric kinds sometimes unavoidable)
+    "_id", "_version", "_index", "_number", "_code",
+    # ratios
+    "_percent", "_ratio", "_fraction",
+    # network / OS
+    "_port", "_pid", "_fd",
+)
+
+# Bare names allowed despite carrying an implicit unit — standard-
+# library overrides, Prometheus-client idioms, and structural roles
+# where the name describes the role rather than a unit. Adding to this
+# list is a judgment call; prefer renaming to adding an exception.
+ALLOWED_BARE = {
+    "self", "cls",
+    # Prometheus-client conventions (amount=delta, value=observation)
+    "amount", "value", "buckets",
+    # BaseHTTPRequestHandler.send_response override
+    "code", "size",
+    # Private HTTP helpers use ``status`` for the status code. Rename
+    # to status_code would ripple through every handler; keep the name
+    # but block new usage in non-HTTP contexts via the allow-list.
+    "status",
+    # POSIX signal handler convention
+    "_signum",
+    # subprocess.Popen stdlib
+    "returncode",
+    # generic row/column count in tight parsers
+    "expected_cols",
+    # default value in env-reading helpers
+    "fallback",
+    # Prometheus-metric Histogram.__init__
+    "width",
+    # port is a universal network concept; rename to port_number adds
+    # no clarity and every networking library already uses "port".
+    "port",
+    # migration version number / seen-set of versions
+    "version", "seen",
+    # single-letter conventional counter
+    "n",
+}
+
+# Allow-list *prefixes* for module-level constants whose prefix already
+# encodes the unit/role (EXIT_OK, EXIT_NOT_FOUND, ...). Parameters and
+# fields still go through the suffix rule above.
+ALLOWED_CONSTANT_PREFIXES = ("EXIT_",)
+
+NUMERIC_NAMES = {"int", "float", "Decimal"}
+
+def is_numeric(ann):
+    if ann is None:
+        return False
+    if isinstance(ann, ast.Name):
+        return ann.id in NUMERIC_NAMES
+    if isinstance(ann, ast.BinOp):
+        return is_numeric(ann.left) or is_numeric(ann.right)
+    if isinstance(ann, ast.Subscript):
+        return is_numeric(ann.slice)
+    return False
+
+
+def has_unit(name: str) -> bool:
+    n = name.lower()
+    if n in ALLOWED_BARE:
+        return True
+    if n.startswith("num_") or n.startswith("n_"):
+        return True
+    return any(n.endswith(s) for s in UNIT_SUFFIXES)
+
+
+def looks_numeric_constant(value) -> bool:
+    # Constant literal (bare number or plain expression like 64 * 1024).
+    # BinOp requires BOTH operands numeric so `b"\x00" * 32` (bytes
+    # multiplied by an int) doesn't false-positive as a numeric
+    # constant.
+    if isinstance(value, ast.Constant):
+        return isinstance(value.value, (int, float)) and not isinstance(value.value, bool)
+    if isinstance(value, ast.BinOp):
+        return looks_numeric_constant(value.left) and looks_numeric_constant(value.right)
+    if isinstance(value, ast.UnaryOp):
+        return looks_numeric_constant(value.operand)
+    return False
+
+
+violations: list[str] = []
+
+for path in sorted(pathlib.Path("src").rglob("*.py")):
+    tree = ast.parse(path.read_text())
+    # Track class bodies so we know when an AnnAssign is a dataclass
+    # field vs a module-level constant.
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for arg in node.args.args + node.args.kwonlyargs:
+                if is_numeric(arg.annotation) and not has_unit(arg.arg):
+                    violations.append(
+                        f"{path}:{arg.lineno}: numeric parameter `{arg.arg}` in {node.name}() has no unit suffix"
+                    )
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            tgt = node.target.id
+            if is_numeric(node.annotation) and not has_unit(tgt):
+                violations.append(
+                    f"{path}:{node.lineno}: numeric field/constant `{tgt}` has no unit suffix"
+                )
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            tgt = node.targets[0].id
+            # Module-level uppercase constant with a numeric value.
+            if tgt.isupper() and not tgt.startswith("__") and looks_numeric_constant(node.value):
+                if any(tgt.startswith(p) for p in ALLOWED_CONSTANT_PREFIXES):
+                    continue
+                if not has_unit(tgt):
+                    violations.append(
+                        f"{path}:{node.lineno}: numeric module constant `{tgt}` has no unit suffix"
+                    )
+
+for v in violations:
+    print(v)
+if violations:
+    print(f"--- {len(violations)} violation(s) ---", file=sys.stderr)
+    sys.exit(1)
+PY
+  echo "verify-standards: numeric name unit audit (see .claude/instructions/coding-standards.md § Units in names and issue #35):" >&2
+  cat /tmp/verify-standards-units.err >&2
+  rm -f /tmp/verify-standards-units.err
+  exit 1
+fi
+rm -f /tmp/verify-standards-units.err
+
+echo "verify-standards: numeric parameters, fields, and module constants carry a unit suffix."
+
 # Bash tooling: shellcheck + shfmt must be wired into CI, treefmt, and
 # lefthook per .claude/instructions/bash.md. Strip comments before
 # grepping so a stale `# shellcheck` mention doesn't satisfy the check
@@ -360,6 +657,55 @@ fail_bash_check() {
 strip_comments() {
   sed -E 's/(^|[[:space:]])#.*$//' "$@"
 }
+
+# Build a tight word-boundary regex for a tool-invocation token.
+#
+# ERE `\b` treats `-` as a word boundary, so `\btask check\b` would
+# also match `task check-foo` (and `\bmy-task check\b` matches a
+# substring of `my-task check`). Substituting `[^-[:alnum:]_]` for
+# the boundary excludes hyphens on both sides, so a future
+# `task check-dry` cannot satisfy a gate looking for `task check`.
+#
+# Use this helper in preference to `\btoken\b` whenever the token
+# names a CLI tool, subcommand, or flag — anything that could grow
+# a hyphenated sibling. See issue #77.
+#
+# Tokens are inserted verbatim; pass plain words (`ruff`,
+# `ruff format --check`), not regexes. Regex metacharacters in the
+# token will be interpreted.
+tool_pattern() {
+  local token="$1"
+  printf '(^|[^-[:alnum:]_])%s([^-[:alnum:]_]|$)' "${token}"
+}
+
+# Self-test: lock in the behaviour that tool_pattern promises above so
+# a future refactor cannot silently regress it. The assertions run on
+# every invocation — they are O(microseconds) and save a whole class of
+# false-positive bugs.
+_tool_pattern_selftest() {
+  local pat
+  pat="$(tool_pattern "task check")"
+  # Exact token matches.
+  grep -qE "${pat}" <<<"task check" || return 1
+  grep -qE "${pat}" <<<"- run: task check" || return 2
+  grep -qE "${pat}" <<<"'task check'" || return 3
+  # Hyphenated suffix must NOT satisfy the pattern.
+  if grep -qE "${pat}" <<<"task check-dry"; then return 4; fi
+  # Hyphenated prefix must NOT satisfy the pattern.
+  if grep -qE "${pat}" <<<"my-task check"; then return 5; fi
+  # Same guarantees with a single-word token.
+  pat="$(tool_pattern "ruff")"
+  grep -qE "${pat}" <<<"- ruff check ." || return 6
+  if grep -qE "${pat}" <<<"ruff-lsp"; then return 7; fi
+  if grep -qE "${pat}" <<<"my-ruff"; then return 8; fi
+  return 0
+}
+if ! _tool_pattern_selftest; then
+  echo "verify-standards: tool_pattern self-test failed (code $?)." >&2
+  echo "  The helper in scripts/verify-standards.sh is broken. See issue #77." >&2
+  exit 1
+fi
+unset -f _tool_pattern_selftest
 
 # Collect comment-stripped content into variables so the match step
 # doesn't early-exit its upstream pipeline — `grep -q` exiting on first
@@ -384,7 +730,7 @@ scripts_stripped="$(find scripts -name '*.sh' -print0 2>/dev/null \
   | strip_comments)"
 
 for tool in shellcheck shfmt; do
-  if ! grep -qE "\\b${tool}\\b" <<<"${workflows_stripped}"; then
+  if ! grep -qE "$(tool_pattern "${tool}")" <<<"${workflows_stripped}"; then
     fail_bash_check "${tool}" ".github/workflows/*.yml" \
       "Add a workflow step that invokes '${tool}' (see .github/workflows/check.yml)."
   fi
@@ -397,8 +743,8 @@ for tool in shellcheck shfmt; do
   # lefthook is satisfied either by a direct invocation of the tool or by
   # invoking treefmt — treefmt runs the tool transitively via its
   # [formatter.${tool}] entry (asserted above).
-  if ! grep -qE "\\b${tool}\\b" <<<"${lefthook_stripped}" \
-    && ! grep -qE "\\btreefmt\\b" <<<"${lefthook_stripped}"; then
+  if ! grep -qE "$(tool_pattern "${tool}")" <<<"${lefthook_stripped}" \
+    && ! grep -qE "$(tool_pattern treefmt)" <<<"${lefthook_stripped}"; then
     fail_bash_check "${tool}" "lefthook.yml" \
       "Add a pre-commit command that invokes '${tool}' (or 'treefmt') to lefthook.yml."
   fi
@@ -591,7 +937,7 @@ if ! grep -qE "^\\[formatter\\.ruff\\]" <<<"${treefmt_stripped}"; then
     "Add a [formatter.ruff] entry to treefmt.toml."
 fi
 
-if ! grep -qE "\\bruff\\b" <<<"${lefthook_stripped}"; then
+if ! grep -qE "$(tool_pattern ruff)" <<<"${lefthook_stripped}"; then
   fail_ruff_check "lefthook.yml" \
     "Add pre-commit commands that invoke 'ruff check' and 'ruff format --check' to lefthook.yml."
 fi
@@ -600,9 +946,9 @@ fi
 # gate (it dispatches through scripts/lint.sh and scripts/format.sh
 # --check, each of which invokes ruff). Accept direct `ruff check` +
 # `ruff format --check` as an equivalent alternative.
-if ! grep -qE "\\btask check\\b" <<<"${workflows_stripped}" \
-  && ! { grep -qE "\\bruff check\\b" <<<"${workflows_stripped}" \
-    && grep -qE "\\bruff format --check\\b" <<<"${workflows_stripped}"; }; then
+if ! grep -qE "$(tool_pattern "task check")" <<<"${workflows_stripped}" \
+  && ! { grep -qE "$(tool_pattern "ruff check")" <<<"${workflows_stripped}" \
+    && grep -qE "$(tool_pattern "ruff format --check")" <<<"${workflows_stripped}"; }; then
   fail_ruff_check ".github/workflows/*.yml" \
     "Add a workflow step that runs 'task check' (or both 'ruff check' and 'ruff format --check' directly)."
 fi
@@ -824,11 +1170,21 @@ for override in pyproject.get("tool", {}).get("mypy", {}).get("overrides", []):
 
 def module_to_path(mod: str) -> str:
     path = mod.replace(".", "/")
-    candidates = [
-        f"src/{path}.py",
-        f"src/{path}",
-        f"{path}",
-    ]
+    # ``packages/*/src/<mod>`` covers the per-subproject workspace
+    # layout from #105; the pre-split ``src/<mod>`` path is kept as a
+    # fallback so historical pyrightconfig.json entries still resolve
+    # during the migration.
+    candidates: list[str] = []
+    for pkg_src in sorted(pathlib.Path("packages").glob("*/src")):
+        candidates.append(f"{pkg_src}/{path}.py")
+        candidates.append(f"{pkg_src}/{path}")
+    candidates.extend(
+        [
+            f"src/{path}.py",
+            f"src/{path}",
+            f"{path}",
+        ]
+    )
     for c in candidates:
         if pathlib.Path(c).exists():
             return c
@@ -1224,22 +1580,50 @@ fi
 
 echo "verify-standards: SECURITY.md exists with all required sections including the cybersecurity, SDLC, and application security standards."
 
-# install.sh must exist at the repo root and be executable per
-# .claude/instructions/release-and-hygiene.md.
+# Every per-service package must ship an executable ``install.sh`` per
+# .claude/instructions/release-and-hygiene.md. Under the per-subproject
+# layout introduced in #105, the root no longer carries a meta-installer;
+# each ``packages/<service>/install.sh`` is the only supported entry
+# point for that service.
 
-if [[ ! -f install.sh ]]; then
-  echo "verify-standards: install.sh is missing from the repo root." >&2
-  echo "  Add install.sh following the bash script conventions in .claude/instructions/bash.md." >&2
+if [[ -f install.sh ]]; then
+  echo "verify-standards: root install.sh re-introduced — per-service" >&2
+  echo "  installers under packages/<service>/install.sh are the only" >&2
+  echo "  supported entry points since #105." >&2
   exit 1
 fi
 
-if [[ ! -x install.sh ]]; then
-  echo "verify-standards: install.sh exists but is not executable." >&2
-  echo "  Run 'chmod +x install.sh' and commit the mode change." >&2
+installer_drift=0
+shopt -s nullglob
+for pkg_dir in packages/*/; do
+  [[ -d "${pkg_dir}" ]] || continue
+  pkg_name="${pkg_dir%/}"
+  pkg_name="${pkg_name##*/}"
+  # ``agent-auth-common`` is a library-only workspace package with no
+  # console-script: users install it transitively via any service.
+  if [[ "${pkg_name}" == "agent-auth-common" ]]; then
+    continue
+  fi
+  script="${pkg_dir}install.sh"
+  if [[ ! -f "${script}" ]]; then
+    echo "verify-standards: ${script} is missing." >&2
+    installer_drift=1
+    continue
+  fi
+  if [[ ! -x "${script}" ]]; then
+    echo "verify-standards: ${script} exists but is not executable." >&2
+    installer_drift=1
+  fi
+done
+shopt -u nullglob
+
+if [[ "${installer_drift}" -ne 0 ]]; then
+  echo "  Add / fix the per-service install.sh following the bash" >&2
+  echo "  script conventions in .claude/instructions/bash.md." >&2
   exit 1
 fi
 
-echo "verify-standards: install.sh exists and is executable."
+echo "verify-standards: every packages/<service>/install.sh exists and is executable."
 
 # lefthook hooks must be installed locally so the pre-commit commands
 # configured in lefthook.yml actually fire. Skipped when CI=true — CI
@@ -1301,7 +1685,7 @@ fi
 # config format: config.py files must not reference config.json or use json.load
 # (.claude/instructions/service-design.md — YAML config).
 config_json_bad=0
-for cfg_file in src/agent_auth/config.py src/things_bridge/config.py; do
+for cfg_file in packages/agent-auth/src/agent_auth/config.py packages/things-bridge/src/things_bridge/config.py; do
   if [[ -f "${cfg_file}" ]]; then
     if grep -qE "config\.json|json\.load" "${cfg_file}"; then
       echo "verify-standards: ${cfg_file} references 'config.json' or uses json.load." >&2
@@ -1326,7 +1710,7 @@ echo "verify-standards: config files use YAML (no config.json or json.load in co
 # bare `path ==` / `path.startswith` — both patterns are checked.
 unversioned_routes=$(grep -En \
   '(self\.path|[^_]path) (==|\.startswith\() "/' \
-  src/agent_auth/server.py src/things_bridge/server.py 2>/dev/null \
+  packages/agent-auth/src/agent_auth/server.py packages/things-bridge/src/things_bridge/server.py 2>/dev/null \
   | grep -v '/health' \
   | grep -v '/metrics' \
   | grep -v '/v[0-9]\+/' \
@@ -1433,8 +1817,8 @@ echo "verify-standards: openapi/*.v1.yaml exist and ${openapi_contract_test} ref
 # ("Health endpoint") and the deterministic regression check from
 # issue #25:
 #
-#   - /agent-auth/health is registered in src/agent_auth/server.py
-#     and /things-bridge/health is registered in src/things_bridge/server.py.
+#   - /agent-auth/health is registered in packages/agent-auth/src/agent_auth/server.py
+#     and /things-bridge/health is registered in packages/things-bridge/src/things_bridge/server.py.
 #   - At least one test function per route asserts a healthy (200)
 #     response, and at least one asserts an unhealthy subsystem-failure
 #     response (503 for agent-auth when the store ping fails; 502 for
@@ -1455,8 +1839,8 @@ import sys
 # integration fixtures expose the latter to let tests flip between
 # direct and in-process transports without hard-coding the path.
 SERVICES = (
-    ("agent-auth", "src/agent_auth/server.py", 503),
-    ("things-bridge", "src/things_bridge/server.py", 502),
+    ("agent-auth", "packages/agent-auth/src/agent_auth/server.py", 503),
+    ("things-bridge", "packages/things-bridge/src/things_bridge/server.py", 502),
 )
 
 def function_blocks(source: str) -> list[str]:
@@ -1609,8 +1993,8 @@ echo "verify-standards: mutation testing configured ([tool.mutmut] / [tool.mutat
 # ("Metrics endpoint") and the deterministic regression check from
 # issue #26:
 #
-#   - /agent-auth/metrics is registered in src/agent_auth/server.py
-#     and /things-bridge/metrics is registered in src/things_bridge/server.py.
+#   - /agent-auth/metrics is registered in packages/agent-auth/src/agent_auth/server.py
+#     and /things-bridge/metrics is registered in packages/things-bridge/src/things_bridge/server.py.
 #   - At least one test function per route scrapes the endpoint (200
 #     response) and validates that every declared metric name appears
 #     in the response body. Name lists are hard-coded below so a
@@ -1634,8 +2018,8 @@ THINGS_BRIDGE_METRICS = (
     "http_server_active_requests",
 )
 SERVICES = (
-    ("agent-auth", "src/agent_auth/server.py", AGENT_AUTH_METRICS),
-    ("things-bridge", "src/things_bridge/server.py", THINGS_BRIDGE_METRICS),
+    ("agent-auth", "packages/agent-auth/src/agent_auth/server.py", AGENT_AUTH_METRICS),
+    ("things-bridge", "packages/things-bridge/src/things_bridge/server.py", THINGS_BRIDGE_METRICS),
 )
 
 
@@ -1692,8 +2076,8 @@ echo "verify-standards: /agent-auth/metrics and /things-bridge/metrics are regis
 # .claude/instructions/service-design.md ("Graceful shutdown") and the
 # deterministic regression check from issue #32:
 #
-#   - Both server modules (src/agent_auth/server.py,
-#     src/things_bridge/server.py) install a SIGTERM handler.
+#   - Both server modules (packages/agent-auth/src/agent_auth/server.py,
+#     packages/things-bridge/src/things_bridge/server.py) install a SIGTERM handler.
 #   - At least one test under tests/ exercises SIGTERM shutdown
 #     behaviour (grepping the literal token SIGTERM — the existing
 #     subprocess-driven tests in tests/test_server_shutdown.py and
@@ -1711,7 +2095,7 @@ fail_shutdown_check() {
   shutdown_missing=1
 }
 
-for server_file in src/agent_auth/server.py src/things_bridge/server.py; do
+for server_file in packages/agent-auth/src/agent_auth/server.py packages/things-bridge/src/things_bridge/server.py; do
   if [[ ! -f "${server_file}" ]]; then
     fail_shutdown_check \
       "${server_file} is missing." \
@@ -1955,9 +2339,9 @@ echo "verify-standards: design/DESIGN.md documents key-loss detection and recove
 # .claude/instructions/service-design.md ("DB schema migration strategy")
 # and the deterministic regression check from issue #29:
 #
-#   1. src/agent_auth/store.py contains no CREATE TABLE / ALTER TABLE —
+#   1. packages/agent-auth/src/agent_auth/store.py contains no CREATE TABLE / ALTER TABLE —
 #      schema DDL lives exclusively in
-#      src/agent_auth/migrations/_catalogue.py and cannot drift from
+#      packages/agent-auth/src/agent_auth/migrations/_catalogue.py and cannot drift from
 #      application code.
 #   2. At least one migration is declared in the catalogue (so the
 #      runner has something to apply) and the catalogue ships a
@@ -1976,18 +2360,18 @@ import tempfile
 
 errors: list[str] = []
 
-store_src = pathlib.Path("src/agent_auth/store.py").read_text()
+store_src = pathlib.Path("packages/agent-auth/src/agent_auth/store.py").read_text()
 if re.search(r"\b(CREATE|ALTER)\s+TABLE\b", store_src, re.IGNORECASE):
     errors.append(
-        "src/agent_auth/store.py contains CREATE TABLE / ALTER TABLE — "
-        "all schema DDL must live in src/agent_auth/migrations/_catalogue.py"
+        "packages/agent-auth/src/agent_auth/store.py contains CREATE TABLE / ALTER TABLE — "
+        "all schema DDL must live in packages/agent-auth/src/agent_auth/migrations/_catalogue.py"
     )
 
-catalogue_path = pathlib.Path("src/agent_auth/migrations/_catalogue.py")
+catalogue_path = pathlib.Path("packages/agent-auth/src/agent_auth/migrations/_catalogue.py")
 if not catalogue_path.is_file():
-    errors.append("src/agent_auth/migrations/_catalogue.py is missing")
+    errors.append("packages/agent-auth/src/agent_auth/migrations/_catalogue.py is missing")
 else:
-    sys.path.insert(0, "src")
+    sys.path.insert(0, "packages/agent-auth/src")
     from agent_auth.migrations import migrate_down, migrate_up
     from agent_auth.migrations._catalogue import CATALOGUE
 
@@ -2040,34 +2424,34 @@ echo "verify-standards: schema DDL lives in migrations/_catalogue.py; up/down dr
 # .claude/instructions/service-design.md ("Plugin trust boundary") and
 # the deterministic regression check from issue #6:
 #
-#   1. src/agent_auth/server.py must not call importlib.import_module —
+#   1. packages/agent-auth/src/agent_auth/server.py must not call importlib.import_module —
 #      the pre-#6 in-process plugin loader is gone for good, and
 #      re-introducing it widens the trust boundary to every plugin
 #      author. strip_comments guards against a stale mention
 #      satisfying the grep after the real call has been removed.
-#   2. src/agent_auth/config.py must declare notification_plugin_url
+#   2. packages/agent-auth/src/agent_auth/config.py must declare notification_plugin_url
 #      (the URL-based field) — a revert of the schema to the old
 #      notification_plugin / notification_plugin_config module-name
 #      pair would silently re-enable in-process loading on the next
 #      loader change.
 
 notifier_drift=0
-server_stripped="$(strip_comments src/agent_auth/server.py)"
+server_stripped="$(strip_comments packages/agent-auth/src/agent_auth/server.py)"
 if grep -qE "\\bimportlib\\.import_module\\b" <<<"${server_stripped}"; then
-  echo "verify-standards: src/agent_auth/server.py calls importlib.import_module." >&2
+  echo "verify-standards: packages/agent-auth/src/agent_auth/server.py calls importlib.import_module." >&2
   echo "  Notification plugins must be out-of-process HTTP endpoints (see #6 and" >&2
   echo "  design/DESIGN.md § Notification plugin wire protocol)." >&2
   notifier_drift=1
 fi
 
-config_stripped="$(strip_comments src/agent_auth/config.py)"
+config_stripped="$(strip_comments packages/agent-auth/src/agent_auth/config.py)"
 if ! grep -qE "\\bnotification_plugin_url\\b" <<<"${config_stripped}"; then
-  echo "verify-standards: src/agent_auth/config.py is missing 'notification_plugin_url'." >&2
+  echo "verify-standards: packages/agent-auth/src/agent_auth/config.py is missing 'notification_plugin_url'." >&2
   echo "  The notifier is a URL, not a Python module path — see #6." >&2
   notifier_drift=1
 fi
 if grep -qE "\\bnotification_plugin[[:space:]]*:" <<<"${config_stripped}"; then
-  echo "verify-standards: src/agent_auth/config.py still declares the legacy 'notification_plugin:' module-name field." >&2
+  echo "verify-standards: packages/agent-auth/src/agent_auth/config.py still declares the legacy 'notification_plugin:' module-name field." >&2
   echo "  Replace with 'notification_plugin_url: str = \"\"'." >&2
   notifier_drift=1
 fi
@@ -2156,3 +2540,29 @@ if [[ ${benchmark_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: benchmark suite exists under ${benchmarks_dir}/ and ${benchmark_workflow} runs it on a schedule."
+
+# ---------------------------------------------------------------------------
+# VS Code project scaffolding.
+# ---------------------------------------------------------------------------
+# .claude/instructions/tooling-and-ci.md (IDE — "VS Code project")
+# requires the repository to commit a .vscode/ directory covering
+# recommended extensions, formatter-on-save settings, and debug
+# configurations. The deterministic regression check asserts the
+# three files exist; it does not inspect content because a
+# partial/experimental settings.json should still open cleanly for
+# contributors.
+
+vscode_missing=0
+for vscode_file in .vscode/extensions.json .vscode/settings.json .vscode/launch.json; do
+  if [[ ! -f "${vscode_file}" ]]; then
+    echo "verify-standards: ${vscode_file} is missing." >&2
+    vscode_missing=1
+  fi
+done
+
+if [[ ${vscode_missing} -ne 0 ]]; then
+  echo "  Add the .vscode/ workspace per .claude/instructions/tooling-and-ci.md § IDE." >&2
+  exit 1
+fi
+
+echo "verify-standards: .vscode/ workspace provides extensions, settings, and launch configurations."

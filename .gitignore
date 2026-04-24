@@ -19,4 +19,7 @@ dist/
 htmlcov/
 mutants/
 node_modules/
+pip-audit-requirements.txt
+pip-audit.json
+pip-audit.sarif
 # keep-sorted end

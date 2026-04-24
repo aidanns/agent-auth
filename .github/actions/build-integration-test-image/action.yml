@@ -2,23 +2,60 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Build integration test image
+name: Build integration test images
 description: |
-  Build docker/Dockerfile.test under a stable tag so integration jobs
-  can reuse it via AGENT_AUTH_TEST_IMAGE_TAG. Kept as a step (not bundled
-  into the test step) so the GHA step-timing UI shows build cost split
-  out from test wall-time.
+  Build every ``docker/Dockerfile.<service>.test`` image under a shared
+  session tag so the integration jobs can reuse them via
+  ``AGENT_AUTH_TEST_IMAGE_SESSION``. Kept as a composite action (not
+  bundled into the test step) so the GHA step-timing UI shows the
+  build cost split out from test wall-time.
+
+  Uses ``docker/setup-buildx-action`` with ``install: true`` to alias
+  ``docker build`` onto ``docker buildx build`` so the build commands
+  below can read and write the GitHub Actions cache (``type=gha``).
+  Each service gets its own cache scope so a Dockerfile change on one
+  service does not evict the other services' cache.
+
+  The step builds every image every time the action is invoked; jobs
+  that only exercise a subset still pay the full (cache-assisted)
+  build cost, but this keeps the invocation contract trivial and
+  consistent with the local test harness that builds all images up
+  front. Selective builds are an out-of-scope follow-up.
 
 inputs:
-  tag:
-    description: Image tag to apply to the built image
+  session:
+    description: Shared session suffix applied to every image tag
     required: true
 
 runs:
   using: composite
   steps:
-    - name: docker build
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      with:
+        # Alias ``docker build`` onto ``docker buildx build`` so the
+        # plain-docker invocation below picks up the buildx builder
+        # without the action needing to know it's a buildx build.
+        install: true
+
+    - name: docker build (all services)
       shell: bash
       env:
-        IMAGE_TAG: ${{ inputs.tag }}
-      run: docker build -f docker/Dockerfile.test -t "$IMAGE_TAG" .
+        SESSION: ${{ inputs.session }}
+      run: |
+        set -euo pipefail
+        for service in agent-auth things-bridge things-cli things-client-applescript; do
+          # --load imports the built image into the local Docker
+          # daemon so ``docker compose`` can find it downstream; by
+          # default buildx leaves the image in its internal cache and
+          # only the cache layer would be visible to the daemon.
+          # Each service gets its own GHA cache scope so a Dockerfile
+          # edit on one service doesn't invalidate the others.
+          docker build \
+            --cache-from "type=gha,scope=${service}-test" \
+            --cache-to "type=gha,mode=max,scope=${service}-test" \
+            --load \
+            -f "docker/Dockerfile.${service}.test" \
+            -t "${service}-test:${SESSION}" \
+            .
+        done

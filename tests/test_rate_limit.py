@@ -6,7 +6,7 @@
 
 The HTTP integration (429 response shape, Retry-After header, audit
 event) is exercised by ``tests/test_server_rate_limit.py`` and the
-bridge-forwarding integration by ``tests/test_things_bridge_authz.py``;
+bridge-forwarding integration by ``tests/test_agent_auth_client.py``;
 this file pins the token-bucket algorithm itself under a deterministic
 clock so refill / eviction behaviour is test-stable.
 """

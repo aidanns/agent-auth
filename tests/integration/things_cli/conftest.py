@@ -5,18 +5,31 @@
 """Docker-backed fixtures for things-cli integration tests.
 
 Reuses the ``things_bridge_stack`` fixture (multi-service Compose
-project running ``agent-auth`` + ``things-bridge``) and adds helpers to
-invoke the ``things-cli`` binary inside the bridge container. Tests
-exercise ``things-cli`` strictly through its argv / stdout surface,
-with credentials persisted to a per-test path inside the container.
+project running ``agent-auth`` + ``things-bridge``) and adds helpers
+that launch the ``things-cli`` binary in its own short-lived container.
+Tests exercise ``things-cli`` strictly through its argv / stdout
+surface; credentials live in a per-test tmpdir on the host and are
+bind-mounted read-write into each ephemeral CLI container.
+
+Under issue #95 the CLI runs in its own image instead of
+``docker compose exec``'ing into the bridge. The original ADR 0005
+rationale for running inside the bridge (the 0600 credentials file
+plus UID-mismatched bind mounts) goes away once the CLI owns its own
+image: the credential store's ``file:``-backed path writes with
+``0600`` inside the container under its own UID, and the host-side
+tmpdir is created by the fixture with world-readable perms (the host
+test runner needs to read the rendered file back, but any secrets it
+contains were generated in-test and live and die with the fixture).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -34,31 +47,36 @@ from tests.integration.things_bridge.conftest import (  # noqa: F401
 
 # Stack pinning: this fixture inherits its Compose topology from
 # ``docker/docker-compose.yaml`` via the imported ``ThingsBridgeStack``
-# — things-cli runs inside that bridge container.
+# — the ``things-cli`` service is defined alongside ``agent-auth`` and
+# ``things-bridge`` in that file and launched per-test via
+# ``docker compose run --rm things-cli``.
 
 
-# Credential file lives inside the container so the test never has to
-# resolve UID-mismatched bind-mount permissions for a 0600 file. The
-# path is per-test so concurrent tests on the same Compose project
-# (none today, but the contract is cheap to preserve) cannot collide.
-_CREDS_PATH_TEMPLATE = "/tmp/things-cli-creds-{}.yaml"
+# Credential file lives inside a per-test tmpdir that is bind-mounted
+# into the CLI container. ``_CREDS_FILENAME`` is written once per test
+# before the first ``run()`` call; the CLI re-writes it in-place under
+# login/refresh. ``_CREDS_PATH_IN_CONTAINER`` is where the fixture
+# mounts the tmpdir so the CLI's ``--credentials-file`` argument stays
+# stable regardless of host-side path layout.
+_CREDS_FILENAME = "credentials.yaml"
+_CREDS_PATH_IN_CONTAINER = f"/tmp/things-cli-creds/{_CREDS_FILENAME}"
 
 
 @dataclass
 class ThingsCliInvoker:
-    """Run the in-container ``things-cli`` against the test stack."""
+    """Run ``things-cli`` in its own ephemeral container against the test stack."""
 
     stack: ThingsBridgeStack
-    creds_path: str
+    creds_dir: Path
 
     def run(self, *args: str) -> tuple[int, str, str]:
         """Run ``things-cli`` with the file-backed credential store.
 
-        Returns ``(exit_code, stdout, stderr)``. Calls ``docker compose
-        exec`` directly because ``testcontainers``'s ``exec_in_container``
-        wraps ``subprocess.run(check=True)`` and raises on non-zero exit
-        — which would prevent negative-path tests from inspecting the
-        CLI's ``BridgeForbiddenError``/``NotFoundError`` exit codes.
+        Returns ``(exit_code, stdout, stderr)``. Uses ``docker compose
+        run --rm things-cli`` so the CLI executes in its own container
+        (issue #95) rather than sharing the bridge's process space.
+        ``-T`` disables TTY allocation so stdout / stderr reach the
+        subprocess verbatim without termios munging.
 
         ``-f stack.compose_file`` points at the rendered, per-test
         compose file (which carries the project name via compose v2's
@@ -71,14 +89,17 @@ class ThingsCliInvoker:
                 "compose",
                 "-f",
                 self.stack.compose_file,
-                "exec",
+                "run",
                 "-T",
-                "things-bridge",
+                "--rm",
+                "--volume",
+                f"{self.creds_dir}:/tmp/things-cli-creds",
+                "things-cli",
                 "things-cli",
                 "--credential-store",
                 "file",
                 "--credentials-file",
-                self.creds_path,
+                _CREDS_PATH_IN_CONTAINER,
                 *args,
             ],
             capture_output=True,
@@ -122,10 +143,14 @@ class ThingsCliInvoker:
 @pytest.fixture
 def things_cli_invoker(
     things_bridge_stack: ThingsBridgeStack,  # noqa: F811 — pytest re-export
+    tmp_path_factory: pytest.TempPathFactory,
 ) -> ThingsCliInvoker:
-    """Default invoker — fresh credential file per test."""
-    creds_path = _CREDS_PATH_TEMPLATE.format(uuid.uuid4().hex[:8])
-    return ThingsCliInvoker(stack=things_bridge_stack, creds_path=creds_path)
+    """Default invoker — fresh credentials tmpdir per test."""
+    creds_dir = tmp_path_factory.mktemp(f"things-cli-creds-{uuid.uuid4().hex[:8]}")
+    # Ensure the bind-mount target is readable/writable by the
+    # container's UID 1001 user; pytest's tmpdirs default to 0700.
+    os.chmod(creds_dir, 0o777)
+    return ThingsCliInvoker(stack=things_bridge_stack, creds_dir=creds_dir)
 
 
 @pytest.fixture

@@ -7,14 +7,48 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
+[manifest]
+members = [
+    "agent-auth",
+    "agent-auth-common",
+    "agent-auth-workspace",
+    "gpg-backend-cli-host",
+    "gpg-bridge",
+    "gpg-cli",
+    "things-bridge",
+    "things-cli",
+    "things-client-cli-applescript",
+]
+
 [[package]]
 name = "agent-auth"
-source = { editable = "." }
+source = { editable = "packages/agent-auth" }
 dependencies = [
+    { name = "agent-auth-common" },
     { name = "cryptography" },
     { name = "keyring" },
     { name = "pyyaml" },
 ]
+
+[package.metadata]
+requires-dist = [
+    { name = "agent-auth-common", editable = "packages/agent-auth-common" },
+    { name = "cryptography", specifier = ">=42.0" },
+    { name = "keyring", specifier = ">=25.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[[package]]
+name = "agent-auth-common"
+source = { editable = "packages/agent-auth-common" }
+
+[package.metadata]
+provides-extras = ["testing"]
+
+[[package]]
+name = "agent-auth-workspace"
+version = "0.0.0"
+source = { virtual = "." }
 
 [package.optional-dependencies]
 dev = [
@@ -32,11 +66,21 @@ dev = [
     { name = "testcontainers" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "agent-auth" },
+    { name = "agent-auth-common" },
+    { name = "gpg-backend-cli-host" },
+    { name = "gpg-bridge" },
+    { name = "gpg-cli" },
+    { name = "things-bridge" },
+    { name = "things-cli" },
+    { name = "things-client-cli-applescript" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.0" },
-    { name = "cryptography", specifier = ">=42.0" },
-    { name = "keyring", specifier = ">=25.0" },
     { name = "keyrings-alt", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "mutmut", marker = "extra == 'dev'", specifier = ">=3.5" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.20" },
@@ -46,11 +90,22 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-benchmark", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
     { name = "reuse", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "testcontainers", extras = ["compose"], marker = "extra == 'dev'", specifier = ">=4" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "agent-auth", editable = "packages/agent-auth" },
+    { name = "agent-auth-common", extras = ["testing"], editable = "packages/agent-auth-common" },
+    { name = "gpg-backend-cli-host", editable = "packages/gpg-backend-cli-host" },
+    { name = "gpg-bridge", editable = "packages/gpg-bridge" },
+    { name = "gpg-cli", editable = "packages/gpg-cli" },
+    { name = "things-bridge", editable = "packages/things-bridge" },
+    { name = "things-cli", editable = "packages/things-cli" },
+    { name = "things-client-cli-applescript", editable = "packages/things-client-cli-applescript" },
+]
 
 [[package]]
 name = "annotated-types"
@@ -518,6 +573,44 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d6/17/6e8890271880903e3538660a21d63a6c1fea969ac71d0d6b608b78727fa9/filelock-3.28.0.tar.gz", hash = "sha256:4ed1010aae813c4ee8d9c660e4792475ee60c4a0ba76073ceaf862bd317e3ca6", size = 56474, upload-time = "2026-04-14T22:54:33.625Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3b/21/2f728888c45033d34a417bfcd248ea2564c9e08ab1bfd301377cf05d5586/filelock-3.28.0-py3-none-any.whl", hash = "sha256:de9af6712788e7171df1b28b15eba2446c69721433fa427a9bee07b17820a9db", size = 39189, upload-time = "2026-04-14T22:54:32.037Z" },
+]
+
+[[package]]
+name = "gpg-backend-cli-host"
+source = { editable = "packages/gpg-backend-cli-host" }
+dependencies = [
+    { name = "agent-auth-common" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "agent-auth-common", editable = "packages/agent-auth-common" }]
+
+[[package]]
+name = "gpg-bridge"
+source = { editable = "packages/gpg-bridge" }
+dependencies = [
+    { name = "agent-auth-common" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agent-auth-common", editable = "packages/agent-auth-common" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[[package]]
+name = "gpg-cli"
+source = { editable = "packages/gpg-cli" }
+dependencies = [
+    { name = "agent-auth-common" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agent-auth-common", editable = "packages/agent-auth-common" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]
@@ -1969,6 +2062,46 @@ sdist = { url = "https://files.pythonhosted.org/packages/19/89/bec5709fb759f9c78
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5c/32/02932f0d597cdbb34e34bf24266ff0f2cf292ccb3aafc37dd9efcb0cc416/textual-8.2.4-py3-none-any.whl", hash = "sha256:a83bd3f0cc7125ca203845af753f9d6b6be030025ecd1b05cc75ebe645b9c4ba", size = 724390, upload-time = "2026-04-19T04:20:49.968Z" },
 ]
+
+[[package]]
+name = "things-bridge"
+source = { editable = "packages/things-bridge" }
+dependencies = [
+    { name = "agent-auth-common" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agent-auth-common", editable = "packages/agent-auth-common" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[[package]]
+name = "things-cli"
+source = { editable = "packages/things-cli" }
+dependencies = [
+    { name = "agent-auth-common" },
+    { name = "keyring" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agent-auth-common", editable = "packages/agent-auth-common" },
+    { name = "keyring", specifier = ">=25.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[[package]]
+name = "things-client-cli-applescript"
+source = { editable = "packages/things-client-cli-applescript" }
+dependencies = [
+    { name = "agent-auth-common" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "agent-auth-common", editable = "packages/agent-auth-common" }]
 
 [[package]]
 name = "tomli"

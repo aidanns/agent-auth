@@ -25,7 +25,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKER_DIR = REPO_ROOT / "docker"
-DOCKERFILE = DOCKER_DIR / "Dockerfile.test"
 COMPOSE_TEMPLATE = DOCKER_DIR / "docker-compose.yaml"
 COMPOSE_FILE_NAME = "docker-compose.yaml"
 _PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}")
@@ -33,6 +32,18 @@ _PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}")
 DOCKER_BUILD_TIMEOUT_SECONDS = 600.0
 READY_POLL_TIMEOUT_SECONDS = 30.0
 READY_POLL_INTERVAL_SECONDS = 0.2
+
+# Mapping from service name (as used by the Compose topology) to the
+# per-service Dockerfile that builds its integration test image. One
+# image is built per entry on first use of the ``_test_image_tags``
+# session fixture; ``Dockerfile.<service>.test`` matches the on-disk
+# naming convention.
+PER_SERVICE_DOCKERFILES: dict[str, Path] = {
+    "agent-auth": DOCKER_DIR / "Dockerfile.agent-auth.test",
+    "things-bridge": DOCKER_DIR / "Dockerfile.things-bridge.test",
+    "things-cli": DOCKER_DIR / "Dockerfile.things-cli.test",
+    "things-client-applescript": DOCKER_DIR / "Dockerfile.things-client-applescript.test",
+}
 
 # Phase timings are emitted as INFO logs on the ``integration.timing``
 # logger so CI can surface them with ``-o log_cli=true``. The
@@ -159,19 +170,31 @@ def seed_empty_fixtures_dir(fixtures_dir: Path) -> None:
     os.chmod(fixtures_dir / "things.yaml", 0o644)
 
 
-def build_test_image(tag: str) -> None:
-    """Run ``docker build`` against ``DOCKERFILE`` and tag the result.
+def build_test_image(dockerfile: Path, tag: str) -> None:
+    """Run ``docker build -f <dockerfile>`` and tag the result.
 
     Raises ``RuntimeError`` with build output on a non-zero exit so
     pytest tracebacks show why the build failed.
+
+    When ``AGENT_AUTH_DOCKER_CACHE=gha`` is set, the build opts in to
+    GitHub Actions cache via buildx (``--cache-from`` /
+    ``--cache-to type=gha``) under a per-service scope derived from
+    the Dockerfile name (``Dockerfile.<service>.test`` →
+    ``<service>-test``). The CI integration jobs go through
+    ``.github/actions/build-integration-test-image`` today, so this
+    branch is primarily a local-dev / non-CI-script escape hatch. Any
+    other value of the env var falls back to classic ``docker build``
+    so local runs without buildx don't pay the setup cost.
     """
-    with phase_timer("build_test_image", tag=tag):
+    cache_args = _gha_cache_args(dockerfile)
+    with phase_timer("build_test_image", dockerfile=dockerfile.name, tag=tag):
         result = subprocess.run(
             [
                 "docker",
                 "build",
+                *cache_args,
                 "-f",
-                str(DOCKERFILE),
+                str(dockerfile),
                 "-t",
                 tag,
                 str(REPO_ROOT),
@@ -183,6 +206,42 @@ def build_test_image(tag: str) -> None:
         )
     if result.returncode != 0:
         raise RuntimeError(
-            f"`docker build` failed for {tag}: "
+            f"`docker build` failed for {tag} ({dockerfile.name}): "
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
+
+
+def _gha_cache_args(dockerfile: Path) -> list[str]:
+    """Return buildx cache flags appropriate for the ambient env.
+
+    Caller sets ``AGENT_AUTH_DOCKER_CACHE=gha`` to opt in. The cache
+    scope is derived from the Dockerfile's per-service suffix so a
+    Dockerfile edit on one service doesn't evict the cache for the
+    others. Returns ``[]`` when caching is disabled; callers splat
+    the result into their ``docker build`` argv with ``*``.
+    """
+    if os.environ.get("AGENT_AUTH_DOCKER_CACHE") != "gha":
+        return []
+    scope = _cache_scope_for_dockerfile(dockerfile)
+    return [
+        "--cache-from",
+        f"type=gha,scope={scope}",
+        "--cache-to",
+        f"type=gha,mode=max,scope={scope}",
+        "--load",
+    ]
+
+
+def _cache_scope_for_dockerfile(dockerfile: Path) -> str:
+    """Return the cache scope string for ``dockerfile``.
+
+    Matches the scope used by
+    ``.github/actions/build-integration-test-image`` so a local run
+    under ``AGENT_AUTH_DOCKER_CACHE=gha`` shares the same cache key
+    space as CI — useful for anyone driving a GHA-cache-backed
+    buildx builder locally.
+    """
+    # ``Dockerfile.things-bridge.test`` → scope ``things-bridge-test``.
+    stem = dockerfile.stem  # ``Dockerfile.things-bridge``
+    service = stem.removeprefix("Dockerfile.")
+    return f"{service}-test"

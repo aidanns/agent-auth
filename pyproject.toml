@@ -2,24 +2,23 @@
 #
 # SPDX-License-Identifier: MIT
 
-[build-system]
-requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
-build-backend = "setuptools.build_meta"
+# Workspace-only root: the per-service packages live under
+# ``packages/*`` and each carries its own ``pyproject.toml``. This root
+# file owns only the uv workspace declaration and the cross-cutting
+# tooling configuration (pytest, coverage, mypy, ruff, mutmut, …) —
+# there is no runtime distribution built from the repo root.
 
 [project]
-name = "agent-auth"
-dynamic = ["version"]
-description = "Token-based authorization for AI agent access to macOS applications"
+name = "agent-auth-workspace"
+version = "0.0.0"
+description = "Monorepo workspace root for the agent-auth family of services"
 requires-python = ">=3.11"
-dependencies = [
-    # keep-sorted start
-    "cryptography>=42.0",
-    "keyring>=25.0",
-    "pyyaml>=6.0",
-    # keep-sorted end
-]
 
 [project.optional-dependencies]
+# ``uv sync --extra dev`` installs every workspace member plus the
+# shared dev toolchain. Individual services consume their own runtime
+# dependencies through their own pyproject.toml; this extra only
+# carries the cross-cutting testing / linting / release tools.
 dev = [
     # keep-sorted start
     "build>=1.0",
@@ -37,32 +36,41 @@ dev = [
     # keep-sorted end
 ]
 
-[project.scripts]
-# keep-sorted start
-agent-auth = "agent_auth.cli:main"
-agent-auth-notifier = "agent_auth_notifier.cli:main"
-gpg-backend-cli-host = "gpg_backend_cli_host.cli:main"
-gpg-bridge = "gpg_bridge.cli:main"
-gpg-cli = "gpg_cli.cli:main"
-things-bridge = "things_bridge.cli:main"
-things-cli = "things_cli.cli:main"
-things-client-cli-applescript = "things_client_applescript.cli:main"
-# keep-sorted end
+[tool.uv.workspace]
+members = ["packages/*"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
-# ``tests_support`` ships the tests-only HTTP notifier sidecar (#6)
-# used by the Docker integration tests. It lives under ``src/`` for
-# ergonomic in-tree development but must never enter the distributed
-# wheel. The integration container picks it up via ``PYTHONPATH``
-# instead of an installed distribution (see ``docker/Dockerfile.test``).
-exclude = ["tests_support*"]
+[tool.uv.sources]
+# Every workspace member resolves cross-package imports against the
+# other workspace members rather than PyPI. When a package is
+# published, consumers can pin a PyPI version in their own
+# ``pyproject.toml`` and the source override below drops out.
+agent-auth = { workspace = true }
+agent-auth-common = { workspace = true }
+gpg-backend-cli-host = { workspace = true }
+gpg-bridge = { workspace = true }
+gpg-cli = { workspace = true }
+things-bridge = { workspace = true }
+things-cli = { workspace = true }
+things-client-cli-applescript = { workspace = true }
 
-[tool.setuptools_scm]
-# Versions are derived from git tags (e.g. a ``v0.2.0`` tag produces
-# ``0.2.0``). Untagged commits get a development version like
-# ``0.2.1.dev5+g1234abc``.
-fallback_version = "0.0.0+unknown"
+# ``uv sync`` at the workspace root installs every member as a dev
+# dependency of the root package. PEP 735 ``dependency-groups`` is the
+# canonical place for this; ``uv`` picks up the ``dev`` group by
+# default and ``--no-dev`` skips the entries, so a production install
+# from this root never pulls in any of the package bodies.
+[dependency-groups]
+dev = [
+    # keep-sorted start
+    "agent-auth",
+    "agent-auth-common[testing]",
+    "gpg-backend-cli-host",
+    "gpg-bridge",
+    "gpg-cli",
+    "things-bridge",
+    "things-cli",
+    "things-client-cli-applescript",
+    # keep-sorted end
+]
 
 [tool.pip-audit]
 # List known-acceptable advisories here with a comment explaining why each
@@ -72,11 +80,26 @@ fallback_version = "0.0.0+unknown"
 ignore-vuln = []
 
 [tool.pytest.ini_options]
-# ``tests_support`` is deliberately excluded from the ``agent-auth``
-# wheel (see ``[tool.setuptools.packages.find]``) so it can never ship
-# in a production install. Tests still need to import it from the
-# source tree, so add ``src/`` to the pytest pythonpath.
-pythonpath = ["src"]
+# ``tests_support`` is deliberately excluded from the
+# ``agent-auth-common`` wheel (see its
+# ``[tool.setuptools.packages.find].exclude``) so it can never ship in
+# a production install. Tests still need to import it from the source
+# tree, so add the workspace src trees to the pytest pythonpath. The
+# per-package ``src/`` roots are added explicitly so an editable
+# install drift (which hides the workspace modules behind
+# ``.venv/lib/.../site-packages``) still resolves.
+pythonpath = [
+    # keep-sorted start
+    "packages/agent-auth-common/src",
+    "packages/agent-auth/src",
+    "packages/gpg-backend-cli-host/src",
+    "packages/gpg-bridge/src",
+    "packages/gpg-cli/src",
+    "packages/things-bridge/src",
+    "packages/things-cli/src",
+    "packages/things-client-cli-applescript/src",
+    # keep-sorted end
+]
 markers = [
     "covers_function(*names): declare which functional-decomposition leaf functions a test exercises (read by `systems-engineering function verify`)",
     "perf_budget: asserts a latency budget documented in design/DESIGN.md § Performance budget. Discoverable as a group via `pytest -m perf_budget`.",
@@ -88,7 +111,7 @@ markers = [
 # tests run in a separate CI job and are excluded here — rolling them
 # into the floor would make it flaky on Docker availability.
 addopts = [
-    "--cov=src",
+    "--cov=packages",
     "--cov-branch",
     "--cov-report=term-missing",
     "--cov-fail-under=74",
@@ -96,7 +119,7 @@ addopts = [
 
 [tool.coverage.run]
 branch = true
-source = ["src"]
+source = ["packages"]
 
 [tool.coverage.report]
 show_missing = true
@@ -112,7 +135,19 @@ exclude_lines = [
 ]
 
 [tool.ruff]
-src = ["src", "tests"]
+src = [
+    # keep-sorted start
+    "packages/agent-auth-common/src",
+    "packages/agent-auth/src",
+    "packages/gpg-backend-cli-host/src",
+    "packages/gpg-bridge/src",
+    "packages/gpg-cli/src",
+    "packages/things-bridge/src",
+    "packages/things-cli/src",
+    "packages/things-client-cli-applescript/src",
+    "tests",
+    # keep-sorted end
+]
 target-version = "py311"
 # 100-character soft limit. Ruff's default is 88; 100 better fits
 # descriptive error messages and SQL strings already common in this
@@ -140,8 +175,31 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-# Point mypy at the three trees. CLI invocation stays `mypy`.
-files = ["src", "tests", "benchmarks"]
+# Point mypy at every workspace source tree plus tests + benchmarks.
+# Keep the CLI invocation as ``mypy`` (no explicit paths); listing
+# them here means ``mypy`` picks up the full matrix.
+files = [
+    # keep-sorted start
+    "benchmarks",
+    "packages/agent-auth-common/src",
+    "packages/agent-auth/src",
+    "packages/gpg-backend-cli-host/src",
+    "packages/gpg-bridge/src",
+    "packages/gpg-cli/src",
+    "packages/things-bridge/src",
+    "packages/things-cli/src",
+    "packages/things-client-cli-applescript/src",
+    "tests",
+    # keep-sorted end
+]
+# With per-package ``src/`` trees, mypy can't tell that two modules
+# with the same short name (e.g. ``config.py`` in agent-auth vs
+# things-bridge) are in different packages. Use the namespace mode so
+# only full-qualified names matter. See
+# https://mypy.readthedocs.io/en/stable/running_mypy.html#mapping-file-paths-to-modules.
+explicit_package_bases = true
+namespace_packages = true
+mypy_path = "$MYPY_CONFIG_FILE_DIR/packages/agent-auth-common/src:$MYPY_CONFIG_FILE_DIR/packages/agent-auth/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-backend-cli-host/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/things-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-client-cli-applescript/src"
 
 # Third-party imports without type stubs. These are separately
 # addressed by pulling in types-* packages as they become available;
@@ -195,23 +253,22 @@ disallow_untyped_calls = false
 [tool.mutmut]
 paths_to_mutate = [
     # keep-sorted start
-    "src/agent_auth/crypto.py",
-    "src/agent_auth/keys.py",
-    "src/agent_auth/scopes.py",
-    "src/agent_auth/store.py",
-    "src/agent_auth/tokens.py",
+    "packages/agent-auth/src/agent_auth/crypto.py",
+    "packages/agent-auth/src/agent_auth/keys.py",
+    "packages/agent-auth/src/agent_auth/scopes.py",
+    "packages/agent-auth/src/agent_auth/store.py",
+    "packages/agent-auth/src/agent_auth/tokens.py",
     # keep-sorted end
 ]
 # mutmut only copies files under paths_to_mutate into the mutants/
 # working copy by default, so sibling modules (agent_auth.config,
 # agent_auth.audit, agent_auth.errors, ...) and the other top-level
 # packages referenced by the test suite are missing at import time.
-# Replicate the entire src/ + tests_support so the Python imports the
+# Replicate the entire packages/ tree so the Python imports the
 # pytest session expects all resolve; per-mutant copies overwrite the
 # files under paths_to_mutate for each mutation.
 also_copy = [
-    "src/",
-    "src/tests_support/",
+    "packages/",
 ]
 # Explicitly override the default tests_dir to just the unit-test
 # files that directly exercise the mutated modules. Integration
@@ -232,7 +289,7 @@ do_not_mutate = [
     # __init__.py is a pure re-export surface; mutating it just
     # produces noise without signal on the security properties we're
     # trying to assert.
-    "src/agent_auth/__init__.py",
+    "packages/agent-auth/src/agent_auth/__init__.py",
 ]
 
 # Mutation-score floor for the scheduled mutation CI job. The local

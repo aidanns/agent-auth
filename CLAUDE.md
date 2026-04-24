@@ -30,7 +30,13 @@ simplifying for "personal project" scope.
 
 ## Architecture
 
-- `src/agent_auth/cli.py` — CLI entrypoint using argparse
+- Monorepo uv workspace: each service lives under `packages/<svc>/`
+  with its own `pyproject.toml`, `install.sh`, and `src/<module>/`
+  tree. Shared types (HTTP clients, Things models, Prometheus metrics
+  helper, test-only `tests_support`) live in
+  `packages/agent-auth-common/src/`.
+- `packages/agent-auth/src/agent_auth/cli.py` — agent-auth CLI
+  entrypoint using argparse
 - Token store will use SQLite at `$XDG_DATA_HOME/agent-auth/tokens.db`
 - Tokens are HMAC-signed: `aa_<token-id>_<hmac-signature>`
 - Signing key stored in the system keyring (macOS Keychain or libsecret/gnome-keyring)
@@ -38,7 +44,7 @@ simplifying for "personal project" scope.
 ## Conventions
 
 - Python 3.11+, no external dependencies for core functionality
-- Use `src/` layout with `pyproject.toml`
+- Per-service `src/` layout under `packages/<svc>/`, one `pyproject.toml` per package
 - Follow user global instructions for shell scripts, commits, TODOs, etc.
 - Use Conventional Commit messages. Release-triggering types:
   `feat:` (minor), `fix:` / `perf:` / `revert:` (patch). Non-release
@@ -91,7 +97,7 @@ simplifying for "personal project" scope.
   (`allowed_signing_keys`). A test-only backend fake lives under
   `tests/gpg_backend_fake/` and is invoked as
   `python -m tests.gpg_backend_fake --fixtures PATH`. See
-  `design/decisions/0030-gpg-bridge-cli-split.md`.
+  `design/decisions/0033-gpg-bridge-cli-split.md`.
 
 ## Detailed instructions
 
