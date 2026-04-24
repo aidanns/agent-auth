@@ -9,7 +9,12 @@ SPDX-License-Identifier: MIT
 ## Status
 
 Accepted — 2026-04-19. Amended 2026-04-23 (see *Amendment — 2026-04-23*
-below).
+below). ADR 0034 (2026-04-24) additionally supersedes the harness
+implementation — `testcontainers.compose.DockerCompose` is replaced by
+an in-tree subprocess builder under `tests/integration/harness/`. The
+per-service topology described below (per-service images, one compose
+file, per-test Compose project, `docker compose run` for `things-cli`,
+`docker run` for the AppleScript contract) is unchanged.
 
 ## Context
 

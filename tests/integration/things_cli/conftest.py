@@ -20,6 +20,14 @@ image: the credential store's ``file:``-backed path writes with
 tmpdir is created by the fixture with world-readable perms (the host
 test runner needs to read the rendered file back, but any secrets it
 contains were generated in-test and live and die with the fixture).
+
+Stack pinning: this fixture inherits its Compose topology from
+``docker/docker-compose.yaml`` via the imported ``ThingsBridgeStack`` —
+the ``things-cli`` service is defined alongside ``agent-auth`` and
+``things-bridge`` in that file and launched per-test via
+``docker compose run --rm things-cli``. ``StartedCluster.file_args()``
+and ``project_name`` are used to build the subprocess command so the
+project / compose-file wiring lives in one place.
 """
 
 from __future__ import annotations
@@ -45,13 +53,6 @@ from tests.integration.things_bridge.conftest import (  # noqa: F401
     things_bridge_stack_factory,
 )
 
-# Stack pinning: this fixture inherits its Compose topology from
-# ``docker/docker-compose.yaml`` via the imported ``ThingsBridgeStack``
-# — the ``things-cli`` service is defined alongside ``agent-auth`` and
-# ``things-bridge`` in that file and launched per-test via
-# ``docker compose run --rm things-cli``.
-
-
 # Credential file lives inside a per-test tmpdir that is bind-mounted
 # into the CLI container. ``_CREDS_FILENAME`` is written once per test
 # before the first ``run()`` call; the CLI re-writes it in-place under
@@ -60,6 +61,7 @@ from tests.integration.things_bridge.conftest import (  # noqa: F401
 # stable regardless of host-side path layout.
 _CREDS_FILENAME = "credentials.yaml"
 _CREDS_PATH_IN_CONTAINER = f"/tmp/things-cli-creds/{_CREDS_FILENAME}"
+_CLI_RUN_TIMEOUT_SECONDS = 30.0
 
 
 @dataclass
@@ -78,33 +80,41 @@ class ThingsCliInvoker:
         ``-T`` disables TTY allocation so stdout / stderr reach the
         subprocess verbatim without termios munging.
 
-        ``-f stack.compose_file`` points at the rendered, per-test
-        compose file (which carries the project name via compose v2's
-        ``name:`` field), so docker compose addresses the right project
-        without any env-var inheritance.
+        The command is built from ``StartedCluster.file_args()`` and
+        ``project_name`` so the compose-file and project-name wiring
+        the harness owns stays in one place. The env passed to
+        ``subprocess.run`` includes the harness's per-cluster env
+        (image tags, notifier mode, bind-mount paths) because
+        ``docker compose run`` re-parses the compose file and needs
+        every ``${VAR}`` interpolation to resolve.
         """
+        cluster = self.stack.cluster
+        argv = [
+            "docker",
+            "compose",
+            *cluster.file_args(),
+            "--project-name",
+            cluster.project_name,
+            "run",
+            "-T",
+            "--rm",
+            "--volume",
+            f"{self.creds_dir}:/tmp/things-cli-creds",
+            "things-cli",
+            "things-cli",
+            "--credential-store",
+            "file",
+            "--credentials-file",
+            _CREDS_PATH_IN_CONTAINER,
+            *args,
+        ]
+        env = {**os.environ, **cluster.env}
         result = subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                self.stack.compose_file,
-                "run",
-                "-T",
-                "--rm",
-                "--volume",
-                f"{self.creds_dir}:/tmp/things-cli-creds",
-                "things-cli",
-                "things-cli",
-                "--credential-store",
-                "file",
-                "--credentials-file",
-                _CREDS_PATH_IN_CONTAINER,
-                *args,
-            ],
+            argv,
+            env=env,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=_CLI_RUN_TIMEOUT_SECONDS,
             check=False,
         )
         return result.returncode, result.stdout, result.stderr
