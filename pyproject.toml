@@ -46,6 +46,9 @@ members = ["packages/*"]
 # ``pyproject.toml`` and the source override below drops out.
 agent-auth = { workspace = true }
 agent-auth-common = { workspace = true }
+gpg-backend-cli-host = { workspace = true }
+gpg-bridge = { workspace = true }
+gpg-cli = { workspace = true }
 things-bridge = { workspace = true }
 things-cli = { workspace = true }
 things-client-cli-applescript = { workspace = true }
@@ -60,6 +63,9 @@ dev = [
     # keep-sorted start
     "agent-auth",
     "agent-auth-common[testing]",
+    "gpg-backend-cli-host",
+    "gpg-bridge",
+    "gpg-cli",
     "things-bridge",
     "things-cli",
     "things-client-cli-applescript",
@@ -86,6 +92,9 @@ pythonpath = [
     # keep-sorted start
     "packages/agent-auth-common/src",
     "packages/agent-auth/src",
+    "packages/gpg-backend-cli-host/src",
+    "packages/gpg-bridge/src",
+    "packages/gpg-cli/src",
     "packages/things-bridge/src",
     "packages/things-cli/src",
     "packages/things-client-cli-applescript/src",
@@ -130,6 +139,9 @@ src = [
     # keep-sorted start
     "packages/agent-auth-common/src",
     "packages/agent-auth/src",
+    "packages/gpg-backend-cli-host/src",
+    "packages/gpg-bridge/src",
+    "packages/gpg-cli/src",
     "packages/things-bridge/src",
     "packages/things-cli/src",
     "packages/things-client-cli-applescript/src",
@@ -171,6 +183,9 @@ files = [
     "benchmarks",
     "packages/agent-auth-common/src",
     "packages/agent-auth/src",
+    "packages/gpg-backend-cli-host/src",
+    "packages/gpg-bridge/src",
+    "packages/gpg-cli/src",
     "packages/things-bridge/src",
     "packages/things-cli/src",
     "packages/things-client-cli-applescript/src",
@@ -184,7 +199,7 @@ files = [
 # https://mypy.readthedocs.io/en/stable/running_mypy.html#mapping-file-paths-to-modules.
 explicit_package_bases = true
 namespace_packages = true
-mypy_path = "$MYPY_CONFIG_FILE_DIR/packages/agent-auth-common/src:$MYPY_CONFIG_FILE_DIR/packages/agent-auth/src:$MYPY_CONFIG_FILE_DIR/packages/things-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/things-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-client-cli-applescript/src"
+mypy_path = "$MYPY_CONFIG_FILE_DIR/packages/agent-auth-common/src:$MYPY_CONFIG_FILE_DIR/packages/agent-auth/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-backend-cli-host/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/things-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-client-cli-applescript/src"
 
 # Third-party imports without type stubs. These are separately
 # addressed by pulling in types-* packages as they become available;

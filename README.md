@@ -50,6 +50,16 @@ or `curl -LsSf https://astral.sh/uv/install.sh | sh`).
   — macOS-only AppleScript-backed Things 3 CLI (invoked by
   `things-bridge` as a subprocess):
   `curl -fsSL https://raw.githubusercontent.com/aidanns/agent-auth/main/packages/things-client-cli-applescript/install.sh | bash`
+- [`gpg-bridge`](packages/gpg-bridge) — HTTP bridge delegating GPG
+  signing to the host gpg binary for agent-auth-protected callers:
+  `curl -fsSL https://raw.githubusercontent.com/aidanns/agent-auth/main/packages/gpg-bridge/install.sh | bash`
+- [`gpg-cli`](packages/gpg-cli) — devcontainer-side `gpg.program`
+  replacement that forwards git's sign / verify requests to
+  `gpg-bridge`:
+  `curl -fsSL https://raw.githubusercontent.com/aidanns/agent-auth/main/packages/gpg-cli/install.sh | bash`
+- [`gpg-backend-cli-host`](packages/gpg-backend-cli-host) — host-side
+  GPG backend invoked by `gpg-bridge` as a subprocess per request:
+  `curl -fsSL https://raw.githubusercontent.com/aidanns/agent-auth/main/packages/gpg-backend-cli-host/install.sh | bash`
 
 The [`agent-auth-common`](packages/agent-auth-common) workspace
 package ships shared types (Things models, HTTP clients, Prometheus

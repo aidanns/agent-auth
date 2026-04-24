@@ -24,6 +24,9 @@ simplifying for "personal project" scope.
 - `task things-bridge -- <args...>` (or `scripts/things-bridge.sh <args...>`) — run the things-bridge CLI. E.g. `task things-bridge -- serve`.
 - `task things-client-applescript -- <args...>` (or `scripts/things-client-applescript.sh <args...>`) — run the things-client-cli-applescript CLI directly (macOS-only). E.g. `task things-client-applescript -- todos list --status open`.
 - `task things-cli -- <args...>` (or `scripts/things-cli.sh <args...>`) — run the things-cli client. E.g. `task things-cli -- todos list`.
+- `task gpg-bridge -- <args...>` (or `scripts/gpg-bridge.sh <args...>`) — run the gpg-bridge CLI on the host. E.g. `task gpg-bridge -- serve`.
+- `task gpg-cli -- <args...>` (or `scripts/gpg-cli.sh <args...>`) — run the devcontainer gpg-cli frontend. Wired to git via `git config gpg.program gpg-cli`.
+- `task gpg-backend-host -- <args...>` (or `scripts/gpg-backend-host.sh <args...>`) — run the host gpg backend CLI directly; normally invoked as a subprocess by `gpg-bridge`.
 
 ## Architecture
 
@@ -84,6 +87,17 @@ simplifying for "personal project" scope.
   devcontainer e2e, point `things_client_command` in `config.yaml` at
   the fake. See `design/decisions/0003-things-client-cli-split.md`
   (supersedes 0001).
+- gpg-bridge architecture: mirrors the Things split. `gpg-bridge`
+  runs on the host and delegates each request to a configured
+  `gpg_backend_command` (default `["gpg-backend-cli-host"]`) which
+  shells out to the real host `gpg`. `gpg-cli` runs in the
+  devcontainer as a `gpg.program` replacement and forwards git's
+  sign / verify argv to `gpg-bridge` over HTTPS with a bearer token
+  (scope `gpg:sign`). Per-key allowlisting sits in bridge config
+  (`allowed_signing_keys`). A test-only backend fake lives under
+  `tests/gpg_backend_fake/` and is invoked as
+  `python -m tests.gpg_backend_fake --fixtures PATH`. See
+  `design/decisions/0033-gpg-bridge-cli-split.md`.
 
 ## Detailed instructions
 
