@@ -4,9 +4,9 @@
 #
 # SPDX-License-Identifier: MIT
 
-# Run the Python type checkers (mypy + pyright) against src/ and tests/.
-# Both ship as dev dependencies and are invoked through uv so the
-# project venv is used.
+# Run the Python type checkers (mypy + pyright) against every
+# packages/<svc>/src/ tree and tests/. Both ship as dev dependencies
+# and are invoked through uv so the project venv is used.
 
 set -euo pipefail
 

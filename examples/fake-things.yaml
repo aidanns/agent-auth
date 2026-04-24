@@ -6,7 +6,7 @@
 #
 # Used to stand up the full agent-auth + things-bridge + things-cli stack in
 # a Linux devcontainer without osascript or a real Things 3 installation.
-# The schema is documented in src/things_bridge/fake.py::load_fake_store.
+# The schema is documented in tests/things_client_fake/store.py::load_fake_store.
 
 areas:
   - id: a1

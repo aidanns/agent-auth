@@ -77,7 +77,7 @@ Every repeatable operation is exposed through the task runner. Run
 | `task benchmark`                           | Run the pytest-benchmark suite under `benchmarks/` (scheduled weekly in CI; see `benchmarks/README.md`).                                                  |
 | `task lint`                                | Run all configured linters (shellcheck, ruff check, keep-sorted).                                                                                         |
 | `task format`                              | Run all configured formatters (shfmt, ruff format, mdformat, taplo). Pass `-- --check` for diff-only mode (CI uses this).                                 |
-| `task typecheck`                           | Run mypy + pyright (strict) on `src/` and `tests/`.                                                                                                       |
+| `task typecheck`                           | Run mypy + pyright (strict) on every `packages/<svc>/src/` tree and `tests/`.                                                                             |
 | `task build`                               | Build sdist and wheel distributions into `dist/`.                                                                                                         |
 | `task install-hooks`                       | Install project git hooks (lefthook).                                                                                                                     |
 | `task verify-design`                       | Verify every leaf function in the functional decomposition is allocated in the product breakdown.                                                         |
@@ -114,7 +114,7 @@ floor ratchets upward per
 - **`--fast` and `--integration` modes** run without coverage collection
   (`--no-cov`). The floor is measured against `--unit` only —
   integration tests exercise Docker-backed service interactions that
-  don't map cleanly onto `src/` line coverage.
+  don't map cleanly onto `packages/*/src/` line coverage.
 
 ### Mutation score
 
@@ -152,13 +152,13 @@ gate every PR. Rationale and baseline-refresh procedure in
 ### Schema migrations
 
 The token store's SQLite schema is managed by a hand-rolled
-numbered-SQL runner in `src/agent_auth/migrations/`. Alembic /
+numbered-SQL runner in `packages/agent-auth/src/agent_auth/migrations/`. Alembic /
 yoyo would be disproportionate for a single-family schema and
 would add a runtime dependency the project intentionally keeps
 out (CLAUDE.md § Conventions). Rules:
 
 - **Never modify an applied migration in place.** Each entry in
-  `src/agent_auth/migrations/_catalogue.py::CATALOGUE` is a
+  `packages/agent-auth/src/agent_auth/migrations/_catalogue.py::CATALOGUE` is a
   pinned version. Changes land as a new `Migration(version=N+1, …)`
   tuple.
 - **Every migration must be reversible.** Both `up_sql` and a
@@ -167,7 +167,7 @@ out (CLAUDE.md § Conventions). Rules:
   `down_sql` blocks the whole roll-back path.
 - **No `CREATE TABLE` / `ALTER TABLE` in application code.**
   Schema DDL lives exclusively in `_catalogue.py`;
-  `scripts/verify-standards.sh` greps `src/agent_auth/store.py`
+  `scripts/verify-standards.sh` greps `packages/agent-auth/src/agent_auth/store.py`
   to enforce this.
 - **Test up-then-down.** `tests/test_migrations.py` asserts that
   every declared migration can be applied and rolled back cleanly.
