@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Per-package tasks for packages/agent-auth. Included as the
+# `agent-auth` namespace from the workspace-root Taskfile.yml, so the
+# service's existing `task agent-auth -- …` CLI entry remains valid
+# (it resolves to the `default` task below) and each dev-loop
+# operation is also available under the namespace (`task
+# agent-auth:test`, `:lint`, `:typecheck`, `:format`, `:check`).
+
+version: "3"
+
+tasks:
+  default:
+    desc: Run the agent-auth CLI (e.g. `task agent-auth -- serve`).
+    cmds:
+      - scripts/agent-auth.sh {{.CLI_ARGS}}
+
+  test:
+    desc: Run the agent-auth package's pytest suite in isolation.
+    cmds:
+      - scripts/pkg-test.sh agent-auth {{.CLI_ARGS}}
+
+  lint:
+    desc: Lint shell and Python files under packages/agent-auth/.
+    cmds:
+      - scripts/pkg-lint.sh agent-auth
+
+  typecheck:
+    desc: Run mypy + pyright against packages/agent-auth/src.
+    cmds:
+      - scripts/pkg-typecheck.sh agent-auth
+
+  format:
+    desc: Format files under packages/agent-auth/. Pass `-- --check` for diff-only mode.
+    cmds:
+      - scripts/pkg-format.sh agent-auth {{.CLI_ARGS}}
+
+  check:
+    desc: Lint and assert formatting for packages/agent-auth/.
+    cmds:
+      - scripts/pkg-lint.sh agent-auth
+      - scripts/pkg-format.sh agent-auth --check

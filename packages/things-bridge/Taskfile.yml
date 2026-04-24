@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Per-package tasks for packages/things-bridge. Included as the
+# `things-bridge` namespace from the workspace-root Taskfile.yml, so
+# the service's existing `task things-bridge -- …` CLI entry remains
+# valid (it resolves to the `default` task below) and dev-loop
+# operations are available under the namespace
+# (`task things-bridge:test`, `:lint`, `:typecheck`, `:format`,
+# `:check`).
+
+version: "3"
+
+tasks:
+  default:
+    desc: Run the things-bridge CLI (e.g. `task things-bridge -- serve`).
+    cmds:
+      - scripts/things-bridge.sh {{.CLI_ARGS}}
+
+  test:
+    desc: Run the things-bridge package's pytest suite in isolation.
+    cmds:
+      - scripts/pkg-test.sh things-bridge {{.CLI_ARGS}}
+
+  lint:
+    desc: Lint shell and Python files under packages/things-bridge/.
+    cmds:
+      - scripts/pkg-lint.sh things-bridge
+
+  typecheck:
+    desc: Run mypy + pyright against packages/things-bridge/src.
+    cmds:
+      - scripts/pkg-typecheck.sh things-bridge
+
+  format:
+    desc: Format files under packages/things-bridge/. Pass `-- --check` for diff-only mode.
+    cmds:
+      - scripts/pkg-format.sh things-bridge {{.CLI_ARGS}}
+
+  check:
+    desc: Lint and assert formatting for packages/things-bridge/.
+    cmds:
+      - scripts/pkg-lint.sh things-bridge
+      - scripts/pkg-format.sh things-bridge --check

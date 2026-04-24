@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Per-package tasks for packages/things-client-cli-applescript.
+# Included as the `things-client-applescript` namespace from the
+# workspace-root Taskfile.yml — the namespace preserves the existing
+# `task things-client-applescript -- …` CLI entry (it resolves to the
+# `default` task below), while dev-loop operations are available
+# under that same namespace (`task things-client-applescript:test`,
+# `:lint`, `:typecheck`, `:format`, `:check`).
+
+version: "3"
+
+tasks:
+  default:
+    desc: Run the things-client-cli-applescript CLI (macOS-only; e.g. `task things-client-applescript -- todos list`).
+    cmds:
+      - scripts/things-client-applescript.sh {{.CLI_ARGS}}
+
+  test:
+    desc: Run the things-client-cli-applescript package's pytest suite in isolation.
+    cmds:
+      - scripts/pkg-test.sh things-client-cli-applescript {{.CLI_ARGS}}
+
+  lint:
+    desc: Lint shell and Python files under packages/things-client-cli-applescript/.
+    cmds:
+      - scripts/pkg-lint.sh things-client-cli-applescript
+
+  typecheck:
+    desc: Run mypy + pyright against packages/things-client-cli-applescript/src.
+    cmds:
+      - scripts/pkg-typecheck.sh things-client-cli-applescript
+
+  format:
+    desc: Format files under packages/things-client-cli-applescript/. Pass `-- --check` for diff-only mode.
+    cmds:
+      - scripts/pkg-format.sh things-client-cli-applescript {{.CLI_ARGS}}
+
+  check:
+    desc: Lint and assert formatting for packages/things-client-cli-applescript/.
+    cmds:
+      - scripts/pkg-lint.sh things-client-cli-applescript
+      - scripts/pkg-format.sh things-client-cli-applescript --check

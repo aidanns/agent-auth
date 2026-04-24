@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Per-package tasks for packages/things-cli. Included as the
+# `things-cli` namespace from the workspace-root Taskfile.yml, so the
+# service's existing `task things-cli -- …` CLI entry remains valid
+# (it resolves to the `default` task below) and dev-loop operations
+# are available under the namespace (`task things-cli:test`,
+# `:lint`, `:typecheck`, `:format`, `:check`).
+
+version: "3"
+
+tasks:
+  default:
+    desc: Run the things-cli client (e.g. `task things-cli -- todos list`).
+    cmds:
+      - scripts/things-cli.sh {{.CLI_ARGS}}
+
+  test:
+    desc: Run the things-cli package's pytest suite in isolation.
+    cmds:
+      - scripts/pkg-test.sh things-cli {{.CLI_ARGS}}
+
+  lint:
+    desc: Lint shell and Python files under packages/things-cli/.
+    cmds:
+      - scripts/pkg-lint.sh things-cli
+
+  typecheck:
+    desc: Run mypy + pyright against packages/things-cli/src.
+    cmds:
+      - scripts/pkg-typecheck.sh things-cli
+
+  format:
+    desc: Format files under packages/things-cli/. Pass `-- --check` for diff-only mode.
+    cmds:
+      - scripts/pkg-format.sh things-cli {{.CLI_ARGS}}
+
+  check:
+    desc: Lint and assert formatting for packages/things-cli/.
+    cmds:
+      - scripts/pkg-lint.sh things-cli
+      - scripts/pkg-format.sh things-cli --check
