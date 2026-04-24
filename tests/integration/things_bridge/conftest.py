@@ -21,7 +21,6 @@ shared compose file used by every per-service fixture in this tree).
 from __future__ import annotations
 
 import os
-import subprocess
 import uuid
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
@@ -30,23 +29,28 @@ from typing import Any
 
 import pytest
 import yaml
-from testcontainers.compose import DockerCompose
 
 from tests.integration._support import (
+    COMPOSE_FILE,
     phase_timer,
-    render_compose_file,
     seed_empty_fixtures_dir,
-    wait_until_server_ready,
 )
 from tests.integration.conftest import (
+    AGENT_AUTH_INTERNAL_PORT,
     APPROVAL_PLUGINS,
     BASELINE_CONFIG,
     AgentAuthContainer,
+    _compose_image_env,
+    _test_failed,
+)
+from tests.integration.harness import (
+    DockerComposeCluster,
+    HealthChecks,
+    StartedCluster,
 )
 from things_bridge_client import ThingsBridgeClient
 
-AGENT_AUTH_PORT = 9100
-THINGS_BRIDGE_PORT = 9200
+THINGS_BRIDGE_INTERNAL_PORT = 9200
 
 
 @dataclass
@@ -55,19 +59,16 @@ class ThingsBridgeStack:
 
     The stack is exposed to tests through the bridge's host-mapped
     loopback port. ``agent_auth`` is the in-container handle used to
-    mint and revoke tokens.
-
-    ``compose_file`` is the per-test rendered compose file path; the
-    project name is baked into it (compose v2 ``name:`` field), so
-    callers that shell out to ``docker compose -f ...`` don't need any
-    env-var inheritance to address the right project.
+    mint and revoke tokens. ``cluster`` exposes the harness-level
+    compose controls (``exec``, ``stop_service``) so callers that need
+    cross-service behaviour — e.g. stopping ``agent-auth`` mid-test —
+    don't have to reach for ``subprocess.run`` directly.
     """
 
     base_url: str
-    bridge_compose: DockerCompose
+    cluster: StartedCluster
     agent_auth: AgentAuthContainer
     fixtures_dir: Path
-    compose_file: str
 
     def client(self) -> ThingsBridgeClient:
         """Return a :class:`ThingsBridgeClient` bound to this stack's bridge URL."""
@@ -90,18 +91,12 @@ class ThingsBridgeStack:
         the whole project, which is a no-op for already-stopped
         containers.
         """
-        subprocess.run(
-            ["docker", "compose", "-f", self.compose_file, "stop", "agent-auth"],
-            check=True,
-            capture_output=True,
-            timeout=30,
-        )
+        self.cluster.stop_service("agent-auth")
 
 
 def _write_agent_auth_config(
     config_dir: Path,
     *,
-    approval: str,
     access_token_ttl_seconds: int,
     refresh_token_ttl_seconds: int,
 ) -> None:
@@ -117,8 +112,8 @@ def _write_agent_auth_config(
         config = yaml.safe_load(f) or {}
     # Under #6 the notifier runs as a sidecar container; the URL is
     # fixed across tests and the approve/deny variant is chosen by the
-    # NOTIFIER_MODE placeholder substitution (see render_compose_file
-    # call below and APPROVAL_PLUGINS in tests/integration/conftest.py).
+    # NOTIFIER_MODE env var passed to docker compose (see
+    # APPROVAL_PLUGINS in tests/integration/conftest.py).
     config["notification_plugin_url"] = "http://notifier:9150/"
     config["access_token_ttl_seconds"] = access_token_ttl_seconds
     config["refresh_token_ttl_seconds"] = refresh_token_ttl_seconds
@@ -128,18 +123,66 @@ def _write_agent_auth_config(
     os.chmod(config_path, 0o644)
 
 
+def _things_bridge_cluster(
+    *,
+    project_name: str,
+    image_tags: dict[str, str],
+    config_dir: Path,
+    fixtures_dir: Path,
+    notifier_mode: str,
+    logs_dir: Path,
+) -> DockerComposeCluster:
+    """Build the per-test cluster definition with both service waits wired up.
+
+    Uses the same compose file as the agent-auth-only fixture, but adds
+    a readiness probe for the ``things-bridge`` service so the wait
+    loop blocks until both HTTP surfaces answer.
+    """
+    builder = (
+        DockerComposeCluster.builder()
+        .project_name(project_name)
+        .file(COMPOSE_FILE)
+        .env("AGENT_AUTH_TEST_CONFIG_DIR", str(config_dir))
+        .env("THINGS_BRIDGE_TEST_FIXTURES_DIR", str(fixtures_dir))
+        .env("NOTIFIER_MODE", notifier_mode)
+    )
+    for key, value in _compose_image_env(image_tags).items():
+        builder = builder.env(key, value)
+    return (
+        builder.waiting_for_service(
+            "agent-auth",
+            HealthChecks.to_respond_over_http(
+                internal_port=AGENT_AUTH_INTERNAL_PORT,
+                url_format="http://$HOST:$EXTERNAL_PORT/agent-auth/health",
+                accept_statuses={401, 403},
+            ),
+        )
+        .waiting_for_service(
+            "things-bridge",
+            HealthChecks.to_respond_over_http(
+                internal_port=THINGS_BRIDGE_INTERNAL_PORT,
+                url_format="http://$HOST:$EXTERNAL_PORT/things-bridge/health",
+                accept_statuses={401, 403},
+            ),
+        )
+        .save_logs_to(logs_dir, on_success=False)
+        .build()
+    )
+
+
 @pytest.fixture
 def things_bridge_stack_factory(
     _test_image_tags: dict[str, str],
     tmp_path_factory: pytest.TempPathFactory,
+    request: pytest.FixtureRequest,
 ) -> Generator[Callable[..., ThingsBridgeStack], None, None]:
     """Factory fixture — spin up the agent-auth + things-bridge pair.
 
     Each invocation starts a fresh Compose project (per-test UUID).
-    Teardown is registered on the fixture so every container is removed
+    Teardown is registered on the fixture so every cluster is stopped
     at the end of the test.
     """
-    started: list[tuple[str, DockerCompose]] = []
+    started: list[StartedCluster] = []
 
     def _factory(
         *,
@@ -156,10 +199,10 @@ def things_bridge_stack_factory(
         project_name = f"things-bridge-it-{uuid.uuid4().hex[:12]}"
         agent_auth_config_dir = tmp_path_factory.mktemp(f"aa-cfg-{project_name}")
         fixtures_dir = tmp_path_factory.mktemp(f"tb-fix-{project_name}")
+        logs_dir = tmp_path_factory.mktemp(f"logs-{project_name}")
 
         _write_agent_auth_config(
             agent_auth_config_dir,
-            approval=approval,
             access_token_ttl_seconds=access_token_ttl_seconds,
             refresh_token_ttl_seconds=refresh_token_ttl_seconds,
         )
@@ -167,61 +210,43 @@ def things_bridge_stack_factory(
         # before a test writes its own data.
         seed_empty_fixtures_dir(fixtures_dir)
 
-        rendered_compose = render_compose_file(
-            tmp_path_factory.mktemp(f"compose-{project_name}"),
-            COMPOSE_PROJECT_NAME=project_name,
-            AGENT_AUTH_TEST_IMAGE=_test_image_tags["agent-auth"],
-            THINGS_BRIDGE_TEST_IMAGE=_test_image_tags["things-bridge"],
-            THINGS_CLI_TEST_IMAGE=_test_image_tags["things-cli"],
-            AGENT_AUTH_TEST_CONFIG_DIR=str(agent_auth_config_dir),
-            THINGS_BRIDGE_TEST_FIXTURES_DIR=str(fixtures_dir),
-            NOTIFIER_MODE=APPROVAL_PLUGINS[approval],
+        cluster = _things_bridge_cluster(
+            project_name=project_name,
+            image_tags=_test_image_tags,
+            config_dir=agent_auth_config_dir,
+            fixtures_dir=fixtures_dir,
+            notifier_mode=APPROVAL_PLUGINS[approval],
+            logs_dir=logs_dir,
         )
-
-        compose = DockerCompose(
-            context=str(rendered_compose.parent),
-            compose_file_name=rendered_compose.name,
-        )
-        started.append((project_name, compose))
         with phase_timer("compose_start", project=project_name, service="things-bridge"):
-            compose.start()
+            running = cluster.start()
+        started.append(running)
 
-        bridge_host = compose.get_service_host("things-bridge", THINGS_BRIDGE_PORT)
-        bridge_port = compose.get_service_port("things-bridge", THINGS_BRIDGE_PORT)
-        base_url = f"http://{bridge_host}:{bridge_port}"
-        # /things-bridge/health requires a ``things-bridge:health`` token;
-        # an unauthenticated probe gets 401 (or 403 if the scope check
-        # ran), which is a positive "server is up" signal — same pattern
-        # as the agent-auth probe.
-        wait_until_server_ready(
-            f"{base_url}/things-bridge/health",
-            accept_status=(401, 403),
-        )
-
+        bridge_port = running.service("things-bridge").port(THINGS_BRIDGE_INTERNAL_PORT)
+        base_url = bridge_port.in_format("http://$HOST:$EXTERNAL_PORT")
         # Build an AgentAuthContainer handle so tests can mint tokens
         # via the in-container CLI. ``agent-auth`` is reached only
         # over the internal Compose network; no host-port mapping
         # for it is required.
         agent_auth = AgentAuthContainer(
             base_url="http://agent-auth:9100",  # internal only; CLI doesn't use it
-            compose=compose,
+            cluster=running,
             service="agent-auth",
         )
-
         return ThingsBridgeStack(
             base_url=base_url,
-            bridge_compose=compose,
+            cluster=running,
             agent_auth=agent_auth,
             fixtures_dir=fixtures_dir,
-            compose_file=str(rendered_compose),
         )
 
     yield _factory
 
-    for project_name, compose in started:
+    failed = _test_failed(request)
+    for running in started:
         try:
-            with phase_timer("compose_stop", project=project_name, service="things-bridge"):
-                compose.stop()
+            with phase_timer("compose_stop", project=running.project_name, service="things-bridge"):
+                running.stop(test_failed=failed)
         except Exception as e:
             print(f"warning: compose teardown failed: {e!r}")
 

@@ -2,13 +2,14 @@
 #
 # SPDX-License-Identifier: MIT
 
-# Template — Python-style double-brace placeholders are substituted by
-# render_compose_file() in tests/integration/_support.py before docker
-# compose ever sees the file. Keeping the substitution surface in
-# Python (rather than $VAR interpolation handled by docker compose
-# itself) means the rendered, per-test file is self-contained and
-# docker compose never has to inherit env vars from the test process.
-name: {{ COMPOSE_PROJECT_NAME }}
+# Compose file used by every per-service integration-test fixture. The
+# test harness passes the project name via ``--project-name`` on the
+# docker compose CLI, and per-test values (per-service image tags,
+# bind-mount directories, notifier mode) via docker compose's native
+# ``${VAR}`` interpolation — fed from ``subprocess.run(env=...)`` so
+# the test runner's ``os.environ`` is never mutated. See
+# tests/integration/harness/ for the builder that stitches them
+# together.
 
 services:
   notifier:
@@ -18,12 +19,12 @@ services:
     # ``tests_support`` package at /opt/tests-support/. Mode is
     # substituted per-test so one compose template serves both
     # approve- and deny-path integration tests.
-    image: {{ AGENT_AUTH_TEST_IMAGE }}
-    entrypoint: ["python", "-m", "tests_support.notifier", "{{ NOTIFIER_MODE }}", "--host", "0.0.0.0", "--port", "9150"]
+    image: ${AGENT_AUTH_TEST_IMAGE}
+    entrypoint: ["python", "-m", "tests_support.notifier", "${NOTIFIER_MODE}", "--host", "0.0.0.0", "--port", "9150"]
     stop_grace_period: 5s
 
   agent-auth:
-    image: {{ AGENT_AUTH_TEST_IMAGE }}
+    image: ${AGENT_AUTH_TEST_IMAGE}
     # Bind only on loopback so the container is never reachable from the
     # rest of the network.
     ports:
@@ -32,19 +33,19 @@ services:
       # Per-test tmpdir holding config.yaml. The fixture copies
       # docker/config.test.yaml here and applies any per-test overrides
       # (TTLs, notifier URL) before starting the container.
-      - {{ AGENT_AUTH_TEST_CONFIG_DIR }}:/home/agent-auth/.config/agent-auth:ro
+      - ${AGENT_AUTH_TEST_CONFIG_DIR}:/home/agent-auth/.config/agent-auth:ro
     depends_on:
       - notifier
     stop_grace_period: 5s
 
   things-bridge:
-    image: {{ THINGS_BRIDGE_TEST_IMAGE }}
+    image: ${THINGS_BRIDGE_TEST_IMAGE}
     # Bind only on loopback so the container is never reachable from
     # the rest of the network.
     ports:
       - "127.0.0.1::9200"
     volumes:
-      - {{ THINGS_BRIDGE_TEST_FIXTURES_DIR }}:/srv/things-fixtures:ro
+      - ${THINGS_BRIDGE_TEST_FIXTURES_DIR}:/srv/things-fixtures:ro
     configs:
       - source: things_bridge_config
         target: /home/agent-auth/.config/things-bridge/config.yaml
@@ -63,7 +64,7 @@ services:
     # ``--wait`` into returning non-zero. ``docker compose run`` does
     # not require the target profile to be active, so the CLI test
     # harness still reaches the service without passing ``--profile``.
-    image: {{ THINGS_CLI_TEST_IMAGE }}
+    image: ${THINGS_CLI_TEST_IMAGE}
     profiles:
       - on-demand
     stop_grace_period: 5s

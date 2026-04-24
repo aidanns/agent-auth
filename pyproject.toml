@@ -32,7 +32,6 @@ dev = [
     "pytest-cov>=5.0",
     "pytest>=8.0",
     "reuse>=4.0",
-    "testcontainers[compose]>=4",
     # keep-sorted end
 ]
 
@@ -209,8 +208,6 @@ module = [
     # keep-sorted start
     "keyring",
     "keyring.*",
-    "testcontainers",
-    "testcontainers.*",
     "yaml",
     # keep-sorted end
 ]

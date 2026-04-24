@@ -87,3 +87,5 @@ is linked from this index.
   — each service lives under `packages/<svc>/` with its own `pyproject.toml` + `install.sh`; `agent-auth-common` holds shared types; root `install.sh` is deleted and the README catalogues the per-service installers.
 - [ADR 0033 — Host-delegated GPG signing via gpg-cli / gpg-bridge split](0033-gpg-bridge-cli-split.md)
   — devcontainer `gpg-cli` forwards git's sign / verify requests over HTTPS to a host `gpg-bridge`, which validates with agent-auth (`gpg:sign` scope, `allowed_signing_keys` allowlist) and shells out to a host backend CLI that drives the real `gpg`. Private keys never leave the host; unblocks re-enabling `required_signatures` (#217).
+- [ADR 0034 — In-tree `DockerComposeCluster` harness for integration tests](0034-integration-harness-rework.md)
+  — replaces `testcontainers-python` with a subprocess-native fluent builder under `tests/integration/harness/`; supersedes the testcontainers-specific parts of ADR 0004 / 0005 while keeping the per-test Compose-project shape. Closes #80.

@@ -114,6 +114,10 @@ for service_dir in tests/integration/*/; do
   # Skip pytest's bytecode caches and any other dunder directory.
   case "${service_dir}" in
     */__*__/) continue ;;
+    # Shared support packages — not a service, no container topology
+    # of their own. ``harness/`` carries the DockerComposeCluster
+    # builder every per-service conftest imports.
+    */harness/) continue ;;
   esac
   service_conftest="${service_dir}conftest.py"
   if [[ ! -f "${service_conftest}" ]]; then
