@@ -94,6 +94,16 @@ Each task dispatches to a script under `scripts/*.sh`; the scripts are
 the single source of truth and can also be invoked directly if
 `go-task` is not installed.
 
+Per-package dev loops are also available under each service's
+namespace: `task <svc>:test`, `task <svc>:lint`, `task <svc>:typecheck`,
+`task <svc>:format`, and `task <svc>:check` narrow to a single
+workspace member under `packages/<svc>/`. `task <svc>` (no suffix)
+resolves to the namespace default and still runs the service CLI where
+one exists (e.g. `task agent-auth -- serve`). Namespaces are declared
+in the workspace-root `Taskfile.yml`; the root-level sweepers above
+stay authoritative until #270 relocates the monolithic `tests/` and
+`benchmarks/` trees into per-package subdirectories.
+
 ### Coverage
 
 `task test` (unit mode, the default) collects line and branch coverage

@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Per-package tasks for packages/agent-auth-common. Included as the
+# `agent-auth-common` namespace from the workspace-root Taskfile.yml.
+# agent-auth-common is a library (no CLI entry point), so there is no
+# `default` run task — dev-loop operations only.
+
+version: "3"
+
+tasks:
+  test:
+    desc: Run the agent-auth-common package's pytest suite in isolation.
+    cmds:
+      - scripts/pkg-test.sh agent-auth-common {{.CLI_ARGS}}
+
+  lint:
+    desc: Lint shell and Python files under packages/agent-auth-common/.
+    cmds:
+      - scripts/pkg-lint.sh agent-auth-common
+
+  typecheck:
+    desc: Run mypy + pyright against packages/agent-auth-common/src.
+    cmds:
+      - scripts/pkg-typecheck.sh agent-auth-common
+
+  format:
+    desc: Format files under packages/agent-auth-common/. Pass `-- --check` for diff-only mode.
+    cmds:
+      - scripts/pkg-format.sh agent-auth-common {{.CLI_ARGS}}
+
+  check:
+    desc: Lint and assert formatting for packages/agent-auth-common/.
+    cmds:
+      - scripts/pkg-lint.sh agent-auth-common
+      - scripts/pkg-format.sh agent-auth-common --check

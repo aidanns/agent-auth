@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Per-package tasks for packages/gpg-bridge. Included as the
+# `gpg-bridge` namespace from the workspace-root Taskfile.yml, so the
+# service's existing `task gpg-bridge -- …` CLI entry remains valid
+# (it resolves to the `default` task below) and dev-loop operations
+# are available under the namespace (`task gpg-bridge:test`, `:lint`,
+# `:typecheck`, `:format`, `:check`).
+
+version: "3"
+
+tasks:
+  default:
+    desc: Run the gpg-bridge CLI (e.g. `task gpg-bridge -- serve`).
+    cmds:
+      - scripts/gpg-bridge.sh {{.CLI_ARGS}}
+
+  test:
+    desc: Run the gpg-bridge package's pytest suite in isolation.
+    cmds:
+      - scripts/pkg-test.sh gpg-bridge {{.CLI_ARGS}}
+
+  lint:
+    desc: Lint shell and Python files under packages/gpg-bridge/.
+    cmds:
+      - scripts/pkg-lint.sh gpg-bridge
+
+  typecheck:
+    desc: Run mypy + pyright against packages/gpg-bridge/src.
+    cmds:
+      - scripts/pkg-typecheck.sh gpg-bridge
+
+  format:
+    desc: Format files under packages/gpg-bridge/. Pass `-- --check` for diff-only mode.
+    cmds:
+      - scripts/pkg-format.sh gpg-bridge {{.CLI_ARGS}}
+
+  check:
+    desc: Lint and assert formatting for packages/gpg-bridge/.
+    cmds:
+      - scripts/pkg-lint.sh gpg-bridge
+      - scripts/pkg-format.sh gpg-bridge --check
