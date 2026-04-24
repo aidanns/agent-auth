@@ -6,10 +6,10 @@
 
 # Run the pytest-benchmark suite under benchmarks/ inside the project
 # virtualenv. Override the pyproject.toml addopts (which wire
-# --cov=src --cov-fail-under=74 for the test suite) so coverage does
-# not run against the benchmark tree — benchmarks measure performance
-# and exercise only a thin slice of src/, so the unit-test coverage
-# floor would always fail.
+# --cov=packages --cov-fail-under=74 for the test suite) so coverage
+# does not run against the benchmark tree — benchmarks measure
+# performance and exercise only a thin slice of packages/*/src/, so
+# the unit-test coverage floor would always fail.
 #
 # Arguments after the script name are forwarded to pytest, e.g.
 #   scripts/benchmark.sh --benchmark-save=ci-linux-x86_64

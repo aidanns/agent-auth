@@ -42,9 +42,9 @@
 #      via typing.NewType so Things entity ids aren't interchangeable
 #      strings at the type checker's boundary (see issue #34).
 #   2g. Numeric parameters, dataclass fields, and module constants
-#      under src/ carry a unit suffix (_seconds, _bytes, _count, ...)
-#      per .claude/instructions/coding-standards.md § Units in names
-#      (AST audit; see issue #35).
+#      under packages/*/src/ carry a unit suffix (_seconds, _bytes,
+#      _count, ...) per .claude/instructions/coding-standards.md §
+#      Units in names (AST audit; see issue #35).
 #   2h. packages/things-bridge/src/things_bridge/server.py defines a ``SafeId`` NewType that
 #      ``_safe_id`` returns, so validated ids carry a distinct type
 #      at the trust boundary (see issue #36).
@@ -493,7 +493,7 @@ echo "verify-standards: packages/things-bridge/src/things_bridge/types.py define
 # .claude/instructions/coding-standards.md § "Units in names" requires
 # numeric parameters, dataclass fields, and module constants to encode
 # their unit in the name (`timeout_seconds`, `buffer_size_bytes`,
-# `max_retries_count`). Enforced via AST walk over src/; the allow-list
+# `max_retries_count`). Enforced via AST walk over packages/*/src/; the allow-list
 # below covers stdlib-override conventions (HTTP status/code, signal
 # handler signum, Prometheus amount/value, etc.) that cannot or should
 # not be renamed. See issue #35.
@@ -1170,25 +1170,18 @@ for override in pyproject.get("tool", {}).get("mypy", {}).get("overrides", []):
 
 def module_to_path(mod: str) -> str:
     path = mod.replace(".", "/")
-    # ``packages/*/src/<mod>`` covers the per-subproject workspace
-    # layout from #105; the pre-split ``src/<mod>`` path is kept as a
-    # fallback so historical pyrightconfig.json entries still resolve
-    # during the migration.
+    # ``packages/*/src/<mod>`` is the per-subproject workspace layout
+    # from #105. Fall through to a bare module path so pyright-style
+    # entries that aren't rooted in ``packages/*/src`` still resolve.
     candidates: list[str] = []
     for pkg_src in sorted(pathlib.Path("packages").glob("*/src")):
         candidates.append(f"{pkg_src}/{path}.py")
         candidates.append(f"{pkg_src}/{path}")
-    candidates.extend(
-        [
-            f"src/{path}.py",
-            f"src/{path}",
-            f"{path}",
-        ]
-    )
+    candidates.append(f"{path}")
     for c in candidates:
         if pathlib.Path(c).exists():
             return c
-    return f"src/{path}"
+    return path
 
 
 expected_pyright_ignore = {module_to_path(m) for m in mypy_ignore_modules}

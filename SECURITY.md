@@ -194,20 +194,20 @@ standard. The five control families below are in scope because each maps to a
 specific component of the current implementation:
 
 - **AC — Access Control**: the three-tier scope model (`allow`/`prompt`/`deny`)
-  and the per-family scope set enforced in `src/agent_auth/scopes.py` and the
+  and the per-family scope set enforced in `packages/agent-auth/src/agent_auth/scopes.py` and the
   [Check Scope Authorization](design/functional_decomposition.yaml#L28) and
   [Resolve Access Tier](design/functional_decomposition.yaml#L30) leaf
   functions.
 - **AU — Audit and Accountability**: the append-only audit log in
-  `src/agent_auth/audit.py`, fed by every token lifecycle event and
+  `packages/agent-auth/src/agent_auth/audit.py`, fed by every token lifecycle event and
   authorization decision.
 - **IA — Identification and Authentication**: HMAC-SHA256 signed tokens with
-  per-family revocation (`src/agent_auth/tokens.py`) and the agent-auth
+  per-family revocation (`packages/agent-auth/src/agent_auth/tokens.py`) and the agent-auth
   server as the sole validation authority
-  (`src/agent_auth/server.py` — the `/validate` endpoint).
+  (`packages/agent-auth/src/agent_auth/server.py` — the `/validate` endpoint).
 - **SC — System and Communications Protection**: AES-256-GCM field encryption
-  (`src/agent_auth/crypto.py`) and the signing/encryption keys held in the
-  system keyring (`src/agent_auth/keys.py`). Transport protection: both HTTP
+  (`packages/agent-auth/src/agent_auth/crypto.py`) and the signing/encryption keys held in the
+  system keyring (`packages/agent-auth/src/agent_auth/keys.py`). Transport protection: both HTTP
   servers bind `127.0.0.1` by default (loopback-only satisfies SC-8 on a
   single host) and accept an optional TLS listener via
   `tls_cert_path` / `tls_key_path` when the trust boundary extends beyond
@@ -215,7 +215,7 @@ specific component of the current implementation:
   [ADR 0025](design/decisions/0025-tls-for-devcontainer-host-traffic.md).
 - **SI — System and Information Integrity**: request-body size caps and
   schema-validated parameters before subprocess argv construction
-  (`src/things_bridge/server.py`).
+  (`packages/things-bridge/src/things_bridge/server.py`).
 
 Controls outside these families are out of scope for the current codebase; the
 product is a local, single-user authorization system and does not cover
