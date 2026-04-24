@@ -9,7 +9,8 @@ SPDX-License-Identifier: MIT
 Performance benchmarks for the token hot path and SQLite store, run
 on a schedule in CI to catch regressions. Originating standard:
 `.claude/instructions/testing-standards.md` § Performance —
-"Benchmark suite". See [ADR 0029](../design/decisions/0029-benchmark-suite.md)
+"Benchmark suite". See
+[ADR 0029](../../../design/decisions/0029-benchmark-suite.md)
 for the decision record.
 
 ## Scope
@@ -24,12 +25,12 @@ Each benchmark file covers one layer of the stack:
   from issue #40), plus `get_token` and `create_token` for
   steady-state DB numbers.
 
-Benchmarks live in a sibling `benchmarks/` tree — not inside
-`tests/` — because the project-wide `[tool.pytest.ini_options].addopts`
-wires the coverage floor (`--cov=src --cov-fail-under=74`). Coverage
-against the benchmark suite alone would always fail. The
-`scripts/benchmark.sh` wrapper overrides `addopts` when running the
-benchmarks.
+Benchmarks live under `packages/agent-auth/benchmarks/` — a sibling
+of the package's `src/` and (future) `tests/` — because the
+project-wide `[tool.pytest.ini_options].addopts` wires the coverage
+floor (`--cov=packages --cov-fail-under=74`). Coverage against the
+benchmark suite alone would always fail. The `scripts/benchmark.sh`
+wrapper overrides `addopts` when running the benchmarks.
 
 ## Running locally
 
@@ -50,8 +51,8 @@ task benchmark -- --benchmark-save=local
 task benchmark -- --benchmark-compare=ci-linux-x86_64
 ```
 
-Baselines are stored under `benchmarks/baselines/` — that directory
-is the configured `--benchmark-storage` root.
+Baselines are stored under `packages/agent-auth/benchmarks/baselines/`
+— that directory is the configured `--benchmark-storage` root.
 
 ## Regression threshold
 
@@ -68,7 +69,8 @@ The threshold is deliberately loose. It balances:
 - a tightening path — once the suite has run for a few weeks and the
   baseline stabilises, the threshold can be lowered in a follow-up.
 
-The gate applies only when `benchmarks/baselines/ci-linux-x86_64.json`
+The gate applies only when
+`packages/agent-auth/benchmarks/baselines/ci-linux-x86_64.json`
 exists. If the baseline file is absent the scheduled job runs the
 benchmarks, prints the table, and uploads the JSON artifact without
 failing — see `Baseline refresh procedure` below.
@@ -81,8 +83,9 @@ match the runner that will later be compared against.
 1. Trigger the benchmark workflow manually
    (`gh workflow run benchmark.yml`).
 2. Download the artifact produced by the run: the JSON report lands
-   at `benchmarks/results.json`.
-3. Rename it to `benchmarks/baselines/ci-linux-x86_64.json`
+   at `packages/agent-auth/benchmarks/results.json`.
+3. Rename it to
+   `packages/agent-auth/benchmarks/baselines/ci-linux-x86_64.json`
    (or whatever target runner it is for).
 4. Commit under a `chore(benchmark):` prefix and open a PR. Include
    a brief note on what prompted the refresh (e.g. "after #123

@@ -1,12 +1,12 @@
 {
   "include": [
     "packages/agent-auth-common/src",
+    "packages/agent-auth/benchmarks",
     "packages/agent-auth/src",
     "packages/things-bridge/src",
     "packages/things-cli/src",
     "packages/things-client-cli-applescript/src",
-    "tests",
-    "benchmarks"
+    "tests"
   ],
   "exclude": [
     ".venv",

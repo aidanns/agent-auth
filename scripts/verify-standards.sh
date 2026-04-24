@@ -95,10 +95,11 @@
 #      operations AND at least one test carries the perf_budget
 #      pytest marker, per .claude/instructions/testing-standards.md
 #      "Performance budget".
-#  15. A benchmarks/ directory contains at least one test_*.py file
-#      AND a scheduled CI workflow (.github/workflows/benchmark.yml)
-#      invokes it on `on: schedule:`, per
-#      .claude/instructions/testing-standards.md "Benchmark suite".
+#  15. A packages/agent-auth/benchmarks/ directory contains at least
+#      one test_*.py file AND a scheduled CI workflow
+#      (.github/workflows/benchmark.yml) invokes it on
+#      `on: schedule:`, per .claude/instructions/testing-standards.md
+#      "Benchmark suite".
 #  16. .vscode/extensions.json, .vscode/settings.json, and
 #      .vscode/launch.json all exist so a fresh checkout opens with
 #      recommended extensions, formatter-on-save, and debug configs,
@@ -2513,14 +2514,15 @@ echo "verify-standards: notification plugin is URL-based (out-of-process); no im
 # schedule. The deterministic regression check asserts both sides
 # cannot silently drift apart:
 #
-#   1. benchmarks/ exists and contains at least one test_*.py file,
-#      so deleting the benchmarks but leaving the workflow behind
-#      fails the gate.
+#   1. packages/agent-auth/benchmarks/ exists and contains at least
+#      one test_*.py file, so deleting the benchmarks but leaving the
+#      workflow behind fails the gate.
 #   2. .github/workflows/benchmark.yml exists, has an `on:` block
 #      containing a `schedule:` trigger, and its steps invoke either
-#      `task benchmark` or a direct pytest run against benchmarks/,
-#      so deleting the workflow (or accidentally narrowing it to
-#      workflow_dispatch-only) fails the gate.
+#      `task benchmark` or a direct pytest run against the
+#      packages/agent-auth/benchmarks/ tree, so deleting the workflow
+#      (or accidentally narrowing it to workflow_dispatch-only)
+#      fails the gate.
 
 benchmark_missing=0
 
@@ -2530,19 +2532,19 @@ fail_benchmark_check() {
   benchmark_missing=1
 }
 
-benchmarks_dir="benchmarks"
+benchmarks_dir="packages/agent-auth/benchmarks"
 if [[ ! -d "${benchmarks_dir}" ]]; then
   fail_benchmark_check \
     "${benchmarks_dir}/ directory is missing." \
     "Add a pytest-benchmark suite per .claude/instructions/testing-standards.md § Performance."
 else
-  # Accept any test_*.py under benchmarks/ so authors are free to
-  # split the suite across files. compgen keeps the shell-glob match
-  # compatible with `set -u`.
+  # Accept any test_*.py under the benchmarks/ tree so authors are
+  # free to split the suite across files. compgen keeps the
+  # shell-glob match compatible with `set -u`.
   if ! compgen -G "${benchmarks_dir}/test_*.py" >/dev/null; then
     fail_benchmark_check \
       "${benchmarks_dir}/ contains no test_*.py benchmark files." \
-      "Add at least one pytest-benchmark test file (see benchmarks/README.md)."
+      "Add at least one pytest-benchmark test file (see ${benchmarks_dir}/README.md)."
   fi
 fi
 
@@ -2568,13 +2570,15 @@ else
   fi
 
   # The workflow must actually invoke the benchmark suite — accept
-  # either the ``task benchmark`` wrapper or a raw ``pytest
-  # benchmarks/`` invocation, so the gate does not mandate the
-  # Taskfile indirection specifically.
+  # either the ``task benchmark`` wrapper or a raw ``pytest`` against
+  # any ``benchmarks/`` path (the tree now lives under
+  # packages/agent-auth/, but the suffix match keeps the gate stable
+  # if the package name changes later), so the gate does not mandate
+  # the Taskfile indirection specifically.
   if ! grep -qE "task[[:space:]]+benchmark\b|pytest[[:space:]].*benchmarks/" <<<"${workflow_stripped}"; then
     fail_benchmark_check \
       "${benchmark_workflow} does not invoke the benchmark suite." \
-      "Call 'task benchmark' or run pytest against 'benchmarks/' in the workflow steps."
+      "Call 'task benchmark' or run pytest against a 'benchmarks/' tree in the workflow steps."
   fi
 fi
 

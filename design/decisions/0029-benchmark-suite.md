@@ -73,9 +73,10 @@ Shorter import path and fewer directories.
 1. **Tool**: `pytest-benchmark` 5.x, added to
    `[project.optional-dependencies].dev` so developers get it on
    `uv sync --extra dev` and CI gets it via the same path.
-2. **Layout**: sibling `benchmarks/` tree with its own `conftest.py`.
-   A thin `scripts/benchmark.sh` wrapper overrides the project
-   pytest `addopts` so coverage does not run against benchmarks.
+2. **Layout**: `packages/agent-auth/benchmarks/` tree with its own
+   `conftest.py`. A thin `scripts/benchmark.sh` wrapper overrides
+   the project pytest `addopts` so coverage does not run against
+   benchmarks.
 3. **Coverage**: the four targets named in issue #40 —
    `verify_token`, `create_token_pair`, `TokenStore.get_family`
    (large scope count), plus adjacent steady-state points
@@ -85,17 +86,17 @@ Shorter import path and fewer directories.
    workflows do not queue for the same runner window.
 5. **Regression gate**: 25 % mean runtime, evaluated via
    `--benchmark-compare-fail=mean:25%` against a committed baseline
-   at `benchmarks/baselines/ci-linux-x86_64.json`. The gate is
+   at `packages/agent-auth/benchmarks/baselines/ci-linux-x86_64.json`. The gate is
    skipped when the baseline is absent so the first scheduled run
    can capture a baseline without failing.
 6. **Baseline refresh**: CI-generated, human-committed. The
-   procedure lives in `benchmarks/README.md` — operator downloads
+   procedure lives in `packages/agent-auth/benchmarks/README.md` — operator downloads
    the JSON artifact from a scheduled run, renames, commits.
 7. **Standards gate**: `scripts/verify-standards.sh` asserts the
-   `benchmarks/` directory contains at least one `test_*.py` and
-   the `benchmark.yml` workflow exists and triggers on `schedule:`,
-   so later drift (someone deleting the benchmarks while leaving
-   the workflow, or vice versa) fails verify-standards.
+   `packages/agent-auth/benchmarks/` directory contains at least one
+   `test_*.py` and the `benchmark.yml` workflow exists and triggers
+   on `schedule:`, so later drift (someone deleting the benchmarks
+   while leaving the workflow, or vice versa) fails verify-standards.
 
 ## Consequences
 
@@ -104,9 +105,9 @@ Shorter import path and fewer directories.
 - The regression gate is loose (25 %) on initial adoption and will
   flake less than a tighter gate would on GitHub-hosted runner
   variance. Tightening happens once the baseline stabilises; that
-  is tracked inline in `benchmarks/README.md` rather than as a
+  is tracked inline in `packages/agent-auth/benchmarks/README.md` rather than as a
   separate issue.
-- Baselines live in-repo under `benchmarks/baselines/`. This
+- Baselines live in-repo under `packages/agent-auth/benchmarks/baselines/`. This
   couples the repo to a Linux-on-x86_64 runner assumption; a future
   macOS benchmark workflow would need its own baseline file
   (`ci-darwin-<arch>.json`). Out-of-scope today.
@@ -118,5 +119,5 @@ Shorter import path and fewer directories.
 
 - First scheduled run after merge produces the initial baseline
   artifact; a follow-up PR commits it. No separate issue — tracked
-  inline in `benchmarks/README.md` § "Baseline refresh procedure".
+  inline in `packages/agent-auth/benchmarks/README.md` § "Baseline refresh procedure".
 - Tightening the 25 % threshold once we have 4+ weeks of runs.
