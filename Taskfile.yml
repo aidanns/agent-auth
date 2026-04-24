@@ -59,12 +59,6 @@ tasks:
     cmds:
       - scripts/verify-dependencies.sh
 
-  pip-audit:
-    desc: Scan dependencies for known vulnerabilities using pip-audit.
-    cmds:
-      - uv export --extra dev --no-emit-project --format requirements-txt --no-hashes > /tmp/requirements.txt
-      - uvx pip-audit --strict -r /tmp/requirements.txt
-
   mutation-test:
     desc: Run mutmut against security-critical modules and gate the mutation score against [tool.mutation_score].fail_under.
     cmds:

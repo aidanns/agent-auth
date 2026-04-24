@@ -59,8 +59,11 @@ Every change that lands on `main` must include, where applicable:
   decision inside `agent-auth serve` emits a structured audit log
   line. Changes that add a new token-lifecycle operation also add
   an audit entry.
-- **Dependency hygiene** — `pip-audit` runs in CI; Dependabot opens
-  grouped minor/patch PRs per ecosystem.
+- **Dependency hygiene** — the Dependency Review Action gates every
+  PR against the Dependency Graph diff (blocking direct or transitive
+  deps with high/critical GHSA advisories); Dependabot alerts match
+  pinned versions against newly-published advisories continuously;
+  Dependabot opens grouped minor/patch PRs per ecosystem.
 - **Plan for each change** — non-trivial PRs commit a plan under
   `plans/` following `plan-template.md`. Small docs / config fixes
   may skip the plan (see `~/.claude/CLAUDE.md` "Starting

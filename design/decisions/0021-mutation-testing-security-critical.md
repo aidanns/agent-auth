@@ -106,8 +106,9 @@ runs it) so a rename or accidental deletion of either half fails CI.
   the floor low indefinitely is a deferred-work signal rather than
   an acceptable resting state.
 - A new trust boundary in dev tooling: `mutmut>=3.5` is executed in
-  CI. Like other dev tools (mypy, pyright, pip-audit) it is covered
-  by the pip-audit schedule.
+  CI. Like other dev tools (mypy, pyright) it inherits the repository's
+  Dependency Review PR-time gate and Dependabot alerts coverage for
+  its transitive dep closure.
 - Mutation testing covers only mutants on the five target paths.
   Extending coverage to the HTTP servers (`server.py`,
   `things_bridge/server.py`) is tracked as follow-up rather than
