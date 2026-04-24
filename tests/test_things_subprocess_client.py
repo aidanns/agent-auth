@@ -19,7 +19,13 @@ from typing import Any
 
 import pytest
 
-from things_bridge.things_client import STDERR_TAIL_MAX_CHARS, ThingsSubprocessClient
+from things_bridge.things_client import (
+    STDERR_TAIL_MAX_CHARS,
+    SUBPROCESS_ENV_EXACT_ALLOWLIST,
+    SUBPROCESS_ENV_PREFIX_ALLOWLIST,
+    ThingsSubprocessClient,
+    build_subprocess_env,
+)
 from things_bridge.types import ThingsClientCommand, make_things_client_command
 from things_models.errors import (
     ThingsError,
@@ -79,6 +85,18 @@ def _patch_popen(monkeypatch, **fake_kwargs) -> list[list[str]]:
 
     def _popen(argv, **kwargs):
         recorded.append(argv)
+        return _FakePopen(argv, **fake_kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    return recorded
+
+
+def _patch_popen_capture_kwargs(monkeypatch, **fake_kwargs) -> list[dict[str, Any]]:
+    """Record each ``subprocess.Popen`` kwargs dict and return a ``_FakePopen``."""
+    recorded: list[dict[str, Any]] = []
+
+    def _popen(argv, **kwargs):
+        recorded.append(kwargs)
         return _FakePopen(argv, **fake_kwargs)
 
     monkeypatch.setattr(subprocess, "Popen", _popen)
@@ -346,3 +364,98 @@ def test_timeout_diagnostic_tail_is_bounded(monkeypatch, capfd, client):
     # split on ": " after the numeric timeout to isolate the excerpt.
     excerpt = diagnostic.rsplit(": ", 1)[-1]
     assert len(excerpt) <= STDERR_TAIL_MAX_CHARS
+
+
+@pytest.mark.covers_function("Fetch Things Data")
+def test_build_subprocess_env_keeps_only_allowlisted_names():
+    parent = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": "/Users/operator",
+        "LANG": "en_US.UTF-8",
+        "LC_ALL": "en_US.UTF-8",
+        "LC_CTYPE": "en_US.UTF-8",
+        "TZ": "UTC",
+        "THINGS_CLIENT_OSASCRIPT_PATH": "/usr/bin/osascript",
+        "THINGS_CLIENT_TIMEOUT_SECONDS": "30",
+        "AGENT_AUTH_BEARER": "super-secret",
+        "OPENAI_API_KEY": "sk-secret",
+        "AWS_SESSION_TOKEN": "shhh",
+        "SHELL": "/bin/bash",
+    }
+    env = build_subprocess_env(parent)
+    assert env == {
+        "PATH": "/usr/bin:/bin",
+        "HOME": "/Users/operator",
+        "LANG": "en_US.UTF-8",
+        "LC_ALL": "en_US.UTF-8",
+        "LC_CTYPE": "en_US.UTF-8",
+        "TZ": "UTC",
+        "THINGS_CLIENT_OSASCRIPT_PATH": "/usr/bin/osascript",
+        "THINGS_CLIENT_TIMEOUT_SECONDS": "30",
+    }
+
+
+def test_build_subprocess_env_drops_prefix_lookalikes():
+    # Names that merely contain an allowlisted substring (``SHELL`` has
+    # ``ELL``; ``ALC_FOO`` has ``LC_`` but not as a prefix) must not
+    # sneak through. The allowlist is strictly prefix- or exact-match.
+    parent = {
+        "PATHOLOGICAL": "not /usr/bin",
+        "MY_LANG_PREF": "nope",
+        "ALC_FOO": "nope",
+        "MY_THINGS_CLIENT_VAR": "nope",
+        "TZDATA": "nope",
+    }
+    assert build_subprocess_env(parent) == {}
+
+
+def test_build_subprocess_env_returns_fresh_dict():
+    # Caller must be able to mutate the returned dict without reaching
+    # back into ``os.environ`` or the caller's map.
+    parent = {"PATH": "/usr/bin"}
+    env = build_subprocess_env(parent)
+    env["EXTRA"] = "x"
+    assert parent == {"PATH": "/usr/bin"}
+
+
+def test_allowlist_constants_are_non_overlapping():
+    # Regression guard: any prefix family that was also listed as an
+    # exact name would be redundant and hint at drift between the two
+    # constants.
+    for prefix in SUBPROCESS_ENV_PREFIX_ALLOWLIST:
+        for name in SUBPROCESS_ENV_EXACT_ALLOWLIST:
+            assert not name.startswith(
+                prefix
+            ), f"exact-match {name!r} is already covered by prefix {prefix!r}"
+
+
+@pytest.mark.covers_function("Fetch Things Data")
+def test_subprocess_receives_restricted_env(monkeypatch, client):
+    # The bridge env may hold unrelated secrets (agent-auth bearer,
+    # third-party API keys, future signing-key env fallbacks). A buggy
+    # or rogue client binary must not inherit them. Set a sentinel on
+    # the parent environment, invoke the client, and assert the env
+    # handed to ``subprocess.Popen`` does not contain it.
+    monkeypatch.setenv("AGENT_AUTH_BRIDGE_SECRET_SENTINEL", "do-not-leak")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    recorded = _patch_popen_capture_kwargs(monkeypatch, stdout='{"todos": []}')
+    client.list_todos()
+    assert len(recorded) == 1
+    env = recorded[0].get("env")
+    assert env is not None, "subprocess must be spawned with an explicit env="
+    assert "AGENT_AUTH_BRIDGE_SECRET_SENTINEL" not in env
+    assert env.get("PATH") == "/usr/bin:/bin"
+
+
+def test_subprocess_env_forwards_things_client_knobs(monkeypatch, client):
+    # Operators override the shipped CLI's behaviour via the documented
+    # ``THINGS_CLIENT_*`` env knobs. Stripping them would silently break
+    # operator config; keep them in the allowlist and the passthrough
+    # tested.
+    monkeypatch.setenv("THINGS_CLIENT_OSASCRIPT_PATH", "/opt/osascript")
+    monkeypatch.setenv("THINGS_CLIENT_TIMEOUT_SECONDS", "45")
+    recorded = _patch_popen_capture_kwargs(monkeypatch, stdout='{"todos": []}')
+    client.list_todos()
+    env = recorded[0]["env"]
+    assert env["THINGS_CLIENT_OSASCRIPT_PATH"] == "/opt/osascript"
+    assert env["THINGS_CLIENT_TIMEOUT_SECONDS"] == "45"

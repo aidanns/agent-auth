@@ -3,8 +3,37 @@
 # SPDX-License-Identifier: MIT
 
 # Run `task --list` to see every repeatable operation. See CONTRIBUTING.md.
+#
+# Structure: each packages/<svc>/Taskfile.yml is included as a
+# namespace below so per-service dev loops are runnable directly
+# (e.g. `task agent-auth:test`, `task things-bridge:lint`). The
+# namespace `default` task in each included file preserves the
+# service's existing CLI entry: `task agent-auth -- serve` still
+# resolves to scripts/agent-auth.sh via the agent-auth namespace
+# default. Root-level tasks below are the workspace-wide gates —
+# `test`, `lint`, `typecheck`, `format`, `check` keep calling the
+# scripts/*.sh sweepers because those also cover repo-root files
+# (scripts/, tests/, benchmarks/, top-level *.md/*.toml) that no
+# per-package namespace owns. They will convert to fan-outs over the
+# namespaces once #270 relocates tests and benchmarks into per-package
+# trees.
 
 version: "3"
+
+includes:
+  # Namespace name matches the service's existing `task <svc>` entry
+  # (so `task things-client-applescript` and `task gpg-backend-host`
+  # keep working against the longer package directory names).
+  # keep-sorted start
+  agent-auth-common: ./packages/agent-auth-common/Taskfile.yml
+  agent-auth: ./packages/agent-auth/Taskfile.yml
+  gpg-backend-host: ./packages/gpg-backend-cli-host/Taskfile.yml
+  gpg-bridge: ./packages/gpg-bridge/Taskfile.yml
+  gpg-cli: ./packages/gpg-cli/Taskfile.yml
+  things-bridge: ./packages/things-bridge/Taskfile.yml
+  things-cli: ./packages/things-cli/Taskfile.yml
+  things-client-applescript: ./packages/things-client-cli-applescript/Taskfile.yml
+  # keep-sorted end
 
 tasks:
   test:
@@ -100,38 +129,3 @@ tasks:
     desc: "Cut a release. With no args (task release), the next version is derived from conventional commits since the last v* tag (major/minor/patch from BREAKING/feat/fix). Pass an explicit version (task release -- 1.2.3) to override. The resolved version must match a ## [X.Y.Z] section in CHANGELOG.md. The script creates and pushes the tag vX.Y.Z and publishes the GitHub release."
     cmds:
       - scripts/release.sh {{.CLI_ARGS}}
-
-  agent-auth:
-    desc: Run the agent-auth CLI (e.g. `task agent-auth -- serve`).
-    cmds:
-      - scripts/agent-auth.sh {{.CLI_ARGS}}
-
-  things-bridge:
-    desc: Run the things-bridge CLI (e.g. `task things-bridge -- serve`).
-    cmds:
-      - scripts/things-bridge.sh {{.CLI_ARGS}}
-
-  things-cli:
-    desc: Run the things-cli client (e.g. `task things-cli -- todos list`).
-    cmds:
-      - scripts/things-cli.sh {{.CLI_ARGS}}
-
-  things-client-applescript:
-    desc: Run the things-client-cli-applescript CLI (macOS-only; e.g. `task things-client-applescript -- todos list`).
-    cmds:
-      - scripts/things-client-applescript.sh {{.CLI_ARGS}}
-
-  gpg-bridge:
-    desc: Run the gpg-bridge CLI (e.g. `task gpg-bridge -- serve`).
-    cmds:
-      - scripts/gpg-bridge.sh {{.CLI_ARGS}}
-
-  gpg-cli:
-    desc: Run the devcontainer gpg-cli (e.g. `task gpg-cli -- --version`).
-    cmds:
-      - scripts/gpg-cli.sh {{.CLI_ARGS}}
-
-  gpg-backend-host:
-    desc: Run the host gpg backend CLI directly (e.g. `task gpg-backend-host -- sign --local-user ...`).
-    cmds:
-      - scripts/gpg-backend-host.sh {{.CLI_ARGS}}
