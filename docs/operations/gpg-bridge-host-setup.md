@@ -118,8 +118,14 @@ is at the gpg layer. Causes:
 - **Passphrase not cached.** Even with `allow-loopback-pinentry`,
   the agent needs to know the passphrase. Either pre-warm the
   cache (sign a dummy payload manually before starting the
-  bridge: `echo | gpg --clearsign > /dev/null`) or move the key
-  to a passphrase-less subkey reserved for signing.
+  bridge: `echo | gpg --clearsign > /dev/null`), move the key
+  to a passphrase-less subkey reserved for signing, or — the
+  recommended path per
+  [ADR 0042](../../design/decisions/0042-gpg-bridge-passphrase-store.md)
+  — store the passphrase in the bridge's keyring once with
+  `task gpg-bridge -- passphrase set <FP>`. The bridge then
+  feeds it to `gpg` via `--passphrase-fd` on every sign request,
+  removing the dependency on `gpg-agent`'s cache.
 - **Host `gpg` binary missing.** `command -v gpg` on the host
   must succeed and resolve to a 2.x binary. Install via
   `brew install gnupg` on macOS or `apt-get install gnupg2` on

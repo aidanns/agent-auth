@@ -29,6 +29,17 @@ exit code + stderr string. ``sleep_seconds`` makes the fake's
 ``sign`` block for that many seconds before returning, which lets
 tests reproduce the wedge case from issue #331 (a real host gpg
 stuck on a missing pinentry) without depending on a real gpg-agent.
+
+``passphrase_required`` (per ADR 0042) makes the fake mimic a
+passphrase-protected key: ``sign`` raises a
+:class:`BadPassphraseError` unless the supplied passphrase matches
+the configured value. ``supplied_passphrase`` reaches the store via
+the ``--passphrase-fd`` plumbing in the bridge's
+``GpgSubprocessClient`` and the fake's CLI; the store itself never
+opens the fd. ``record_passphrase_path`` is an optional file
+location the CLI writes the supplied passphrase to so tests can
+assert exactly what reached the subprocess (used only by the
+fixture-based fd-leak / token-leak guard tests).
 """
 
 from __future__ import annotations
@@ -55,6 +66,10 @@ class BadSignatureError(FakeKeyringError):
     """The verify input did not match the fake's synthetic-signature shape."""
 
 
+class BadPassphraseError(FakeKeyringError):
+    """``behaviours.passphrase_required`` is set and the supplied passphrase mismatched."""
+
+
 @dataclass(frozen=True)
 class _FakeKey:
     fingerprint: str
@@ -78,6 +93,14 @@ class _Behaviours:
     permission_denied: bool = False
     corrupt_verify: bool = False
     sleep_seconds: float = 0.0
+    # Per ADR 0042: when set, ``sign`` raises ``BadPassphraseError``
+    # unless the supplied passphrase matches this exact string.
+    passphrase_required: str = ""
+    # Optional path the CLI writes the supplied passphrase bytes to
+    # (one line per sign call). Used only by tests that need to
+    # confirm the passphrase actually reached the subprocess; never
+    # populated by production fixtures.
+    record_passphrase_path: str = ""
 
 
 @dataclass
@@ -87,7 +110,14 @@ class FakeKeyring:
     keys: tuple[_FakeKey, ...] = ()
     behaviours: _Behaviours = field(default_factory=_Behaviours)
 
-    def sign(self, *, local_user: str, payload: bytes, armor: bool) -> tuple[bytes, str]:
+    def sign(
+        self,
+        *,
+        local_user: str,
+        payload: bytes,
+        armor: bool,
+        supplied_passphrase: str | None = None,
+    ) -> tuple[bytes, str]:
         """Return ``(signature_bytes, status_text)`` for a ``--detach-sign``."""
         if self.behaviours.sleep_seconds > 0:
             # Simulate a wedged host gpg subprocess (issue #331). The
@@ -99,6 +129,11 @@ class FakeKeyring:
         key = self._resolve(local_user)
         if self.behaviours.deny_key and key.fingerprint == self.behaviours.deny_key:
             raise NoSuchKeyError(f"fake: key {key.fingerprint} denied by fixture")
+        if (
+            self.behaviours.passphrase_required
+            and supplied_passphrase != self.behaviours.passphrase_required
+        ):
+            raise BadPassphraseError("fake: passphrase mismatch")
         signature = _synth_signature(key.fingerprint, payload, armor=armor)
         status_text = (
             f"[GNUPG:] SIG_CREATED D 1 10 00 0 {key.fingerprint} 0 0 0 00000000000000000000\n"
@@ -167,6 +202,8 @@ def load_fixture(data: Any) -> FakeKeyring:
         permission_denied=bool(behaviours_raw.get("permission_denied", False)),
         corrupt_verify=bool(behaviours_raw.get("corrupt_verify", False)),
         sleep_seconds=float(sleep_seconds_raw),
+        passphrase_required=str(behaviours_raw.get("passphrase_required") or ""),
+        record_passphrase_path=str(behaviours_raw.get("record_passphrase_path") or ""),
     )
     return FakeKeyring(keys=tuple(keys), behaviours=behaviours)
 

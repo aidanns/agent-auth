@@ -26,6 +26,7 @@ from collections.abc import Sequence
 import yaml
 
 from gpg_backend_fake.store import (
+    BadPassphraseError,
     BadSignatureError,
     FakeKeyring,
     FakeKeyringError,
@@ -89,10 +90,32 @@ def _handle_sign(keyring: FakeKeyring, parsed: _GpgArgs, status_writer: _StatusW
     if not parsed.local_user:
         sys.stderr.write("gpg_backend_fake: --local-user is required for sign\n")
         return EXIT_FAILURE
+    # Read the passphrase off ``--passphrase-fd`` *before* the
+    # payload — the bridge writes the passphrase first and closes
+    # that pipe end, then writes the payload to stdin. Reading the
+    # passphrase first matches gpg's own ordering.
+    supplied_passphrase: str | None = None
+    if parsed.passphrase_fd is not None:
+        try:
+            supplied_passphrase = _read_fd(parsed.passphrase_fd)
+        except OSError as exc:
+            sys.stderr.write(f"gpg_backend_fake: failed to read --passphrase-fd: {exc}\n")
+            return EXIT_FAILURE
+    if keyring.behaviours.record_passphrase_path and supplied_passphrase is not None:
+        try:
+            with open(keyring.behaviours.record_passphrase_path, "a") as fh:
+                fh.write(supplied_passphrase + "\n")
+        except OSError:
+            # Recording is a test affordance; failure here must not
+            # mask a sign result the caller will assert against.
+            pass
     payload = sys.stdin.buffer.read()
     try:
         signature, status_text = keyring.sign(
-            local_user=parsed.local_user, payload=payload, armor=parsed.armor
+            local_user=parsed.local_user,
+            payload=payload,
+            armor=parsed.armor,
+            supplied_passphrase=supplied_passphrase,
         )
     except FakeKeyringError as exc:
         return _emit_failure(status_writer, exc)
@@ -141,6 +164,11 @@ def _emit_failure(status_writer: _StatusWriter, exc: FakeKeyringError) -> int:
     if isinstance(exc, PermissionDeniedError):
         sys.stderr.write(f"gpg: gpg-agent is not available: {exc}\n")
         return EXIT_FAILURE
+    if isinstance(exc, BadPassphraseError):
+        # Match the gpg wording the bridge's stderr classifier looks
+        # for when the supplied passphrase is wrong (per ADR 0042).
+        sys.stderr.write("gpg: signing failed: Bad passphrase\n")
+        return EXIT_FAILURE
     sys.stderr.write(f"gpg: {exc}\n")
     return EXIT_FAILURE
 
@@ -148,6 +176,26 @@ def _emit_failure(status_writer: _StatusWriter, exc: FakeKeyringError) -> int:
 def _read_file(path: str) -> bytes:
     with open(path, "rb") as fh:
         return fh.read()
+
+
+def _read_fd(fd: int) -> str:
+    """Drain a file-descriptor to EOF and return the contents as text.
+
+    Strips a single trailing newline because the bridge writes the
+    passphrase as ``passphrase + "\\n"`` and gpg itself strips the
+    line terminator on read.
+    """
+    chunks: list[bytes] = []
+    while True:
+        chunk = os.read(fd, 4096)
+        if not chunk:
+            break
+        chunks.append(chunk)
+    os.close(fd)
+    raw = b"".join(chunks).decode("utf-8", errors="replace")
+    if raw.endswith("\n"):
+        raw = raw[:-1]
+    return raw
 
 
 def _load_keyring(fixtures_path: str) -> FakeKeyring:
@@ -183,6 +231,7 @@ class _GpgArgs:
         self.keyid_format: str = "long"
         self.verify_files: list[str] = []
         self.want_version: bool = False
+        self.passphrase_fd: int | None = None
 
 
 def _parse_gpg_argv(args: list[str]) -> _GpgArgs:
@@ -226,6 +275,16 @@ def _parse_gpg_argv(args: list[str]) -> _GpgArgs:
             continue
         if token.startswith("--keyid-format="):
             parsed.keyid_format = token.split("=", 1)[1]
+            i += 1
+            continue
+        if token == "--passphrase-fd":
+            parsed.passphrase_fd = _parse_int(
+                _next_value(args, i, "--passphrase-fd"), "--passphrase-fd"
+            )
+            i += 2
+            continue
+        if token.startswith("--passphrase-fd="):
+            parsed.passphrase_fd = _parse_int(token.split("=", 1)[1], "--passphrase-fd")
             i += 1
             continue
         if token == "--verify":

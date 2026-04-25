@@ -289,6 +289,78 @@ class TestSignEndpoint:
         finally:
             handle.close()
 
+    @pytest.mark.covers_function("Persist Signing Passphrase")
+    def test_sign_with_wrong_stored_passphrase_returns_signing_backend_unavailable(
+        self, tmp_path: Path
+    ) -> None:
+        """Per ADR 0042: a wrong stored passphrase surfaces as 503 ``signing_backend_unavailable``.
+
+        Drives a fixture that requires a passphrase, plumbs the wrong
+        passphrase into the bridge via an in-memory keyring, and
+        confirms the gpg-stderr-pattern classifier maps "Bad
+        passphrase" onto the existing ``signing_backend_unavailable``
+        wire discriminator (reused from issue #331 / PR #339).
+        """
+        from unittest.mock import patch
+
+        from gpg_bridge.passphrase_store import KeyringPassphraseStore
+
+        # Fixture with passphrase_required != stored.
+        fp = "D7A2B4C0E8F11234567890ABCDEF1234567890AB"
+        fixture = {
+            "keys": [
+                {
+                    "fingerprint": fp,
+                    "user_ids": ["Test Key <test@example.invalid>"],
+                    "aliases": ["test@example.invalid"],
+                }
+            ],
+            "behaviours": {"passphrase_required": "actually-this"},
+        }
+        path = tmp_path / "fx.yaml"
+        path.write_text(yaml.safe_dump(fixture))
+
+        backing: dict[tuple[str, str], str] = {}
+        with (
+            patch(
+                "gpg_bridge.passphrase_store.keyring.get_password",
+                side_effect=lambda s, u: backing.get((s, u)),
+            ),
+            patch(
+                "gpg_bridge.passphrase_store.keyring.set_password",
+                side_effect=lambda s, u, p: backing.update({(s, u): p}),
+            ),
+            patch(
+                "gpg_bridge.passphrase_store.keyring.delete_password",
+                side_effect=lambda s, u: backing.pop((s, u), None),
+            ),
+        ):
+            store = KeyringPassphraseStore()
+            store.set(fp, "but-store-has-this")
+            client = GpgSubprocessClient(
+                command=[sys.executable, "-m", "gpg_backend_fake", "--fixtures", str(path)],
+                timeout_seconds=15.0,
+                passphrase_store=store,
+            )
+            authz = FakeAuthz()
+            config = Config(port=0)
+            handle = _start_server(config, client, authz)
+            try:
+                status, body, _ = _post_json(
+                    f"{handle.base_url}/gpg-bridge/v1/sign",
+                    {
+                        "local_user": "test@example.invalid",
+                        "payload_b64": base64.b64encode(b"data").decode("ascii"),
+                    },
+                )
+                assert status == 503
+                assert body["error"] == "signing_backend_unavailable"
+                # The bridge's response must not leak the stored passphrase.
+                serialised = json.dumps(body)
+                assert "but-store-has-this" not in serialised
+            finally:
+                handle.close()
+
 
 class TestVerifyEndpoint:
     @pytest.mark.covers_function("Serve GPG Bridge HTTP API")
