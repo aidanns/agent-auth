@@ -310,9 +310,22 @@ class GpgSubprocessClient:
             os.close(read_fd)
             fds_to_close["read"] = None
 
-            payload_text = passphrase + "\n"
+            # ``os.write`` can return short on a pipe so loop until
+            # the whole passphrase has reached the kernel buffer.
+            # PIPE_BUF (4096 on Linux) is comfortably larger than any
+            # realistic passphrase, but the loop is the contract that
+            # protects against a future change of buffer or a host
+            # whose pipe sizing differs.
+            payload_bytes = (passphrase + "\n").encode("utf-8")
             try:
-                os.write(write_fd, payload_text.encode("utf-8"))
+                offset = 0
+                while offset < len(payload_bytes):
+                    written = os.write(write_fd, payload_bytes[offset:])
+                    if written <= 0:
+                        # 0 / negative is a kernel-level error on a pipe;
+                        # bail out and let the child observe EOF.
+                        break
+                    offset += written
             finally:
                 os.close(write_fd)
                 fds_to_close["write"] = None
