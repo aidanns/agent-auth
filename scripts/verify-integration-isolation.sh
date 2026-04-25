@@ -42,6 +42,7 @@ fail=0
 # image was added to docker-compose without a corresponding test slice.
 integration_dirs=(
   "packages/agent-auth/tests/integration"
+  "packages/gpg-bridge/tests/integration"
   "packages/things-bridge/tests/integration"
   "packages/things-cli/tests/integration"
   "packages/things-client-cli-applescript/tests/integration"
@@ -96,6 +97,8 @@ fi
 # file defaulted to.
 required_dockerfiles=(
   "docker/Dockerfile.agent-auth.test"
+  "docker/Dockerfile.gpg-bridge.test"
+  "docker/Dockerfile.gpg-cli.test"
   "docker/Dockerfile.things-bridge.test"
   "docker/Dockerfile.things-cli.test"
   "docker/Dockerfile.things-client-applescript.test"

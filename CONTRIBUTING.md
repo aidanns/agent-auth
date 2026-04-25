@@ -408,9 +408,10 @@ Three ways to satisfy the lint, in increasing order of automation:
    [`Changelog Lint`](.github/workflows/changelog-lint.yml). Use this
    when you want to fine-tune the entry (e.g. `packages:` filters or
    a `release-as` override).
-2. **Use the scaffolding helper** — `task changelog-add` (lands in
-   #297) writes a templated entry from CLI flags. Same schema, less
-   boilerplate.
+2. **Use the scaffolding helper** — `task changelog:add` (alias:
+   `task changelog-add`) writes a templated entry from CLI flags or
+   walks an interactive prompt. Same schema, less boilerplate. See
+   [the CLI section below](#changelog-add-cli).
 3. **Use the bot** — uncomment the `==CHANGELOG_MSG==` block in the
    PR template and put the release-note text between the markers.
    The
@@ -422,6 +423,69 @@ Three ways to satisfy the lint, in increasing order of automation:
 The `no changelog` label opt-out skips the file-presence check but
 schema validation still runs over any files that *are* present, so
 an opt-out PR can't sneak in malformed YAML.
+
+### `task changelog:add` CLI
+
+`task changelog:add` (alias `task changelog-add`, matching the
+spelling in #297) drives `scripts/changelog/add.py`. The CLI runs the
+same validation gates as
+[`Changelog Lint`](.github/workflows/changelog-lint.yml) before
+writing — the `--type`, `--packages`, and `--release-as` checks reuse
+`scripts/changelog/version_logic.py` directly, so a CLI-authored
+entry that *the CLI accepts* is guaranteed to also pass the CI lint.
+
+**Interactive mode** (no flags) walks through type, description,
+optional packages, PR number (auto-detected from `gh pr view`), and
+optionally `release-as`:
+
+```bash
+task changelog:add
+```
+
+`$EDITOR` is opened for the description when `--editor` is passed;
+otherwise the prompt accepts a single line. Pass `--release-as` (with
+or without a value) to be prompted for an override; without the flag
+the prompt is skipped so accidental graduations are not possible.
+
+**Non-interactive mode** is for scripted use (e.g. inside another
+agent / CI workflow). Every required field is read from flags:
+
+```bash
+task changelog:add -- \
+  --type fix \
+  --description "Tighten the HMAC comparison so it is constant-time." \
+  --pr 123
+```
+
+Optional flags:
+
+- `--packages agent-auth,agent-auth-common` — comma-separated
+  workspace member list. Validated against `packages/*/pyproject.toml`
+  `[project].name`. Omit for workspace-wide entries.
+- `--release-as 1.0.0` — force a specific next version. The CLI
+  re-runs `validate_release_as` against the new entry plus every
+  existing entry under `changelog/@unreleased/`, so a violation
+  surfaces synchronously rather than after CI.
+- `--editor` — open `$EDITOR` for multi-line input in interactive
+  mode. Ignored when `--description` is also passed.
+- `--current-version 0.4.2` — override the current version (default
+  is `git describe --tags --abbrev=0 --match v*.*.*`, falling back to
+  `0.0.0` when no tag exists yet).
+
+The slug after `pr-<N>-` is generated from a small bundled wordlist
+(`scripts/changelog/wordlist.py`); two random words joined with `-`.
+The CLI retries on filename collisions inside one PR's directory.
+
+When `stdin` is not a TTY (e.g. CI, piped invocations), the
+interactive walk-through is suppressed — pass every required flag or
+the CLI exits non-zero with a "non-interactive mode requires …"
+message rather than blocking on `input()`.
+
+A non-blocking pre-push lefthook hook (`scripts/changelog/add.sh --check`) prints a one-line warning to stderr when the local branch
+has no `changelog/@unreleased/pr-<N>-*.yml` entry vs. `origin/main`.
+The hook is advisory — the PR-time `Changelog Lint` workflow is the
+authoritative gate. Pass `--strict` (manual escape hatch) to make
+the warning a hard local failure.
 
 ### Changelog-bot markers
 

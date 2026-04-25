@@ -327,7 +327,6 @@ module = [
     "test_gpg_bridge_server",
     "test_gpg_cli_cli",
     "test_gpg_cli_config",
-    "test_gpg_end_to_end",
     "test_gpg_models",
     "test_gpg_subprocess_client",
     "test_integration_harness",
@@ -390,11 +389,28 @@ disallow_untyped_calls = false
 [tool.mutmut]
 paths_to_mutate = [
     # keep-sorted start
+    "packages/agent-auth-common/src/gpg_backend_common/cli.py",
+    "packages/agent-auth-common/src/gpg_backend_common/protocol.py",
+    "packages/agent-auth-common/src/gpg_models/errors.py",
+    "packages/agent-auth-common/src/gpg_models/models.py",
     "packages/agent-auth/src/agent_auth/crypto.py",
     "packages/agent-auth/src/agent_auth/keys.py",
     "packages/agent-auth/src/agent_auth/scopes.py",
     "packages/agent-auth/src/agent_auth/store.py",
     "packages/agent-auth/src/agent_auth/tokens.py",
+    "packages/gpg-backend-cli-host/src/gpg_backend_cli_host/cli.py",
+    "packages/gpg-backend-cli-host/src/gpg_backend_cli_host/gpg.py",
+    "packages/gpg-bridge/src/gpg_bridge/authz.py",
+    "packages/gpg-bridge/src/gpg_bridge/cli.py",
+    "packages/gpg-bridge/src/gpg_bridge/config.py",
+    "packages/gpg-bridge/src/gpg_bridge/errors.py",
+    "packages/gpg-bridge/src/gpg_bridge/gpg_client.py",
+    "packages/gpg-bridge/src/gpg_bridge/metrics.py",
+    "packages/gpg-bridge/src/gpg_bridge/server.py",
+    "packages/gpg-cli/src/gpg_cli/cli.py",
+    "packages/gpg-cli/src/gpg_cli/client.py",
+    "packages/gpg-cli/src/gpg_cli/config.py",
+    "packages/gpg-cli/src/gpg_cli/errors.py",
     # keep-sorted end
 ]
 # mutmut only copies files under paths_to_mutate into the mutants/
@@ -409,33 +425,64 @@ also_copy = [
 ]
 # Explicitly override the default tests_dir to just the unit-test
 # files that directly exercise the mutated modules. Integration
-# tests under packages/<svc>/tests/integration/ are too slow for the
-# per-mutant loop and the other unit-test files don't add signal on
-# tokens / crypto / keys / scopes / store.
+# tests under packages/<svc>/tests/integration/ and the gpg-bridge
+# end-to-end / subprocess-client tests (which shell out to the real
+# host gpg binary) are too slow for the per-mutant loop, and the
+# remaining unit-test files don't add signal on the modules under
+# paths_to_mutate.
 tests_dir = [
     # keep-sorted start
+    "packages/agent-auth-common/tests/test_gpg_models.py",
     "packages/agent-auth/tests/test_crypto.py",
     "packages/agent-auth/tests/test_keys.py",
     "packages/agent-auth/tests/test_scopes.py",
     "packages/agent-auth/tests/test_store.py",
     "packages/agent-auth/tests/test_tokens.py",
+    "packages/gpg-backend-cli-host/tests/test_gpg_backend_host.py",
+    "packages/gpg-bridge/tests/test_gpg_backend_fake.py",
+    "packages/gpg-bridge/tests/test_gpg_bridge_config.py",
+    "packages/gpg-bridge/tests/test_gpg_bridge_server.py",
+    "packages/gpg-cli/tests/test_gpg_cli_cli.py",
+    "packages/gpg-cli/tests/test_gpg_cli_config.py",
     # keep-sorted end
+    # The gpg-bridge end-to-end (test_gpg_end_to_end.py) and
+    # subprocess-client (test_gpg_subprocess_client.py) tests shell
+    # out to the host `gpg` binary and a real
+    # gpg-backend-cli-host process, so they are too slow for the
+    # per-mutant loop. They run in the regular test suite and the
+    # devcontainer e2e workflow.
 ]
 pytest_add_cli_args = ["--no-cov"]
 do_not_mutate = [
-    # __init__.py is a pure re-export surface; mutating it just
-    # produces noise without signal on the security properties we're
-    # trying to assert.
+    # keep-sorted start
+    # __init__.py modules are pure re-export surfaces; mutating them
+    # just produces noise without signal on the security properties
+    # we're trying to assert.
+    "packages/agent-auth-common/src/gpg_backend_common/__init__.py",
+    "packages/agent-auth-common/src/gpg_models/__init__.py",
     "packages/agent-auth/src/agent_auth/__init__.py",
+    "packages/gpg-backend-cli-host/src/gpg_backend_cli_host/__init__.py",
+    "packages/gpg-bridge/src/gpg_bridge/__init__.py",
+    "packages/gpg-cli/src/gpg_cli/__init__.py",
+    # keep-sorted end
 ]
 
-# Mutation-score floor for the scheduled mutation CI job. The local
-# baseline on the five targeted modules (tokens, crypto, keys, scopes,
-# store) was 68.95% (262 killed / 380 actionable mutants); the floor
-# is set a few points below to absorb run-to-run variance while still
-# catching a regression. Ratchets upward with the same never-lower
-# policy as [tool.pytest.ini_options].addopts --cov-fail-under. Score
-# is killed / (killed + survived), ignoring no_tests / skipped /
-# timeout mutants.
+# Mutation-score floor for the scheduled mutation CI job. The
+# original baseline on the five agent-auth modules (tokens, crypto,
+# keys, scopes, store) was 68.95% (262 killed / 380 actionable
+# mutants), and the floor was set a few points below to absorb
+# run-to-run variance while still catching a regression. Ratchets
+# upward with the same never-lower policy as
+# [tool.pytest.ini_options].addopts --cov-fail-under. Score is
+# killed / (killed + survived), ignoring no_tests / skipped / timeout
+# mutants.
+#
+# Issue #309 expands paths_to_mutate to cover the gpg-bridge,
+# gpg-cli, gpg-backend-cli-host, gpg_models, and gpg_backend_common
+# modules. The combined floor stays at the existing global value
+# until the next nightly run produces a baseline against the wider
+# surface; the policy is to ratchet up only when the score is
+# durably above the floor across consecutive runs (CONTRIBUTING.md
+# § "Mutation score").
 [tool.mutation_score]
 fail_under = 65.0
