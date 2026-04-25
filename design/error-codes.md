@@ -172,3 +172,77 @@ Successful scrapes return 200 with a Prometheus text exposition body
 | `not_found`          | 404         | Path does not match any registered endpoint.                                                                                                                                   |
 | `method_not_allowed` | 405         | A non-GET method was used on a read-only endpoint.                                                                                                                             |
 | `rate_limited`       | 429         | Agent-auth refused the delegated `/validate` call for the bearer token's family (see ADR 0027). The bridge forwards the upstream `Retry-After`; retry after that many seconds. |
+
+______________________________________________________________________
+
+## gpg-bridge server (`/gpg-bridge/v1/...`)
+
+See `design/decisions/0033-gpg-bridge-cli-split.md` for the bridge / backend
+architecture. Token validation is delegated to agent-auth; sign / verify
+require the `gpg:sign` scope, the probe endpoints carry their own scopes
+(`gpg-bridge:health`, `gpg-bridge:metrics`).
+
+### `POST /gpg-bridge/v1/sign`, `POST /gpg-bridge/v1/verify`
+
+**Request-shape errors:**
+
+| Error code               | HTTP status | Meaning                                                                                                                                        |
+| ------------------------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `length_required`        | 411         | Request did not include a `Content-Length` header.                                                                                             |
+| `invalid_content_length` | 400         | `Content-Length` header is not a non-negative integer.                                                                                         |
+| `payload_too_large`      | 413         | Request body exceeds the bridge's configured `max_request_bytes` limit.                                                                        |
+| `invalid_json`           | 400         | Request body is not a JSON object.                                                                                                             |
+| `invalid_request`        | 400         | Request body parsed as JSON but failed schema validation (missing required fields, wrong types, invalid base64, unknown `keyid_format`, etc.). |
+
+**Authorization errors (from agent-auth delegation):**
+
+| Error code          | HTTP status | Meaning                                                                                         |
+| ------------------- | ----------- | ----------------------------------------------------------------------------------------------- |
+| `unauthorized`      | 401         | No bearer token, or the token is invalid/missing.                                               |
+| `token_expired`     | 401         | Access token has passed its TTL (delegated from agent-auth).                                    |
+| `scope_denied`      | 403         | Token does not have the `gpg:sign` scope (delegated from agent-auth).                           |
+| `key_not_allowed`   | 403         | Requested `local_user` is not in the bridge's `allowed_signing_keys` allowlist (sign endpoint). |
+| `authz_unavailable` | 502         | The agent-auth service is unreachable.                                                          |
+
+**GPG-layer errors:**
+
+| Error code              | HTTP status | Meaning                                                                       |
+| ----------------------- | ----------- | ----------------------------------------------------------------------------- |
+| `no_such_key`           | 404         | The requested signing key is not present in the host keyring (sign endpoint). |
+| `bad_signature`         | 400         | A verify request found the signature invalid (verify endpoint).               |
+| `gpg_permission_denied` | 503         | The host gpg could not access the keyring (e.g. agent down, keyring locked).  |
+| `unsupported_operation` | 400         | The configured backend does not implement the requested operation.            |
+| `gpg_unavailable`       | 502         | The gpg backend subprocess failed for an unclassified reason.                 |
+
+### `GET /gpg-bridge/health` *(unversioned)*
+
+| Error code          | HTTP status | Meaning                                            |
+| ------------------- | ----------- | -------------------------------------------------- |
+| `unauthorized`      | 401         | No bearer token present, or the token is invalid.  |
+| `token_expired`     | 401         | Access token has passed its TTL.                   |
+| `scope_denied`      | 403         | Token does not have the `gpg-bridge:health` scope. |
+| `authz_unavailable` | 502         | The agent-auth service is unreachable.             |
+
+A 503 body of `{"status": "unhealthy"}` (not an error code) indicates a
+critical downstream dependency is unavailable — currently that means the
+configured `gpg_backend_command` executable cannot be resolved on PATH.
+
+### `GET /gpg-bridge/metrics` *(unversioned)*
+
+| Error code          | HTTP status | Meaning                                             |
+| ------------------- | ----------- | --------------------------------------------------- |
+| `unauthorized`      | 401         | No bearer token present, or the token is invalid.   |
+| `token_expired`     | 401         | Access token has passed its TTL.                    |
+| `scope_denied`      | 403         | Token does not have the `gpg-bridge:metrics` scope. |
+| `authz_unavailable` | 502         | The agent-auth service is unreachable.              |
+
+Successful scrapes return 200 with a Prometheus text exposition body
+(`Content-Type: text/plain; version=0.0.4`).
+
+### Server-wide codes (any endpoint)
+
+| Error code           | HTTP status | Meaning                                                                                                                                                                        |
+| -------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `not_found`          | 404         | Path does not match any registered endpoint.                                                                                                                                   |
+| `method_not_allowed` | 405         | An unsupported HTTP method was used (only `GET` and `POST` are accepted).                                                                                                      |
+| `rate_limited`       | 429         | Agent-auth refused the delegated `/validate` call for the bearer token's family (see ADR 0027). The bridge forwards the upstream `Retry-After`; retry after that many seconds. |
