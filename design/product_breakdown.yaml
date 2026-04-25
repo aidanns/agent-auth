@@ -113,3 +113,35 @@ components:
       - name: gnome-keyring
         description: Operating system keyring backend (via libsecret/D-Bus Secret Service) used to securely store CLI credentials on Linux.
         functions: []
+  - name: gpg-bridge
+    description: HTTP server running on the host that exposes authenticated gpg signing and verification operations to gpg-cli, delegating authorization to agent-auth and shelling out to a backend per request. Contains no gpg-protocol logic itself. See ADR 0033.
+    configuration_items:
+      - name: gpg-bridge
+        description: HTTP server service that maps /gpg-bridge/ endpoints onto a configured backend subprocess, delegating token validation to agent-auth and enforcing the per-key allowlist before subprocess invocation.
+        functions:
+          - Authorize Sign Request
+          - Apply Per-Key Allowlist
+          - Run Backend Subprocess
+          - Serve GPG Bridge HTTP API
+          - Serve GPG Bridge Health Endpoint
+          - Load Bridge Configuration
+      - name: gpg-backend-cli-host
+        description: Host-side per-request CLI shipped with the distribution that shells out to the real gpg binary for the bridge. The bridge's default gpg_backend_command.
+        functions:
+          - Sign Payload
+          - Verify Signature
+          - Resolve Local-User Key
+          - Emit Backend JSON Envelope
+      - name: gpg
+        description: Operating-system gpg binary (GnuPG) and the user's ~/.gnupg keyring. Invoked by gpg-backend-cli-host; never accessed directly by the bridge.
+        functions: []
+  - name: gpg-cli
+    description: Devcontainer-side gpg.program replacement that maps git's gpg argv shape onto gpg-bridge's HTTP API. Holds no private key material. See ADR 0033.
+    configuration_items:
+      - name: gpg-cli
+        description: CLI service installed inside the devcontainer; git invokes it via gpg.program. Forwards sign and verify requests to gpg-bridge over HTTPS with a bearer token.
+        functions:
+          - Parse Git GPG Argv
+          - Send Bridge Sign Request
+          - Send Bridge Verify Request
+          - Load CLI Configuration
