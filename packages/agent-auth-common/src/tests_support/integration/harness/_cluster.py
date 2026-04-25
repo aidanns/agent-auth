@@ -51,6 +51,9 @@ _log = logging.getLogger("integration.harness")
 
 DEFAULT_START_TIMEOUT_SECONDS = 30.0
 DEFAULT_POLL_INTERVAL_SECONDS = 0.2
+# Subprocess-side hard budget for ``docker compose down``. NOT propagated
+# to docker via ``-t``; the per-service ``stop_grace_period`` in the
+# compose file owns the SIGTERM→SIGKILL window. See #288 / ``_compose_down``.
 DEFAULT_STOP_TIMEOUT_SECONDS = 30.0
 DEFAULT_CONFIG_TIMEOUT_SECONDS = 30.0
 DEFAULT_UP_TIMEOUT_SECONDS = 300.0
@@ -460,8 +463,14 @@ class StartedCluster:
             )
 
     def _compose_down(self) -> None:
-        # Defensive: docker compose down -t takes an int (seconds).
-        down_timeout = int(self.stop_timeout_seconds)
+        # No ``-t`` here on purpose: the per-service ``stop_grace_period``
+        # in ``docker/docker-compose.yaml`` is the source of truth for the
+        # SIGTERM→SIGKILL window, and a CLI ``-t`` would silently override
+        # it. Passing ``-t 30`` here previously masked #154's graceful
+        # shutdown handlers and pushed every teardown to ~30 s — see #288.
+        # ``stop_timeout_seconds`` survives only as the subprocess-level
+        # safety budget below, so a wedged ``docker compose`` can't hang
+        # the harness forever.
         result = subprocess.run(
             [
                 "docker",
@@ -472,8 +481,6 @@ class StartedCluster:
                 "down",
                 "-v",
                 "--remove-orphans",
-                "-t",
-                str(down_timeout),
             ],
             env=self._subprocess_env(),
             capture_output=True,

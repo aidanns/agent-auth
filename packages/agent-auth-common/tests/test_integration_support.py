@@ -19,12 +19,31 @@ import logging
 import time
 from pathlib import Path
 
+import pytest
+
 from tests_support.integration import plugin as integration_plugin
 from tests_support.integration.support import (
     _cache_scope_for_dockerfile,
     _gha_cache_args,
+    clear_phase_budget_breaches,
+    phase_budget_breaches,
     phase_timer,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_phase_budget_breaches():
+    """Reset the module-level breach list around every test in this file.
+
+    ``phase_timer`` writes into a shared list so the integration plugin's
+    ``pytest_sessionfinish`` hook can fail the run on a teardown-budget
+    regression. Tests in this file deliberately drive the same list, so
+    we clear it before *and* after each test to keep one test from
+    leaking state into the next.
+    """
+    clear_phase_budget_breaches()
+    yield
+    clear_phase_budget_breaches()
 
 
 def test_phase_timer_logs_phase_name_and_elapsed_seconds(caplog):
@@ -79,6 +98,73 @@ def test_phase_timer_elapsed_is_monotonic(caplog):
     elapsed_token = next(t for t in record.message.split() if t.startswith("elapsed_seconds="))
     elapsed = float(elapsed_token.split("=", 1)[1])
     assert elapsed > 0.0
+
+
+# ``phase_timer(budget_seconds=...)`` underpins the #288 CI gate: a
+# breach is appended to a module-level list that the integration
+# plugin's ``pytest_sessionfinish`` hook converts into a non-zero
+# session exit. Tests below pin the contract: no breach when within
+# budget, exactly one breach (with the right metadata) when over,
+# and no surprise raise from the context manager itself.
+
+
+def test_phase_timer_records_no_breach_when_within_budget():
+    with phase_timer("ok_phase", budget_seconds=10.0):
+        pass
+
+    assert phase_budget_breaches() == ()
+
+
+def test_phase_timer_records_breach_when_budget_exceeded(monkeypatch, caplog):
+    # Drive elapsed time deterministically so the test doesn't depend on
+    # ``time.sleep`` precision. Patching ``time.monotonic`` inside the
+    # support module is enough — phase_timer reads it via the bare
+    # ``time`` import, so the patch lands on the same function object.
+    clock = iter([100.0, 100.5])
+    monkeypatch.setattr("tests_support.integration.support.time.monotonic", lambda: next(clock))
+
+    with (
+        caplog.at_level(logging.WARNING, logger="integration.timing"),
+        phase_timer("compose_stop", budget_seconds=0.1, project="proj-x", service="svc-y"),
+    ):
+        pass
+
+    (breach,) = phase_budget_breaches()
+    assert breach.phase == "compose_stop"
+    assert breach.budget_seconds == 0.1
+    # The deterministic clock above means elapsed is exactly 0.5 s.
+    assert breach.elapsed_seconds == pytest.approx(0.5)
+    assert breach.fields == {"project": "proj-x", "service": "svc-y"}
+    # And the WARNING fires alongside the INFO line so a developer
+    # tailing logs sees the regression even before sessionfinish runs.
+    warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warning_records) == 1
+    assert "exceeded budget" in warning_records[0].message
+
+
+def test_phase_timer_does_not_raise_on_breach():
+    """The breach is recorded; the ``with`` block itself completes cleanly.
+
+    The fixture teardowns that wrap ``running.stop()`` catch ``Exception``
+    to avoid masking earlier test failures. If ``phase_timer`` raised
+    inline on a breach, that ``except`` would swallow the regression
+    signal — which is exactly the ``compose_stop`` budget gap #288 fixes.
+    """
+    sentinel = object()
+
+    with phase_timer("compose_stop", budget_seconds=0.0):
+        result = sentinel
+
+    assert result is sentinel
+    assert len(phase_budget_breaches()) == 1
+
+
+def test_phase_timer_without_budget_records_no_breach_even_when_slow(monkeypatch):
+    clock = iter([0.0, 999.0])
+    monkeypatch.setattr("tests_support.integration.support.time.monotonic", lambda: next(clock))
+    with phase_timer("untimed_phase"):
+        pass
+    assert phase_budget_breaches() == ()
 
 
 # ``_resolve_test_image_tags`` decides whether the session owns the

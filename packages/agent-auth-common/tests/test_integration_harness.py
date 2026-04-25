@@ -540,6 +540,31 @@ def test_stop_is_idempotent(tmp_path, monkeypatch):
     assert len(recorder.calls) == first_count
 
 
+def test_compose_down_does_not_pass_explicit_timeout_flag(tmp_path, monkeypatch):
+    """Pin #288: ``-t`` would override the compose-file ``stop_grace_period``.
+
+    Hard-coding ``-t 30`` pushed every per-test teardown to ~30 s by
+    silently overriding the per-service grace period in
+    ``docker/docker-compose.yaml`` (and defeating the SIGTERM handlers
+    from #154). Anchoring the down argv shape here prevents a future
+    refactor from re-introducing the regression unnoticed.
+    """
+    cluster = _make_started_cluster(tmp_path)
+    recorder = _SubprocessRecorder(lambda argv, env: _FakeCompletedProcess(args=argv, returncode=0))
+    monkeypatch.setattr("tests_support.integration.harness._cluster.subprocess.run", recorder)
+
+    cluster.stop(test_failed=False)
+
+    down_call = next(call for call in recorder.calls if "down" in call.args)
+    assert "-t" not in down_call.args, (
+        f"docker compose down argv contains -t, which overrides the "
+        f"compose-file stop_grace_period. argv={down_call.args!r}"
+    )
+    # Sanity: the rest of the down shape is still what the harness needs.
+    assert "-v" in down_call.args
+    assert "--remove-orphans" in down_call.args
+
+
 # ---------------------------------------------------------------------------
 # Builder is re-usable as a factory (no accidental freezing)
 # ---------------------------------------------------------------------------
