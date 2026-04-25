@@ -1321,16 +1321,19 @@ PY
   echo "verify-standards: mypy and pyright ratchet lists are in sync."
 fi
 
-# pytest-cov coverage floor per
+# Per-package pytest-cov coverage floors per
 # .claude/instructions/testing-standards.md (Coverage) and
-# .claude/instructions/python.md (Tooling: pytest-cov). The
-# deterministic regression check from issue #37:
+# .claude/instructions/python.md (Tooling: pytest-cov), tightened in
+# #273 to per-package floors so a well-tested package can't mask a
+# regression in another:
 #
-#   - pyproject.toml (or pytest.ini) sets --cov-fail-under=<N> in
-#     pytest's addopts (N > 0).
-#   - At least one CI workflow invokes `pytest --cov` (directly or
+#   - Each ``packages/<svc>/pyproject.toml`` sets
+#     ``--cov-fail-under=<N>`` (N > 0) in pytest's addopts.
+#   - At least one CI workflow invokes ``pytest --cov`` (directly or
 #     via a task dispatcher that reaches pytest through pytest.ini
-#     addopts).
+#     addopts) AND runs scripts/check-package-coverage.sh, which
+#     enforces every package's floor against the unified .coverage
+#     database.
 
 coverage_missing=0
 
@@ -1340,11 +1343,16 @@ fail_coverage_check() {
   coverage_missing=1
 }
 
-if ! grep -qE -- "--cov-fail-under=[1-9][0-9]*" <<<"${pyproject_stripped}"; then
-  fail_coverage_check \
-    "pyproject.toml pytest addopts does not set --cov-fail-under=<N>." \
-    "Add '--cov-fail-under=<N>' to [tool.pytest.ini_options].addopts (see .claude/instructions/testing-standards.md Coverage)."
-fi
+shopt -s nullglob
+for pkg_pyproject in packages/*/pyproject.toml; do
+  pkg_stripped="$(strip_comments "${pkg_pyproject}")"
+  if ! grep -qE -- "--cov-fail-under[ =]\"?[1-9][0-9]*" <<<"${pkg_stripped}"; then
+    fail_coverage_check \
+      "${pkg_pyproject} does not set --cov-fail-under=<N> in [tool.pytest.ini_options].addopts." \
+      "Add a per-package floor to addopts (see #273 / .claude/instructions/testing-standards.md Coverage)."
+  fi
+done
+shopt -u nullglob
 
 # The CI gate is satisfied whether pytest is invoked directly (with
 # --cov on the command line) or transitively through `task test`
@@ -1362,7 +1370,7 @@ if [[ ${coverage_missing} -ne 0 ]]; then
   exit 1
 fi
 
-echo "verify-standards: pytest-cov fail-under threshold set in pyproject.toml and gated in CI."
+echo "verify-standards: every packages/<svc>/pyproject.toml carries a --cov-fail-under floor, and CI runs 'task test'."
 
 # CONTRIBUTING.md must exist and contain the four required sections per
 # .claude/instructions/release-and-hygiene.md.

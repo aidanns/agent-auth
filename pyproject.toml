@@ -113,12 +113,19 @@ markers = [
     "covers_function(*names): declare which functional-decomposition leaf functions a test exercises (read by `systems-engineering function verify`)",
     "perf_budget: asserts a latency budget documented in design/DESIGN.md § Performance budget. Discoverable as a group via `pytest -m perf_budget`.",
 ]
-# Coverage is gated at a ratcheting floor per
-# .claude/instructions/testing-standards.md. --cov-fail-under is the
-# single lever: never lowered without an explicit justification commit.
-# See CONTRIBUTING.md § "Coverage" for the bump procedure. Integration
-# tests run in a separate CI job and are excluded here — rolling them
-# into the floor would make it flaky on Docker availability.
+# Coverage is gated per-package: each ``packages/<svc>/pyproject.toml``
+# carries its own ``[tool.pytest.ini_options].addopts`` with
+# ``--cov=<package-modules>`` and ``--cov-fail-under=N`` (per
+# .claude/instructions/testing-standards.md and ADR 0036's
+# ratchet rationale). The workspace ``task test`` runs every
+# package's tests in a single pytest session here at the root and
+# emits a unified coverage report (``--cov=packages``), but the
+# floor is enforced afterwards by ``scripts/check-package-coverage.sh``,
+# which queries the same ``.coverage`` database for each package's
+# slice and asserts the per-package ``--cov-fail-under``. This makes
+# the workspace gate fail if **any** package regresses while keeping
+# the per-package ``task <svc>:test`` ratchets authoritative for
+# focused dev loops.
 #
 # ``-p tests_support.integration.plugin`` registers the workspace-wide
 # Docker-backed integration fixtures (image build, agent-auth /
@@ -141,7 +148,6 @@ addopts = [
     "--cov=packages",
     "--cov-branch",
     "--cov-report=term-missing",
-    "--cov-fail-under=74",
 ]
 
 [tool.coverage.run]

@@ -37,3 +37,31 @@ fallback_version = "0.0.0+unknown"
 # a published version can override this in a release build via
 # ``pip install`` against PyPI.
 agent-auth-common = { workspace = true }
+
+[tool.pytest.ini_options]
+# Standalone pytest config for ``task agent-auth:test`` (driven by
+# ``scripts/pkg-test.sh agent-auth``). When pytest is invoked with a
+# path under ``packages/agent-auth/tests/``, rootdir discovery walks
+# up to this file and uses these options instead of the workspace
+# root's. Only the per-package floor and ``--cov`` selector live
+# here; cross-cutting settings (pythonpath for shared
+# ``agent-auth-common`` imports, the integration plugin) are mirrored
+# minimally because the workspace ``task test`` always runs through
+# the root ``pyproject.toml`` instead.
+addopts = [
+    "-p",
+    "tests_support.integration.plugin",
+    "--import-mode=importlib",
+    "--cov=agent_auth",
+    "--cov=agent_auth_notifier",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-fail-under=78",
+]
+pythonpath = [
+    # keep-sorted start
+    "../agent-auth-common/src",
+    "src",
+    # keep-sorted end
+]
+testpaths = ["tests"]

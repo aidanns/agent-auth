@@ -30,3 +30,23 @@ fallback_version = "0.0.0+unknown"
 
 [tool.uv.sources]
 agent-auth-common = { workspace = true }
+
+[tool.pytest.ini_options]
+# Per-package pytest config. See packages/agent-auth/pyproject.toml
+# for the full rationale.
+addopts = [
+    "-p",
+    "tests_support.integration.plugin",
+    "--import-mode=importlib",
+    "--cov=things_cli",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-fail-under=67",
+]
+pythonpath = [
+    # keep-sorted start
+    "../agent-auth-common/src",
+    "src",
+    # keep-sorted end
+]
+testpaths = ["tests"]
