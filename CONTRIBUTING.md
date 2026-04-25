@@ -74,7 +74,7 @@ Every repeatable operation is exposed through the task runner. Run
 | Task                                       | Description                                                                                                                                               |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task test`                                | Run the pytest suite with coverage (unit by default; pass `-- --fast`, `-- --integration`, or `-- --all`). Fails below the `--cov-fail-under` floor.      |
-| `task benchmark`                           | Run the pytest-benchmark suite under `benchmarks/` (scheduled weekly in CI; see `benchmarks/README.md`).                                                  |
+| `task benchmark`                           | Run the pytest-benchmark suite under `packages/agent-auth/benchmarks/` (scheduled weekly in CI; see `packages/agent-auth/benchmarks/README.md`).          |
 | `task lint`                                | Run all configured linters (shellcheck, ruff check, keep-sorted).                                                                                         |
 | `task format`                              | Run all configured formatters (shfmt, ruff format, mdformat, taplo). Pass `-- --check` for diff-only mode (CI uses this).                                 |
 | `task typecheck`                           | Run mypy + pyright (strict) on every `packages/<svc>/src/` tree and `tests/`.                                                                             |
@@ -93,6 +93,16 @@ Every repeatable operation is exposed through the task runner. Run
 Each task dispatches to a script under `scripts/*.sh`; the scripts are
 the single source of truth and can also be invoked directly if
 `go-task` is not installed.
+
+Per-package dev loops are also available under each service's
+namespace: `task <svc>:test`, `task <svc>:lint`, `task <svc>:typecheck`,
+`task <svc>:format`, and `task <svc>:check` narrow to a single
+workspace member under `packages/<svc>/`. `task <svc>` (no suffix)
+resolves to the namespace default and still runs the service CLI where
+one exists (e.g. `task agent-auth -- serve`). Namespaces are declared
+in the workspace-root `Taskfile.yml`; the root-level sweepers above
+stay authoritative until #270 relocates the monolithic `tests/` and
+`benchmarks/` trees into per-package subdirectories.
 
 ### Coverage
 
@@ -139,15 +149,15 @@ immediately. Rationale in
 
 ### Benchmarks
 
-`task benchmark` runs the pytest-benchmark suite under `benchmarks/`
-covering the token hot path (`parse_token`, `sign_token`,
-`verify_token`, `create_token_pair`) and the SQLite store
-(`get_family` for a family with 200 scopes, `get_token`,
-`create_token`). The suite is scheduled weekly via
+`task benchmark` runs the pytest-benchmark suite under
+`packages/agent-auth/benchmarks/` covering the token hot path
+(`parse_token`, `sign_token`, `verify_token`, `create_token_pair`)
+and the SQLite store (`get_family` for a family with 200 scopes,
+`get_token`, `create_token`). The suite is scheduled weekly via
 `.github/workflows/benchmark.yml` — too noisy on shared runners to
 gate every PR. Rationale and baseline-refresh procedure in
-[`benchmarks/README.md`](benchmarks/README.md) and
-[ADR 0029](design/decisions/0029-benchmark-suite.md).
+[`packages/agent-auth/benchmarks/README.md`](packages/agent-auth/benchmarks/README.md)
+and [ADR 0029](design/decisions/0029-benchmark-suite.md).
 
 ### Schema migrations
 

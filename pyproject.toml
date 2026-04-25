@@ -179,8 +179,8 @@ strict = true
 # them here means ``mypy`` picks up the full matrix.
 files = [
     # keep-sorted start
-    "benchmarks",
     "packages/agent-auth-common/src",
+    "packages/agent-auth/benchmarks",
     "packages/agent-auth/src",
     "packages/gpg-backend-cli-host/src",
     "packages/gpg-bridge/src",

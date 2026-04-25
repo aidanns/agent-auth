@@ -95,10 +95,11 @@
 #      operations AND at least one test carries the perf_budget
 #      pytest marker, per .claude/instructions/testing-standards.md
 #      "Performance budget".
-#  15. A benchmarks/ directory contains at least one test_*.py file
-#      AND a scheduled CI workflow (.github/workflows/benchmark.yml)
-#      invokes it on `on: schedule:`, per
-#      .claude/instructions/testing-standards.md "Benchmark suite".
+#  15. A packages/agent-auth/benchmarks/ directory contains at least
+#      one test_*.py file AND a scheduled CI workflow
+#      (.github/workflows/benchmark.yml) invokes it on
+#      `on: schedule:`, per .claude/instructions/testing-standards.md
+#      "Benchmark suite".
 #  16. .vscode/extensions.json, .vscode/settings.json, and
 #      .vscode/launch.json all exist so a fresh checkout opens with
 #      recommended extensions, formatter-on-save, and debug configs,
@@ -1575,11 +1576,20 @@ fi
 
 echo "verify-standards: SECURITY.md exists with all required sections including the cybersecurity, SDLC, and application security standards."
 
-# Every per-service package must ship an executable ``install.sh`` per
-# .claude/instructions/release-and-hygiene.md. Under the per-subproject
-# layout introduced in #105, the root no longer carries a meta-installer;
-# each ``packages/<service>/install.sh`` is the only supported entry
-# point for that service.
+# Every per-service package that exposes a console-script (i.e. its
+# pyproject.toml carries a ``[project.scripts]`` table) must ship an
+# executable ``install.sh`` per .claude/instructions/release-and-hygiene.md.
+# Library-only workspace packages (no ``[project.scripts]``) — installed
+# transitively as a dependency of a service — must NOT carry an
+# install.sh: there is no user-facing entry point to install. Driving
+# the rule from ``[project.scripts]`` means a new CLI package added to
+# the workspace fails this check until it ships an installer, without
+# anyone having to update an allow-list here.
+#
+# Under the per-subproject layout introduced in #105, the workspace
+# root no longer carries a meta-installer; each
+# ``packages/<service>/install.sh`` is the only supported entry point
+# for that service.
 
 if [[ -f install.sh ]]; then
   echo "verify-standards: root install.sh re-introduced — per-service" >&2
@@ -1588,37 +1598,74 @@ if [[ -f install.sh ]]; then
   exit 1
 fi
 
-installer_drift=0
-shopt -s nullglob
-for pkg_dir in packages/*/; do
-  [[ -d "${pkg_dir}" ]] || continue
-  pkg_name="${pkg_dir%/}"
-  pkg_name="${pkg_name##*/}"
-  # ``agent-auth-common`` is a library-only workspace package with no
-  # console-script: users install it transitively via any service.
-  if [[ "${pkg_name}" == "agent-auth-common" ]]; then
-    continue
-  fi
-  script="${pkg_dir}install.sh"
-  if [[ ! -f "${script}" ]]; then
-    echo "verify-standards: ${script} is missing." >&2
-    installer_drift=1
-    continue
-  fi
-  if [[ ! -x "${script}" ]]; then
-    echo "verify-standards: ${script} exists but is not executable." >&2
-    installer_drift=1
-  fi
-done
-shopt -u nullglob
+if ! python3 - <<'PY' 2>/tmp/verify-standards-installers.err; then
+import pathlib
+import sys
+import tomllib
 
-if [[ "${installer_drift}" -ne 0 ]]; then
+drift: list[str] = []
+for pyproject in sorted(pathlib.Path("packages").glob("*/pyproject.toml")):
+    pkg_dir = pyproject.parent
+    install_sh = pkg_dir / "install.sh"
+    with open(pyproject, "rb") as f:
+        data = tomllib.load(f)
+    has_scripts = bool(data.get("project", {}).get("scripts"))
+    if has_scripts:
+        if not install_sh.is_file():
+            drift.append(
+                f"{install_sh} is missing — {pkg_dir.name}'s pyproject.toml "
+                f"declares [project.scripts] so it must ship an installer."
+            )
+            continue
+        # Permission bits live on the filesystem, not in git, so check
+        # both the executable bit (developer workflow) and the index
+        # mode (what gets shipped) — either being non-executable means
+        # the script will fail when ``curl | bash``-installed.
+        if not install_sh.stat().st_mode & 0o111:
+            drift.append(f"{install_sh} exists but is not executable on disk.")
+    else:
+        if install_sh.exists():
+            drift.append(
+                f"{install_sh} exists but {pkg_dir.name}'s pyproject.toml "
+                f"declares no [project.scripts] — drop the installer or add a CLI."
+            )
+
+for line in drift:
+    print(f"verify-standards: {line}", file=sys.stderr)
+sys.exit(1 if drift else 0)
+PY
+  cat /tmp/verify-standards-installers.err >&2 2>/dev/null || true
   echo "  Add / fix the per-service install.sh following the bash" >&2
   echo "  script conventions in .claude/instructions/bash.md." >&2
   exit 1
 fi
 
-echo "verify-standards: every packages/<service>/install.sh exists and is executable."
+echo "verify-standards: every packages/<service>/ with [project.scripts] ships an executable install.sh; library-only packages have none."
+
+# Every workspace package must ship its own README.md describing
+# purpose, public surface, and pointers to relevant ADRs (#269). The
+# root README only links the package list — the package's README is
+# the canonical entry point for someone who lands on a single service
+# directory via a deep link.
+readme_drift=0
+shopt -s nullglob
+for pkg_dir in packages/*/; do
+  [[ -d "${pkg_dir}" ]] || continue
+  readme="${pkg_dir}README.md"
+  if [[ ! -f "${readme}" ]]; then
+    echo "verify-standards: ${readme} is missing." >&2
+    readme_drift=1
+  fi
+done
+shopt -u nullglob
+
+if [[ "${readme_drift}" -ne 0 ]]; then
+  echo "  Every packages/<service>/ must carry a README.md covering purpose," >&2
+  echo "  public surface, configuration, and links to relevant ADRs." >&2
+  exit 1
+fi
+
+echo "verify-standards: every packages/<service>/ ships a README.md."
 
 # lefthook hooks must be installed locally so the pre-commit commands
 # configured in lefthook.yml actually fire. Skipped when CI=true — CI
@@ -1777,11 +1824,15 @@ fi
 
 echo "verify-standards: ${error_taxonomy_file} exists and references all documented error codes."
 
-# OpenAPI specs: openapi/agent-auth.v1.yaml and openapi/things-bridge.v1.yaml
-# must exist, and tests/test_openapi_spec.py must reference both so route and
+# OpenAPI specs live alongside the service that owns each surface
+# (packages/agent-auth/openapi/agent-auth.v1.yaml and
+# packages/things-bridge/openapi/things-bridge.v1.yaml), and
+# tests/test_openapi_spec.py must reference both so route and
 # error-taxonomy parity are enforced on every PR (#117).
 openapi_missing=0
-for spec in openapi/agent-auth.v1.yaml openapi/things-bridge.v1.yaml; do
+for spec in \
+  packages/agent-auth/openapi/agent-auth.v1.yaml \
+  packages/things-bridge/openapi/things-bridge.v1.yaml; do
   if [[ ! -f "${spec}" ]]; then
     echo "verify-standards: ${spec} is missing." >&2
     openapi_missing=1
@@ -1806,7 +1857,7 @@ if [[ ${openapi_missing} -ne 0 ]]; then
   exit 1
 fi
 
-echo "verify-standards: openapi/*.v1.yaml exist and ${openapi_contract_test} references both."
+echo "verify-standards: packages/*/openapi/*.v1.yaml exist and ${openapi_contract_test} references both."
 
 # Health endpoints per .claude/instructions/service-design.md
 # ("Health endpoint") and the deterministic regression check from
@@ -2465,14 +2516,15 @@ echo "verify-standards: notification plugin is URL-based (out-of-process); no im
 # schedule. The deterministic regression check asserts both sides
 # cannot silently drift apart:
 #
-#   1. benchmarks/ exists and contains at least one test_*.py file,
-#      so deleting the benchmarks but leaving the workflow behind
-#      fails the gate.
+#   1. packages/agent-auth/benchmarks/ exists and contains at least
+#      one test_*.py file, so deleting the benchmarks but leaving the
+#      workflow behind fails the gate.
 #   2. .github/workflows/benchmark.yml exists, has an `on:` block
 #      containing a `schedule:` trigger, and its steps invoke either
-#      `task benchmark` or a direct pytest run against benchmarks/,
-#      so deleting the workflow (or accidentally narrowing it to
-#      workflow_dispatch-only) fails the gate.
+#      `task benchmark` or a direct pytest run against the
+#      packages/agent-auth/benchmarks/ tree, so deleting the workflow
+#      (or accidentally narrowing it to workflow_dispatch-only)
+#      fails the gate.
 
 benchmark_missing=0
 
@@ -2482,19 +2534,19 @@ fail_benchmark_check() {
   benchmark_missing=1
 }
 
-benchmarks_dir="benchmarks"
+benchmarks_dir="packages/agent-auth/benchmarks"
 if [[ ! -d "${benchmarks_dir}" ]]; then
   fail_benchmark_check \
     "${benchmarks_dir}/ directory is missing." \
     "Add a pytest-benchmark suite per .claude/instructions/testing-standards.md § Performance."
 else
-  # Accept any test_*.py under benchmarks/ so authors are free to
-  # split the suite across files. compgen keeps the shell-glob match
-  # compatible with `set -u`.
+  # Accept any test_*.py under the benchmarks/ tree so authors are
+  # free to split the suite across files. compgen keeps the
+  # shell-glob match compatible with `set -u`.
   if ! compgen -G "${benchmarks_dir}/test_*.py" >/dev/null; then
     fail_benchmark_check \
       "${benchmarks_dir}/ contains no test_*.py benchmark files." \
-      "Add at least one pytest-benchmark test file (see benchmarks/README.md)."
+      "Add at least one pytest-benchmark test file (see ${benchmarks_dir}/README.md)."
   fi
 fi
 
@@ -2520,13 +2572,15 @@ else
   fi
 
   # The workflow must actually invoke the benchmark suite — accept
-  # either the ``task benchmark`` wrapper or a raw ``pytest
-  # benchmarks/`` invocation, so the gate does not mandate the
-  # Taskfile indirection specifically.
+  # either the ``task benchmark`` wrapper or a raw ``pytest`` against
+  # any ``benchmarks/`` path (the tree now lives under
+  # packages/agent-auth/, but the suffix match keeps the gate stable
+  # if the package name changes later), so the gate does not mandate
+  # the Taskfile indirection specifically.
   if ! grep -qE "task[[:space:]]+benchmark\b|pytest[[:space:]].*benchmarks/" <<<"${workflow_stripped}"; then
     fail_benchmark_check \
       "${benchmark_workflow} does not invoke the benchmark suite." \
-      "Call 'task benchmark' or run pytest against 'benchmarks/' in the workflow steps."
+      "Call 'task benchmark' or run pytest against a 'benchmarks/' tree in the workflow steps."
   fi
 fi
 

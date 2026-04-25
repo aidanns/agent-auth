@@ -23,6 +23,24 @@ agent-auth provides a local authorization layer between AI agents (e.g. Claude C
 - **CLI interface** for token lifecycle management (create, list, modify, revoke, rotate)
 - **HTTP validation server** for runtime token and scope checks
 
+## Packages
+
+Each service in the monorepo ships as its own installable package
+under [`packages/`](packages/). Click through for the package's own
+README — public surface, configuration, and the ADRs that motivate
+its design.
+
+| Package                                                                             | Purpose                                                                                                 |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [`agent-auth`](packages/agent-auth/README.md)                                       | Token authorization service — HMAC-signed access/refresh pairs, three-tier scope model, SQLite store.   |
+| [`things-bridge`](packages/things-bridge/README.md)                                 | HTTP bridge from agent-auth-protected clients to the Things 3 to-do app.                                |
+| [`things-cli`](packages/things-cli/README.md)                                       | Read-only command-line client for `things-bridge`.                                                      |
+| [`things-client-cli-applescript`](packages/things-client-cli-applescript/README.md) | macOS-only AppleScript-backed implementation of the Things-client contract; invoked by `things-bridge`. |
+| [`gpg-bridge`](packages/gpg-bridge/README.md)                                       | Host-side HTTP bridge that brokers GPG sign/verify on behalf of devcontainer-resident callers.          |
+| [`gpg-cli`](packages/gpg-cli/README.md)                                             | Devcontainer `gpg.program` replacement that forwards git's sign/verify argv to `gpg-bridge`.            |
+| [`gpg-backend-cli-host`](packages/gpg-backend-cli-host/README.md)                   | Host-side GPG backend invoked as a subprocess by `gpg-bridge`.                                          |
+| [`agent-auth-common`](packages/agent-auth-common/README.md)                         | Library-only workspace package: shared types, HTTP clients, Prometheus metrics helper.                  |
+
 ## Installation
 
 Each service in this repository ships as its own installable Python
@@ -156,11 +174,13 @@ curl -H "Authorization: Bearer aa_<id>_<sig>" \
   http://127.0.0.1:9100/agent-auth/v1/token/status
 ```
 
-The complete wire contract for both servers is published as OpenAPI 3.1:
-[`openapi/agent-auth.v1.yaml`](./openapi/agent-auth.v1.yaml) and
-[`openapi/things-bridge.v1.yaml`](./openapi/things-bridge.v1.yaml). See
-[`openapi/README.md`](./openapi/README.md) for the versioning guarantees and
-rendering tips.
+The complete wire contract for both servers is published as OpenAPI 3.1 alongside
+the service that owns each surface:
+[`packages/agent-auth/openapi/agent-auth.v1.yaml`](./packages/agent-auth/openapi/agent-auth.v1.yaml)
+and
+[`packages/things-bridge/openapi/things-bridge.v1.yaml`](./packages/things-bridge/openapi/things-bridge.v1.yaml).
+Versioning guarantees are documented under "API Versioning Policy" in
+[`design/DESIGN.md`](./design/DESIGN.md).
 
 ### things-bridge (macOS host)
 
@@ -192,7 +212,7 @@ things_client_command:
   - -m
   - tests.things_client_fake
   - --fixtures
-  - examples/fake-things.yaml
+  - tests/things_client_fake/fake-things.yaml
 ```
 
 The fake CLI is not shipped in the sdist/wheel — it lives under `tests/` and is only reachable when running from a development checkout. It exists for integration and end-to-end testing only; never point production traffic at it.
@@ -274,8 +294,8 @@ config, and images built inside DinD are not visible to the host
 
 The integration-test fixture chmods the bind-mounted config directory
 to `0755` and `config.yaml` to `0644` so the container user (UID 1001,
-see `docker/Dockerfile.test`) can read it regardless of the host
-tmpdir's default mode or the host runner's UID.
+see `docker/Dockerfile.agent-auth.test`) can read it regardless of the
+host tmpdir's default mode or the host runner's UID.
 
 CI runners, where there is no host developer state to protect, can use
 whatever Docker the runner provides.

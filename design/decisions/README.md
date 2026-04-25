@@ -78,7 +78,7 @@ is linked from this index.
 - [ADR 0028 — HMAC-chained audit log for tamper-evident integrity](0028-audit-log-hmac-chain.md)
   — closes AU-9. Every audit entry carries a `chain_hmac = HMAC-SHA256(audit_chain_key, prev_hmac || canonical(entry))`; `agent-auth verify-audit` detects modify / delete / insert. `SCHEMA_VERSION` bumps 1→2; v1 logs are rolled over to `<path>.pre-chain-v2-*` on upgrade.
 - [ADR 0029 — Benchmark suite with pytest-benchmark](0029-benchmark-suite.md)
-  — weekly `benchmark.yml` workflow runs a `benchmarks/` pytest tree against a committed `ci-linux-x86_64.json` baseline with a 25 % mean-runtime regression gate; `scripts/verify-standards.sh` enforces the suite + workflow stay present.
+  — weekly `benchmark.yml` workflow runs a `packages/agent-auth/benchmarks/` pytest tree against a committed `ci-linux-x86_64.json` baseline with a 25 % mean-runtime regression gate; `scripts/verify-standards.sh` enforces the suite + workflow stay present.
 - [ADR 0030 — Extract per-service HTTP client libraries](0030-per-service-http-client-libraries.md)
   — `agent_auth_client` and `things_bridge_client` own the full HTTP surface of each service as first-class in-tree packages; production code and integration tests consume them directly, replacing the partial per-caller clients.
 - [ADR 0031 — Renovate custom managers + Dependency Submission API for CI tool bumps](0031-renovate-custom-managers-and-dependency-submission.md)
@@ -89,3 +89,7 @@ is linked from this index.
   — devcontainer `gpg-cli` forwards git's sign / verify requests over HTTPS to a host `gpg-bridge`, which validates with agent-auth (`gpg:sign` scope, `allowed_signing_keys` allowlist) and shells out to a host backend CLI that drives the real `gpg`. Private keys never leave the host; unblocks re-enabling `required_signatures` (#217).
 - [ADR 0034 — In-tree `DockerComposeCluster` harness for integration tests](0034-integration-harness-rework.md)
   — replaces `testcontainers-python` with a subprocess-native fluent builder under `tests/integration/harness/`; supersedes the testcontainers-specific parts of ADR 0004 / 0005 while keeping the per-test Compose-project shape. Closes #80.
+- [ADR 0035 — Keep a single workspace-wide release train for now](0035-workspace-release-model.md)
+  — every workspace package keeps riding the repo-wide `v<X>.<Y>.<Z>` tag produced by semantic-release; revisit when an external consumer pins a package, when any package reaches independent 1.0 readiness, or when release cadences materially diverge. Per-package `setuptools_scm` blocks already in place so the flip is a config change, not a refactor.
+- [ADR 0036 — Workspace dep graph is an explicit allowlist verified in CI](0036-workspace-dep-graph-allowlist.md)
+  — `scripts/verify_workspace_deps.py` asserts the edge set in `packages/*/pyproject.toml` matches the seven "service → `agent-auth-common`" edges baked into `ALLOWED_EDGES`; reverse deps, service-to-service leaks, and missing allowlisted edges all fail `task check`. Any new cross-package edge requires an ADR update.

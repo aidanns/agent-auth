@@ -4,9 +4,9 @@
 
 """Contract tests for the published OpenAPI specs.
 
-Keeps `openapi/agent-auth.v1.yaml` and `openapi/agent-auth.v1.yaml`'s
-sibling, `openapi/things-bridge.v1.yaml`, in lockstep with the server
-implementations:
+Keeps `packages/agent-auth/openapi/agent-auth.v1.yaml` and
+`packages/things-bridge/openapi/things-bridge.v1.yaml` in lockstep with
+the server implementations:
 
 - Every route registered by ``AgentAuthHandler.do_GET`` /
   ``do_POST`` / ``do_HEAD`` / ``do_PUT`` / etc. must have a matching
@@ -30,9 +30,10 @@ from agent_auth import server as agent_auth_server
 from things_bridge import server as things_bridge_server
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_OPENAPI_DIR = _REPO_ROOT / "openapi"
-_AGENT_AUTH_SPEC = _OPENAPI_DIR / "agent-auth.v1.yaml"
-_THINGS_BRIDGE_SPEC = _OPENAPI_DIR / "things-bridge.v1.yaml"
+_AGENT_AUTH_SPEC = _REPO_ROOT / "packages" / "agent-auth" / "openapi" / "agent-auth.v1.yaml"
+_THINGS_BRIDGE_SPEC = (
+    _REPO_ROOT / "packages" / "things-bridge" / "openapi" / "things-bridge.v1.yaml"
+)
 
 # Pattern used to extract string literals from source — matches paths on
 # ``self.path == "..."``, ``path == "..."``, ``path.startswith("...")``,
@@ -104,12 +105,14 @@ def test_agent_auth_routes_match_spec():
     missing_from_spec = server_paths - spec_paths
     stale_in_spec = spec_paths - server_paths
 
-    assert (
-        not missing_from_spec
-    ), f"agent-auth routes missing from openapi/agent-auth.v1.yaml: {missing_from_spec}"
-    assert (
-        not stale_in_spec
-    ), f"openapi/agent-auth.v1.yaml has stale entries not served by agent-auth: {stale_in_spec}"
+    assert not missing_from_spec, (
+        "agent-auth routes missing from packages/agent-auth/openapi/agent-auth.v1.yaml: "
+        f"{missing_from_spec}"
+    )
+    assert not stale_in_spec, (
+        "packages/agent-auth/openapi/agent-auth.v1.yaml has stale entries not served by "
+        f"agent-auth: {stale_in_spec}"
+    )
 
 
 def test_things_bridge_routes_match_spec():
@@ -123,12 +126,13 @@ def test_things_bridge_routes_match_spec():
     missing_from_spec = server_paths - spec_paths
     stale_in_spec = spec_paths - server_paths
 
-    assert (
-        not missing_from_spec
-    ), f"things-bridge routes missing from openapi/things-bridge.v1.yaml: {missing_from_spec}"
+    assert not missing_from_spec, (
+        "things-bridge routes missing from packages/things-bridge/openapi/things-bridge.v1.yaml: "
+        f"{missing_from_spec}"
+    )
     assert not stale_in_spec, (
-        f"openapi/things-bridge.v1.yaml has stale entries not served by things-bridge: "
-        f"{stale_in_spec}"
+        "packages/things-bridge/openapi/things-bridge.v1.yaml has stale entries not served by "
+        f"things-bridge: {stale_in_spec}"
     )
 
 
