@@ -15,6 +15,7 @@ import argparse
 import os
 import sys
 
+from cli_meta import add_version_flag
 from things_client_applescript.things import (
     AppleScriptRunner,
     ThingsApplescriptClient,
@@ -45,6 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
             "directly on macOS."
         ),
     )
+    add_version_flag(parser, "things-client-cli-applescript")
     parser.add_argument(
         "--osascript-path",
         default=os.environ.get("THINGS_CLIENT_OSASCRIPT_PATH", _DEFAULT_OSASCRIPT_PATH),

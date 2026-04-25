@@ -27,6 +27,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
+from importlib.metadata import version as _dist_version
 from typing import Any
 
 from gpg_cli.client import BridgeClient
@@ -78,6 +79,10 @@ class _ParsedArgs:
     sign: bool = False
     verify: bool = False
     version: bool = False
+    # ``--gpg-cli-version`` is the package-version flag; ``--version``
+    # stays reserved for the gpg-shaped output git's probe expects (see
+    # ``_handle_version`` below).
+    gpg_cli_version: bool = False
     positional: list[str] = field(default_factory=_empty_str_list)
 
 
@@ -95,6 +100,13 @@ def _parse_argv(argv: list[str]) -> _ParsedArgs:
             parsed.version = token == "--version"
             if token == "--help":
                 parsed.action = "help"
+            i += 1
+            continue
+        if token == "--gpg-cli-version":
+            # Distinct from ``--version`` so git's probe still sees a
+            # gpg-shaped banner; this flag prints the gpg-cli package
+            # version and exits 0.
+            parsed.gpg_cli_version = True
             i += 1
             continue
         if token == "--status-fd":
@@ -165,7 +177,11 @@ def _parse_argv(argv: list[str]) -> _ParsedArgs:
         parsed.positional.append(token)
         i += 1
 
-    if parsed.version:
+    if parsed.gpg_cli_version:
+        # ``--gpg-cli-version`` wins over ``--version`` if both appear,
+        # since the package-version flag is the more specific intent.
+        parsed.action = "gpg_cli_version"
+    elif parsed.version:
         parsed.action = "version"
     elif parsed.verify:
         parsed.action = "verify"
@@ -213,6 +229,23 @@ def _handle_version(
 ) -> int:
     target = stdout if stdout is not None else sys.stdout
     target.write(_VERSION_TEXT)
+    return EXIT_OK
+
+
+def _handle_gpg_cli_version(
+    stdout: Any | None = None,
+) -> int:
+    """Print ``gpg-cli <version>`` and exit 0.
+
+    Distinct from :func:`_handle_version` so git's ``gpg --version``
+    probe keeps seeing the gpg-shaped banner emitted by ``--version``.
+    The version is resolved from installed distribution metadata via
+    :func:`importlib.metadata.version`, matching the
+    ``cli_meta.add_version_flag`` helper used by every other CLI in the
+    workspace.
+    """
+    target = stdout if stdout is not None else sys.stdout
+    target.write(f"gpg-cli {_dist_version('gpg-cli')}\n")
     return EXIT_OK
 
 
@@ -306,6 +339,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if parsed.action == "version":
         return _handle_version()
+    if parsed.action == "gpg_cli_version":
+        return _handle_gpg_cli_version()
     if parsed.action == "help":
         print("gpg-cli: agent-auth gpg forwarder; see ADR 0030.", file=sys.stderr)
         return EXIT_OK
