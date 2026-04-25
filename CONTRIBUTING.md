@@ -71,24 +71,24 @@ that setup.
 Every repeatable operation is exposed through the task runner. Run
 `task --list` for the current catalogue. Current tasks:
 
-| Task                                       | Description                                                                                                                                               |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task test`                                | Run the pytest suite with coverage (unit by default; pass `-- --fast`, `-- --integration`, or `-- --all`). Fails below the `--cov-fail-under` floor.      |
-| `task benchmark`                           | Run the pytest-benchmark suite under `packages/agent-auth/benchmarks/` (scheduled weekly in CI; see `packages/agent-auth/benchmarks/README.md`).          |
-| `task lint`                                | Run all configured linters (shellcheck, ruff check, keep-sorted).                                                                                         |
-| `task format`                              | Run all configured formatters (shfmt, ruff format, mdformat, taplo). Pass `-- --check` for diff-only mode (CI uses this).                                 |
-| `task typecheck`                           | Run mypy + pyright (strict) on every `packages/<svc>/src/` tree and `tests/`.                                                                             |
-| `task build`                               | Build sdist and wheel distributions into `dist/`.                                                                                                         |
-| `task install-hooks`                       | Install project git hooks (lefthook).                                                                                                                     |
-| `task verify-design`                       | Verify every leaf function in the functional decomposition is allocated in the product breakdown.                                                         |
-| `task verify-function-tests`               | Verify every leaf function in the functional decomposition has test coverage.                                                                             |
-| `task verify-dependencies`                 | Verify required CLI tools (python3, task, yq, ...) are installed on PATH.                                                                                 |
-| `task verify-standards`                    | Verify generic, portable standards (Taskfile task coverage, Dependabot ecosystem coverage, bash CI gating). Does not enforce project-specific task names. |
-| `task release`                             | Cut a release (version bump, tag, GitHub release, publish).                                                                                               |
-| `task agent-auth -- <args>`                | Run the `agent-auth` CLI (any subcommand).                                                                                                                |
-| `task things-bridge -- <args>`             | Run the `things-bridge` CLI.                                                                                                                              |
-| `task things-cli -- <args>`                | Run the `things-cli` client.                                                                                                                              |
-| `task things-client-applescript -- <args>` | Run the `things-client-cli-applescript` CLI (macOS-only).                                                                                                 |
+| Task                                       | Description                                                                                                                                                                         |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task test`                                | Run the pytest suite with coverage (unit by default; pass `-- --fast`, `-- --integration`, or `-- --all`). Fails if any package's per-package `--cov-fail-under` floor is breached. |
+| `task benchmark`                           | Run the pytest-benchmark suite under `packages/agent-auth/benchmarks/` (scheduled weekly in CI; see `packages/agent-auth/benchmarks/README.md`).                                    |
+| `task lint`                                | Run all configured linters (shellcheck, ruff check, keep-sorted).                                                                                                                   |
+| `task format`                              | Run all configured formatters (shfmt, ruff format, mdformat, taplo). Pass `-- --check` for diff-only mode (CI uses this).                                                           |
+| `task typecheck`                           | Run mypy + pyright (strict) on every `packages/<svc>/src/` tree and `tests/`.                                                                                                       |
+| `task build`                               | Build sdist and wheel distributions into `dist/`.                                                                                                                                   |
+| `task install-hooks`                       | Install project git hooks (lefthook).                                                                                                                                               |
+| `task verify-design`                       | Verify every leaf function in the functional decomposition is allocated in the product breakdown.                                                                                   |
+| `task verify-function-tests`               | Verify every leaf function in the functional decomposition has test coverage.                                                                                                       |
+| `task verify-dependencies`                 | Verify required CLI tools (python3, task, yq, ...) are installed on PATH.                                                                                                           |
+| `task verify-standards`                    | Verify generic, portable standards (Taskfile task coverage, Dependabot ecosystem coverage, bash CI gating). Does not enforce project-specific task names.                           |
+| `task release`                             | Cut a release (version bump, tag, GitHub release, publish).                                                                                                                         |
+| `task agent-auth -- <args>`                | Run the `agent-auth` CLI (any subcommand).                                                                                                                                          |
+| `task things-bridge -- <args>`             | Run the `things-bridge` CLI.                                                                                                                                                        |
+| `task things-cli -- <args>`                | Run the `things-cli` client.                                                                                                                                                        |
+| `task things-client-applescript -- <args>` | Run the `things-client-cli-applescript` CLI (macOS-only).                                                                                                                           |
 
 Each task dispatches to a script under `scripts/*.sh`; the scripts are
 the single source of truth and can also be invoked directly if
@@ -107,22 +107,34 @@ stay authoritative until #270 relocates the monolithic `tests/` and
 ### Coverage
 
 `task test` (unit mode, the default) collects line and branch coverage
-via `pytest-cov` and fails when total coverage drops below the floor
-configured in `pyproject.toml` under
-`[tool.pytest.ini_options].addopts` as `--cov-fail-under=<N>`. The
-floor ratchets upward per
+via `pytest-cov` into a unified `.coverage` database. After the pytest
+run, `scripts/check-package-coverage.sh` walks every
+`packages/<svc>/pyproject.toml`, extracts the per-package
+`--cov-fail-under=<N>` from `[tool.pytest.ini_options].addopts`, and
+fails if any package's slice of the report falls below its floor.
+The per-package floor model (#273) keeps a well-tested package from
+masking a regression in another and is the authoritative gate per
 `.claude/instructions/testing-standards.md` "Coverage".
 
-- **Bumping the floor** (coverage-improving PRs): run
-  `task test -- --unit` locally, read the reported `TOTAL` percentage,
-  update `--cov-fail-under=<N>` in `pyproject.toml` to one below the
-  new TOTAL (so fluctuation across environments doesn't flake CI), and
-  commit alongside the coverage-improving changes.
-- **Lowering the floor** (rare): only when a deliberate change removes
-  redundant coverage (e.g. a fixture refactor). Explain the reason in
-  the commit message body; never lower silently.
+Each package's tests can also be exercised in isolation via
+`task <svc>:test` (driven by `scripts/pkg-test.sh <svc>`). Pytest's
+rootdir discovery picks up `packages/<svc>/pyproject.toml` and
+enforces the same `--cov-fail-under` floor for the package alone, so
+focused dev loops fail on a per-package regression without waiting
+for the workspace gate.
+
+- **Bumping a floor** (coverage-improving PRs): run
+  `task <svc>:test` locally, read the reported `TOTAL` percentage,
+  update `--cov-fail-under=<N>` in `packages/<svc>/pyproject.toml`'s
+  pytest addopts to one below the new TOTAL (so fluctuation across
+  environments doesn't flake CI), and commit alongside the
+  coverage-improving changes.
+- **Lowering a floor** (rare): only when a deliberate change removes
+  redundant coverage (e.g. a fixture refactor or a code path moved
+  out to a different package). Explain the reason in the commit
+  message body; never lower silently.
 - **`--fast` and `--integration` modes** run without coverage collection
-  (`--no-cov`). The floor is measured against `--unit` only —
+  (`--no-cov`). The floors are measured against `--unit` only —
   integration tests exercise Docker-backed service interactions that
   don't map cleanly onto `packages/*/src/` line coverage.
 

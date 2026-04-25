@@ -10,16 +10,14 @@
 # stays package-scoped so each service can be iterated on in
 # isolation. Extra arguments are forwarded to pytest.
 #
-# Coverage is disabled here: the workspace-level --cov-fail-under
-# floor only makes sense over the full suite (see
-# pyproject.toml [tool.pytest.ini_options]). Per-package floors are
-# tracked separately in #273.
-#
-# Until #270 relocates the monolithic tests/ tree into per-package
-# trees, packages/<svc>/tests/ does not yet exist. Rather than making
-# `task <svc>:test` fail on every package, we report the missing
-# directory and exit 0; once #270 lands each package will grow its
-# own tree and the helper becomes authoritative.
+# Each ``packages/<svc>/pyproject.toml`` carries its own
+# ``[tool.pytest.ini_options]`` with ``--cov=src`` and
+# ``--cov-fail-under=N`` (the per-package floor set in #273). Pytest's
+# rootdir discovery resolves to ``packages/<svc>/`` when the test
+# path is under that tree, so those settings load automatically.
+# Integration trees under ``packages/<svc>/tests/integration/`` are
+# excluded — they belong to the Docker-backed run driven by
+# scripts/test.sh.
 
 set -euo pipefail
 
@@ -43,9 +41,17 @@ fi
 
 tests_dir="${pkg_dir}/tests"
 if [[ ! -d "${tests_dir}" ]]; then
-  echo "pkg-test: ${tests_dir}/ does not exist; tests have not been relocated yet (tracked in #270)." >&2
-  echo "pkg-test: skipping. Run scripts/test.sh to exercise the monolithic suite." >&2
+  echo "pkg-test: ${tests_dir}/ does not exist." >&2
+  echo "pkg-test: skipping. Run scripts/test.sh to exercise the workspace suite." >&2
   exit 0
 fi
 
-exec uv run --no-sync pytest "${tests_dir}" --no-cov "$@"
+# Ignore the per-package integration/ subdir if present — those tests
+# need Docker and the workspace-level scripts/test.sh --integration
+# fixtures, not the in-process unit-test ratchet driven by this script.
+ignore_args=()
+if [[ -d "${tests_dir}/integration" ]]; then
+  ignore_args+=("--ignore=${tests_dir}/integration")
+fi
+
+exec uv run --no-sync pytest "${tests_dir}" "${ignore_args[@]}" "$@"
