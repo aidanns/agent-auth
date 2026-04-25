@@ -276,7 +276,7 @@ f70.width: 400
 root -> f70
 f70_container: "" {
   grid-columns: 1
-  grid-rows: 6
+  grid-rows: 7
   grid-gap: 5
   style: {
     stroke-width: 0
@@ -286,21 +286,23 @@ f70_container: "" {
   f71.width: 400
   f72: Apply Per-Key Allowlist
   f72.width: 400
-  f73: Run Backend Subprocess
+  f73: Sign Payload
   f73.width: 400
-  f74: Serve GPG Bridge HTTP API
+  f74: Verify Signature
   f74.width: 400
-  f75: Serve GPG Bridge Health Endpoint
+  f75: Serve GPG Bridge HTTP API
   f75.width: 400
-  f76: Load Bridge Configuration
+  f76: Serve GPG Bridge Health Endpoint
   f76.width: 400
+  f77: Load Bridge Configuration
+  f77.width: 400
 }
 f70 -> f70_container
 
-f77: GPG CLI
-f77.width: 400
-root -> f77
-f77_container: "" {
+f78: GPG CLI
+f78.width: 400
+root -> f78
+f78_container: "" {
   grid-columns: 1
   grid-rows: 4
   grid-gap: 5
@@ -308,35 +310,13 @@ f77_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f78: Parse Git GPG Argv
-  f78.width: 400
-  f79: Send Bridge Sign Request
+  f79: Parse Git GPG Argv
   f79.width: 400
-  f80: Send Bridge Verify Request
+  f80: Send Bridge Sign Request
   f80.width: 400
-  f81: Load CLI Configuration
+  f81: Send Bridge Verify Request
   f81.width: 400
+  f82: Load CLI Configuration
+  f82.width: 400
 }
-f77 -> f77_container
-
-f82: GPG Backend CLI Host
-f82.width: 400
-root -> f82
-f82_container: "" {
-  grid-columns: 1
-  grid-rows: 4
-  grid-gap: 5
-  style: {
-    stroke-width: 0
-    fill: transparent
-  }
-  f83: Sign Payload
-  f83.width: 400
-  f84: Verify Signature
-  f84.width: 400
-  f85: Resolve Local-User Key
-  f85.width: 400
-  f86: Emit Backend JSON Envelope
-  f86.width: 400
-}
-f82 -> f82_container
+f78 -> f78_container

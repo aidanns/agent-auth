@@ -5,7 +5,7 @@
 
 """Verify the workspace dep graph matches the allowlist in ADR 0036.
 
-With eight workspace packages under ``packages/*/`` it is trivial to
+With seven workspace packages under ``packages/*/`` it is trivial to
 introduce an unintended edge — e.g. ``agent-auth-common`` starting to
 import from ``agent-auth`` (a reverse dep that would re-couple the
 common library to the service it was extracted from), or a bridge
@@ -53,7 +53,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ALLOWED_EDGES: frozenset[tuple[str, str]] = frozenset(
     {
         ("agent-auth", "agent-auth-common"),
-        ("gpg-backend-cli-host", "agent-auth-common"),
         ("gpg-bridge", "agent-auth-common"),
         ("gpg-cli", "agent-auth-common"),
         ("things-bridge", "agent-auth-common"),

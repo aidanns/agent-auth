@@ -45,7 +45,7 @@ SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
 SPDX-License-Identifier = "MIT"
 
 # CHANGELOG.md is rendered by `scripts/changelog/build_release.py` (see
-# ADR 0040), which prepends new release sections under the `# Changelog`
+# ADR 0041), which prepends new release sections under the `# Changelog`
 # title at the top of the file. An inline HTML SPDX comment would push
 # the title off the first line and break the renderer's anchor, so the
 # header is declared here instead.

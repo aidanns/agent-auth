@@ -243,7 +243,7 @@ Breaking changes carry a `BREAKING CHANGE:` footer in the
 `==COMMIT_MSG==` block (see "Writing PRs" below). They normally bump
 major; while the project is in the 0.x range they are demoted to a
 minor bump via
-[ADR 0040](design/decisions/0040-yaml-driven-release-workflow.md)
+[ADR 0041](design/decisions/0041-yaml-driven-release-workflow.md)
 (carried over from
 [ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
 § Pre-1.0 behaviour). `break:` is the corresponding PR-title prefix.
@@ -529,7 +529,7 @@ loop-prevention guards) lives in
 Releases are driven by `changelog/@unreleased/pr-*.yml` files (one per
 PR — see [Changelog entries](#changelog-entries-changelogunreleasedyml))
 and two GitHub Actions workflows. Rationale and trade-offs in
-[ADR 0040](design/decisions/0040-yaml-driven-release-workflow.md);
+[ADR 0041](design/decisions/0041-yaml-driven-release-workflow.md);
 the supply-chain artefact chain (SBOMs, cosign, SLSA-L3) carries over
 from
 [ADR 0016](design/decisions/0016-release-supply-chain.md) and
@@ -619,7 +619,7 @@ agreement); conflicting values fail the lint.
   `BREAKING CHANGE:` footer in the `==COMMIT_MSG==` block (paired
   with the `break:` PR-title prefix). Pre-1.0, the bump table
   demotes them to a minor bump per
-  [ADR 0040](design/decisions/0040-yaml-driven-release-workflow.md)
+  [ADR 0041](design/decisions/0041-yaml-driven-release-workflow.md)
   (carried over from ADR 0026).
 
 Hand edits to historical `CHANGELOG.md` content are preserved
@@ -741,7 +741,7 @@ pushes from the default `GITHUB_TOKEN` do **not** fire downstream
 
 The repo currently uses the App registered for the previous
 semantic-release flow (kept named `semantic-release-agent-auth`
-pending a follow-up rename — see ADR 0040 § Follow-ups). Repo
+pending a follow-up rename — see ADR 0041 § Follow-ups). Repo
 secrets:
 
 - `SEMANTIC_RELEASE_APP_ID` — the App's numeric ID.
@@ -857,32 +857,64 @@ To wire a fresh devcontainer to the host's `gpg-bridge`:
 
    Copy the `access_token` field. It's shown once.
 
-2. **In the devcontainer**, run the setup task with the token and
-   the bridge URL:
+2. **In the devcontainer**, run the setup task with the token, the
+   bridge URL, and the GPG fingerprint git should sign with:
 
    ```bash
    task setup-devcontainer-signing -- \
      --token <ACCESS_TOKEN> \
-     --bridge-url https://host.docker.internal:8443
+     --bridge-url https://host.docker.internal:8443 \
+     --signing-key <FINGERPRINT>
    ```
 
    Optional flags: `--ca-cert-path <PATH>` if the bridge's TLS
    certificate is signed by a CA the container's trust store doesn't
-   include, and `--timeout-seconds <N>` to override the per-request
-   timeout (default 30s).
+   include; `--timeout-seconds <N>` to override the per-request
+   timeout (default 30s); `--skip-smoke` to bypass the post-install
+   end-to-end smoke test (only useful in constrained environments
+   like CI provisioning where the bridge isn't up at install time —
+   the install is unverified, see the smoke-test description below).
+
+   `--signing-key` is optional if the clone already has a local
+   `user.signingkey` set (`git config --local user.signingkey <FP>`); the script reuses that value. Otherwise the smoke test
+   fails because git has no key to sign the trial payload with.
 
 The setup task writes the `gpg-cli` config to
-`$XDG_CONFIG_HOME/gpg-cli/config.yaml` (mode `0600`) and runs two
-`git config --local` calls in the current clone:
+`$XDG_CONFIG_HOME/gpg-cli/config.yaml` (mode `0600`) and runs the
+relevant `git config --local` calls in the current clone:
 
 - `gpg.program = gpg-cli` — git delegates sign / verify to the
   bridge instead of looking for `gpg` on `PATH`.
 - `commit.gpgsign = true` — every `git commit` signs without needing
   `-S`.
+- `user.signingkey = <FINGERPRINT>` — only when `--signing-key`
+  was passed.
 
 Override per-commit with `git -c commit.gpgsign=false commit` when
 you need an unsigned commit (e.g. an in-flight rebase that doesn't
 touch `main`).
+
+After writing config, the script runs an end-to-end **smoke test**
+that fails fast at install time rather than at first `git commit`.
+Probes (in order):
+
+| #   | Probe                          | Failure surfaces as                                                                                                                                                                                                |
+| --- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | `gpg-cli` is on `PATH`         | `probe failed: gpg.program unresolved` — install gpg-cli inside the devcontainer.                                                                                                                                  |
+| 2   | `git config user.signingkey`   | `probe failed: user.signingkey is unset` — re-run with `--signing-key <FP>`.                                                                                                                                       |
+| 3   | bridge URL is reachable        | `probe failed: bridge unreachable at <URL>` — check the bridge is running on the host and the URL is reachable from the container. On Docker Desktop, prefer `host.docker.internal` over `127.0.0.1`.              |
+| 4   | end-to-end trial sign succeeds | gpg-cli exit 3 → token unauthorized; exit 4 → forbidden (token lacks `gpg:sign=allow` or key not in `allowed_signing_keys`); exit 5 → bridge unavailable (often host gpg-agent / `allow-loopback-pinentry` issue). |
+
+Probe 4's failure modes are documented end-to-end in
+`docs/operations/gpg-bridge-host-setup.md`. The smoke test is
+idempotent — re-running the script after a successful run re-runs
+the smoke test against the existing config without rewriting it
+beyond chmod-ing the file back to 0600.
+
+To bypass the smoke test (e.g. in CI provisioning where the bridge
+isn't running at install time), pass `--skip-smoke`. The script
+prints a warning that the install is unverified and exits 0; the
+operator finds out at first `git commit`.
 
 The setup is idempotent — re-running with the same arguments
 overwrites the config file and reasserts the git-config values.

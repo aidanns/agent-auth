@@ -105,7 +105,7 @@ def test_missing_allowlisted_edge_fails(tmp_path: Path) -> None:
     packages = tmp_path / "packages"
     _write_pyproject(packages, "agent-auth-common", [])
     _write_pyproject(packages, "agent-auth", ["agent-auth-common"])
-    # Deliberately omit the other six service packages that the
+    # Deliberately omit the other five service packages that the
     # allowlist names; the script should report them as missing.
 
     result = _run(packages)
@@ -126,7 +126,6 @@ def test_third_party_deps_are_ignored(tmp_path: Path) -> None:
         "agent-auth",
         ["agent-auth-common", "cryptography>=42.0", "keyring>=25.0", "pyyaml>=6.0"],
     )
-    _write_pyproject(packages, "gpg-backend-cli-host", ["agent-auth-common"])
     _write_pyproject(packages, "gpg-bridge", ["agent-auth-common"])
     _write_pyproject(packages, "gpg-cli", ["agent-auth-common"])
     _write_pyproject(packages, "things-bridge", ["agent-auth-common"])

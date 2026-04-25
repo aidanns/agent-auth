@@ -4,27 +4,29 @@
 
 """Subprocess-backed GPG client used by gpg-bridge.
 
-Mirrors :mod:`things_bridge.things_client` — the only place the bridge
-reasons about the backend CLI subprocess protocol.
+The only place the bridge reasons about how to drive the host
+``gpg`` binary. Per ADR 0033 (collapse-the-backend-hop amendment,
+2026-04-25), the bridge invokes ``gpg`` directly rather than
+delegating to a separate backend CLI; argv construction and exit-code
+classification live here so the HTTP handler can stay protocol-free.
+The class name is preserved across the collapse — the subprocess
+under management is still a per-request subprocess, just one process
+shorter than the original ADR shape.
 """
 
 from __future__ import annotations
 
 import contextlib
-import json
+import os
+import re
 import subprocess
-import sys
-import threading
-from collections.abc import Callable
-from typing import IO, Any, cast
+import tempfile
 
-from gpg_backend_common.protocol import write_verify_input
 from gpg_models.errors import (
     GpgBadSignatureError,
     GpgError,
     GpgNoSuchKeyError,
     GpgPermissionError,
-    GpgUnsupportedOperationError,
 )
 from gpg_models.models import (
     SignRequest,
@@ -33,198 +35,171 @@ from gpg_models.models import (
     VerifyResult,
 )
 
-STDERR_TAIL_MAX_CHARS = 64 * 1024
+_DEFAULT_TIMEOUT_SECONDS = 35.0
+
+# gpg's stderr does not return structured codes; pattern-match the
+# strings the host gpg emits for the failure modes the bridge
+# distinguishes. The lists are tight enough that a benign string in a
+# user's commit message can't trigger them — these are gpg's own
+# diagnostics, not user payload.
+_NO_SECRET_KEY_PATTERNS = (
+    "No secret key",
+    "secret key not available",
+    "skipped: No secret key",
+    "No such user ID",
+    "skipped: No public key",
+)
+_PERMISSION_PATTERNS = (
+    "No pinentry",
+    "Inappropriate ioctl for device",
+    "gpg-agent is not available",
+    "Permission denied",
+)
+_BAD_SIGNATURE_PATTERNS = (
+    "BAD signature",
+    "bad signature",
+    "BADSIG",
+)
+
+# gpg status-fd field layout varies per event (SIG_CREATED has timestamp
+# fields before the fingerprint; VALIDSIG has the fingerprint first).
+# Match the last 40-char hex run on each status line to avoid
+# hard-coding the per-event layout.
+_FINGERPRINT_TOKEN = re.compile(r"\b(?P<fp>[0-9A-Fa-f]{40})\b")
 
 
 class GpgSubprocessClient:
-    """Invoke a configured GPG backend CLI as a subprocess per request."""
+    """Per-request driver of the host ``gpg`` binary.
 
-    def __init__(self, command: list[str], timeout_seconds: float = 35.0):
+    The class name is unchanged from the pre-collapse shape so the
+    Prometheus metric labels and the ``GpgBridgeServer`` constructor
+    surface stay stable; the underlying subprocess is now ``gpg``
+    itself rather than a backend CLI.
+    """
+
+    def __init__(self, command: list[str], timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS):
         if not command:
             raise ValueError("GpgSubprocessClient: command must not be empty")
         self._command = list(command)
         self._timeout_seconds = timeout_seconds
 
     def sign(self, request: SignRequest) -> SignResult:
-        argv = ["sign", "--local-user", request.local_user, "--keyid-format", request.keyid_format]
+        argv = [
+            *self._command,
+            "--batch",
+            "--no-tty",
+            "--pinentry-mode",
+            "loopback",
+            "--status-fd",
+            "2",
+            "--keyid-format",
+            request.keyid_format,
+            "--local-user",
+            request.local_user,
+            "--detach-sign",
+        ]
         if request.armor:
             argv.append("--armor")
-        payload = self._invoke(argv, request.payload)
-        return SignResult.from_json(payload)
+        stdout_bytes, stderr_text, returncode = self._invoke(argv, request.payload)
+        status_text = _extract_status_lines(stderr_text)
+        if returncode != 0:
+            _raise_for_stderr(stderr_text, operation="sign")
+            raise GpgError(f"gpg sign exited {returncode} without a recognised error")
+        fingerprint = _extract_fingerprint(status_text)
+        return SignResult(
+            signature=stdout_bytes,
+            status_text=status_text,
+            exit_code=returncode,
+            resolved_key_fingerprint=fingerprint,
+        )
 
     def verify(self, request: VerifyRequest) -> VerifyResult:
-        argv = ["verify", "--keyid-format", request.keyid_format]
+        # ``gpg --verify`` reads the signature from a file path and the
+        # signed payload from a second file path (or ``-`` for stdin);
+        # there is no purely-stdin form for a detached verify. A
+        # tempdir-per-request is the smallest shape that matches gpg's
+        # own contract without leaking partial files into the user's
+        # working directory.
+        with tempfile.TemporaryDirectory() as workdir:
+            sig_path = os.path.join(workdir, "sig")
+            data_path = os.path.join(workdir, "data")
+            with open(sig_path, "wb") as f:
+                f.write(request.signature)
+            with open(data_path, "wb") as f:
+                f.write(request.payload)
+            argv = [
+                *self._command,
+                "--batch",
+                "--no-tty",
+                "--status-fd",
+                "2",
+                "--keyid-format",
+                request.keyid_format,
+                "--verify",
+                sig_path,
+                data_path,
+            ]
+            _, stderr_text, returncode = self._invoke(argv, b"")
 
-        def write_stdin(stream: IO[bytes]) -> None:
-            write_verify_input(stream, request.signature, request.payload)
+        status_text = _extract_status_lines(stderr_text)
+        if returncode != 0:
+            if _contains_any(stderr_text, _BAD_SIGNATURE_PATTERNS) or (
+                "[GNUPG:] BADSIG" in status_text or "[GNUPG:] ERRSIG" in status_text
+            ):
+                raise GpgBadSignatureError("gpg reported an invalid signature")
+            _raise_for_stderr(stderr_text, operation="verify")
+            raise GpgError(f"gpg verify exited {returncode} without a recognised error")
+        return VerifyResult(status_text=status_text, exit_code=returncode)
 
-        payload = self._invoke(argv, write_stdin)
-        return VerifyResult.from_json(payload)
-
-    def _invoke(
-        self,
-        argv: list[str],
-        stdin_writer: bytes | Callable[[IO[bytes]], None],
-    ) -> dict[str, Any]:
-        full_command = [*self._command, *argv]
+    def _invoke(self, argv: list[str], stdin_bytes: bytes) -> tuple[bytes, str, int]:
         try:
-            process = subprocess.Popen(
-                full_command,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                bufsize=0,
+            completed = subprocess.run(
+                argv,
+                input=stdin_bytes,
+                capture_output=True,
+                timeout=self._timeout_seconds,
+                check=False,
             )
         except FileNotFoundError as exc:
-            raise GpgError(f"gpg backend not found at {self._command[0]!r}") from exc
-
-        stdout_parts: list[bytes] = []
-        stderr_tail = _BoundedTail(STDERR_TAIL_MAX_CHARS)
-
-        stdout_thread = threading.Thread(
-            target=_drain_stdout,
-            args=(process.stdout, stdout_parts),
-            daemon=True,
-        )
-        stderr_thread = threading.Thread(
-            target=_drain_stderr_forward_and_tail,
-            args=(process.stderr, stderr_tail),
-            daemon=True,
-        )
-        stdout_thread.start()
-        stderr_thread.start()
-
-        stdin_stream = process.stdin
-        if stdin_stream is None:
-            raise GpgError("gpg backend subprocess stdin is unavailable")
-        try:
-            if callable(stdin_writer):
-                stdin_writer(stdin_stream)
-            else:
-                stdin_stream.write(stdin_writer)
-        except BrokenPipeError:
-            pass
-        finally:
-            with contextlib.suppress(Exception):
-                stdin_stream.close()
-
-        try:
-            process.wait(timeout=self._timeout_seconds)
+            raise GpgError(f"gpg binary not found at {self._command[0]!r}") from exc
         except subprocess.TimeoutExpired as exc:
-            process.kill()
-            with contextlib.suppress(subprocess.TimeoutExpired):
-                process.wait(timeout=1.0)
-            stdout_thread.join(timeout=1.0)
-            stderr_thread.join(timeout=1.0)
-            partial = stderr_tail.text().strip()
-            print(
-                f"gpg-bridge: backend subprocess timed out after "
-                f"{self._timeout_seconds}s: {partial or '<empty stderr>'}",
-                file=sys.stderr,
-                flush=True,
-            )
-            raise GpgError(
-                f"gpg backend subprocess timed out after {self._timeout_seconds}s"
-            ) from exc
-
-        stdout_thread.join(timeout=1.0)
-        stderr_thread.join(timeout=1.0)
-
-        stdout_bytes = b"".join(stdout_parts)
-        payload = _parse_payload(stdout_bytes, full_command, process.returncode)
-
-        if "error" in payload:
-            raise _error_from_payload(payload)
-
-        if process.returncode != 0:
-            raise GpgError(
-                f"gpg backend exited {process.returncode} without a structured error body"
-            )
-
-        return payload
+            with contextlib.suppress(Exception):
+                if exc.stderr is not None:
+                    stderr_text = bytes(exc.stderr).decode("utf-8", errors="replace")
+                    if stderr_text:
+                        _raise_for_stderr(stderr_text, operation=argv[-1])
+            raise GpgError(f"gpg subprocess timed out after {self._timeout_seconds}s") from exc
+        stderr_text = completed.stderr.decode("utf-8", errors="replace")
+        return completed.stdout, stderr_text, completed.returncode
 
 
-class _BoundedTail:
-    def __init__(self, max_chars: int):
-        if max_chars <= 0:
-            raise ValueError("_BoundedTail: max_chars must be positive")
-        self._max = max_chars
-        self._parts: list[str] = []
-        self._size = 0
-        self._lock = threading.Lock()
-
-    def append(self, chunk: str) -> None:
-        if not chunk:
-            return
-        with self._lock:
-            if len(chunk) >= self._max:
-                self._parts = [chunk[-self._max :]]
-                self._size = len(self._parts[0])
-                return
-            self._parts.append(chunk)
-            self._size += len(chunk)
-            while self._size > self._max and self._parts:
-                dropped = self._parts.pop(0)
-                self._size -= len(dropped)
-
-    def text(self) -> str:
-        with self._lock:
-            return "".join(self._parts)
+def _contains_any(haystack: str, needles: tuple[str, ...]) -> bool:
+    return any(needle in haystack for needle in needles)
 
 
-def _drain_stdout(stream: IO[bytes] | None, sink: list[bytes]) -> None:
-    if stream is None:
-        return
-    try:
-        for chunk in iter(lambda: stream.read(4096), b""):
-            sink.append(chunk)
-    finally:
-        stream.close()
+def _raise_for_stderr(stderr_text: str, *, operation: str) -> None:
+    if _contains_any(stderr_text, _NO_SECRET_KEY_PATTERNS):
+        raise GpgNoSuchKeyError(f"gpg {operation}: requested key not in host keyring")
+    if _contains_any(stderr_text, _PERMISSION_PATTERNS):
+        raise GpgPermissionError(f"gpg {operation}: host keyring unreachable")
 
 
-def _drain_stderr_forward_and_tail(stream: IO[bytes] | None, tail: _BoundedTail) -> None:
-    if stream is None:
-        return
-    try:
-        for chunk in iter(lambda: stream.read(4096), b""):
-            text = chunk.decode("utf-8", errors="replace")
-            sys.stderr.write(text)
-            sys.stderr.flush()
-            tail.append(text)
-    finally:
-        stream.close()
+def _extract_status_lines(stderr_text: str) -> str:
+    lines = [line for line in stderr_text.splitlines() if line.startswith("[GNUPG:]")]
+    if not lines:
+        return ""
+    return "\n".join(lines) + "\n"
 
 
-def _parse_payload(stdout: bytes, command: list[str], returncode: int) -> dict[str, Any]:
-    if not stdout or stdout.isspace():
-        raise GpgError(f"gpg backend {command[0]!r} emitted no JSON output (rc={returncode})")
-    try:
-        payload = json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        raise GpgError(
-            f"gpg backend {command[0]!r} emitted non-JSON output (rc={returncode})"
-        ) from exc
-    if not isinstance(payload, dict):
-        raise GpgError(
-            f"gpg backend {command[0]!r} emitted non-object JSON "
-            f"(rc={returncode}, got {type(payload).__name__})"
-        )
-    return cast(dict[str, Any], payload)
-
-
-def _error_from_payload(payload: dict[str, Any]) -> GpgError:
-    code = payload.get("error")
-    detail = payload.get("detail") or ""
-    if code == "no_such_key":
-        return GpgNoSuchKeyError(detail or "key not found")
-    if code == "bad_signature":
-        return GpgBadSignatureError(detail or "invalid signature")
-    if code == "gpg_permission_denied":
-        return GpgPermissionError(detail or "permission denied")
-    if code == "unsupported_operation":
-        return GpgUnsupportedOperationError(detail or "unsupported operation")
-    message = f"{code}: {detail}" if code and detail else detail or code or "gpg unavailable"
-    return GpgError(message)
+def _extract_fingerprint(status_text: str) -> str:
+    wanted_prefixes = ("[GNUPG:] SIG_CREATED", "[GNUPG:] VALIDSIG", "[GNUPG:] GOODSIG")
+    for line in status_text.splitlines():
+        if not line.startswith(wanted_prefixes):
+            continue
+        match = _FINGERPRINT_TOKEN.search(line)
+        if match:
+            return match.group("fp").upper()
+    return ""
 
 
 __all__ = ["GpgSubprocessClient"]

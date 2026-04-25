@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: |
+    `setup-devcontainer-signing.sh` now runs an end-to-end smoke
+    test before exiting 0. Verifies (1) `gpg-cli` is on PATH, (2)
+    `git config user.signingkey` is set, (3) the bridge URL is
+    reachable, and (4) a trial sign through gpg-cli succeeds —
+    each failure mode prints a named cause and a remediation hint
+    so operators don't discover the breakage at first `git commit`.
+    Adds `--signing-key <FP>` to write `git config --local
+    user.signingkey` and `--skip-smoke` to bypass the probes for
+    constrained environments. New troubleshooting page at
+    `docs/operations/gpg-bridge-host-setup.md`.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/333
+    - https://github.com/aidanns/agent-auth/pull/336

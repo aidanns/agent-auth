@@ -38,7 +38,6 @@ its design.
 | [`things-client-cli-applescript`](packages/things-client-cli-applescript/README.md) | macOS-only AppleScript-backed implementation of the Things-client contract; invoked by `things-bridge`. |
 | [`gpg-bridge`](packages/gpg-bridge/README.md)                                       | Host-side HTTP bridge that brokers GPG sign/verify on behalf of devcontainer-resident callers.          |
 | [`gpg-cli`](packages/gpg-cli/README.md)                                             | Devcontainer `gpg.program` replacement that forwards git's sign/verify argv to `gpg-bridge`.            |
-| [`gpg-backend-cli-host`](packages/gpg-backend-cli-host/README.md)                   | Host-side GPG backend invoked as a subprocess by `gpg-bridge`.                                          |
 | [`agent-auth-common`](packages/agent-auth-common/README.md)                         | Library-only workspace package: shared types, HTTP clients, Prometheus metrics helper.                  |
 
 ## Installation
@@ -75,9 +74,6 @@ or `curl -LsSf https://astral.sh/uv/install.sh | sh`).
   replacement that forwards git's sign / verify requests to
   `gpg-bridge`:
   `curl -fsSL https://raw.githubusercontent.com/aidanns/agent-auth/main/packages/gpg-cli/install.sh | bash`
-- [`gpg-backend-cli-host`](packages/gpg-backend-cli-host) — host-side
-  GPG backend invoked by `gpg-bridge` as a subprocess per request:
-  `curl -fsSL https://raw.githubusercontent.com/aidanns/agent-auth/main/packages/gpg-backend-cli-host/install.sh | bash`
 
 The [`agent-auth-common`](packages/agent-auth-common) workspace
 package ships shared types (Things models, HTTP clients, Prometheus

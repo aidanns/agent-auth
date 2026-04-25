@@ -4,9 +4,10 @@
 
 """Error hierarchy for GPG interactions.
 
-Raised by the backend CLIs and re-raised by gpg-bridge after parsing
-the ``{"error": ...}`` body returned on subprocess stdout. Kept here
-so the bridge and the backend CLIs refer to the same types.
+Raised by ``gpg-bridge`` from its gpg-subprocess wrapper and surfaced
+on the HTTP error envelope. Kept in ``agent-auth-common`` so
+downstream consumers (``gpg-cli``, callers binding the typed HTTP
+client) refer to the same types.
 """
 
 

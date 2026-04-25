@@ -16,7 +16,7 @@
 # It does NOT cut a tag on its own — tagging happens inside
 # `release-tag.yml` when the release PR merges, so the release flow
 # always goes through the standard PR review gate. See
-# CONTRIBUTING.md § "Release process" and ADR 0040.
+# CONTRIBUTING.md § "Release process" and ADR 0041.
 #
 # Usage:
 #   scripts/release.sh           # dispatch release-pr.yml against main

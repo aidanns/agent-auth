@@ -20,7 +20,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="gpg-bridge",
         description=(
             "HTTP bridge from agent-auth-protected clients to the host gpg binary. "
-            "Delegates signing and verification to a configured backend subprocess."
+            "Each request shells out to the configured ``gpg_command`` "
+            "(default ``gpg``) per ADR 0033."
         ),
     )
     subparsers = parser.add_subparsers(dest="command")
@@ -38,7 +39,7 @@ def main() -> None:
     config = load_config()
     if args.command == "serve":
         gpg = GpgSubprocessClient(
-            command=config.gpg_backend_command,
+            command=config.gpg_command,
             timeout_seconds=config.request_timeout_seconds,
         )
         authz = AgentAuthClient(

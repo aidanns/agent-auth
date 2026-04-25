@@ -875,24 +875,28 @@ out of scope for a single-instance, single-user deployment.
 
 ### gpg-bridge
 
-The bridge spawns the configured `gpg_backend_command` per request
-(the production binary is `gpg-backend-cli-host`, which itself shells
-out to the host `gpg`). Latency is therefore dominated by Python
-interpreter startup of the backend CLI subprocess plus the host `gpg`
-process — not by anything the bridge can shave inside the request
-handler. The budget below uses the test-only fake (`python -m gpg_backend_fake`) so the subprocess-startup cost stays in the loop
-but the unbounded wall-clock variance of real-key cryptography is
-not measured:
+The bridge spawns the configured `gpg_command` per request (default
+`gpg`, pointing at the host gpg binary). Latency is therefore
+dominated by Python interpreter startup of that subprocess plus the
+gpg process itself — not by anything the bridge can shave inside the
+request handler. Per the
+[ADR 0033 collapse-the-backend-hop amendment](decisions/0033-gpg-bridge-cli-split.md#update--2026-04-25-collapse-the-backend-hop)
+of 2026-04-25, the historical second hop through `gpg-backend-cli-host`
+is gone, so the per-request budget now sees one Python subprocess
+spawn rather than two. The budget below uses the test-only
+`gpg`-argv-compatible fake (`python -m gpg_backend_fake`) so the
+subprocess-startup cost stays in the loop but the unbounded
+wall-clock variance of real-key cryptography is not measured:
 
-| Endpoint                     | Median (p50) | p95    | Rationale                                                                                                                                                                                                                                                                     |
-| ---------------------------- | ------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /gpg-bridge/v1/sign`   | 200 ms       | 500 ms | Authz validate + bearer-token plumbing + Python `gpg_backend_fake` subprocess spawn (which dominates), JSON envelope round-trip, response. Local baseline on the devcontainer is ~72 ms p50 and ~75-122 ms p95; the floor adds CI / macOS-runner headroom (~3x p50, ~4x p95). |
-| `POST /gpg-bridge/v1/verify` | 200 ms       | 500 ms | Same shape as sign — the fake parses the FAKE-FP marker and returns a deterministic GOODSIG/VALIDSIG status block. Budget matches sign because both sides walk the same subprocess path; any deviation would be noise, not signal.                                            |
+| Endpoint                     | Median (p50) | p95    | Rationale                                                                                                                                                                                                                                                                |
+| ---------------------------- | ------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /gpg-bridge/v1/sign`   | 200 ms       | 500 ms | Authz validate + bearer-token plumbing + Python `gpg_backend_fake` subprocess spawn (which dominates), gpg-argv round-trip, response. Local baseline on the devcontainer is ~72 ms p50 and ~75-122 ms p95; the floor adds CI / macOS-runner headroom (~3x p50, ~4x p95). |
+| `POST /gpg-bridge/v1/verify` | 200 ms       | 500 ms | Same shape as sign — the fake parses the FAKE-FP marker and returns a deterministic GOODSIG/VALIDSIG status block. Budget matches sign because both sides walk the same subprocess path; any deviation would be noise, not signal.                                       |
 
 Measurement protocol for gpg-bridge: the perf-budget test drives the
 sign and verify endpoints against a throwaway in-process
-`GpgBridgeServer` bound to `127.0.0.1:0` whose `gpg_backend_command`
-points at `python -m gpg_backend_fake` with a single-key fixture, with
+`GpgBridgeServer` bound to `127.0.0.1:0` whose `gpg_command` points
+at `python -m gpg_backend_fake` with a single-key fixture, with
 authz stubbed out. It warms up five requests, then issues N=100
 sequential requests of each shape and asserts the median and p95 of
 the per-request wall-clock duration do not exceed the numbers above.

@@ -2,23 +2,29 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Fixture-driven in-memory backend used only by tests.
+"""Fixture-driven in-memory ``gpg``-substitute used only by tests.
 
-Fixture YAML shape:
+The store owns the keyring lookup and the synthetic-signature shape;
+the CLI in ``gpg_backend_fake.cli`` is a thin argv parser that
+translates a ``gpg`` invocation into one of :meth:`FakeKeyring.sign`
+or :meth:`FakeKeyring.verify` and writes ``gpg``-shaped output to
+the streams ``gpg`` would.
 
-```yaml
-keys:
-  - fingerprint: "D7A2B4C0E8F11234567890ABCDEF1234567890AB"
-    user_ids: ["Test Key <test@example.invalid>"]
-    aliases: ["0xCDEF1234567890AB", "test@example.invalid"]
-behaviours:
-  deny_key: "NOKEY0000000000000000000000000000000000"
-  permission_denied: false
-```
+Fixture YAML shape::
 
-``aliases`` are additional strings the bridge may pass in
-``--local-user`` that should resolve to the named key. ``behaviours``
-steers the fake into error paths for negative tests.
+    keys:
+      - fingerprint: "D7A2B4C0E8F11234567890ABCDEF1234567890AB"
+        user_ids: ["Test Key <test@example.invalid>"]
+        aliases: ["0xCDEF1234567890AB", "test@example.invalid"]
+    behaviours:
+      deny_key: "NOKEY0000000000000000000000000000000000"
+      permission_denied: false
+      corrupt_verify: false
+
+``aliases`` are additional ``--local-user`` strings that resolve to
+the named key. ``behaviours`` steers the fake into error paths for
+negative tests; the CLI translates each into the corresponding gpg
+exit code + stderr string.
 """
 
 from __future__ import annotations
@@ -27,19 +33,21 @@ import hashlib
 from dataclasses import dataclass, field
 from typing import Any
 
-from gpg_backend_common.cli import GpgBackend
-from gpg_models.errors import (
-    GpgBadSignatureError,
-    GpgError,
-    GpgNoSuchKeyError,
-    GpgPermissionError,
-)
-from gpg_models.models import (
-    SignRequest,
-    SignResult,
-    VerifyRequest,
-    VerifyResult,
-)
+
+class FakeKeyringError(Exception):
+    """Raised internally by the store; the CLI maps each subclass to gpg-shaped output."""
+
+
+class NoSuchKeyError(FakeKeyringError):
+    """The requested ``--local-user`` does not match any fixture key."""
+
+
+class PermissionDeniedError(FakeKeyringError):
+    """``behaviours.permission_denied: true`` — emit a pinentry-style failure."""
+
+
+class BadSignatureError(FakeKeyringError):
+    """The verify input did not match the fake's synthetic-signature shape."""
 
 
 @dataclass(frozen=True)
@@ -67,75 +75,69 @@ class _Behaviours:
 
 
 @dataclass
-class FakeBackendStore(GpgBackend):
-    """Fixture-driven backend used by tests and the e2e bridge harness."""
+class FakeKeyring:
+    """Fixture-backed keyring used to satisfy the bridge's ``gpg`` argv."""
 
     keys: tuple[_FakeKey, ...] = ()
     behaviours: _Behaviours = field(default_factory=_Behaviours)
 
-    def sign(self, request: SignRequest) -> SignResult:
+    def sign(self, *, local_user: str, payload: bytes, armor: bool) -> tuple[bytes, str]:
+        """Return ``(signature_bytes, status_text)`` for a ``--detach-sign``."""
         if self.behaviours.permission_denied:
-            raise GpgPermissionError("fake: pinentry denied")
-        key = self._resolve(request.local_user)
+            raise PermissionDeniedError("fake: pinentry denied")
+        key = self._resolve(local_user)
         if self.behaviours.deny_key and key.fingerprint == self.behaviours.deny_key:
-            raise GpgNoSuchKeyError(f"fake: key {key.fingerprint} denied by fixture")
-        signature = _synth_signature(key.fingerprint, request.payload, armor=request.armor)
+            raise NoSuchKeyError(f"fake: key {key.fingerprint} denied by fixture")
+        signature = _synth_signature(key.fingerprint, payload, armor=armor)
         status_text = (
-            f"[GNUPG:] SIG_CREATED D 1 10 00 0 {key.fingerprint} " "0 0 0 00000000000000000000\n"
+            f"[GNUPG:] SIG_CREATED D 1 10 00 0 {key.fingerprint} 0 0 0 00000000000000000000\n"
         )
-        return SignResult(
-            signature=signature,
-            status_text=status_text,
-            exit_code=0,
-            resolved_key_fingerprint=key.fingerprint,
-        )
+        return signature, status_text
 
-    def verify(self, request: VerifyRequest) -> VerifyResult:
+    def verify(self, *, signature: bytes, payload: bytes) -> str:
+        """Return the ``--status-fd 2`` text for a successful verify."""
         if self.behaviours.permission_denied:
-            raise GpgPermissionError("fake: keyring unreachable")
+            raise PermissionDeniedError("fake: keyring unreachable")
         expected_prefix = b"-----BEGIN PGP SIGNATURE-----\n"
-        if self.behaviours.corrupt_verify or not request.signature.startswith(expected_prefix):
-            raise GpgBadSignatureError("fake: signature does not match payload")
+        if self.behaviours.corrupt_verify or not signature.startswith(expected_prefix):
+            raise BadSignatureError("fake: signature does not match payload")
         try:
-            fingerprint = (
-                request.signature.split(b"FAKE-FP:", 1)[1].split(b"\n", 1)[0].decode("ascii")
-            )
+            fingerprint = signature.split(b"FAKE-FP:", 1)[1].split(b"\n", 1)[0].decode("ascii")
         except (IndexError, UnicodeDecodeError) as exc:
-            raise GpgBadSignatureError("fake: signature missing FAKE-FP marker") from exc
-        expected_hash = hashlib.sha256(request.payload).hexdigest().upper()
-        if f"PAYLOAD-HASH:{expected_hash}".encode("ascii") not in request.signature:
-            raise GpgBadSignatureError("fake: payload hash mismatch")
-        status_text = (
+            raise BadSignatureError("fake: signature missing FAKE-FP marker") from exc
+        expected_hash = hashlib.sha256(payload).hexdigest().upper()
+        if f"PAYLOAD-HASH:{expected_hash}".encode("ascii") not in signature:
+            raise BadSignatureError("fake: payload hash mismatch")
+        return (
             f"[GNUPG:] GOODSIG {fingerprint} fake\n"
             f"[GNUPG:] VALIDSIG {fingerprint} 2026-04-23 0 4 0 1 10 00 {fingerprint}\n"
         )
-        return VerifyResult(status_text=status_text, exit_code=0)
 
     def _resolve(self, requested: str) -> _FakeKey:
         for key in self.keys:
             if key.matches(requested):
                 return key
-        raise GpgNoSuchKeyError(f"fake: no key matches {requested!r}")
+        raise NoSuchKeyError(f"fake: no key matches {requested!r}")
 
 
-def load_fixture(data: Any) -> FakeBackendStore:
-    """Parse a fixture-YAML mapping into a :class:`FakeBackendStore`."""
+def load_fixture(data: Any) -> FakeKeyring:
+    """Parse a fixture-YAML mapping into a :class:`FakeKeyring`."""
     if not isinstance(data, dict):
-        raise GpgError("fake fixture: top-level document must be a mapping")
+        raise ValueError("fake fixture: top-level document must be a mapping")
     raw_keys = data.get("keys") or []
     if not isinstance(raw_keys, list):
-        raise GpgError("fake fixture: 'keys' must be a list")
+        raise ValueError("fake fixture: 'keys' must be a list")
     keys: list[_FakeKey] = []
     for entry in raw_keys:
         if not isinstance(entry, dict):
-            raise GpgError("fake fixture: each key entry must be a mapping")
+            raise ValueError("fake fixture: each key entry must be a mapping")
         fingerprint = entry.get("fingerprint")
         if not isinstance(fingerprint, str) or not fingerprint:
-            raise GpgError("fake fixture: 'fingerprint' is required")
+            raise ValueError("fake fixture: 'fingerprint' is required")
         user_ids_raw = entry.get("user_ids") or []
         aliases_raw = entry.get("aliases") or []
         if not isinstance(user_ids_raw, list) or not isinstance(aliases_raw, list):
-            raise GpgError("fake fixture: 'user_ids' and 'aliases' must be lists")
+            raise ValueError("fake fixture: 'user_ids' and 'aliases' must be lists")
         keys.append(
             _FakeKey(
                 fingerprint=fingerprint.upper(),
@@ -145,13 +147,13 @@ def load_fixture(data: Any) -> FakeBackendStore:
         )
     behaviours_raw = data.get("behaviours") or {}
     if not isinstance(behaviours_raw, dict):
-        raise GpgError("fake fixture: 'behaviours' must be a mapping")
+        raise ValueError("fake fixture: 'behaviours' must be a mapping")
     behaviours = _Behaviours(
         deny_key=str(behaviours_raw.get("deny_key") or "").upper(),
         permission_denied=bool(behaviours_raw.get("permission_denied", False)),
         corrupt_verify=bool(behaviours_raw.get("corrupt_verify", False)),
     )
-    return FakeBackendStore(keys=tuple(keys), behaviours=behaviours)
+    return FakeKeyring(keys=tuple(keys), behaviours=behaviours)
 
 
 def _synth_signature(fingerprint: str, payload: bytes, *, armor: bool) -> bytes:
@@ -167,4 +169,11 @@ def _synth_signature(fingerprint: str, payload: bytes, *, armor: bool) -> bytes:
     return body
 
 
-__all__ = ["FakeBackendStore", "load_fixture"]
+__all__ = [
+    "BadSignatureError",
+    "FakeKeyring",
+    "FakeKeyringError",
+    "NoSuchKeyError",
+    "PermissionDeniedError",
+    "load_fixture",
+]

@@ -76,18 +76,19 @@ distinct trust zone:
 - **things-cli** — thin HTTP client for things-bridge, used by the
   human operator or an AI agent. Stores credentials in the system
   keyring.
-- **gpg-bridge / gpg-cli / gpg-backend-cli-host** — a parallel
-  devcontainer ↔ host hop for git commit / tag signing. `gpg-cli`
-  (devcontainer) holds no key material and forwards git's gpg argv
-  over HTTPS to `gpg-bridge` (host). The bridge re-validates with
-  agent-auth on every request, enforces a configurable
-  `allowed_signing_keys` allowlist, and delegates to a per-request
-  `gpg-backend-cli-host` subprocess that shells out to the host
-  `gpg` agent — the only component that touches private signing
-  keys. STRIDE coverage for this boundary is in
+- **gpg-bridge / gpg-cli** — a parallel devcontainer ↔ host hop for
+  git commit / tag signing. `gpg-cli` (devcontainer) holds no key
+  material and forwards git's gpg argv over HTTPS to `gpg-bridge`
+  (host). The bridge re-validates with agent-auth on every request,
+  enforces a configurable `allowed_signing_keys` allowlist, and
+  shells out to the configured `gpg_command` (default `gpg`) per
+  request — the only path that touches private signing keys. STRIDE
+  coverage for this boundary is in
   [`SECURITY.md` § gpg-bridge boundary](../SECURITY.md#gpg-bridge-boundary-devcontainer--host-signing);
   rationale in
-  [ADR 0033](decisions/0033-gpg-bridge-cli-split.md).
+  [ADR 0033](decisions/0033-gpg-bridge-cli-split.md) (with the
+  2026-04-25 collapse-the-backend-hop amendment that folded the
+  former `gpg-backend-cli-host` package into `gpg-bridge`).
 
 Trust-boundary diagram and threat model are in
 [`SECURITY.md` § Trust boundaries](../SECURITY.md#trust-boundaries)
@@ -237,16 +238,18 @@ compromise would not by itself defeat it:
   but only within the scopes of tokens they could present.
 - **`things-client-cli-applescript`.** Pure AppleScript wrapper
   emitting JSON; has no trust relationship with the caller's token.
-- **`gpg-bridge serve` process and `gpg-backend-cli-host` subprocess.**
-  The bridge re-validates every signing request with agent-auth and
-  enforces the `allowed_signing_keys` allowlist; the per-request
-  backend CLI is the only process that touches private GPG keys via
-  the host `gpg` agent. Compromise of the bridge cannot extract
-  private keys (the supported argv surface is sign / verify only),
-  but could allow forwarding unauthorised signing requests within
-  the `gpg:sign` scope. See
+- **`gpg-bridge serve` process.** Re-validates every signing request
+  with agent-auth, enforces the `allowed_signing_keys` allowlist,
+  and shells out to the configured `gpg_command` (default `gpg`)
+  per request — the only path that touches private GPG keys.
+  Compromise of the bridge cannot extract private keys (the
+  supported argv surface is sign / verify only — the bridge
+  constructs only `gpg --detach-sign` and `gpg --verify` argv), but
+  could allow forwarding unauthorised signing requests within the
+  `gpg:sign` scope. See
   [`SECURITY.md` § gpg-bridge boundary](../SECURITY.md#gpg-bridge-boundary-devcontainer--host-signing)
-  and [ADR 0033](decisions/0033-gpg-bridge-cli-split.md).
+  and [ADR 0033](decisions/0033-gpg-bridge-cli-split.md) (with the
+  2026-04-25 collapse-the-backend-hop amendment).
 - **Audit log.** Append-only today; cryptographic chaining is a
   follow-up (#103).
 - **Cybersecurity, SDLC, and application-security standards** —
@@ -327,7 +330,7 @@ compromise would not by itself defeat it:
   merge). Both the user PR and the release PR pass through the same
   review gate; version derivation is computed by
   `scripts/changelog/version_logic.py` from per-PR YAML entries. See
-  [ADR 0040](decisions/0040-yaml-driven-release-workflow.md)
+  [ADR 0041](decisions/0041-yaml-driven-release-workflow.md)
   (supersedes ADR 0026).
 - **Container / image signing.** Not applicable; the project
   ships source distributions and wheels, not OCI images.
@@ -351,7 +354,7 @@ compromise would not by itself defeat it:
   at issues for non-security requests.
 - **Outbound (release notes, advisories, changelog).**
   `CHANGELOG.md` is rendered from per-PR YAML entries under
-  `changelog/@unreleased/` (per ADR 0040) — `scripts/changelog/build_release.py`
+  `changelog/@unreleased/` (per ADR 0041) — `scripts/changelog/build_release.py`
   groups entries by type and prepends a new section to the file when
   the release-PR workflow runs. The GitHub Release body shares the
   same renderer so the two surfaces match byte-for-byte. Older

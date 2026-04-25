@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
 SPDX-License-Identifier: MIT
 -->
 
-# ADR 0040 — YAML-driven release workflow with a maintainer-merged release PR
+# ADR 0041 — YAML-driven release workflow with a maintainer-merged release PR
 
 ## Status
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.1](https://github.com/aidanns/agent-auth/compare/v0.13.0...v0.13.1) (2026-04-25)
+
+### Features
+
+- **ci:** bot-mediated changelog authoring via PR markers ([#314](https://github.com/aidanns/agent-auth/issues/314))
+
+- **ci:** CLI helper to scaffold changelog entries ([#322](https://github.com/aidanns/agent-auth/issues/322))
+
+### Bug Fixes
+
+- **store:** preserve original SQL error from failed up-migration ([#330](https://github.com/aidanns/agent-auth/issues/330))
+
 ## [0.13.0](https://github.com/aidanns/agent-auth/compare/v0.12.2...v0.13.0) (2026-04-25)
 
 ### Features

@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: fix
+fix:
+  description: |
+    Migration runner now propagates the underlying `OperationalError`
+    when an up- or down-migration's SQL fails, instead of masking it
+    behind a follow-up `cannot rollback - no transaction is active`
+    error. Operators hitting a failed migration (e.g. running against
+    a pre-#222 store where `token_families` already exists) now see
+    the real SQL error in the traceback.
+  links:
+    - https://github.com/aidanns/agent-auth/pull/330

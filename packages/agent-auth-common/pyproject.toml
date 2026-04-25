@@ -56,7 +56,6 @@ fallback_version = "0.0.0+unknown"
 addopts = [
     "--import-mode=importlib",
     "--cov=agent_auth_client",
-    "--cov=gpg_backend_common",
     "--cov=gpg_models",
     "--cov=server_metrics",
     "--cov=things_bridge_client",

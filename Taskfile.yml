@@ -22,12 +22,11 @@ version: "3"
 
 includes:
   # Namespace name matches the service's existing `task <svc>` entry
-  # (so `task things-client-applescript` and `task gpg-backend-host`
-  # keep working against the longer package directory names).
+  # (so `task things-client-applescript` keeps working against the
+  # longer package directory name).
   # keep-sorted start
   agent-auth-common: ./packages/agent-auth-common/Taskfile.yml
   agent-auth: ./packages/agent-auth/Taskfile.yml
-  gpg-backend-host: ./packages/gpg-backend-cli-host/Taskfile.yml
   gpg-bridge: ./packages/gpg-bridge/Taskfile.yml
   gpg-cli: ./packages/gpg-cli/Taskfile.yml
   things-bridge: ./packages/things-bridge/Taskfile.yml
@@ -146,6 +145,6 @@ tasks:
       - scripts/setup-devcontainer-signing.sh {{.CLI_ARGS}}
 
   release:
-    desc: "Force a refresh of the YAML-driven release PR by dispatching .github/workflows/release-pr.yml on main. The default flow runs that workflow automatically on every push to main; use this task as a manual escape hatch (e.g. after editing a changelog/@unreleased/*.yml directly via the GitHub UI). The release tag itself is cut by .github/workflows/release-tag.yml when the release PR merges. See CONTRIBUTING.md § Release process and ADR 0040."
+    desc: "Force a refresh of the YAML-driven release PR by dispatching .github/workflows/release-pr.yml on main. The default flow runs that workflow automatically on every push to main; use this task as a manual escape hatch (e.g. after editing a changelog/@unreleased/*.yml directly via the GitHub UI). The release tag itself is cut by .github/workflows/release-tag.yml when the release PR merges. See CONTRIBUTING.md § Release process and ADR 0041."
     cmds:
       - scripts/release.sh {{.CLI_ARGS}}

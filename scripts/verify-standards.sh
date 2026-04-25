@@ -1531,7 +1531,7 @@ echo "verify-standards: ${ASSURANCE_FILE} declares a QM/SIL level with required 
 
 # CHANGELOG.md must exist per .claude/instructions/release-and-hygiene.md.
 # The `## [Unreleased]` section is intentionally absent: the YAML-driven
-# release workflow (ADR 0040) owns the file post-migration. Per-PR
+# release workflow (ADR 0041) owns the file post-migration. Per-PR
 # changelog entries live under `changelog/@unreleased/*.yml`;
 # `scripts/changelog/build_release.py` renders them into a new
 # versioned section at release time. The CHANGELOG itself is never

@@ -1,0 +1,107 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+# SPDX-License-Identifier: MIT
+#
+# Integration-test image for the ``gpg-bridge`` service. Never publish;
+# never use in production.
+#
+# Carries the host ``gpg`` binary the bridge shells out to in
+# production. Per the ADR 0033 collapse-the-backend-hop amendment of
+# 2026-04-25 the bridge invokes ``gpg`` directly (default
+# ``gpg_command: ["gpg"]``); the historical ``gpg-backend-cli-host``
+# subprocess hop has been removed. The devcontainer-side ``gpg-cli``
+# ships in the sibling ``Dockerfile.gpg-cli.test`` image which carries
+# no key material.
+#
+# Bakes a throwaway signing key into a per-image ``GNUPGHOME`` at
+# ``/home/agent-auth/.gnupg`` so test fixtures can sign without
+# generating a key per test (entropy on CI is slow). The key is:
+# - generated unattended by ``gpg --batch --gen-key`` at image build,
+# - passphrase-free so the bridge's ``--pinentry-mode loopback``
+#   sign path needs no operator input,
+# - never exported from the image (which is itself never published),
+# - randomly generated per build (no deterministic seed) so two
+#   builds of this image produce different fingerprints; tests must
+#   discover the fingerprint at session start, not hardcode it.
+#
+# A second test key is also generated so the
+# ``allowed_signing_keys`` enforcement test has a real second
+# fingerprint to attempt with.
+
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HOME=/home/agent-auth \
+    XDG_CONFIG_HOME=/home/agent-auth/.config \
+    XDG_DATA_HOME=/home/agent-auth/.local/share \
+    XDG_STATE_HOME=/home/agent-auth/.local/state \
+    GNUPGHOME=/home/agent-auth/.gnupg
+
+# ``gnupg`` pulls in the host ``gpg`` binary the backend shells out
+# to. ``rng-tools`` is intentionally NOT installed: the build runs in
+# Docker BuildKit and ``gpg --batch --gen-key`` here uses
+# ``/dev/random`` blocking semantics. Modern kernels have enough
+# entropy for an ed25519 keypair to land sub-second, so the simpler
+# install footprint wins.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gnupg \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin agent-auth
+
+WORKDIR /src
+
+COPY README.md ./
+COPY packages/agent-auth-common/ ./packages/agent-auth-common/
+COPY packages/gpg-bridge/ ./packages/gpg-bridge/
+
+RUN pip install --no-cache-dir \
+        ./packages/agent-auth-common \
+        ./packages/gpg-bridge
+
+RUN mkdir -p "$XDG_CONFIG_HOME/gpg-bridge" \
+             "$XDG_STATE_HOME/gpg-bridge" \
+             "$GNUPGHOME" \
+    && chmod 700 "$GNUPGHOME" \
+    && chown -R agent-auth:agent-auth /home/agent-auth
+
+USER agent-auth
+
+# Generate two throwaway ed25519 keys into the per-image
+# ``GNUPGHOME``. A second key is needed so the
+# ``allowed_signing_keys`` integration test has a real second
+# fingerprint that should fail closed against the bridge's
+# allowlist. Both keys are passphrase-less (``%no-protection``) so
+# the bridge's ``--pinentry-mode loopback`` sign path needs no input.
+#
+# Each key is piped via ``printf`` rather than a heredoc to keep the
+# Dockerfile portable across BuildKit's syntax shims (heredoc-on-RUN
+# requires the ``# syntax=`` frontend pragma).
+RUN printf '%s\n' \
+        '%no-protection' \
+        'Key-Type: EDDSA' \
+        'Key-Curve: ed25519' \
+        'Subkey-Type: ECDH' \
+        'Subkey-Curve: cv25519' \
+        'Name-Real: AgentAuth Integration Test Primary' \
+        'Name-Email: integration-primary@example.invalid' \
+        'Expire-Date: 0' \
+        '%commit' \
+    | gpg --batch --gen-key \
+ && printf '%s\n' \
+        '%no-protection' \
+        'Key-Type: EDDSA' \
+        'Key-Curve: ed25519' \
+        'Subkey-Type: ECDH' \
+        'Subkey-Curve: cv25519' \
+        'Name-Real: AgentAuth Integration Test Secondary' \
+        'Name-Email: integration-secondary@example.invalid' \
+        'Expire-Date: 0' \
+        '%commit' \
+    | gpg --batch --gen-key
+
+EXPOSE 9300
+
+ENTRYPOINT ["gpg-bridge", "serve"]
