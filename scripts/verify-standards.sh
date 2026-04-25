@@ -1639,6 +1639,31 @@ fi
 
 echo "verify-standards: every packages/<service>/ with [project.scripts] ships an executable install.sh; library-only packages have none."
 
+# Every workspace package must ship its own README.md describing
+# purpose, public surface, and pointers to relevant ADRs (#269). The
+# root README only links the package list — the package's README is
+# the canonical entry point for someone who lands on a single service
+# directory via a deep link.
+readme_drift=0
+shopt -s nullglob
+for pkg_dir in packages/*/; do
+  [[ -d "${pkg_dir}" ]] || continue
+  readme="${pkg_dir}README.md"
+  if [[ ! -f "${readme}" ]]; then
+    echo "verify-standards: ${readme} is missing." >&2
+    readme_drift=1
+  fi
+done
+shopt -u nullglob
+
+if [[ "${readme_drift}" -ne 0 ]]; then
+  echo "  Every packages/<service>/ must carry a README.md covering purpose," >&2
+  echo "  public surface, configuration, and links to relevant ADRs." >&2
+  exit 1
+fi
+
+echo "verify-standards: every packages/<service>/ ships a README.md."
+
 # lefthook hooks must be installed locally so the pre-commit commands
 # configured in lefthook.yml actually fire. Skipped when CI=true — CI
 # gates the same checks explicitly via workflow steps, so a fresh
