@@ -911,27 +911,33 @@ full architecture.
 
 To wire a fresh devcontainer to the host's `gpg-bridge`:
 
-1. **On the host**, mint a `gpg:sign`-scoped agent-auth access token:
+1. **On the host**, mint a `gpg:sign`-scoped agent-auth token family:
 
    ```bash
    task agent-auth -- token create --scope gpg:sign=allow --json
    ```
 
-   Copy the `access_token` field. It's shown once.
+   Copy the `access_token`, `refresh_token`, and `family_id` fields.
+   They're shown once.
 
-2. **In the devcontainer**, run the setup task with the token and
-   the bridge URL:
+2. **In the devcontainer**, run the setup task with the token pair,
+   the agent-auth URL, and the bridge URL:
 
    ```bash
    task setup-devcontainer-signing -- \
-     --token <ACCESS_TOKEN> \
+     --access-token <ACCESS_TOKEN> \
+     --refresh-token <REFRESH_TOKEN> \
+     --family-id <FAMILY_ID> \
+     --auth-url https://host.docker.internal:9100 \
      --bridge-url https://host.docker.internal:8443
    ```
 
    Optional flags: `--ca-cert-path <PATH>` if the bridge's TLS
    certificate is signed by a CA the container's trust store doesn't
    include, and `--timeout-seconds <N>` to override the per-request
-   timeout (default 30s).
+   timeout (default 30s). `--family-id` is technically optional but
+   without it `gpg-cli` cannot recover from a refresh-token expiry —
+   the reissue path needs the family id to ask for host JIT approval.
 
 The setup task writes the `gpg-cli` config to
 `$XDG_CONFIG_HOME/gpg-cli/config.yaml` (mode `0600`) and runs two
@@ -948,9 +954,14 @@ touch `main`).
 
 The setup is idempotent — re-running with the same arguments
 overwrites the config file and reasserts the git-config values.
-Re-run after a `gpg-bridge` URL change or a token rotation. The
-script is also runnable directly as `scripts/setup-devcontainer-signing.sh`
-if `go-task` isn't available.
+`gpg-cli` rotates the access / refresh pair in-place on every 401
+`token_expired` (refresh) and on `refresh_token_expired` (reissue,
+blocks on host-side JIT approval), so you only re-run the setup
+script after a terminal failure (`reuse_detected`, `family_revoked`,
+or scope removed) — those exit `gpg-cli` with a message naming this
+script as the recovery command. The script is also runnable directly
+as `scripts/setup-devcontainer-signing.sh` if `go-task` isn't
+available.
 
 ### Non-interactive signing for `task release`
 

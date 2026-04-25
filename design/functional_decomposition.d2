@@ -302,7 +302,7 @@ f77.width: 400
 root -> f77
 f77_container: "" {
   grid-columns: 1
-  grid-rows: 4
+  grid-rows: 5
   grid-gap: 5
   style: {
     stroke-width: 0
@@ -316,13 +316,15 @@ f77_container: "" {
   f80.width: 400
   f81: Load CLI Configuration
   f81.width: 400
+  f82: Auto Refresh Token
+  f82.width: 400
 }
 f77 -> f77_container
 
-f82: GPG Backend CLI Host
-f82.width: 400
-root -> f82
-f82_container: "" {
+f83: GPG Backend CLI Host
+f83.width: 400
+root -> f83
+f83_container: "" {
   grid-columns: 1
   grid-rows: 4
   grid-gap: 5
@@ -330,13 +332,13 @@ f82_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f83: Sign Payload
-  f83.width: 400
-  f84: Verify Signature
+  f84: Sign Payload
   f84.width: 400
-  f85: Resolve Local-User Key
+  f85: Verify Signature
   f85.width: 400
-  f86: Emit Backend JSON Envelope
+  f86: Resolve Local-User Key
   f86.width: 400
+  f87: Emit Backend JSON Envelope
+  f87.width: 400
 }
-f82 -> f82_container
+f83 -> f83_container

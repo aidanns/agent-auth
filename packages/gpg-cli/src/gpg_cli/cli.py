@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from gpg_cli.client import BridgeClient
-from gpg_cli.config import load_config
+from gpg_cli.config import FileStore, load_config
 from gpg_cli.errors import (
     BridgeBadSignatureError,
     BridgeForbiddenError,
@@ -38,6 +38,7 @@ from gpg_cli.errors import (
     BridgeRateLimitedError,
     BridgeUnauthorizedError,
     BridgeUnavailableError,
+    ConfigMigrationRequiredError,
 )
 from gpg_models.models import SignRequest, VerifyRequest, validate_keyid_format
 
@@ -310,13 +311,22 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         config = load_config().validated()
+    except ConfigMigrationRequiredError as exc:
+        # Schema-migration failures land on stderr at exit 2 with the
+        # same message the loader composed; the message already names
+        # ``scripts/setup-devcontainer-signing.sh`` as the recovery
+        # command (see :mod:`gpg_cli.config` for the message template).
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
     except ValueError as exc:
         print(f"gpg-cli: {exc}", file=sys.stderr)
         return EXIT_USAGE
 
+    store = FileStore(config.config_path)
     client = BridgeClient(
+        config.credentials,
+        store,
         bridge_url=config.bridge_url,
-        token=config.token,
         timeout_seconds=config.timeout_seconds,
         ca_cert_path=config.ca_cert_path,
     )
@@ -330,7 +340,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"gpg-cli: {exc}", file=sys.stderr)
         return EXIT_USAGE
     except BridgeUnauthorizedError as exc:
-        print(f"gpg-cli: unauthorized: {exc}", file=sys.stderr)
+        # Reached only when refresh + reissue both failed terminally
+        # (or the bridge returned a non-``token_expired`` 401). Point
+        # the operator at the bootstrap script — there is no in-CLI
+        # recovery path.
+        print(
+            f"gpg-cli: unauthorized: {exc}. Re-run "
+            f"scripts/setup-devcontainer-signing.sh to bootstrap a new "
+            f"credential pair.",
+            file=sys.stderr,
+        )
         return EXIT_UNAUTHORIZED
     except BridgeForbiddenError as exc:
         print(f"gpg-cli: forbidden: {exc}", file=sys.stderr)

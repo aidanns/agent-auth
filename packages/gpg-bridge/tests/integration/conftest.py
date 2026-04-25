@@ -36,6 +36,14 @@ from tests_support.integration.plugin import GpgBridgeStack
 # test runner uses the published loopback port mapping (none of the
 # test bodies below do).
 _BRIDGE_URL_IN_NETWORK = "http://gpg-bridge:9300"
+# In-network address gpg-cli would use to reach agent-auth's refresh /
+# reissue endpoints. The integration suite never exercises the refresh
+# path (the access token is injected directly via env, never hits an
+# expired-then-retry case), but ``gpg_cli.config.GpgCliConfig.validated``
+# now requires ``auth_url`` and a ``refresh_token`` so the loader knows
+# how to route the rotation flow if the bridge ever returns 401
+# token_expired.
+_AUTH_URL_IN_NETWORK = "http://agent-auth:9100"
 _GPG_CLI_RUN_TIMEOUT_SECONDS = 30.0
 
 
@@ -67,9 +75,12 @@ class GpgCliInvoker:
         Returns the raw :class:`subprocess.CompletedProcess` so
         negative-path callers can inspect exit code + stderr without
         the helper deciding which exit codes are acceptable. ``token``
-        is forwarded as ``AGENT_AUTH_GPG_TOKEN``; tests pass
-        intentionally invalid tokens (revoked, missing scope) to
-        exercise the bridge's authz path.
+        is forwarded as ``AGENT_AUTH_GPG_ACCESS_TOKEN`` plus a sentinel
+        ``AGENT_AUTH_GPG_REFRESH_TOKEN`` / ``AGENT_AUTH_GPG_AUTH_URL``
+        pair so ``gpg_cli.config.GpgCliConfig.validated`` accepts the
+        environment without forcing the test to bootstrap a real
+        token family. Tests pass intentionally invalid tokens
+        (revoked, missing scope) to exercise the bridge's authz path.
 
         ``entrypoint`` overrides the image's default ENTRYPOINT (which
         is unset in ``Dockerfile.gpg-cli.test`` — the helper prepends
@@ -91,7 +102,14 @@ class GpgCliInvoker:
             "--env",
             f"AGENT_AUTH_GPG_BRIDGE_URL={_BRIDGE_URL_IN_NETWORK}",
             "--env",
-            f"AGENT_AUTH_GPG_TOKEN={token}",
+            f"AGENT_AUTH_GPG_ACCESS_TOKEN={token}",
+            # Sentinel values so ``GpgCliConfig.validated`` passes; the
+            # integration suite never reaches the refresh path because
+            # the access token is minted fresh per call.
+            "--env",
+            "AGENT_AUTH_GPG_REFRESH_TOKEN=integration-suite-unused",
+            "--env",
+            f"AGENT_AUTH_GPG_AUTH_URL={_AUTH_URL_IN_NETWORK}",
         ]
         for key, value in (extra_env or {}).items():
             compose_argv.extend(["--env", f"{key}={value}"])
