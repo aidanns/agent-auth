@@ -31,8 +31,8 @@ def _default_state_dir() -> str:
     return _xdg_dir("XDG_STATE_HOME", (".local", "state"))
 
 
-def _default_backend_command() -> list[str]:
-    return ["gpg-backend-cli-host"]
+def _default_gpg_command() -> list[str]:
+    return ["gpg"]
 
 
 def _empty_str_list() -> list[str]:
@@ -44,7 +44,13 @@ class Config:
     host: str = "127.0.0.1"
     port: int = 9300
     auth_url: str = "http://127.0.0.1:9100"
-    gpg_backend_command: list[str] = field(default_factory=_default_backend_command)
+    # Argv prefix used to invoke gpg. Defaults to whatever ``gpg`` PATH
+    # resolves to on the host. Tests override this to point at the
+    # in-tree fake (``python -m gpg_backend_fake --fixtures …``).
+    # Renamed from ``gpg_backend_command`` in 2026-04 (issue #316,
+    # ADR 0033 amendment) when the separate backend CLI was collapsed
+    # into the bridge.
+    gpg_command: list[str] = field(default_factory=_default_gpg_command)
     request_timeout_seconds: float = 35.0
     shutdown_deadline_seconds: float = 5.0
     log_path: str = ""
@@ -55,7 +61,7 @@ class Config:
     # Empty list = trust any key the host gpg has.
     allowed_signing_keys: list[str] = field(default_factory=_empty_str_list)
     # Cap on HTTP request body size. Commit payloads are a few KiB in
-    # practice; 1 MiB fails closed before a backend spawn.
+    # practice; 1 MiB fails closed before the gpg subprocess spawn.
     max_request_bytes: int = 1 * 1024 * 1024
 
     def __post_init__(self) -> None:
@@ -66,8 +72,8 @@ class Config:
                 "Config: tls_cert_path and tls_key_path must both be set or both be empty; "
                 f"got cert={self.tls_cert_path!r} key={self.tls_key_path!r}"
             )
-        if not self.gpg_backend_command:
-            raise ValueError("Config: gpg_backend_command must not be empty")
+        if not self.gpg_command:
+            raise ValueError("Config: gpg_command must not be empty")
         normalised: list[str] = []
         for entry in self.allowed_signing_keys:
             stripped = str(entry).strip().upper()

@@ -8,7 +8,12 @@ SPDX-License-Identifier: MIT
 
 ## Status
 
-Proposed — 2026-04-23.
+Accepted — 2026-04-23. Amended 2026-04-25 (issue
+[#316](https://github.com/aidanns/agent-auth/issues/316)) — the
+backend-CLI hop is collapsed into `gpg-bridge`. See
+[Update — 2026-04-25: collapse the backend hop](#update--2026-04-25-collapse-the-backend-hop)
+below; sections that the amendment replaces are kept verbatim above
+the update so the original tradeoff stays readable as history.
 
 ## Context
 
@@ -519,3 +524,131 @@ matching the `things-*` shape.
   the bridge boundary; per-fingerprint scopes only pay off if the
   token has to express that policy because the allowlist cannot.
   Defer until a concrete use case motivates it.
+
+## Update — 2026-04-25: collapse the backend hop
+
+### Context
+
+Once `gpg-backend-cli-host` was implemented, the cost / benefit
+balance fell out differently from the Things case the original
+decision pattern-matched against:
+
+- **`things-client-cli-applescript` exists because there is real
+  per-version AppleScript dispatch logic to encapsulate** —
+  a non-trivial backend with its own surface area, platform
+  constraints, and substitution story.
+- **`gpg-backend-cli-host` is a JSON-envelope ↔ `gpg` argv shim.**
+  ~270 lines across `cli.py` (64) + `gpg.py` (194), most of which
+  is framing the verify input and translating exit codes into
+  envelope shapes. There is no domain logic the bridge couldn't
+  carry directly.
+
+Concrete costs the indirection paid for itself with:
+
+- ~50 ms of extra Python startup per signing request (acknowledged
+  in the original [§ Performance](#performance)).
+- A whole package: `pyproject.toml`, install script, Taskfile entry,
+  README, tests, release-pipeline coverage, dep-graph allowlist
+  entry, `agent-auth-common.gpg_backend_common` module carrying the
+  shared CLI dispatcher and the verify-input length-prefix protocol.
+- Two subprocess contracts (HTTP ↔ bridge, bridge ↔ backend) instead
+  of one (HTTP ↔ bridge), with the verify-input length-prefix
+  framing existing only because of the backend hop — a shape that
+  was always more about the per-process boundary than about the
+  underlying gpg invocation.
+
+The headline benefit named for the split — **substitutability under
+test** — does not require a separate package. The bridge can shell
+out to `gpg` directly while still letting tests inject a fake via
+the same config knob: `gpg_command: ["python", "-m", "gpg_backend_fake"]`. The fake is reshaped to speak `gpg` argv
+instead of the JSON-envelope contract; the YAML
+fixture-keyed-by-`(key_fp, payload_sha256)` shape is preserved.
+
+### Counter-argument considered and discarded
+
+The split would earn its keep if a second backend implementation
+landed soon — e.g. the deferred persistent-backend follow-up below,
+or a non-`gpg` signer. There is no concrete consumer for either
+today, no work in flight on either, and no measurement that says the
+~50 ms backend-spawn cost matters at devcontainer human-frequency
+commit cadence. Carrying the package indefinitely on the chance that
+a future backend will repay it is the same shape of speculative
+infrastructure that the project's
+[ADR 0035](0035-workspace-release-model.md) judgment-call avoided
+for per-package release trains: "the tooling cost is paid now for a
+benefit deferred to an unknown future."
+
+If a persistent backend ever lands it can re-introduce a backend
+boundary on its own merits — with the persistent process / IPC
+shape it actually needs — rather than inheriting one from the
+original split.
+
+### Decision
+
+Move the `gpg` argv construction and exit-code handling into
+`gpg-bridge`. The bridge keeps `GpgSubprocessClient`'s name and
+shape, but its subprocess is now `gpg` directly rather than a
+backend CLI speaking a JSON envelope.
+
+- `gpg-bridge` config field is renamed `gpg_backend_command` →
+  `gpg_command`. Default value `["gpg"]`. The substitution story
+  for tests is unchanged — point `gpg_command` at the fake.
+- `packages/gpg-backend-cli-host/` is deleted in full: source,
+  install script, Taskfile entry, dep-graph allowlist entry, mutmut
+  / mypy / pyright config, release-pipeline coverage, README and
+  cross-references.
+- `packages/gpg-bridge/tests/gpg_backend_fake/` is reshaped to
+  speak `gpg` argv (the subset the bridge actually invokes:
+  `--detach-sign`, `--verify`, `--local-user`, `--armor`,
+  `--keyid-format`, `--batch`, `--no-tty`,
+  `--pinentry-mode loopback`, `--status-fd`, `--version`). Its
+  YAML fixture shape stays the same; only the on-the-wire
+  protocol changes.
+- The shared `agent-auth-common.gpg_backend_common` module
+  (CLI dispatcher + verify-input length-prefix protocol) is
+  removed; both halves of the JSON-envelope contract it served are
+  gone after the collapse. `gpg_models` (request / result
+  dataclasses, error hierarchy) is **kept** — the bridge and
+  `gpg-cli` continue to use them on the HTTP API side.
+
+The HTTP wire shape — `POST /gpg-bridge/v1/sign`,
+`POST /gpg-bridge/v1/verify`, `GET /gpg-bridge/health`,
+`GET /gpg-bridge/metrics` — is **unchanged**. Only the bridge's
+internal dispatch changes, so `gpg-cli` (devcontainer side) and
+existing token / config posture are untouched.
+
+### Consequences
+
+- **Component shape simplifies** to `gpg-cli` (devcontainer) +
+  `gpg-bridge` (host). The "Component parallels" table now reads
+  Things → GPG as `things-cli` → `gpg-cli`, `things-bridge` →
+  `gpg-bridge`, with no third entry.
+- **Performance** improves by ~50 ms per request: the backend
+  Python startup tax disappears. The performance budget in
+  [DESIGN.md § gpg-bridge](../DESIGN.md) keeps its existing
+  numbers — they were set with headroom over the local baseline
+  and are now further from the floor.
+- **Subprocess contract surface shrinks** to one contract (HTTP ↔
+  bridge), removing the verify-input length-prefix framing and the
+  JSON envelope on stdout. The bridge invokes `gpg` directly via
+  `subprocess.run(["gpg", ...], input=payload, capture_output=True)`
+  in the sign path and via a tempdir-with-sigfile-and-datafile in
+  the verify path (the shape `gpg --verify` requires anyway).
+- **Migration cost for operators with an existing config** — the
+  `gpg_backend_command` → `gpg_command` rename is a publicly
+  observable break for anyone with a hand-edited
+  `~/.config/gpg-bridge/config.yaml`. Captured in the changelog
+  under the `improvement:` prefix per
+  [ADR 0037](0037-palantir-commit-prefixes-and-commit-msg-block.md)'s
+  user-visible-but-pre-stable scoping. The default is unchanged in
+  spirit ("invoke the gpg I would normally find on PATH") so a
+  zero-config bridge keeps working.
+- **Threat model unchanged.** The bridge still talks to the host
+  `gpg` binary, still constructs argv from a fixed set of typed
+  fields (`--local-user`, `--armor`, `--keyid-format`, fixed
+  operation tokens), still passes payload bytes via stdin not
+  argv, still scrubs gpg's stderr from HTTP response bodies. The
+  argv-injection mitigation in
+  [SECURITY.md § GPG-bridge boundary](../../SECURITY.md) survives
+  the collapse — the inputs the bridge interpolates into argv are
+  the same shape they were before the backend hop.

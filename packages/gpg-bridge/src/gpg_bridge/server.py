@@ -6,8 +6,10 @@
 
 Reads a bearer token, delegates validation to agent-auth (scope
 ``gpg:sign``), enforces the allowlist from :mod:`gpg_bridge.config`,
-and shells out to a configured backend subprocess via
-:class:`gpg_bridge.gpg_client.GpgSubprocessClient`.
+and shells out to the host ``gpg`` binary via
+:class:`gpg_bridge.gpg_client.GpgSubprocessClient`. Per ADR 0033's
+2026-04-25 amendment, the bridge invokes ``gpg`` directly rather
+than going through a dedicated backend CLI.
 """
 
 from __future__ import annotations
@@ -57,19 +59,19 @@ _HEALTH_BACKEND_CACHE_TTL_SECONDS = 30.0
 
 
 class _HealthChecker:
-    """Evaluate the bridge's backend binary resolvability for /health."""
+    """Evaluate the bridge's gpg binary resolvability for /health."""
 
     def __init__(
         self,
-        backend_command: list[str],
+        gpg_command: list[str],
         *,
         cache_ttl_seconds: float = _HEALTH_BACKEND_CACHE_TTL_SECONDS,
         clock: Callable[[], float] = time.monotonic,
         resolver: Callable[[str], str | None] = shutil.which,
     ):
-        if not backend_command:
-            raise ValueError("_HealthChecker: backend_command must not be empty")
-        self._executable = backend_command[0]
+        if not gpg_command:
+            raise ValueError("_HealthChecker: gpg_command must not be empty")
+        self._executable = gpg_command[0]
         self._cache_ttl_seconds = cache_ttl_seconds
         self._clock = clock
         self._resolver = resolver
@@ -367,7 +369,7 @@ class GpgBridgeServer(ThreadingHTTPServer):
         self.authz = authz
         self.registry = registry
         self.metrics = metrics
-        self.health_checker = health_checker or _HealthChecker(config.gpg_backend_command)
+        self.health_checker = health_checker or _HealthChecker(config.gpg_command)
         super().__init__((config.host, config.port), GpgBridgeHandler)
         if config.tls_enabled:
             self.socket = _build_tls_context(config.tls_cert_path, config.tls_key_path).wrap_socket(

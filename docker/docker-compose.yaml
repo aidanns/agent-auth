@@ -122,13 +122,13 @@ configs:
         - /srv/things-fixtures/things.yaml
       request_timeout_seconds: 35.0
   gpg_bridge_config:
-    # The bridge default ``gpg_backend_command`` (``gpg-backend-cli-host``)
-    # already resolves on PATH inside the test image, so it is left
-    # implicit here. ``allowed_signing_keys`` is left empty by default
-    # (every key the host gpg has is allowed); the allowlist test
-    # writes a config override at fixture time when it needs to assert
-    # the deny path. The bridge speaks plaintext loopback HTTP inside
-    # the compose network — TLS posture is exercised by unit tests.
+    # The bridge default ``gpg_command`` (``gpg``) already resolves on
+    # PATH inside the test image, so it is left implicit here.
+    # ``allowed_signing_keys`` is left empty by default (every key
+    # the host gpg has is allowed); the allowlist test writes a
+    # config override at fixture time when it needs to assert the
+    # deny path. The bridge speaks plaintext loopback HTTP inside the
+    # compose network — TLS posture is exercised by unit tests.
     content: |
       host: 0.0.0.0
       port: 9300

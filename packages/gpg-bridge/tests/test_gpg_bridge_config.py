@@ -19,7 +19,7 @@ class TestConfigDefaults:
         cfg = Config()
         assert cfg.host == "127.0.0.1"
         assert cfg.port == 9300
-        assert cfg.gpg_backend_command == ["gpg-backend-cli-host"]
+        assert cfg.gpg_command == ["gpg"]
         assert cfg.allowed_signing_keys == []
 
     @pytest.mark.covers_function("Load Bridge Configuration")
@@ -28,9 +28,9 @@ class TestConfigDefaults:
             Config(tls_cert_path="cert.pem")
 
     @pytest.mark.covers_function("Load Bridge Configuration")
-    def test_empty_backend_command_rejected(self) -> None:
-        with pytest.raises(ValueError, match="gpg_backend_command"):
-            Config(gpg_backend_command=[])
+    def test_empty_gpg_command_rejected(self) -> None:
+        with pytest.raises(ValueError, match="gpg_command"):
+            Config(gpg_command=[])
 
     @pytest.mark.covers_function("Load Bridge Configuration")
     def test_tls_enabled_when_both_set(self, tmp_path) -> None:

@@ -156,20 +156,22 @@ functions:
       - name: Display Results
         description: Format and print structured results from the bridge to the terminal.
   - name: GPG Bridge
-    description: Expose authenticated host-gpg signing and verification operations over HTTP to gpg-cli, delegating authorization to agent-auth and shelling out to a configured backend per request. See ADR 0033.
+    description: Expose authenticated host-gpg signing and verification operations over HTTP to gpg-cli, delegating authorization to agent-auth and shelling out to the configured gpg binary per request. See ADR 0033 (with the 2026-04-25 collapse-the-backend-hop amendment).
     functions:
       - name: Authorize Sign Request
         description: Per-request validation of the bearer token against agent-auth, requiring the gpg:sign scope for /v1/sign and /v1/verify and translating agent-auth errors (token invalid, scope denied, rate limited, unavailable) into the bridge's HTTP status codes.
       - name: Apply Per-Key Allowlist
-        description: When allowed_signing_keys is non-empty, normalise the requested local-user (case-insensitive, whitespace-stripped, with full-fingerprint suffix matching for short / long key IDs) and reject signing requests whose key is not on the list with HTTP 403 before invoking the backend.
-      - name: Run Backend Subprocess
-        description: Spawn the configured gpg_backend_command per request, frame the verify input as a four-byte big-endian length plus signature plus payload, parse the JSON envelope on stdout, retain a bounded stderr tail for diagnostics, and translate envelope errors into the GpgError hierarchy.
+        description: When allowed_signing_keys is non-empty, normalise the requested local-user (case-insensitive, whitespace-stripped, with full-fingerprint suffix matching for short / long key IDs) and reject signing requests whose key is not on the list with HTTP 403 before invoking gpg.
+      - name: Sign Payload
+        description: Construct the gpg --detach-sign argv (with --batch / --no-tty / --pinentry-mode loopback / --status-fd 2 / --keyid-format / --local-user / --armor), invoke the configured gpg_command with the payload on stdin, capture the signature bytes and status-fd output, extract the resolved key fingerprint from the SIG_CREATED status line, and translate stderr error patterns into the GpgError hierarchy.
+      - name: Verify Signature
+        description: Construct the gpg --verify argv, write the signature and payload into a per-request tempdir, invoke the configured gpg_command, capture the status-fd output, and translate stderr / status-block error patterns (BADSIG, ERRSIG, no-such-key, permission-denied) into the GpgError hierarchy.
       - name: Serve GPG Bridge HTTP API
         description: Expose POST /gpg-bridge/v1/sign and POST /gpg-bridge/v1/verify under the /gpg-bridge/ prefix, enforce the 1 MiB request cap with HTTP 413 before subprocess invocation, and reject unknown routes with HTTP 404.
       - name: Serve GPG Bridge Health Endpoint
-        description: Handle GET /gpg-bridge/health readiness probes; require an access token carrying the gpg-bridge:health scope, verify that the configured gpg_backend_command is resolvable, return 200 when the backend is reachable and 503 when the backend executable cannot be resolved.
+        description: Handle GET /gpg-bridge/health readiness probes; require an access token carrying the gpg-bridge:health scope, verify that the configured gpg_command is resolvable, return 200 when the gpg binary is reachable and 503 when it cannot be resolved.
       - name: Load Bridge Configuration
-        description: Read $XDG_CONFIG_HOME/gpg-bridge/config.yaml, apply defaults (host, port, gpg_backend_command, request_timeout_seconds), validate that TLS cert / key paths are configured together, normalise allowed_signing_keys, and reject empty backend commands.
+        description: Read $XDG_CONFIG_HOME/gpg-bridge/config.yaml, apply defaults (host, port, gpg_command, request_timeout_seconds), validate that TLS cert / key paths are configured together, normalise allowed_signing_keys, and reject empty gpg commands.
   - name: GPG CLI
     description: Devcontainer-side gpg.program replacement that maps git's gpg argv shape onto gpg-bridge's HTTP API. Holds no private key material. See ADR 0033.
     functions:
@@ -183,14 +185,3 @@ functions:
         description: Resolve bridge_url, access_token, refresh_token, family_id, auth_url, ca_cert_path, and timeout_seconds from CLI flags, environment variables (AGENT_AUTH_GPG_BRIDGE_URL, AGENT_AUTH_GPG_ACCESS_TOKEN, AGENT_AUTH_GPG_REFRESH_TOKEN, AGENT_AUTH_GPG_FAMILY_ID, AGENT_AUTH_GPG_AUTH_URL, AGENT_AUTH_GPG_CA_CERT_PATH, AGENT_AUTH_GPG_TIMEOUT_SECONDS), and $XDG_CONFIG_HOME/gpg-cli/config.yaml in that precedence order, rejecting requests that lack a bridge URL, access token, refresh token, or auth URL, and rejecting the pre-refresh single-token schema with a directive pointing the operator at scripts/setup-devcontainer-signing.sh.
       - name: Auto Refresh Token
         description: On 401 token_expired from gpg-bridge, exchange the stored refresh token at /agent-auth/v1/token/refresh and retry the original sign / verify request once; on refresh_token_expired fall back to /agent-auth/v1/token/reissue (which blocks on host JIT approval); persist the new access_token and refresh_token to $XDG_CONFIG_HOME/gpg-cli/config.yaml at mode 0600 before the retry runs (single-use refresh, ADR 0011); surface reuse_detected, family_revoked, and other terminal refresh failures as exit 3 with a message naming scripts/setup-devcontainer-signing.sh as the recovery command.
-  - name: GPG Backend CLI Host
-    description: Host-side per-request CLI that shells out to the real gpg binary for gpg-bridge. Plays the same role as things-client-cli-applescript - a narrow subprocess with no HTTP or authz surface. See ADR 0033.
-    functions:
-      - name: Sign Payload
-        description: Invoke the host gpg binary with --detach-sign / --sign / --armor / --local-user, read the payload from stdin, capture the resulting signature bytes and status-fd output, and emit the SignResult JSON envelope on stdout.
-      - name: Verify Signature
-        description: Invoke the host gpg binary with --verify against the framed signature and payload from stdin, capture the status-fd output, and emit the VerifyResult JSON envelope on stdout, mapping a non-matching signature to the GpgBadSignatureError code.
-      - name: Resolve Local-User Key
-        description: Translate the requested --local-user (key ID, fingerprint, or user-id substring) into the full fingerprint of the key gpg actually used and surface a no_such_key error when no host key matches.
-      - name: Emit Backend JSON Envelope
-        description: Serialise the SignResult or VerifyResult (or a structured error with one of bad_signature, no_such_key, unsupported_operation, gpg_unavailable, gpg_permission_denied, timeout) as a single JSON document on stdout, where the envelope is authoritative regardless of process exit code.

@@ -921,7 +921,8 @@ To wire a fresh devcontainer to the host's `gpg-bridge`:
    They're shown once.
 
 2. **In the devcontainer**, run the setup task with the token pair,
-   the agent-auth URL, and the bridge URL:
+   the agent-auth URL, the bridge URL, and the GPG fingerprint git
+   should sign with:
 
    ```bash
    task setup-devcontainer-signing -- \
@@ -929,28 +930,62 @@ To wire a fresh devcontainer to the host's `gpg-bridge`:
      --refresh-token <REFRESH_TOKEN> \
      --family-id <FAMILY_ID> \
      --auth-url https://host.docker.internal:9100 \
-     --bridge-url https://host.docker.internal:8443
+     --bridge-url https://host.docker.internal:8443 \
+     --signing-key <FINGERPRINT>
    ```
 
    Optional flags: `--ca-cert-path <PATH>` if the bridge's TLS
    certificate is signed by a CA the container's trust store doesn't
-   include, and `--timeout-seconds <N>` to override the per-request
-   timeout (default 30s). `--family-id` is technically optional but
-   without it `gpg-cli` cannot recover from a refresh-token expiry —
-   the reissue path needs the family id to ask for host JIT approval.
+   include; `--timeout-seconds <N>` to override the per-request
+   timeout (default 30s); `--skip-smoke` to bypass the post-install
+   end-to-end smoke test (only useful in constrained environments
+   like CI provisioning where the bridge isn't up at install time —
+   the install is unverified, see the smoke-test description below).
+
+   `--family-id` is technically optional but without it `gpg-cli`
+   cannot recover from a refresh-token expiry — the reissue path
+   needs the family id to ask for host JIT approval.
+
+   `--signing-key` is optional if the clone already has a local
+   `user.signingkey` set (`git config --local user.signingkey <FP>`); the script reuses that value. Otherwise the smoke test
+   fails because git has no key to sign the trial payload with.
 
 The setup task writes the `gpg-cli` config to
-`$XDG_CONFIG_HOME/gpg-cli/config.yaml` (mode `0600`) and runs two
-`git config --local` calls in the current clone:
+`$XDG_CONFIG_HOME/gpg-cli/config.yaml` (mode `0600`) and runs the
+relevant `git config --local` calls in the current clone:
 
 - `gpg.program = gpg-cli` — git delegates sign / verify to the
   bridge instead of looking for `gpg` on `PATH`.
 - `commit.gpgsign = true` — every `git commit` signs without needing
   `-S`.
+- `user.signingkey = <FINGERPRINT>` — only when `--signing-key`
+  was passed.
 
 Override per-commit with `git -c commit.gpgsign=false commit` when
 you need an unsigned commit (e.g. an in-flight rebase that doesn't
 touch `main`).
+
+After writing config, the script runs an end-to-end **smoke test**
+that fails fast at install time rather than at first `git commit`.
+Probes (in order):
+
+| #   | Probe                          | Failure surfaces as                                                                                                                                                                                                |
+| --- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | `gpg-cli` is on `PATH`         | `probe failed: gpg.program unresolved` — install gpg-cli inside the devcontainer.                                                                                                                                  |
+| 2   | `git config user.signingkey`   | `probe failed: user.signingkey is unset` — re-run with `--signing-key <FP>`.                                                                                                                                       |
+| 3   | bridge URL is reachable        | `probe failed: bridge unreachable at <URL>` — check the bridge is running on the host and the URL is reachable from the container. On Docker Desktop, prefer `host.docker.internal` over `127.0.0.1`.              |
+| 4   | end-to-end trial sign succeeds | gpg-cli exit 3 → token unauthorized; exit 4 → forbidden (token lacks `gpg:sign=allow` or key not in `allowed_signing_keys`); exit 5 → bridge unavailable (often host gpg-agent / `allow-loopback-pinentry` issue). |
+
+Probe 4's failure modes are documented end-to-end in
+`docs/operations/gpg-bridge-host-setup.md`. The smoke test is
+idempotent — re-running the script after a successful run re-runs
+the smoke test against the existing config without rewriting it
+beyond chmod-ing the file back to 0600.
+
+To bypass the smoke test (e.g. in CI provisioning where the bridge
+isn't running at install time), pass `--skip-smoke`. The script
+prints a warning that the install is unverified and exits 0; the
+operator finds out at first `git commit`.
 
 The setup is idempotent — re-running with the same arguments
 overwrites the config file and reasserts the git-config values.

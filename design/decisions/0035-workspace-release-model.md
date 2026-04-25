@@ -95,7 +95,7 @@ and avoids adding a community dependency to the release path.
   per-package split multiplies that workflow by the number of
   packages (seven today: `agent-auth`, `agent-auth-common`,
   `things-bridge`, `things-cli`, `things-client-cli-applescript`,
-  `gpg-bridge`, `gpg-backend-cli-host`, `gpg-cli`). The per-package
+  `gpg-bridge`, `gpg-cli`). The per-package
   publish jobs are workable — the existing `release-publish.yml`
   fires on `push: tags: v*` and can be generalised — but each adds
   a signing identity, an attestation file, and a matrix leg to every

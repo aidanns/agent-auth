@@ -2,17 +2,18 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Fault-injection: gpg backend subprocess crashes.
+"""Fault-injection: the gpg subprocess crashes.
 
-``GpgSubprocessClient`` is the only place the bridge reasons about the
-backend CLI subprocess protocol — every crash mode (non-zero exit
-without a structured error body, killed by signal, segfault) must
-surface as ``GpgError``. A raw ``subprocess`` failure escaping into
-the HTTP handler would crash the request thread and leave the bridge
-exposing an unhelpful ``502`` with no diagnostic tail.
+``GpgSubprocessClient`` is the only place the bridge reasons about
+how to drive the host ``gpg`` binary — every crash mode (non-zero
+exit without a recognised stderr pattern, killed by signal,
+segfault) must surface as ``GpgError``. A raw ``subprocess`` failure
+escaping into the HTTP handler would crash the request thread and
+leave the bridge exposing an unhelpful ``502`` with no diagnostic
+tail.
 
-These tests use ad-hoc shell scripts as the configured backend
-command — same approach as
+These tests use ad-hoc shell scripts as the configured ``gpg_command``
+— same approach as
 ``packages/things-bridge/tests/fault/test_things_applescript_failure.py``
 — so the production fake stays free of error-injection knobs that
 would never serve a real e2e test.
@@ -25,7 +26,7 @@ from pathlib import Path
 import pytest
 
 from gpg_bridge.gpg_client import GpgSubprocessClient
-from gpg_models.errors import GpgError
+from gpg_models.errors import GpgError, GpgNoSuchKeyError, GpgPermissionError
 from gpg_models.models import SignRequest
 
 
@@ -35,96 +36,91 @@ def _make_executable(path: Path, body: str) -> Path:
     return path
 
 
-@pytest.mark.covers_function("Run Backend Subprocess")
-def test_backend_nonzero_exit_without_payload_raises_gpg_error(tmp_path: Path) -> None:
-    """A backend that exits non-zero with no JSON envelope raises ``GpgError``.
+@pytest.mark.covers_function("Sign Payload")
+def test_gpg_nonzero_exit_without_recognised_stderr_raises_gpg_error(tmp_path: Path) -> None:
+    """A gpg subprocess that exits non-zero with no recognised stderr pattern raises ``GpgError``.
 
-    The contract documented in
-    :class:`gpg_bridge.gpg_client.GpgSubprocessClient._invoke` is that
-    the JSON envelope on stdout is authoritative — if it is missing
-    *and* the process exited non-zero we surface a ``GpgError`` with
-    the exit code so operators have something to grep for.
+    The bridge classifies known stderr patterns (``No secret key``,
+    ``BAD signature``, ``No pinentry``, …) into typed
+    :class:`gpg_models.errors.GpgError` subclasses. An unrecognised
+    failure must still surface as a generic ``GpgError`` carrying the
+    exit code so operators have something to grep for.
     """
     script = _make_executable(
-        tmp_path / "backend_nonzero.sh",
-        "#!/usr/bin/env bash\necho 'something broke' >&2\nexit 17\n",
+        tmp_path / "gpg_nonzero.sh",
+        "#!/usr/bin/env bash\necho 'something obscure broke' >&2\nexit 17\n",
     )
     client = GpgSubprocessClient(command=[str(script)], timeout_seconds=5.0)
-    with pytest.raises(GpgError, match="emitted no JSON output"):
+    with pytest.raises(GpgError, match="exited 17"):
         client.sign(SignRequest(local_user="k", payload=b"x"))
 
 
-@pytest.mark.covers_function("Run Backend Subprocess")
-def test_backend_killed_by_sigsegv_raises_gpg_error(tmp_path: Path) -> None:
-    """A backend that segfaults raises ``GpgError`` rather than escaping a signal.
+@pytest.mark.covers_function("Sign Payload")
+def test_gpg_killed_by_sigsegv_raises_gpg_error(tmp_path: Path) -> None:
+    """A gpg subprocess that segfaults raises ``GpgError`` rather than escaping a signal.
 
     ``kill -SEGV $$`` from within the script causes the shell itself
-    to terminate with a SIGSEGV — Python's ``Popen.wait`` reports a
-    negative ``returncode`` (-11). The contract is the same as a
-    plain non-zero exit: no JSON envelope means ``GpgError``.
+    to terminate with a SIGSEGV — Python's ``subprocess.run`` reports
+    a negative ``returncode`` (-11). The contract is the same as a
+    plain non-zero exit: an unrecognised stderr pattern means a
+    generic ``GpgError``.
     """
     script = _make_executable(
-        tmp_path / "backend_sigsegv.sh",
+        tmp_path / "gpg_sigsegv.sh",
         "#!/usr/bin/env bash\nkill -SEGV $$\n",
     )
     client = GpgSubprocessClient(command=[str(script)], timeout_seconds=5.0)
-    with pytest.raises(GpgError, match="emitted no JSON output"):
+    with pytest.raises(GpgError, match="exited"):
         client.sign(SignRequest(local_user="k", payload=b"x"))
 
 
-@pytest.mark.covers_function("Run Backend Subprocess")
-def test_backend_killed_by_sigterm_raises_gpg_error(tmp_path: Path) -> None:
-    """A backend that gets SIGTERM before writing stdout raises ``GpgError``.
+@pytest.mark.covers_function("Sign Payload")
+def test_gpg_killed_by_sigterm_raises_gpg_error(tmp_path: Path) -> None:
+    """A gpg subprocess that gets SIGTERM before writing stdout raises ``GpgError``.
 
-    Models the case where systemd / launchd reaps a slow backend or
-    a shared runner-host watchdog kills the process. The bridge must
-    not treat the missing payload as success.
+    Models the case where systemd / launchd reaps a slow gpg or a
+    shared runner-host watchdog kills the process. The bridge must
+    not treat the missing signature as success.
     """
     script = _make_executable(
-        tmp_path / "backend_sigterm.sh",
+        tmp_path / "gpg_sigterm.sh",
         "#!/usr/bin/env bash\nkill -TERM $$\n",
     )
     client = GpgSubprocessClient(command=[str(script)], timeout_seconds=5.0)
-    with pytest.raises(GpgError, match="emitted no JSON output"):
+    with pytest.raises(GpgError, match="exited"):
         client.sign(SignRequest(local_user="k", payload=b"x"))
 
 
-@pytest.mark.covers_function("Run Backend Subprocess")
-def test_backend_nonzero_exit_with_envelope_uses_envelope(tmp_path: Path) -> None:
-    """A backend that emits a structured-error envelope wins over its exit code.
+@pytest.mark.covers_function("Sign Payload")
+def test_gpg_no_secret_key_stderr_pattern_raises_typed_error(tmp_path: Path) -> None:
+    """``No secret key`` stderr surfaces as ``GpgNoSuchKeyError``.
 
-    The envelope is authoritative regardless of process exit code
-    (see ``Emit Backend JSON Envelope`` in
-    ``design/functional_decomposition.yaml``). A backend can crash
-    *and* still write a clean ``{"error": "..."}`` envelope; the
-    bridge must surface that envelope's typed error rather than a
-    bare ``GpgError`` about the exit code.
+    Mirrors the bridge's classification of host gpg's actual error
+    output — the stderr pattern is the contract, not the exit code,
+    so a non-zero rc with a recognised pattern still produces the
+    typed subclass.
     """
     script = _make_executable(
-        tmp_path / "backend_envelope_with_exit.sh",
-        '#!/usr/bin/env bash\nprintf \'{"error": "no_such_key", "detail": "no key x"}\'\nexit 9\n',
+        tmp_path / "gpg_no_key.sh",
+        ("#!/usr/bin/env bash\n" "echo 'gpg: skipped: No secret key' >&2\n" "exit 2\n"),
     )
     client = GpgSubprocessClient(command=[str(script)], timeout_seconds=5.0)
-    # ``GpgNoSuchKeyError`` is a ``GpgError`` subclass; matching on the
-    # detail string is the strongest assertion that the envelope (not
-    # the exit code) drove the response.
-    with pytest.raises(GpgError, match="no key x"):
+    with pytest.raises(GpgNoSuchKeyError):
         client.sign(SignRequest(local_user="k", payload=b"x"))
 
 
-@pytest.mark.covers_function("Run Backend Subprocess")
-def test_backend_clean_zero_exit_without_payload_raises_gpg_error(tmp_path: Path) -> None:
-    """A backend that returns 0 but emits no envelope still raises ``GpgError``.
+@pytest.mark.covers_function("Sign Payload")
+def test_gpg_pinentry_stderr_pattern_raises_typed_error(tmp_path: Path) -> None:
+    """``No pinentry`` stderr surfaces as ``GpgPermissionError``.
 
-    Without this guard the bridge would call ``SignResult.from_json``
-    on ``{}`` and surface a ``ValueError`` from the model layer rather
-    than a typed ``GpgError`` — making the failure look like a bridge
-    bug instead of a backend protocol violation.
+    Same shape as the no-secret-key test — confirms the bridge's
+    permission-pattern classification works end-to-end against an
+    arbitrary script standing in for gpg.
     """
     script = _make_executable(
-        tmp_path / "backend_zero_no_payload.sh",
-        "#!/usr/bin/env bash\nexit 0\n",
+        tmp_path / "gpg_no_pinentry.sh",
+        ("#!/usr/bin/env bash\n" "echo 'gpg: No pinentry' >&2\n" "exit 2\n"),
     )
     client = GpgSubprocessClient(command=[str(script)], timeout_seconds=5.0)
-    with pytest.raises(GpgError, match="emitted no JSON output"):
+    with pytest.raises(GpgPermissionError):
         client.sign(SignRequest(local_user="k", payload=b"x"))
