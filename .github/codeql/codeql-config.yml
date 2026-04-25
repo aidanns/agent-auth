@@ -29,6 +29,17 @@ queries:
 
 paths-ignore:
   - packages/agent-auth-common/src/tests_support/integration/_chmod.py
+  # The gpg_backend_fake test harness records the passphrase the
+  # bridge feeds via ``--passphrase-fd`` to a tmpdir-local file so
+  # tests can confirm the fd plumbing actually delivered it (per
+  # ADR 0042). The recording is gated on a fixture-only
+  # ``record_passphrase_path`` behaviour, never enabled in
+  # production fixtures, and the fake never ships in the wheel —
+  # ``setuptools.packages.find`` excludes ``tests*``. CodeQL's
+  # ``py/clear-text-storing-sensitive-data`` query flags the call
+  # shape regardless; excluding the fake here keeps the rule loud
+  # for any production code path.
+  - packages/gpg-bridge/tests/gpg_backend_fake
 
 path-classifiers:
   test:
