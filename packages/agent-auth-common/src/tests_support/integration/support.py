@@ -21,6 +21,7 @@ import subprocess
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
@@ -48,13 +49,60 @@ PER_SERVICE_DOCKERFILES: dict[str, Path] = {
 _timing_log = logging.getLogger("integration.timing")
 
 
+@dataclass(frozen=True)
+class PhaseBudgetBreach:
+    """Record of a :func:`phase_timer` block that exceeded its budget.
+
+    Consumed by the ``pytest_sessionfinish`` hook in
+    ``tests_support.integration.plugin`` to fail the session — that is
+    how #288's CI gate prevents a future harness change from silently
+    re-introducing slow teardowns. ``fields`` carries the structured
+    context the caller passed (project, service, …) so the failure
+    output can pinpoint which compose project blew the budget.
+    """
+
+    phase: str
+    elapsed_seconds: float
+    budget_seconds: float
+    fields: dict[str, str] = field(default_factory=dict)
+
+
+_phase_budget_breaches: list[PhaseBudgetBreach] = []
+
+
+def phase_budget_breaches() -> tuple[PhaseBudgetBreach, ...]:
+    """Return all breaches recorded since the last :func:`clear_phase_budget_breaches`."""
+    return tuple(_phase_budget_breaches)
+
+
+def clear_phase_budget_breaches() -> None:
+    """Drop all recorded breaches. Used by tests to isolate the global list."""
+    _phase_budget_breaches.clear()
+
+
 @contextmanager
-def phase_timer(phase: str, **fields: object) -> Iterator[None]:
+def phase_timer(
+    phase: str,
+    *,
+    budget_seconds: float | None = None,
+    **fields: object,
+) -> Iterator[None]:
     """Log wall-clock time spent inside the ``with`` block.
 
     Extra ``fields`` are appended as ``key=value`` pairs so callers can
     correlate phases (e.g. compose project name, image tag) without
     parsing test ids.
+
+    When ``budget_seconds`` is set and elapsed exceeds it, a
+    :class:`PhaseBudgetBreach` is appended to the module-level breach
+    list (see :func:`phase_budget_breaches`) and a WARNING is emitted on
+    the same logger. The breach record is also raised at the end of the
+    pytest session by the integration plugin's ``pytest_sessionfinish``
+    hook, failing the run. Suppressing the breach with a ``try/except``
+    around the ``with`` block does not erase it — by design, so the
+    fixture teardowns that wrap ``running.stop()`` in a defensive
+    ``except Exception`` (to avoid masking earlier test failures) cannot
+    accidentally swallow a budget regression.
     """
     start = time.monotonic()
     try:
@@ -63,6 +111,22 @@ def phase_timer(phase: str, **fields: object) -> Iterator[None]:
         elapsed = time.monotonic() - start
         suffix = "".join(f" {k}={v}" for k, v in fields.items())
         _timing_log.info("phase=%s elapsed_seconds=%.3f%s", phase, elapsed, suffix)
+        if budget_seconds is not None and elapsed > budget_seconds:
+            _phase_budget_breaches.append(
+                PhaseBudgetBreach(
+                    phase=phase,
+                    elapsed_seconds=elapsed,
+                    budget_seconds=budget_seconds,
+                    fields={k: str(v) for k, v in fields.items()},
+                )
+            )
+            _timing_log.warning(
+                "phase=%s exceeded budget %.3fs: elapsed_seconds=%.3f%s",
+                phase,
+                budget_seconds,
+                elapsed,
+                suffix,
+            )
 
 
 def docker_compose_available() -> bool:

@@ -63,6 +63,7 @@ from tests_support.integration.support import (
     PER_SERVICE_DOCKERFILES,
     build_test_image,
     docker_compose_available,
+    phase_budget_breaches,
     phase_timer,
     seed_empty_fixtures_dir,
 )
@@ -94,6 +95,15 @@ APPROVAL_PLUGINS = {
 NOTIFIER_SIDECAR_URL = "http://notifier:9150/"
 
 AGENT_AUTH_INTERNAL_PORT = 9100
+
+# Per-test ``compose_stop`` budget (seconds). The compose file pins
+# ``stop_grace_period: 5s`` per service and the agent-auth /
+# things-bridge SIGTERM handlers (#154) drain in ~5 s, so a healthy
+# teardown + docker overhead lands well under this. Set high enough to
+# tolerate a slow CI runner but low enough to catch a regression to
+# 30 s like the one #288 fixed. Wired into the integration plugin's
+# fixture teardowns and asserted in ``pytest_sessionfinish`` below.
+COMPOSE_STOP_BUDGET_SECONDS = 10.0
 
 
 @dataclass
@@ -347,6 +357,39 @@ def pytest_runtest_makereport(item, call):
     setattr(item, f"rep_{report.when}", report)
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """Fail the integration session if any phase exceeded its budget.
+
+    The fixture teardowns wrap ``running.stop()`` in a defensive
+    ``except Exception`` so a failing teardown can't mask the
+    originating test failure. That swallow would also hide a
+    ``compose_stop`` budget breach if it raised inline, which would
+    re-introduce exactly the silent-regression class #288 is about. So
+    instead, ``phase_timer`` records breaches into a module-level list
+    and this hook converts them into a non-zero session exit at the end
+    of the run, where there's nothing left to mask.
+    """
+    breaches = phase_budget_breaches()
+    if not breaches:
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    lines = ["integration phase budget exceeded:"]
+    for b in breaches:
+        suffix = " ".join(f"{k}={v}" for k, v in b.fields.items())
+        lines.append(
+            f"  phase={b.phase} elapsed_seconds={b.elapsed_seconds:.3f} "
+            f"budget_seconds={b.budget_seconds:.3f} {suffix}".rstrip()
+        )
+    message = "\n".join(lines)
+    if reporter is not None:
+        reporter.write_sep("=", "INTEGRATION BUDGET FAILURE", red=True)
+        reporter.write_line(message)
+    else:
+        print(message)
+    if exitstatus == pytest.ExitCode.OK:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
 @pytest.fixture
 def agent_auth_container_factory(
     _test_image_tags: dict[str, str],
@@ -411,7 +454,12 @@ def agent_auth_container_factory(
     failed = _test_failed(request)
     for running in started:
         try:
-            with phase_timer("compose_stop", project=running.project_name, service="agent-auth"):
+            with phase_timer(
+                "compose_stop",
+                project=running.project_name,
+                service="agent-auth",
+                budget_seconds=COMPOSE_STOP_BUDGET_SECONDS,
+            ):
                 running.stop(test_failed=failed)
         except Exception as e:
             print(f"warning: compose teardown failed: {e!r}")
@@ -613,7 +661,12 @@ def things_bridge_stack_factory(
     failed = _test_failed(request)
     for running in started:
         try:
-            with phase_timer("compose_stop", project=running.project_name, service="things-bridge"):
+            with phase_timer(
+                "compose_stop",
+                project=running.project_name,
+                service="things-bridge",
+                budget_seconds=COMPOSE_STOP_BUDGET_SECONDS,
+            ):
                 running.stop(test_failed=failed)
         except Exception as e:
             print(f"warning: compose teardown failed: {e!r}")
