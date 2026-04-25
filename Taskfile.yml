@@ -136,6 +136,6 @@ tasks:
       - scripts/setup-devcontainer-signing.sh {{.CLI_ARGS}}
 
   release:
-    desc: "Cut a release. With no args (task release), the next version is derived from conventional commits since the last v* tag (major/minor/patch from BREAKING/feat/fix). Pass an explicit version (task release -- 1.2.3) to override. The resolved version must match a ## [X.Y.Z] section in CHANGELOG.md. The script creates and pushes the tag vX.Y.Z and publishes the GitHub release."
+    desc: "Force a refresh of the YAML-driven release PR by dispatching .github/workflows/release-pr.yml on main. The default flow runs that workflow automatically on every push to main; use this task as a manual escape hatch (e.g. after editing a changelog/@unreleased/*.yml directly via the GitHub UI). The release tag itself is cut by .github/workflows/release-tag.yml when the release PR merges. See CONTRIBUTING.md § Release process and ADR 0039."
     cmds:
       - scripts/release.sh {{.CLI_ARGS}}

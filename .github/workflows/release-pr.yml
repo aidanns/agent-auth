@@ -1,0 +1,188 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Open or update the release PR on every push to main.
+#
+# The workflow reads `changelog/@unreleased/pr-*.yml` and uses the
+# shared `version_logic` library (#295) to compute the next version,
+# then renders the new CHANGELOG section and the release-PR body via
+# `scripts/changelog/build_release.py`. The branch name is
+# `release/<X.Y.Z>` so the release-tag workflow can filter by head ref
+# without parsing the title. Idempotent on re-run within the same
+# release window — subsequent pushes refresh the same branch + PR.
+#
+# When the *next computed version* changes (e.g. a new YAML lifts the
+# bump from patch to minor, or a `release-as` override is added), the
+# workflow closes the previous `release/*` PR and opens a new one
+# under the new version, so a stale PR never lingers ahead of an
+# updated plan.
+#
+# Bot identity: uses the default GITHUB_TOKEN. If the `main` ruleset
+# blocks PRs opened or merged by the workflow token, swap to the
+# existing release App via `actions/create-github-app-token` —
+# tracked as a follow-up to ADR 0039.
+
+name: Release PR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-pr
+  cancel-in-progress: false
+
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML
+        # The build_release script depends on PyYAML (re-exported via
+        # version_logic). Avoid the full workspace `uv sync` here —
+        # this workflow only needs the changelog tooling.
+        run: pip install --no-cache-dir 'pyyaml>=6'
+
+      - name: Resolve current version
+        id: current
+        shell: bash
+        run: |
+          set -euo pipefail
+          if tag="$(git describe --tags --abbrev=0 --match 'v*.*.*' 2>/dev/null)"; then
+            echo "version=${tag#v}" >> "${GITHUB_OUTPUT}"
+          else
+            # First release ever — fall back to 0.0.0 so the very first
+            # `feature` entry produces 0.1.0.
+            echo "version=0.0.0" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Compute release plan
+        id: plan
+        env:
+          CURRENT_VERSION: ${{ steps.current.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          plan_json="$(python3 scripts/changelog/build_release.py compute \
+            --repo-root . \
+            --current-version "${CURRENT_VERSION}")"
+          # Persist the plan to a file (multiline JSON survives env
+          # encoding via the file path; outputs would also work but
+          # the body and changelog section are large).
+          printf '%s' "${plan_json}" > /tmp/release-plan.json
+          if jq -er '.skip == true' < /tmp/release-plan.json >/dev/null 2>&1; then
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            echo "build_release: no unreleased entries; skipping release PR."
+          else
+            next="$(jq -r '.next_version' /tmp/release-plan.json)"
+            branch="$(jq -r '.branch' /tmp/release-plan.json)"
+            title="$(jq -r '.title' /tmp/release-plan.json)"
+            echo "skip=false" >> "${GITHUB_OUTPUT}"
+            echo "next_version=${next}" >> "${GITHUB_OUTPUT}"
+            echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+            echo "title=${title}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Apply moves and rewrite CHANGELOG.md
+        if: steps.plan.outputs.skip == 'false'
+        env:
+          CURRENT_VERSION: ${{ steps.current.outputs.version }}
+        run: |
+          python3 scripts/changelog/build_release.py apply \
+            --repo-root . \
+            --current-version "${CURRENT_VERSION}"
+
+      - name: Configure git identity
+        if: steps.plan.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create or refresh release branch
+        if: steps.plan.outputs.skip == 'false'
+        env:
+          BRANCH: ${{ steps.plan.outputs.branch }}
+          NEXT: ${{ steps.plan.outputs.next_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Stage the apply step's changes onto a fresh branch named
+          # after the next version. force-push so a previous attempt
+          # at the same version cleanly overwrites.
+          git checkout -B "${BRANCH}"
+          git add changelog CHANGELOG.md
+          # If nothing actually changed (re-run with no new entries),
+          # exit cleanly rather than commit an empty diff.
+          if git diff --cached --quiet; then
+            echo "release-pr: no diff to commit; release branch already up to date."
+            exit 0
+          fi
+          git commit -s -m "chore(release): ${NEXT}"
+          git push --force-with-lease origin "${BRANCH}"
+
+      - name: Close superseded release PRs
+        if: steps.plan.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP_BRANCH: ${{ steps.plan.outputs.branch }}
+          NEXT: ${{ steps.plan.outputs.next_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # List open PRs whose head ref starts with `release/`. Close
+          # any whose ref doesn't match the freshly-computed branch
+          # (e.g. a stale `release/0.5.0` when the plan now wants
+          # `release/1.0.0`). Delete the stale branch so the next
+          # iteration doesn't see it.
+          mapfile -t stale < <(
+            gh pr list --state open --json number,headRefName \
+              --jq '.[] | select(.headRefName | startswith("release/")) | "\(.number) \(.headRefName)"'
+          )
+          for entry in "${stale[@]:-}"; do
+            [[ -n "${entry}" ]] || continue
+            number="${entry%% *}"
+            ref="${entry#* }"
+            if [[ "${ref}" == "${KEEP_BRANCH}" ]]; then
+              continue
+            fi
+            echo "release-pr: superseding stale release PR #${number} (${ref}) -> ${KEEP_BRANCH}"
+            gh pr close "${number}" --comment "Superseded by release \`v${NEXT}\` (\`${KEEP_BRANCH}\`)." --delete-branch || true
+          done
+
+      - name: Open or update release PR
+        if: steps.plan.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.plan.outputs.branch }}
+          TITLE: ${{ steps.plan.outputs.title }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(jq -r '.pr_body' /tmp/release-plan.json)"
+          existing="$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "${existing}" ]]; then
+            echo "release-pr: updating existing PR #${existing}"
+            gh pr edit "${existing}" --title "${TITLE}" --body "${body}"
+          else
+            echo "release-pr: opening new PR for ${BRANCH}"
+            gh pr create \
+              --base main \
+              --head "${BRANCH}" \
+              --title "${TITLE}" \
+              --body "${body}"
+          fi

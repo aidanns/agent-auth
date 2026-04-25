@@ -62,20 +62,11 @@ While #291 is pending, the maintainer at merge time:
    "commit message" field.
 4. Clicks *Confirm squash and merge*.
 
-Until #295's bot-mediated `version_logic` lands, semantic-release
-continues to drive releases off the **old** Conventional Commits
-prefix set on `main`'s git log. If the merged commit needs to fire a
-release:
-
-- `feature: …` (new prefix) → paste the body and *also* rewrite the
-  squash-merge subject as `feat: …` so semantic-release picks it up.
-- `improvement:` / `migration:` / `deprecation:` → rewrite as `fix:`
-  for a patch bump (closest behavioural match in the old set).
-- `fix:` / `chore:` / `break:` → keep as-is; `fix:` and the implicit
-  `BREAKING CHANGE:` footer behave the same in both sets, and
-  `chore:` is in the no-release list either way.
-
-This translation step disappears with #295 + #296.
+Releases are now driven by the YAML schema introduced in #295 and the
+release-PR workflow introduced in #296 (ADR 0039). The squash-merge
+subject doesn't need to be translated for the release to fire — the
+release version is computed from `changelog/@unreleased/*.yml`
+entries directly.
 
 ## Acceptance for the rollout step
 
@@ -122,5 +113,4 @@ and instead apply the `automerge` label
   cutover steps above.**
 - #295 — bot-mediated `version_logic` consumes the new prefix set
   directly; removes the prefix-translation step.
-- #296 — decommissions `.releaserc.mjs`.
 - #298 — activates `==CHANGELOG_MSG==` / `==NO_CHANGELOG==` markers.

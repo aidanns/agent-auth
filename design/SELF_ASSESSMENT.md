@@ -321,11 +321,14 @@ compromise would not by itself defeat it:
   See [ADR 0016](decisions/0016-release-supply-chain.md),
   [ADR 0020](decisions/0020-slsa-build-provenance.md).
 - **Reviewer discipline.** Solo-maintainer project — reviews are
-  self-reviews gated by CI. Releases are driven by semantic-release
-  on merge to `main`; version derivation is reviewed at the PR
-  commit-message stage (the PR *is* the review gate, since there is
-  no downstream release PR). See
-  [ADR 0026](decisions/0026-semantic-release-autorelease.md).
+  self-reviews gated by CI. Releases are driven by the YAML-driven
+  release-PR workflow (`release-pr.yml` opens / updates a release
+  PR on every push to `main`; `release-tag.yml` tags + publishes on
+  merge). Both the user PR and the release PR pass through the same
+  review gate; version derivation is computed by
+  `scripts/changelog/version_logic.py` from per-PR YAML entries. See
+  [ADR 0039](decisions/0039-yaml-driven-release-workflow.md)
+  (supersedes ADR 0026).
 - **Container / image signing.** Not applicable; the project
   ships source distributions and wheels, not OCI images.
 - **Vulnerability checks.** The Dependency Review Action blocks
@@ -347,11 +350,13 @@ compromise would not by itself defeat it:
   (bug, feature, security-redirect); `SUPPORT.md` points users
   at issues for non-security requests.
 - **Outbound (release notes, advisories, changelog).**
-  `CHANGELOG.md` is generated from Conventional Commit subjects and
-  bodies by semantic-release on every release; the GitHub release
-  body carries the same content. Older hand-written sections
-  (pre-ADR 0026) remain in Keep-a-Changelog format. Security
-  advisories go through
+  `CHANGELOG.md` is rendered from per-PR YAML entries under
+  `changelog/@unreleased/` (per ADR 0039) — `scripts/changelog/build_release.py`
+  groups entries by type and prepends a new section to the file when
+  the release-PR workflow runs. The GitHub Release body shares the
+  same renderer so the two surfaces match byte-for-byte. Older
+  sections cut by semantic-release / Release Please remain in their
+  original formats. Security advisories go through
   [GitHub private vulnerability
   reporting](https://github.com/aidanns/agent-auth/security/advisories/new).
 
@@ -401,12 +406,13 @@ working flow, derived from SSDF RV.\*:
    private fork; CI gates and the standards-review checklist still
    apply.
 4. **Coordinated release.** Cut a patch release via the usual
-   semantic-release + release-publish workflow (merge a `fix:`
-   commit to `main`), timing the advisory publication to the
-   release. Include a `SECURITY.md` entry describing the class of
-   issue (not the primitive, if the advisory embargo is still
-   sensitive); the CHANGELOG bullet is derived from the commit
-   subject.
+   release-PR + release-tag + release-publish workflow chain (land a
+   `fix:` PR with a `type: fix` changelog entry on `main`, then merge
+   the auto-opened release PR), timing the advisory publication to
+   the release. Include a `SECURITY.md` entry describing the class
+   of issue (not the primitive, if the advisory embargo is still
+   sensitive); the CHANGELOG bullet is rendered from the YAML
+   `description:` field.
 5. **Post-mortem.** Open a public follow-up issue for any
    structural mitigation that could prevent the class of issue.
 

@@ -84,7 +84,7 @@ Every repeatable operation is exposed through the task runner. Run
 | `task verify-function-tests`               | Verify every leaf function in the functional decomposition has test coverage.                                                                                                       |
 | `task verify-dependencies`                 | Verify required CLI tools (python3, task, yq, ...) are installed on PATH.                                                                                                           |
 | `task verify-standards`                    | Verify generic, portable standards (Taskfile task coverage, Dependabot ecosystem coverage, bash CI gating). Does not enforce project-specific task names.                           |
-| `task release`                             | Cut a release (version bump, tag, GitHub release, publish).                                                                                                                         |
+| `task release`                             | Force a refresh of the YAML-driven release PR (manual escape hatch). The release PR is normally opened automatically on every push to `main`; merging it tags + publishes.          |
 | `task agent-auth -- <args>`                | Run the `agent-auth` CLI (any subcommand).                                                                                                                                          |
 | `task things-bridge -- <args>`             | Run the `things-bridge` CLI.                                                                                                                                                        |
 | `task things-cli -- <args>`                | Run the `things-cli` client.                                                                                                                                                        |
@@ -243,16 +243,18 @@ Breaking changes carry a `BREAKING CHANGE:` footer in the
 `==COMMIT_MSG==` block (see "Writing PRs" below). They normally bump
 major; while the project is in the 0.x range they are demoted to a
 minor bump via
+[ADR 0039](design/decisions/0039-yaml-driven-release-workflow.md)
+(carried over from
 [ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
-§ Pre-1.0 behaviour. `break:` is the corresponding PR-title prefix.
+§ Pre-1.0 behaviour). `break:` is the corresponding PR-title prefix.
 
-The bot-mediated `version_logic` (#295) will consume the
-release-impact mapping above. While `.releaserc.mjs` is still in
-place (decommissioning tracked in #296), it operates on the *old*
-prefix set on `main`'s git log; the maintainer translates the
-new-prefix PR title into the appropriate old-prefix squash-merge
-subject when a release is desired during the rollout window. See
-[`docs/release/rollout-pr-template.md`](docs/release/rollout-pr-template.md).
+Release-impact is computed by `scripts/changelog/version_logic.py`
+from the `type:` field in each `changelog/@unreleased/*.yml`. A YAML's
+`type:` matches a PR-title prefix one-to-one (`type: feature` ↔
+`feature:`-prefixed PR), so the table above doubles as the bump
+table. See
+[`docs/release/rollout-pr-template.md`](docs/release/rollout-pr-template.md)
+for the rollout context.
 
 ### Picking a type
 
@@ -411,69 +413,106 @@ an opt-out PR can't sneak in malformed YAML.
 
 ## Release process
 
-Two release paths exist:
+Releases are driven by `changelog/@unreleased/pr-*.yml` files (one per
+PR — see [Changelog entries](#changelog-entries-changelogunreleasedyml))
+and two GitHub Actions workflows. Rationale and trade-offs in
+[ADR 0039](design/decisions/0039-yaml-driven-release-workflow.md);
+the supply-chain artefact chain (SBOMs, cosign, SLSA-L3) carries over
+from
+[ADR 0016](design/decisions/0016-release-supply-chain.md) and
+[ADR 0020](design/decisions/0020-slsa-build-provenance.md).
 
-- **Default — semantic-release (CI)**: on every push to `main` the
-  `Semantic Release` workflow parses Conventional Commits since the
-  last `vX.Y.Z` tag, and — if any commit qualifies (`feat:`, `fix:`,
-  `perf:`, `revert:`, or a `BREAKING CHANGE:`) — computes the next
-  version, prepends a new section to `CHANGELOG.md`, creates a signed
-  `vX.Y.Z` tag, creates a GitHub release, and pushes a
-  `chore(release):` commit back to `main`. The tag push triggers the
-  `Release Publish` workflow. The publish workflow builds the sdist
-  and wheel with `uv build`, generates an SPDX SBOM per artifact with
-  Syft, signs each artifact and SBOM with keyless cosign (Sigstore
-  OIDC), and attaches everything to the GitHub release.
-  Verification recipe: see
-  [`SECURITY.md` → Supply-chain artifacts](SECURITY.md#supply-chain-artifacts).
-  Rationale for the autorelease-on-merge flow — and the trade-offs
-  accepted vs. the previous Release Please PR-batched flow — in
-  [ADR 0026](design/decisions/0026-semantic-release-autorelease.md).
-- **Break-glass — `task release` (local)**: runs `scripts/release.sh`
-  on your laptop. Use when CI is unavailable or a release has to be
-  cut without waiting for the runner. The tag push uses your own git
-  credential (not `GITHUB_TOKEN`), so it **does** fire
-  `release-publish.yml` — the release will accrue its SBOMs and
-  `.sig.bundle` signatures asynchronously once the runner completes.
-  The difference from the default path is timing: `gh release create`
-  publishes the release up front, so downstream consumers may briefly
-  see a release whose assets are still being uploaded. Documented
-  below.
+### Default flow
 
-### Writing release-worthy commits
+1. Land your PR on `main` with a `changelog/@unreleased/pr-<N>-*.yml`
+   entry describing the change. The PR-time `changelog-lint` job
+   enforces the schema.
+2. The `Release PR` workflow
+   ([`.github/workflows/release-pr.yml`](.github/workflows/release-pr.yml))
+   runs on every push to `main`. It:
+   - Reads every `@unreleased/*.yml`.
+   - Computes the next version via
+     `scripts/changelog/version_logic.py` (the same library the lint
+     uses, so the version a contributor sees in CI matches what the
+     release will bump to).
+   - Renames the YAMLs from `@unreleased/` to `<X.Y.Z>/`.
+   - Prepends a new `## [X.Y.Z] - YYYY-MM-DD` section to
+     `CHANGELOG.md`, grouped by entry type
+     (break → feature → improvement → fix → deprecation → migration).
+   - Pushes the diff to a `release/<X.Y.Z>` branch and opens (or
+     updates) a PR titled `chore(release): <X.Y.Z>`. The PR body is
+     rendered from the YAMLs and includes a `==COMMIT_MSG==` block
+     so the standard `pr-lint` checks pass.
+   - Subsequent pushes to `main` while the release PR is open
+     refresh the same branch + PR. If the *computed version* changes
+     (e.g. a new YAML lifts the bump from patch to minor), the
+     workflow closes the stale `release/<old>` PR and opens a fresh
+     `release/<new>` one.
+3. Review the release PR like any other change. Auto-merge is
+   acceptable for routine releases; hold and review when the rendered
+   notes mention behaviour the consumer needs to act on.
+4. Merging the release PR fires the `Release Tag` workflow
+   ([`.github/workflows/release-tag.yml`](.github/workflows/release-tag.yml)).
+   It validates the head ref + title (both must match the
+   `release/X.Y.Z` / `chore(release): X.Y.Z` shape), tags
+   `v<X.Y.Z>` on the merge commit using the release App's
+   installation token, and creates the GitHub Release with the body
+   re-rendered from the *moved* YAMLs.
+5. The tag push triggers the existing `Release Publish` workflow
+   ([`.github/workflows/release-publish.yml`](.github/workflows/release-publish.yml)).
+   It builds the sdist + wheel with `uv build`, generates an SPDX
+   SBOM per artifact with Syft, signs everything with keyless cosign
+   (Sigstore OIDC), and attaches the SLSA-L3 provenance attestation.
+   Verification recipe: see
+   [`SECURITY.md` → Supply-chain artifacts](SECURITY.md#supply-chain-artifacts).
 
-`CHANGELOG.md` is generated from Conventional Commit subjects and
-bodies, not hand-edited. To get a rich CHANGELOG entry:
+### Manual escape hatch — `task release`
 
-- Keep the PR title (= squash-merge commit subject) accurate — it
-  becomes the bullet text in the generated section.
-- Put user-visible context (behaviour change, rationale, migration
-  notes) in the `==COMMIT_MSG==` block, not a separate CHANGELOG
-  edit. The block becomes the squash-merge commit body and surfaces
-  in the GitHub release notes even when the CHANGELOG keeps only
-  the subject.
-- Do **not** append the linked issue number to the PR title (no
-  `(#<issue>)` suffix). GitHub's squash-merge auto-appends the PR
-  number, and the `conventionalcommits` preset auto-links it in
-  `CHANGELOG.md` — a hand-typed issue number would render a second,
-  redundant link beside it. Link the issue via the `Closes #N`
-  trailer in the `==COMMIT_MSG==` block instead.
+`task release` runs `scripts/release.sh`, which dispatches the
+`Release PR` workflow on `main` via `gh workflow run release-pr.yml`.
+Use it to force a refresh of the release PR (e.g. after editing a
+`changelog/@unreleased/*.yml` directly via the GitHub UI), or when
+you want to retry the workflow after a transient failure. It does
+**not** cut a tag on its own — tagging always happens inside
+`release-tag.yml` when the release PR merges.
+
+### Forcing a specific version (`release-as`)
+
+Set `release-as: <X.Y.Z>` on any `changelog/@unreleased/*.yml` to
+force the release workflow to bump to that version instead of the
+inferred one. The override must be strictly greater than the
+inferred value (the lint checks this). Use it for things like
+graduating to `1.0.0` or skipping ahead of a `release-as` mistake.
+Multiple entries may carry the same `release-as` value (idempotent
+agreement); conflicting values fail the lint.
+
+### Author guidance for changelog entries
+
+`CHANGELOG.md` is rendered from the YAML files, not hand-edited:
+
+- The bullet text comes from the YAML's `description:` field, not
+  the PR title. Treat the description as user-facing prose: include
+  the rationale and the upgrade path, not the implementation detail.
+- Put deeper context (test plan, screenshots, design rationale) in
+  the `==COMMIT_MSG==` block + `## Review notes`, the same as any
+  other PR. Those surfaces are reviewer-facing; the YAML drives
+  everything that ends up in `CHANGELOG.md` and the GitHub Release.
 - Reference the closing issue with `Closes #N` in the
-  `==COMMIT_MSG==` trailers so GitHub closes the issue when the PR
-  merges and the PR page lists the linkage. `CHANGELOG.md`
-  intentionally does **not** render the closed-issue link — see
-  [PR #220](https://github.com/aidanns/agent-auth/pull/220) for the
-  rationale.
-- Mark breaking changes with a `BREAKING CHANGE:` footer in the
-  `==COMMIT_MSG==` block (paired with the `break:` PR-title prefix).
-  Pre-1.0, these demote to a minor bump
-  (see [ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
-  § Graduating to 1.0.0).
+  `==COMMIT_MSG==` block trailers so GitHub closes the issue when
+  the PR merges. The YAML's `links:` field is for *additional*
+  context (RFC URLs, related discussions); `Closes #N` is the
+  primary linking convention.
+- Mark breaking changes with `type: break` in the YAML *and* a
+  `BREAKING CHANGE:` footer in the `==COMMIT_MSG==` block (paired
+  with the `break:` PR-title prefix). Pre-1.0, the bump table
+  demotes them to a minor bump per
+  [ADR 0039](design/decisions/0039-yaml-driven-release-workflow.md)
+  (carried over from ADR 0026).
 
-Hand edits to `CHANGELOG.md` are preserved across releases (the
-generator prepends, it does not rewrite existing content), but
-subsequent automated content renders in the commit-derived format
-rather than the Keep-a-Changelog prose style used in older sections.
+Hand edits to historical `CHANGELOG.md` content are preserved
+across releases — the renderer prepends new sections, it doesn't
+rewrite existing ones. Older sections cut by semantic-release keep
+their format; the new sections use the prose style above.
 
 ### Writing PRs
 
@@ -578,143 +617,42 @@ preserved in
 [`docs/release/rollout-pr-template.md`](docs/release/rollout-pr-template.md)
 for historical reference.
 
-### Default path: semantic-release
+### Release App setup
 
-One-time setup: install a **GitHub App** on this repository that the
-`Semantic Release` workflow uses to mint short-lived installation
-tokens via
-[`actions/create-github-app-token`](https://github.com/actions/create-github-app-token).
-A GitHub App token is required (rather than the default
-`GITHUB_TOKEN`) because tags and `chore(release):` commits created
-by `GITHUB_TOKEN` do **not** fire downstream workflow triggers —
-the chain from the semantic-release tag push to the signed-artefact
-publish would silently break. The App is preferred over a PAT
-because it scopes to a single repo, exposes no human credential
-surface, and its private key can be rotated without touching a
-personal account.
+`release-tag.yml` mints a short-lived installation token via
+[`actions/create-github-app-token`](https://github.com/actions/create-github-app-token)
+to push the `vX.Y.Z` tag. An App token is required because tag
+pushes from the default `GITHUB_TOKEN` do **not** fire downstream
+`on: push: tags:` workflows — the SLSA / SBOM / cosign chain in
+`release-publish.yml` would silently break.
 
-#### One-time: register the "semantic-release-agent-auth" GitHub App
+The repo currently uses the App registered for the previous
+semantic-release flow (kept named `semantic-release-agent-auth`
+pending a follow-up rename — see ADR 0039 § Follow-ups). Repo
+secrets:
 
-1. Go to
-   [github.com/settings/apps/new](https://github.com/settings/apps/new)
-   (user-owned App) and create an App with:
-   - **App name**: `semantic-release-agent-auth` (any identifier works; the
-     name appears in the `chore(release):` commit author metadata).
-   - **Homepage URL**:
-     `https://github.com/aidanns/agent-auth`.
-   - **Webhook**: uncheck *Active* — this App does not handle
-     events.
-   - **Repository permissions**:
-     - *Contents*: **Read & write** (create tags, push release
-       commits, create releases).
-     - *Pull requests*: **Read & write** (needed by
-       `@semantic-release/github` to post `successComment` on
-       resolved PRs and add `releasedLabels` to them).
-     - *Issues*: **Read & write** (needed by
-       `@semantic-release/github` to post `successComment` on
-       resolved issues and add `releasedLabels` to them).
-     - All other permissions: **No access**.
-   - **Where can this GitHub App be installed?**: *Only on this
-     account*.
-2. Click **Create GitHub App**.
-3. On the App's settings page:
-   - Copy the **App ID** (numeric, shown at the top) for step 5.
-   - Under **Private keys → Generate a private key**, download
-     the `.pem` file. GitHub shows it once.
-4. Still on the App's settings page, open **Install App** and
-   install it against `aidanns/agent-auth` only — not *All
+- `SEMANTIC_RELEASE_APP_ID` — the App's numeric ID.
+- `SEMANTIC_RELEASE_APP_PRIVATE_KEY` — the App's `.pem` private key
+  (full contents, including the `-----BEGIN/END` markers and the
+  trailing newline).
+
+To re-register or rotate the App:
+
+1. Create or edit the App at
+   [github.com/settings/apps](https://github.com/settings/apps).
+   Required permissions: **Contents: Read & write** (push tags,
+   create releases). All other permissions can be **No access**.
+2. Install it against `aidanns/agent-auth` only — not *All
    repositories*.
-5. In the repo's
-   [Settings → Secrets and variables → Actions](https://github.com/aidanns/agent-auth/settings/secrets/actions),
-   add:
-   - `SEMANTIC_RELEASE_APP_ID` — the numeric App ID from step 3.
-   - `SEMANTIC_RELEASE_APP_PRIVATE_KEY` — the **full contents** of
-     the `.pem` file, including the `-----BEGIN/END` markers and
-     the trailing newline.
-6. Delete any legacy release secrets (`RELEASE_PLEASE_TOKEN`,
-   `RELEASE_PLEASE_APP_ID`, `RELEASE_PLEASE_APP_PRIVATE_KEY`) if
-   they still exist from earlier release-automation iterations.
+3. Generate a private key on the App's settings page and download
+   the `.pem`.
+4. Update the two repo secrets above in
+   [Settings → Secrets and variables → Actions](https://github.com/aidanns/agent-auth/settings/secrets/actions).
+5. Revoke any superseded private keys from the App's settings page.
 
-The workflow in `.github/workflows/release.yml` reads
-these two secrets at run time, mints an installation token via
-`actions/create-github-app-token`, and hands the token to
-`semantic-release` via the `GITHUB_TOKEN` env. The token is
-short-lived and is not persisted beyond the workflow run.
-
-To rotate the private key, re-run step 3 (generate a new key),
-update `SEMANTIC_RELEASE_APP_PRIVATE_KEY` in repo settings, and
-revoke the old key from the App settings page. No workflow change
-is required.
-
-1. Land PRs on `main` using Conventional Commits.
-2. The `Semantic Release` workflow runs on every push to `main`. If
-   at least one commit since the last tag is `feat:`, `fix:`,
-   `perf:`, `revert:`, or carries a `BREAKING CHANGE:` footer, the
-   workflow cuts a new release. Otherwise it exits cleanly with no
-   side effects.
-3. There is **no release PR to review**. Pre-1.0 risk is mitigated
-   by (a) a `releaseRules` policy in `.releaserc.mjs` that demotes
-   `BREAKING CHANGE:` to a minor bump and (b) commit-review
-   discipline at PR merge time — the PR *is* the review gate.
-4. Semantic-release pushes the `vX.Y.Z` tag. The tag push triggers
-   `Release Publish`, which attaches the sdist, wheel, SBOMs, and
-   `.sig.bundle` signatures.
-
-### Break-glass path: `task release`
-
-`task release` delegates to `scripts/release.sh`, which:
-
-1. Resolves the target version — either from the argument you pass, or by
-   deriving it from Conventional Commits since the last `v*` tag (see below).
-2. Validates the working tree is clean and local `main` matches `origin/main`.
-3. Checks that `CHANGELOG.md` contains a `## [X.Y.Z]` section with content for
-   the resolved version.
-4. Prompts for confirmation (pass `-y` / `--yes` to skip), then creates a
-   signed git tag (`vX.Y.Z`).
-5. Pushes the tag to `origin`.
-6. Creates a GitHub release from the CHANGELOG entry for that version.
-
-#### Version resolution
-
-| Invocation              | Behaviour                                                                                                                                                                                                                                                                                                                                                     |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task release`          | Auto-detect. Finds the latest `vX.Y.Z` tag, walks commits since that tag, and applies the largest SemVer bump implied by their Conventional Commit types: any `<type>!:` subject or `BREAKING CHANGE:` / `BREAKING-CHANGE:` footer → **major**; any `feat:` → **minor**; any `fix:` → **patch**. Other types alone (docs, chore, refactor, ...) → no release. |
-| `task release -- 1.2.3` | Explicit override — use this for the very first release (before any `v*` tag exists) or to force a non-default bump (e.g. `1.0.0` graduation).                                                                                                                                                                                                                |
-
-While the current tag is in the `0.x` range, the public API is not
-considered stable (SemVer 2.0.0 §4). A BREAKING change that would
-normally map to a **major** bump is demoted to a **minor** bump until
-`v1.0.0` ships. Force the graduation to `1.0.0` with an explicit
-`task release -- 1.0.0` when the API is ready to stabilise.
-
-To cut a release:
-
-1. Determine the target version. Either pass it explicitly
-   (`task release -- 0.3.0`), or run `task release` with no argument —
-   it will print the auto-detected version (e.g.
-   `Auto-detected minor bump from commits since v0.2.0: v0.3.0`) and
-   exit asking you to update `CHANGELOG.md`.
-2. Write a `## [X.Y.Z] - YYYY-MM-DD` section at the top of
-   `CHANGELOG.md` (directly below the preamble, above the previous
-   version's heading) summarising user-visible changes since the last
-   tag. For consistency with the CI default path, preview what
-   semantic-release would produce — if the npm tooling is available
-   locally, `npx semantic-release --dry-run --no-ci` prints the
-   auto-generated release notes you can crib from. Otherwise walk
-   `git log vX.Y.Z..HEAD --oneline` and group by Conventional Commit
-   type.
-3. Commit and push: `git commit -m "chore: prepare release vX.Y.Z"`.
-   (`chore:` is in the no-release list in `.releaserc.mjs`, so the
-   CI release workflow will ignore this commit and won't race with
-   the break-glass path.)
-4. Run `task release` (auto-detect) or `task release -- X.Y.Z` (explicit).
-   Add `-y` / `--yes` to skip the confirmation prompt
-   (e.g. `task release -- -y X.Y.Z`) when you want a hands-off run — the
-   signed-tag step still needs your signing key, so pre-warm `gpg-agent`
-   or `ssh-agent` first (see [Commit signing](#commit-signing)).
-
-The version string embedded in the distributed package is derived from the git
-tag at build time via `setuptools-scm`; no other version file needs updating.
+The version string embedded in the distributed package is derived
+from the git tag at build time via `setuptools-scm`; no other
+version file needs updating.
 
 ## DCO sign-off
 
@@ -839,38 +777,11 @@ Re-run after a `gpg-bridge` URL change or a token rotation. The
 script is also runnable directly as `scripts/setup-devcontainer-signing.sh`
 if `go-task` isn't available.
 
-### Non-interactive signing for `task release`
+### Tag signing under the YAML-driven release flow
 
-`scripts/release.sh` creates a signed tag (`git tag -s`). If your signing
-key has a passphrase, the tag step pops a pinentry prompt — which blocks
-`task release -- -y` from running hands-off. Configure the agent so the
-passphrase is cached for the duration of the release.
-
-**GPG:** put a cache policy in `~/.gnupg/gpg-agent.conf` and pick a
-pinentry that doesn't require a graphical session if you're on a headless
-box:
-
-```text
-# ~/.gnupg/gpg-agent.conf
-default-cache-ttl 28800          # cache for 8 hours
-max-cache-ttl     86400          # but at most 24 hours
-pinentry-program  /usr/bin/pinentry-curses   # or pinentry-mac on macOS
-```
-
-Reload the agent and pre-warm the cache with a throwaway signature before
-running the release:
-
-```bash
-gpgconf --kill gpg-agent
-echo | gpg --clearsign > /dev/null   # enter passphrase once
-task release -- -y X.Y.Z             # runs hands-off from here
-```
-
-**SSH:** if signing with an SSH key, load it into `ssh-agent` once per
-session so `git tag -s` doesn't prompt:
-
-```bash
-eval "$(ssh-agent -s)"
-ssh-add ~/.ssh/id_ed25519            # passphrase prompted once
-task release -- -y X.Y.Z
-```
+The release tag (`vX.Y.Z`) is created by `release-tag.yml` using the
+release App's installation token, so no maintainer signing key is
+involved at tag time. Local signing setup applies only to the
+maintainer's own commits on PR branches and on the release-PR merge
+commit (handled by GitHub's web-flow signer when the maintainer
+clicks "squash and merge").
