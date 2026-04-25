@@ -39,7 +39,12 @@ def _stderr_text(result):
     return result.stderr.decode("utf-8", errors="replace")
 
 
-@pytest.mark.covers_function("Delegate Token Validation", "Serve Bridge HTTP API")
+@pytest.mark.covers_function(
+    "Delegate Token Validation",
+    "Serve Bridge HTTP API",
+    "Send Bridge Sign Request",
+    "Send Bridge Verify Request",
+)
 def test_sign_and_verify_end_to_end(gpg_cli_invoker: GpgCliInvoker) -> None:
     """Happy path — mint a ``gpg:sign=allow`` token, sign, and verify the signature.
 
