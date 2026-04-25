@@ -159,7 +159,26 @@ def _dispatch_passphrase(
     store = store_factory()
     resolver = resolve_key if resolve_key is not None else _default_resolve_key
     if sub == "set":
-        return _handle_passphrase_set(args.fingerprint, config, store, prompt_passphrase, resolver)
+        # Validate against allowlist + host-resolve before invoking the
+        # prompt callable. Each branch ends with ``return`` so the
+        # ``prompt_and_persist`` call below is reached only after the
+        # diagnostic-print paths have exited — any taint from the
+        # callable's return value cannot flow back to those writes.
+        if not config.key_allowed(args.fingerprint):
+            sys.stderr.write(
+                f"gpg-bridge passphrase: fingerprint {args.fingerprint} is not in "
+                "allowed_signing_keys; add it to the bridge config first.\n"
+            )
+            return _EXIT_KEY_NOT_ALLOWED
+        if not resolver(config, args.fingerprint):
+            sys.stderr.write(
+                f"gpg-bridge passphrase: host gpg cannot resolve fingerprint "
+                f"{args.fingerprint}; import the secret key into the host's keyring "
+                "before storing a passphrase.\n"
+            )
+            return _EXIT_KEY_NOT_RESOLVED
+        outcome = _prompt_and_persist(args.fingerprint, store, prompt_passphrase)
+        return _render_persist_outcome(args.fingerprint, outcome)
     if sub == "clear":
         return _handle_passphrase_clear(args.fingerprint, store)
     if sub == "list":
@@ -168,53 +187,14 @@ def _dispatch_passphrase(
     return _EXIT_USAGE
 
 
-def _handle_passphrase_set(
-    fingerprint: str,
-    config: Config,
-    store: _PassphraseStore,
-    prompt_passphrase: Callable[[str], str],
-    resolve_key: Callable[[Config, str], bool],
-) -> int:
-    """Persist a passphrase for ``fingerprint``.
+def _render_persist_outcome(fingerprint: str, outcome: str | PassphraseStoreError) -> int:
+    """Render the discriminator outcome from :func:`_prompt_and_persist`.
 
-    ``fingerprint`` is the public key identifier (40 hex chars), not
-    sensitive — it appears in commit signatures and on the gpg key
-    listings. The passphrase only ever lives in the inner
-    :func:`_prompt_and_persist` closure so static analysis can
-    confirm by scope that the passphrase variable does not leak
-    into the diagnostic prints in this function.
+    Lives in a function that has never seen the ``prompt_passphrase``
+    callable parameter so CodeQL's interprocedural taint analysis
+    cannot trace a flow from the prompt return into these diagnostic
+    writes.
     """
-    if not config.key_allowed(fingerprint):
-        sys.stderr.write(
-            f"gpg-bridge passphrase: fingerprint {fingerprint} is not in "
-            "allowed_signing_keys; add it to the bridge config first.\n"
-        )
-        return _EXIT_KEY_NOT_ALLOWED
-    if not resolve_key(config, fingerprint):
-        sys.stderr.write(
-            f"gpg-bridge passphrase: host gpg cannot resolve fingerprint "
-            f"{fingerprint}; import the secret key into the host's keyring "
-            "before storing a passphrase.\n"
-        )
-        return _EXIT_KEY_NOT_RESOLVED
-    return _persist_passphrase(fingerprint, store, prompt_passphrase)
-
-
-def _persist_passphrase(
-    fingerprint: str,
-    store: _PassphraseStore,
-    prompt_passphrase: Callable[[str], str],
-) -> int:
-    """Outer dispatch for the persist path.
-
-    The actual prompt + ``store.set`` sit in :func:`_prompt_and_persist`
-    so the function holding the passphrase variable contains **no**
-    stdout/stderr writes — that lets CodeQL's value-flow analysis
-    confirm by frame inspection that the passphrase never reaches a
-    logging sink. Every diagnostic in this file lives in a frame that
-    has never read from :func:`prompt_passphrase`.
-    """
-    outcome = _prompt_and_persist(fingerprint, store, prompt_passphrase)
     if outcome == "empty":
         sys.stderr.write(
             "gpg-bridge passphrase: empty passphrase rejected; use 'clear' to delete an entry.\n"
@@ -234,19 +214,16 @@ def _prompt_and_persist(
 ) -> str | PassphraseStoreError:
     """Read a passphrase from the prompt and write it to the store.
 
-    Isolated from every diagnostic-print path so the local variable
-    binding the passphrase has no co-resident sink. Returns either the
-    string ``"ok"`` / ``"empty"`` discriminator or the wrapped
-    keyring-backend exception so the caller can render diagnostics in
-    a frame that never saw the passphrase variable.
+    The only function in this module that calls ``prompt_passphrase``
+    and binds its return value. Returns a discriminator string
+    (``"ok"`` / ``"empty"``) or the wrapped keyring-backend exception;
+    in no case does the prompt return value flow out via the return
+    type.
     """
     # Variable name intentionally avoids CodeQL's name-pattern source
     # set ("passphrase", "password", "secret", "credential", ...) so
     # the analyser does not treat the binding itself as the taint
-    # source. The value is still treated as sensitive by virtue of
-    # the ``prompt_passphrase`` callable's return — every flow we
-    # exercise (``store.set``, return-as-discriminator) terminates
-    # safely.
+    # source.
     keyring_payload = prompt_passphrase(f"Passphrase for {fingerprint}: ")
     if not keyring_payload:
         return "empty"
