@@ -62,6 +62,22 @@ jobs:
       - name: Run things-bridge integration tests
         run: task test -- --integration things-bridge
 
+  integration-gpg-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/build-integration-test-image
+        with:
+          session: ${{ env.AGENT_AUTH_TEST_IMAGE_SESSION }}
+
+      - name: Run gpg-bridge integration tests
+        run: task test -- --integration gpg-bridge
+
   integration-things-cli:
     runs-on: ubuntu-latest
     steps:
@@ -133,6 +149,7 @@ jobs:
     needs:
       - unit
       - integration-agent-auth
+      - integration-gpg-bridge
       - integration-things-bridge
       - integration-things-cli
       - integration-things-client-applescript

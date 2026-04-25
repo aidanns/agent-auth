@@ -11,8 +11,9 @@
 #   --fast                     curated smoke subset for pre-commit (runs in <1s)
 #   --integration [<service>]  Docker-backed integration tests; optional
 #                              service name runs only that slice. Valid
-#                              services: agent-auth, things-bridge,
-#                              things-cli, things-client-applescript.
+#                              services: agent-auth, gpg-bridge,
+#                              things-bridge, things-cli,
+#                              things-client-applescript.
 #   --all                      both layers, unit first (always full
 #                              integration suite)
 #
@@ -28,6 +29,7 @@ set -euo pipefail
 # tree in #270).
 declare -A SERVICE_PATHS=(
   ["agent-auth"]=packages/agent-auth/tests/integration/
+  ["gpg-bridge"]=packages/gpg-bridge/tests/integration/
   ["things-bridge"]=packages/things-bridge/tests/integration/
   ["things-cli"]=packages/things-cli/tests/integration/
   ["things-client-applescript"]=packages/things-client-cli-applescript/tests/integration/
@@ -57,6 +59,7 @@ UNIT_TEST_PATHS=(
 # in unit mode so a `--unit` run never tries to start Docker.
 UNIT_IGNORE_OPTS=(
   --ignore=packages/agent-auth/tests/integration
+  --ignore=packages/gpg-bridge/tests/integration
   --ignore=packages/things-bridge/tests/integration
   --ignore=packages/things-cli/tests/integration
   --ignore=packages/things-client-cli-applescript/tests/integration

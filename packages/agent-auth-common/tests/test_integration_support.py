@@ -183,6 +183,8 @@ def test_resolve_test_image_tags_reuses_prebuilt_env_suffix(monkeypatch):
     assert managed is False
     assert tags == {
         "agent-auth": "agent-auth-test:ci",
+        "gpg-bridge": "gpg-bridge-test:ci",
+        "gpg-cli": "gpg-cli-test:ci",
         "things-bridge": "things-bridge-test:ci",
         "things-cli": "things-cli-test:ci",
         "things-client-applescript": "things-client-applescript-test:ci",
@@ -197,6 +199,8 @@ def test_resolve_test_image_tags_mints_managed_session_when_env_unset(monkeypatc
     assert managed is True
     assert set(tags) == {
         "agent-auth",
+        "gpg-bridge",
+        "gpg-cli",
         "things-bridge",
         "things-cli",
         "things-client-applescript",

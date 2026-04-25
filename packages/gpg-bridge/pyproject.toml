@@ -35,8 +35,16 @@ agent-auth-common = { workspace = true }
 # for the full rationale. ``tests/`` is on the pythonpath so the
 # ``gpg_backend_fake`` test fake (run as ``python -m
 # gpg_backend_fake`` by the bridge subprocess in unit tests)
-# resolves as a top-level module from the workspace tree.
+# resolves as a top-level module from the workspace tree. ``-p
+# tests_support.integration.plugin`` registers the workspace-wide
+# Docker-backed integration fixtures (``gpg_bridge_stack`` etc.) so
+# a per-package ``task gpg-bridge:test`` and a workspace-root
+# ``task test`` both resolve them — the workspace pyproject loads
+# the same plugin, but pytest's per-package ``rootdir`` resolution
+# means a focused per-package run skips the workspace addopts.
 addopts = [
+    "-p",
+    "tests_support.integration.plugin",
     "--import-mode=importlib",
     "--cov=gpg_bridge",
     "--cov-branch",

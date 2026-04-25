@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+# SPDX-License-Identifier: MIT
+#
+# Integration-test image for the ``gpg-cli`` binary. Never publish;
+# never use in production.
+#
+# Mirrors ``Dockerfile.things-cli.test``: this image carries no
+# ``gpg`` binary and no key material — its only role is to play the
+# devcontainer-side caller that forwards git's gpg argv shape to the
+# in-network ``gpg-bridge`` container over plaintext loopback HTTP
+# (TLS posture is exercised by unit tests).
+#
+# No ``ENTRYPOINT`` because the integration suite invokes this image
+# via ``docker compose run --rm gpg-cli gpg-cli <args>``: docker
+# compose's ``run`` verb accepts an explicit command after the
+# service name, so locking the entrypoint here buys nothing and makes
+# the harness pay an ``--entrypoint`` override when it wants a debug
+# shell or a ``--version`` probe.
+
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HOME=/home/agent-auth \
+    XDG_CONFIG_HOME=/home/agent-auth/.config
+
+RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin agent-auth
+
+WORKDIR /src
+
+COPY README.md ./
+COPY packages/agent-auth-common/ ./packages/agent-auth-common/
+COPY packages/gpg-cli/ ./packages/gpg-cli/
+
+RUN pip install --no-cache-dir \
+        ./packages/agent-auth-common \
+        ./packages/gpg-cli
+
+RUN mkdir -p "$XDG_CONFIG_HOME/gpg-cli" \
+    && chown -R agent-auth:agent-auth /home/agent-auth
+
+USER agent-auth
