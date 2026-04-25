@@ -43,7 +43,6 @@ UNIT_TEST_PATHS=(
   # keep-sorted start
   packages/agent-auth-common/tests/
   packages/agent-auth/tests/
-  packages/gpg-backend-cli-host/tests/
   packages/gpg-bridge/tests/
   packages/gpg-cli/tests/
   packages/things-bridge/tests/

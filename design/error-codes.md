@@ -225,7 +225,7 @@ require the `gpg:sign` scope, the probe endpoints carry their own scopes
 
 A 503 body of `{"status": "unhealthy"}` (not an error code) indicates a
 critical downstream dependency is unavailable — currently that means the
-configured `gpg_backend_command` executable cannot be resolved on PATH.
+configured `gpg_command` executable cannot be resolved on PATH.
 
 ### `GET /gpg-bridge/metrics` *(unversioned)*
 

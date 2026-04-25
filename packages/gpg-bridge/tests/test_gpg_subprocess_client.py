@@ -48,7 +48,8 @@ def client(fixture_path: str) -> GpgSubprocessClient:
 
 
 class TestSignRoundTrip:
-    @pytest.mark.covers_function("Run Backend Subprocess")
+    @pytest.mark.covers_function("Sign Payload")
+    @pytest.mark.covers_function("Verify Signature")
     def test_sign_and_verify(self, client: GpgSubprocessClient) -> None:
         sign = client.sign(
             SignRequest(
@@ -64,12 +65,12 @@ class TestSignRoundTrip:
         assert verify.exit_code == 0
         assert "[GNUPG:] GOODSIG" in verify.status_text
 
-    @pytest.mark.covers_function("Run Backend Subprocess")
+    @pytest.mark.covers_function("Sign Payload")
     def test_unknown_key_maps_to_gpg_no_such_key(self, client: GpgSubprocessClient) -> None:
         with pytest.raises(GpgNoSuchKeyError):
             client.sign(SignRequest(local_user="unknown@example.invalid", payload=b"x"))
 
-    @pytest.mark.covers_function("Run Backend Subprocess")
+    @pytest.mark.covers_function("Verify Signature")
     def test_bad_signature_bytes_raise_bad_signature(self, client: GpgSubprocessClient) -> None:
         signed = client.sign(
             SignRequest(local_user="test@example.invalid", payload=b"x", armor=True)
@@ -80,7 +81,7 @@ class TestSignRoundTrip:
 
 
 class TestSubprocessContractFailures:
-    @pytest.mark.covers_function("Run Backend Subprocess")
+    @pytest.mark.covers_function("Sign Payload")
     def test_missing_binary_raises_gpg_error(self, tmp_path: Path) -> None:
         client = GpgSubprocessClient(
             command=[str(tmp_path / "does-not-exist")], timeout_seconds=2.0
@@ -88,7 +89,7 @@ class TestSubprocessContractFailures:
         with pytest.raises(GpgError):
             client.sign(SignRequest(local_user="k", payload=b"x"))
 
-    @pytest.mark.covers_function("Run Backend Subprocess")
+    @pytest.mark.covers_function("Sign Payload")
     def test_permission_denied_fixture_maps_cleanly(self, tmp_path: Path) -> None:
         fx = tmp_path / "fx.yaml"
         fx.write_text(yaml.safe_dump({**FIXTURE, "behaviours": {"permission_denied": True}}))
@@ -99,7 +100,8 @@ class TestSubprocessContractFailures:
         with pytest.raises(GpgPermissionError):
             client.sign(SignRequest(local_user="test@example.invalid", payload=b"x"))
 
-    @pytest.mark.covers_function("Run Backend Subprocess")
+    @pytest.mark.covers_function("Sign Payload")
+    @pytest.mark.covers_function("Verify Signature")
     def test_rejects_empty_command(self) -> None:
         with pytest.raises(ValueError):
             GpgSubprocessClient(command=[])

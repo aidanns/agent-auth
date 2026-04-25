@@ -26,7 +26,6 @@ simplifying for "personal project" scope.
 - `task things-cli -- <args...>` (or `scripts/things-cli.sh <args...>`) — run the things-cli client. E.g. `task things-cli -- todos list`.
 - `task gpg-bridge -- <args...>` (or `scripts/gpg-bridge.sh <args...>`) — run the gpg-bridge CLI on the host. E.g. `task gpg-bridge -- serve`.
 - `task gpg-cli -- <args...>` (or `scripts/gpg-cli.sh <args...>`) — run the devcontainer gpg-cli frontend. Wired to git via `git config gpg.program gpg-cli`.
-- `task gpg-backend-host -- <args...>` (or `scripts/gpg-backend-host.sh <args...>`) — run the host gpg backend CLI directly; normally invoked as a subprocess by `gpg-bridge`.
 - `task setup-devcontainer-signing -- --token <T> --bridge-url <U>` (or `scripts/setup-devcontainer-signing.sh <args...>`) — wire commit signing inside the devcontainer to the host's `gpg-bridge`. Writes `$XDG_CONFIG_HOME/gpg-cli/config.yaml` and sets `git config --local gpg.program=gpg-cli` + `commit.gpgsign=true`. See `CONTRIBUTING.md` § "Signed commits inside the devcontainer".
 
 ## Architecture
@@ -113,17 +112,20 @@ simplifying for "personal project" scope.
   `config.yaml` at the fake. See
   `design/decisions/0003-things-client-cli-split.md`
   (supersedes 0001).
-- gpg-bridge architecture: mirrors the Things split. `gpg-bridge`
-  runs on the host and delegates each request to a configured
-  `gpg_backend_command` (default `["gpg-backend-cli-host"]`) which
-  shells out to the real host `gpg`. `gpg-cli` runs in the
-  devcontainer as a `gpg.program` replacement and forwards git's
-  sign / verify argv to `gpg-bridge` over HTTPS with a bearer token
-  (scope `gpg:sign`). Per-key allowlisting sits in bridge config
-  (`allowed_signing_keys`). A test-only backend fake lives under
-  `packages/gpg-bridge/tests/gpg_backend_fake/` and is invoked as
-  `python -m gpg_backend_fake --fixtures PATH`. See
-  `design/decisions/0033-gpg-bridge-cli-split.md`.
+- gpg-bridge architecture: two components — `gpg-bridge` runs on
+  the host and shells out to the configured `gpg_command` (default
+  `["gpg"]`) per request; `gpg-cli` runs in the devcontainer as a
+  `gpg.program` replacement and forwards git's sign / verify argv
+  to `gpg-bridge` over HTTPS with a bearer token (scope `gpg:sign`).
+  Per-key allowlisting sits in bridge config
+  (`allowed_signing_keys`). A test-only `gpg`-argv-compatible fake
+  lives under `packages/gpg-bridge/tests/gpg_backend_fake/` and is
+  invoked as `python -m gpg_backend_fake --fixtures PATH`. The
+  original three-component shape (with a separate
+  `gpg-backend-cli-host` package) was collapsed into this two-piece
+  layout in 2026-04 (issue #316); see the
+  `design/decisions/0033-gpg-bridge-cli-split.md`
+  collapse-the-backend-hop amendment.
 
 ## Detailed instructions
 

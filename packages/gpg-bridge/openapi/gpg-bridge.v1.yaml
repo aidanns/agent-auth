@@ -10,9 +10,10 @@ info:
   description: |
     `gpg-bridge` runs on the developer host and exposes GPG sign / verify
     operations to the devcontainer's `gpg-cli` shim under
-    `/gpg-bridge/v1/`. The bridge itself contains no GPG logic — every
-    request is translated into a subprocess invocation of the configured
-    `gpg_backend_command` (default `gpg-backend-cli-host`). Token
+    `/gpg-bridge/v1/`. Each request is translated into a subprocess
+    invocation of the configured `gpg_command` (default `gpg`); the
+    bridge owns the gpg-argv construction directly per the ADR 0033
+    collapse-the-backend-hop amendment of 2026-04-25. Token
     validation is delegated to `agent-auth` (scope `gpg:sign` for the
     data endpoints; `gpg-bridge:health` / `gpg-bridge:metrics` for the
     probe endpoints).
@@ -39,11 +40,12 @@ paths:
       tags: [sign]
       summary: Detach-sign a payload using the host gpg keyring.
       description: |
-        Translates the request into a `gpg --detach-sign` invocation in
-        the configured backend. The `local_user` must appear in the
-        bridge's `allowed_signing_keys` allowlist; the bridge enforces
-        the allowlist *before* delegating to `agent-auth`, so an
-        unknown key is rejected even with a valid `gpg:sign` token.
+        Translates the request into a `gpg --detach-sign` invocation
+        of the configured `gpg_command`. The `local_user` must appear
+        in the bridge's `allowed_signing_keys` allowlist; the bridge
+        enforces the allowlist *before* delegating to `agent-auth`,
+        so an unknown key is rejected even with a valid `gpg:sign`
+        token.
       security:
         - BearerAuth: []
       requestBody:
@@ -85,9 +87,9 @@ paths:
       tags: [sign]
       summary: Verify a detached signature against a payload.
       description: |
-        Translates the request into a `gpg --verify` invocation in the
-        configured backend. Requires the same `gpg:sign` scope as the
-        sign endpoint.
+        Translates the request into a `gpg --verify` invocation of
+        the configured `gpg_command`. Requires the same `gpg:sign`
+        scope as the sign endpoint.
       security:
         - BearerAuth: []
       requestBody:
@@ -134,7 +136,7 @@ paths:
         - BearerAuth: []
       responses:
         '200':
-          description: Bridge is reachable, agent-auth accepted the token, and the configured `gpg_backend_command[0]` resolves on PATH.
+          description: Bridge is reachable, agent-auth accepted the token, and the configured `gpg_command[0]` resolves on PATH.
           content:
             application/json:
               schema:
@@ -156,8 +158,8 @@ paths:
         '503':
           description: |
             A critical downstream dependency is unavailable. Currently
-            indicates the configured `gpg_backend_command[0]` cannot
-            be resolved on PATH.
+            indicates the configured `gpg_command[0]` cannot be
+            resolved on PATH.
           content:
             application/json:
               schema:

@@ -4,15 +4,16 @@
 
 """End-to-end smoke test: gpg-cli process → gpg-bridge → real host gpg.
 
-Spawns an in-process gpg-bridge that shells out to the real
-``gpg-backend-cli-host`` script, which in turn drives a real host
-``gpg`` binary against a throwaway ``GNUPGHOME``. The bridge's authz
-client is stubbed because the path under test is the subprocess
-contract — not agent-auth.
+Spawns an in-process gpg-bridge that drives the real host ``gpg``
+binary directly (per the ADR 0033 collapse-the-backend-hop
+amendment, 2026-04-25) against a throwaway ``GNUPGHOME``. The
+bridge's authz client is stubbed because the path under test is the
+subprocess contract — not agent-auth.
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -94,20 +95,18 @@ def bridge_environment(
     gnupg_home.chmod(0o700)
     fingerprint = _generate_key(gnupg_home)
 
-    backend_command = [
-        sys.executable,
-        "-c",
-        (
-            "import os, sys;"
-            f"os.environ['GNUPGHOME']={str(gnupg_home)!r};"
-            "from gpg_backend_cli_host.cli import main;"
-            "sys.exit(main())"
-        ),
-    ]
-    gpg = GpgSubprocessClient(command=backend_command, timeout_seconds=30.0)
+    # The bridge invokes ``gpg`` directly per ADR 0033 (collapse
+    # amendment, 2026-04-25); steer it at the throwaway keyring by
+    # setting ``GNUPGHOME`` in this test process — the bridge's
+    # subprocess inherits the parent environment.
+    os.environ["GNUPGHOME"] = str(gnupg_home)
+
+    assert GPG_BIN is not None
+    gpg_command = [GPG_BIN]
+    gpg = GpgSubprocessClient(command=gpg_command, timeout_seconds=30.0)
 
     registry, metrics = build_registry()
-    config = Config(port=0, gpg_backend_command=backend_command)
+    config = Config(port=0, gpg_command=gpg_command)
     server = GpgBridgeServer(config, gpg, _NoopAuthz(), registry, metrics)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -118,6 +117,7 @@ def bridge_environment(
         server.shutdown()
         server.server_close()
         thread.join(timeout=5.0)
+        os.environ.pop("GNUPGHOME", None)
 
 
 class TestEndToEnd:
