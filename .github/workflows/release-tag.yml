@@ -1,0 +1,142 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Tag the merge commit and create the GitHub Release when a release PR
+# merges into main.
+#
+# A release PR is identified by both its head ref (`release/X.Y.Z`)
+# AND its title (`chore(release): X.Y.Z`). Requiring both prevents
+# this workflow firing on any unrelated PR whose head or title
+# happens to match one of the patterns in isolation.
+#
+# Tag identity: the workflow uses an installation token from the
+# release App so the `push: tags` event fires the existing
+# `release-publish.yml` artefact pipeline (the default GITHUB_TOKEN's
+# tag pushes do NOT trigger downstream `on: push: tags:` workflows,
+# which would silently break the SLSA chain). This is the same
+# constraint that drove ADR 0026's App-token requirement.
+
+name: Release Tag
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  # The actual tag + release creation runs via the App token; this
+  # default-permissions block only governs the workflow's own scope
+  # before the App token is minted. Keep it read so a leak before
+  # the App-token step has no write surface.
+  contents: read
+
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+jobs:
+  tag-and-release:
+    # Strict filter: PR must be merged AND its head ref must match
+    # `release/X.Y.Z` AND its title must match `chore(release): X.Y.Z`.
+    # The title check is the secondary defence — a contributor could
+    # technically open a non-release PR from a `release/...` branch,
+    # but they cannot also satisfy the title regex by accident.
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/') &&
+      startsWith(github.event.pull_request.title, 'chore(release): ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate release-PR shape
+        id: shape
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Re-validate with strict regex (the workflow `if:` only
+          # supports `startsWith`/`contains`, not regex).
+          if [[ ! "${HEAD_REF}" =~ ^release/([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::head ref ${HEAD_REF} is not in `release/X.Y.Z` form"
+            exit 1
+          fi
+          ref_version="${BASH_REMATCH[1]}"
+          if [[ ! "${PR_TITLE}" =~ ^chore\(release\):\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::title ${PR_TITLE} is not in `chore(release): X.Y.Z` form"
+            exit 1
+          fi
+          title_version="${BASH_REMATCH[1]}"
+          if [[ "${ref_version}" != "${title_version}" ]]; then
+            echo "::error::ref version ${ref_version} != title version ${title_version}"
+            exit 1
+          fi
+          echo "version=${ref_version}" >> "${GITHUB_OUTPUT}"
+
+      # Mint an App installation token so the tag push fires
+      # release-publish.yml. See workflow-level comment.
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.SEMANTIC_RELEASE_APP_ID }}
+          private-key: ${{ secrets.SEMANTIC_RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Check out the merge commit (the squash-merge commit is the
+          # one we tag — it carries the moved YAMLs under
+          # changelog/<X.Y.Z>/).
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML
+        run: pip install --no-cache-dir 'pyyaml>=6'
+
+      - name: Render release notes from moved YAMLs
+        id: notes
+        env:
+          VERSION: ${{ steps.shape.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes_file=/tmp/release-notes.md
+          python3 scripts/changelog/build_release.py render-notes \
+            --repo-root . \
+            --version "${VERSION}" > "${notes_file}"
+          echo "path=${notes_file}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create GitHub Release (creates the tag too)
+        # `gh release create` with --target creates the tag at the
+        # specified commit AND the GitHub Release atomically. This
+        # avoids a race where release-publish.yml (triggered by the
+        # tag push) reaches its `gh release upload` step before the
+        # Release exists. Using the App token means the tag-creation
+        # event fires downstream `on: push: tags:` workflows
+        # (release-publish.yml's SLSA / SBOM / cosign chain).
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ steps.shape.outputs.version }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          NOTES_PATH: ${{ steps.notes.outputs.path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "release-tag: GitHub Release ${tag} already exists; updating notes."
+            gh release edit "${tag}" --notes-file "${NOTES_PATH}"
+            exit 0
+          fi
+          gh release create "${tag}" \
+            --target "${MERGE_SHA}" \
+            --title "${tag}" \
+            --notes-file "${NOTES_PATH}"

@@ -37,6 +37,26 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "setup-devcontainer-signing.sh"
 
 
+def _required_args(
+    *,
+    access_token: str = "aa_test_access",
+    refresh_token: str = "rt_test_refresh",
+    auth_url: str = "https://host.docker.internal:9100",
+    bridge_url: str = "https://host.docker.internal:8443",
+) -> list[str]:
+    """Build the four-flag minimum argv every successful run needs."""
+    return [
+        "--access-token",
+        access_token,
+        "--refresh-token",
+        refresh_token,
+        "--auth-url",
+        auth_url,
+        "--bridge-url",
+        bridge_url,
+    ]
+
+
 def _run(
     args: list[str],
     *,
@@ -181,15 +201,6 @@ def _make_fake_bin_dir(
     return bindir
 
 
-def _required_args() -> list[str]:
-    return [
-        "--token",
-        "aa_test_token",
-        "--bridge-url",
-        "https://host.docker.internal:8443",
-    ]
-
-
 class TestSetupDevcontainerSigningArgvAndConfig:
     """Argv -> config-file + git-config contract for the setup script."""
 
@@ -200,6 +211,8 @@ class TestSetupDevcontainerSigningArgvAndConfig:
         result = _run(
             [
                 *_required_args(),
+                "--family-id",
+                "fam-1",
                 "--ca-cert-path",
                 "/tmp/ca.pem",
                 "--timeout-seconds",
@@ -216,13 +229,18 @@ class TestSetupDevcontainerSigningArgvAndConfig:
         loaded = yaml.safe_load(config_path.read_text())
         assert loaded == {
             "bridge_url": "https://host.docker.internal:8443",
-            "token": "aa_test_token",
+            "auth_url": "https://host.docker.internal:9100",
+            "access_token": "aa_test_access",
+            "refresh_token": "rt_test_refresh",
+            "family_id": "fam-1",
             "ca_cert_path": "/tmp/ca.pem",
             "timeout_seconds": 20,
         }
 
-        # Token is a bearer credential — the file must be 0600 so
-        # other local accounts can't read it.
+        # The credential pair is bearer material — the file must be
+        # 0600 so other local accounts can't read it. gpg-cli also
+        # rewrites the file on every refresh (also at 0600), so this
+        # invariant holds across the credential's whole lifetime.
         mode = stat.S_IMODE(config_path.stat().st_mode)
         assert mode == 0o600, f"expected 0600, got {oct(mode)}"
 
@@ -256,12 +274,15 @@ class TestSetupDevcontainerSigningArgvAndConfig:
         assert result.returncode == 0, result.stderr
 
         loaded = yaml.safe_load((xdg / "gpg-cli" / "config.yaml").read_text())
-        # ``ca_cert_path`` and ``timeout_seconds`` are absent so
-        # ``gpg_cli.config.load_config`` falls back to its built-in
-        # default (no CA, 30s timeout).
+        # ``family_id``, ``ca_cert_path`` and ``timeout_seconds`` are
+        # absent so ``gpg_cli.config.load_config`` falls back to its
+        # built-in defaults (no CA, 30s timeout, no reissue path until
+        # the operator re-runs the script with --family-id).
         assert loaded == {
             "bridge_url": "https://host.docker.internal:8443",
-            "token": "aa_test_token",
+            "auth_url": "https://host.docker.internal:9100",
+            "access_token": "aa_test_access",
+            "refresh_token": "rt_test_refresh",
         }
 
     def test_signing_key_flag_writes_local_user_signingkey(
@@ -312,34 +333,47 @@ class TestSetupDevcontainerSigningArgvAndConfig:
         )
         assert program_lines == ["gpg-cli"]
 
-    def test_rejects_missing_token(self, tmp_path: Path, git_repo: Path) -> None:
+    def test_rejects_missing_access_token(self, tmp_path: Path, git_repo: Path) -> None:
         xdg = tmp_path / "xdg-config"
-        result = _run(
-            ["--bridge-url", "https://host.docker.internal:8443"],
-            cwd=git_repo,
-            xdg_config_home=xdg,
-        )
+        args = _required_args()
+        # Drop the --access-token pair from the argv.
+        idx = args.index("--access-token")
+        del args[idx : idx + 2]
+        result = _run(args, cwd=git_repo, xdg_config_home=xdg)
         assert result.returncode != 0
-        assert "--token is required" in result.stderr
+        assert "--access-token is required" in result.stderr
+
+    def test_rejects_missing_refresh_token(self, tmp_path: Path, git_repo: Path) -> None:
+        xdg = tmp_path / "xdg-config"
+        args = _required_args()
+        idx = args.index("--refresh-token")
+        del args[idx : idx + 2]
+        result = _run(args, cwd=git_repo, xdg_config_home=xdg)
+        assert result.returncode != 0
+        assert "--refresh-token is required" in result.stderr
+
+    def test_rejects_missing_auth_url(self, tmp_path: Path, git_repo: Path) -> None:
+        xdg = tmp_path / "xdg-config"
+        args = _required_args()
+        idx = args.index("--auth-url")
+        del args[idx : idx + 2]
+        result = _run(args, cwd=git_repo, xdg_config_home=xdg)
+        assert result.returncode != 0
+        assert "--auth-url is required" in result.stderr
 
     def test_rejects_missing_bridge_url(self, tmp_path: Path, git_repo: Path) -> None:
         xdg = tmp_path / "xdg-config"
-        result = _run(
-            ["--token", "aa_test_token"],
-            cwd=git_repo,
-            xdg_config_home=xdg,
-        )
+        args = _required_args()
+        idx = args.index("--bridge-url")
+        del args[idx : idx + 2]
+        result = _run(args, cwd=git_repo, xdg_config_home=xdg)
         assert result.returncode != 0
         assert "--bridge-url is required" in result.stderr
 
     def test_rejects_unknown_flag(self, tmp_path: Path, git_repo: Path) -> None:
         xdg = tmp_path / "xdg-config"
         result = _run(
-            [
-                *_required_args(),
-                "--bogus",
-                "x",
-            ],
+            [*_required_args(), "--bogus", "x"],
             cwd=git_repo,
             xdg_config_home=xdg,
         )
@@ -349,11 +383,7 @@ class TestSetupDevcontainerSigningArgvAndConfig:
     def test_rejects_non_numeric_timeout(self, tmp_path: Path, git_repo: Path) -> None:
         xdg = tmp_path / "xdg-config"
         result = _run(
-            [
-                *_required_args(),
-                "--timeout-seconds",
-                "fast",
-            ],
+            [*_required_args(), "--timeout-seconds", "fast"],
             cwd=git_repo,
             xdg_config_home=xdg,
         )
@@ -389,6 +419,8 @@ class TestSetupDevcontainerSigningArgvAndConfig:
         result = _run(
             [
                 *_required_args(),
+                "--family-id",
+                "fam-roundtrip",
                 "--ca-cert-path",
                 "/tmp/ca.pem",
                 "--timeout-seconds",
@@ -402,7 +434,10 @@ class TestSetupDevcontainerSigningArgvAndConfig:
 
         cfg = load_config(config_path=str(xdg / "gpg-cli" / "config.yaml")).validated()
         assert cfg.bridge_url == "https://host.docker.internal:8443"
-        assert cfg.token == "aa_test_token"
+        assert cfg.credentials.access_token == "aa_test_access"
+        assert cfg.credentials.refresh_token == "rt_test_refresh"
+        assert cfg.credentials.auth_url == "https://host.docker.internal:9100"
+        assert cfg.credentials.family_id == "fam-roundtrip"
         assert cfg.ca_cert_path == "/tmp/ca.pem"
         assert cfg.timeout_seconds == 12.5
 
@@ -446,7 +481,7 @@ class TestSetupDevcontainerSigningSmokeTest:
         curl_call = (bindir / "calls" / "curl").read_text()
         assert "https://host.docker.internal:8443/gpg-bridge/health" in curl_call
         assert (
-            "aa_test_token" not in curl_call
+            "aa_test_access" not in curl_call
         ), "bearer token must travel via header, never argv (ps would expose it)"
 
     def test_probe1_fails_when_gpg_cli_missing(self, tmp_path: Path, git_repo: Path) -> None:
@@ -682,5 +717,5 @@ class TestSetupDevcontainerSigningSmokeTest:
         assert result.returncode == 0, result.stderr
         curl_call = (bindir / "calls" / "curl").read_text()
         gpg_call = (bindir / "calls" / "gpg-cli").read_text()
-        assert "aa_test_token" not in curl_call
-        assert "aa_test_token" not in gpg_call
+        assert "aa_test_access" not in curl_call
+        assert "aa_test_access" not in gpg_call

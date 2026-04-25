@@ -135,20 +135,39 @@ class _StubBridgeClient:
         raise AssertionError("verify path not exercised by these tests")
 
 
+def _make_config(config_path: str) -> object:
+    """Build a fully-validated ``GpgCliConfig`` for the unit tests.
+
+    Materialises the credentials shape introduced in PR #335 so the
+    test exercises the same loading codepath the production CLI does.
+    """
+    from gpg_cli.config import Credentials, GpgCliConfig
+
+    return GpgCliConfig(
+        bridge_url="http://test",
+        credentials=Credentials(
+            access_token="access",
+            refresh_token="refresh",
+            auth_url="http://auth",
+            family_id="family-id",
+        ),
+        config_path=config_path,
+    )
+
+
 class TestSigningBackendUnavailableSurface:
     @pytest.mark.covers_function("Send Bridge Sign Request")
     def test_main_prints_directed_message_and_exits_unavailable(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path,
     ) -> None:
         """End-to-end ``main`` exits with the directed remediation, not "bridge unreachable"."""
         from gpg_cli import cli as cli_module
-        from gpg_cli.config import GpgCliConfig
 
-        monkeypatch.setattr(
-            cli_module,
-            "load_config",
-            lambda: GpgCliConfig(bridge_url="http://test", token="t"),
-        )
+        config = _make_config(str(tmp_path / "config.yaml"))
+        monkeypatch.setattr(cli_module, "load_config", lambda: config)
 
         directed_detail = (
             "host gpg-agent likely needs allow-loopback-pinentry "
@@ -156,7 +175,7 @@ class TestSigningBackendUnavailableSurface:
             "docs/operations/gpg-bridge-host-setup.md"
         )
 
-        def _fake_client(**_kwargs: object) -> _StubBridgeClient:
+        def _fake_client(*_args: object, **_kwargs: object) -> _StubBridgeClient:
             return _StubBridgeClient(error=BridgeSigningBackendUnavailableError(directed_detail))
 
         monkeypatch.setattr(cli_module, "BridgeClient", _fake_client)
@@ -173,7 +192,10 @@ class TestSigningBackendUnavailableSurface:
 
     @pytest.mark.covers_function("Send Bridge Sign Request")
     def test_main_still_uses_bridge_unreachable_for_plain_unavailable(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path,
     ) -> None:
         """Regression guard: the generic 5xx path still says ``bridge unavailable``.
 
@@ -181,15 +203,11 @@ class TestSigningBackendUnavailableSurface:
         generic one and re-introducing the misdirection from #331.
         """
         from gpg_cli import cli as cli_module
-        from gpg_cli.config import GpgCliConfig
 
-        monkeypatch.setattr(
-            cli_module,
-            "load_config",
-            lambda: GpgCliConfig(bridge_url="http://test", token="t"),
-        )
+        config = _make_config(str(tmp_path / "config.yaml"))
+        monkeypatch.setattr(cli_module, "load_config", lambda: config)
 
-        def _fake_client(**_kwargs: object) -> _StubBridgeClient:
+        def _fake_client(*_args: object, **_kwargs: object) -> _StubBridgeClient:
             return _StubBridgeClient(error=BridgeUnavailableError("connection refused"))
 
         monkeypatch.setattr(cli_module, "BridgeClient", _fake_client)
