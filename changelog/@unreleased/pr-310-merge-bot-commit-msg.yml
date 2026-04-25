@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    Merge bot extracts the `==COMMIT_MSG==` block as the squash-merge
+    commit body, replacing the maintainer-paste step from #290.
+    Triggered by the `automerge` label on a PR; refuses to merge if
+    any required check failed, the block is malformed, or the block
+    lacks a `Signed-off-by:` trailer (now enforced PR-time by the
+    `pr-lint` validator). Runs as a dedicated `agent-auth-merge-bot`
+    GitHub App (least-privilege scoped); see
+    `docs/release/merge-bot-setup.md` for the one-time maintainer
+    setup.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/291
+    - https://github.com/aidanns/agent-auth/pull/310

@@ -400,14 +400,63 @@ range (per ADR 0026 § Pre-1.0 behaviour). Force the graduation to
 
 ### Authoring path
 
-Hand-write the YAML for now and commit it alongside the diff. A
-scaffolding helper (`task changelog-add`) lands in #297; bot-mediated
-authoring via `==CHANGELOG_MSG==` markers in the PR body lands in
-#298. Both build on the same schema enforced here.
+Three ways to satisfy the lint, in increasing order of automation:
+
+1. **Hand-author the YAML** — write
+   `changelog/@unreleased/pr-<N>-<slug>.yml` and commit it alongside
+   the diff. The schema is enforced by
+   [`Changelog Lint`](.github/workflows/changelog-lint.yml). Use this
+   when you want to fine-tune the entry (e.g. `packages:` filters or
+   a `release-as` override).
+2. **Use the scaffolding helper** — `task changelog-add` (lands in
+   #297) writes a templated entry from CLI flags. Same schema, less
+   boilerplate.
+3. **Use the bot** — uncomment the `==CHANGELOG_MSG==` block in the
+   PR template and put the release-note text between the markers.
+   The
+   [`Changelog Bot`](.github/workflows/changelog-bot.yml) workflow
+   composes the YAML, derives the `type:` from the PR-title prefix,
+   and commits the file to the PR branch on the next push. See
+   [the marker section below](#changelog-bot-markers).
 
 The `no changelog` label opt-out skips the file-presence check but
 schema validation still runs over any files that *are* present, so
 an opt-out PR can't sneak in malformed YAML.
+
+### Changelog-bot markers
+
+The PR template ships two optional markers that the changelog bot
+reads (alongside the `==COMMIT_MSG==` block from
+[ADR 0037](design/decisions/0037-palantir-commit-prefixes-and-commit-msg-block.md)).
+Both are commented out by default; uncomment one when you want the
+bot's behaviour:
+
+- **`==CHANGELOG_MSG==` … `==CHANGELOG_MSG==`** — content becomes the
+  `description:` field of an auto-created
+  `changelog/@unreleased/pr-<N>-bot-<hash>.yml`. The bot maps the
+  PR-title prefix to the YAML `type:` per
+  [ADR 0037](design/decisions/0037-palantir-commit-prefixes-and-commit-msg-block.md)'s
+  table (`feature:` -> `feature`, `fix:` -> `fix`, ...). For
+  `chore:` PRs the bot leaves a comment instead — `chore:` PRs need
+  the opt-out marker below.
+- **`==NO_CHANGELOG==`** — apply the `no changelog` label so the
+  changelog-file requirement is bypassed. Required for `chore:` PRs
+  with no user-visible change; optional for any PR where you've
+  decided no changelog entry is appropriate. Removing the marker on
+  the next push removes the label (only when the bot applied it; a
+  maintainer-applied label is preserved).
+
+The bot **stops modifying** the YAML it wrote once any non-bot commit
+touches the file. Hand-edit freely after the bot bootstraps the
+entry: a `git commit` from your identity claims authorship and the
+bot leaves the file alone for the rest of the PR's life. Re-engaging
+the bot is an explicit operation (revert your edit), not the default.
+
+Setup instructions for the bot's GitHub App live in
+[`docs/release/changelog-bot-setup.md`](docs/release/changelog-bot-setup.md).
+Architectural rationale (dedicated App, lockout strategy,
+loop-prevention guards) lives in
+[ADR 0039](design/decisions/0039-bot-mediated-changelog-authoring.md).
 
 ## Release process
 
@@ -533,24 +582,50 @@ A `chore:` PR (no release entry) follows the same shape — the
 `==COMMIT_MSG==` block still records the rationale even though no
 CHANGELOG line will be generated.
 
-#### Interim mechanics until the merge bot lands
+#### Merge mechanics — the `automerge` label
 
-The merge bot in #291 will paste the `==COMMIT_MSG==` block into
-the squash-merge dialog automatically. Until then, the maintainer
-performs that step by hand:
+The merge bot in
+[`.github/workflows/merge-bot.yml`](.github/workflows/merge-bot.yml)
+pastes the `==COMMIT_MSG==` block as the squash-merge commit body
+when the PR carries the `automerge` label and every required check
+is green. The bot is the merge path of record:
 
-1. The repository's
-   [`squash_merge_commit_message`](https://docs.github.com/en/rest/repos/repos#update-a-repository)
-   setting is set to `BLANK` so the squash-merge dialog defaults to
-   an empty body (rather than concatenating every PR commit and
-   polluting `git log`).
-2. At merge time, the maintainer copies the contents of the PR's
-   `==COMMIT_MSG==` block (everything between the two markers,
-   exclusive) into the squash-merge dialog's "commit message" field
-   and confirms.
+1. Once review is satisfied, apply the `automerge` label to the PR
+   (`gh pr edit <pr> --add-label automerge`). The label is the
+   single "ready to merge" signal both maintainer and CI agents
+   use; it replaces the legacy `gh pr merge --auto --squash` path.
+2. The bot listens on `pull_request: labeled` (proceed when the
+   new label is `automerge`) and `check_suite: completed`
+   (sticky-label retry once the last required check turns green
+   AFTER the label was set). Either trigger is enough; you can
+   apply the label before checks finish.
+3. On any pre-merge failure (`==COMMIT_MSG==` block missing /
+   malformed, required check failed, `Signed-off-by:` trailer
+   missing from the block) the bot posts a
+   `Claude: Cannot merge — <reason>` comment and exits non-zero.
+   The label stays applied, so a fix-and-push retriggers the bot
+   automatically via `check_suite: completed`. Remove the
+   `automerge` label only if you want the bot to stop trying.
+4. On success the bot posts `Claude: Merged via bot.` and the
+   squash commit lands on `main` with the `==COMMIT_MSG==` block
+   as its body verbatim — sign-off, `Closes #N`, and any
+   `BREAKING CHANGE:` footer all round-trip into git history.
 
-See [`docs/release/rollout-pr-template.md`](docs/release/rollout-pr-template.md)
-for the full rollout plan and rationale.
+The `Signed-off-by:` trailer must already sit inside the
+`==COMMIT_MSG==` block — the bot authors no commits and pastes the
+block as the squash-merge body. The
+[`PR Lint`](.github/workflows/pr-lint.yml) workflow rejects a PR
+whose block lacks the trailer at PR-author time so the bot
+doesn't have to. Add the trailer manually if you're hand-editing
+the block; if you ran `git commit -s` on the PR commits, copy the
+same `Signed-off-by:` line into the block.
+
+Maintainer setup of the merge-bot GitHub App is documented in
+[`docs/release/merge-bot-setup.md`](docs/release/merge-bot-setup.md).
+The interim maintainer-paste mechanics that pre-dated the bot are
+preserved in
+[`docs/release/rollout-pr-template.md`](docs/release/rollout-pr-template.md)
+for historical reference.
 
 ### Default path: semantic-release
 
@@ -758,6 +833,60 @@ Verify signing is working:
 ```bash
 git log --show-signature -1
 ```
+
+### Signed commits inside the devcontainer
+
+The repo's `main` ruleset requires signed commits, but devcontainers
+generally don't have access to the host's GPG keys — exporting them
+into the container would defeat the security model. This project
+solves it with a host-side signing service (`gpg-bridge`) and a
+container-side `gpg`-shaped frontend (`gpg-cli`) that forwards
+sign / verify requests over HTTPS. See
+[ADR 0033](design/decisions/0033-gpg-bridge-cli-split.md) for the
+full architecture.
+
+To wire a fresh devcontainer to the host's `gpg-bridge`:
+
+1. **On the host**, mint a `gpg:sign`-scoped agent-auth access token:
+
+   ```bash
+   task agent-auth -- token create --scope gpg:sign=allow --json
+   ```
+
+   Copy the `access_token` field. It's shown once.
+
+2. **In the devcontainer**, run the setup task with the token and
+   the bridge URL:
+
+   ```bash
+   task setup-devcontainer-signing -- \
+     --token <ACCESS_TOKEN> \
+     --bridge-url https://host.docker.internal:8443
+   ```
+
+   Optional flags: `--ca-cert-path <PATH>` if the bridge's TLS
+   certificate is signed by a CA the container's trust store doesn't
+   include, and `--timeout-seconds <N>` to override the per-request
+   timeout (default 30s).
+
+The setup task writes the `gpg-cli` config to
+`$XDG_CONFIG_HOME/gpg-cli/config.yaml` (mode `0600`) and runs two
+`git config --local` calls in the current clone:
+
+- `gpg.program = gpg-cli` — git delegates sign / verify to the
+  bridge instead of looking for `gpg` on `PATH`.
+- `commit.gpgsign = true` — every `git commit` signs without needing
+  `-S`.
+
+Override per-commit with `git -c commit.gpgsign=false commit` when
+you need an unsigned commit (e.g. an in-flight rebase that doesn't
+touch `main`).
+
+The setup is idempotent — re-running with the same arguments
+overwrites the config file and reasserts the git-config values.
+Re-run after a `gpg-bridge` URL change or a token rotation. The
+script is also runnable directly as `scripts/setup-devcontainer-signing.sh`
+if `go-task` isn't available.
 
 ### Non-interactive signing for `task release`
 

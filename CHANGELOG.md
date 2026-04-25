@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.0](https://github.com/aidanns/agent-auth/compare/v0.12.2...v0.13.0) (2026-04-25)
+
+### Features
+
+- **ci:** changelog YAML schema + PR-time lint ([#303](https://github.com/aidanns/agent-auth/issues/303))
+
+- **ci:** merge bot extracts ==COMMIT_MSG== as squash body ([#310](https://github.com/aidanns/agent-auth/issues/310))
+
+- **ci:** PR template + commit-msg block lint ([#302](https://github.com/aidanns/agent-auth/issues/302))
+
+- **gpg-cli:** add task setup-devcontainer-signing for one-shot wiring ([#315](https://github.com/aidanns/agent-auth/issues/315))
+
 ## [0.12.2](https://github.com/aidanns/agent-auth/compare/v0.12.1...v0.12.2) (2026-04-25)
 
 ### Bug Fixes
