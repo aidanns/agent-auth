@@ -89,6 +89,8 @@ def backend(host_fingerprint: tuple[Path, str]) -> HostGpgBackend:
 
 
 class TestHostGpgBackend:
+    @pytest.mark.covers_function("Sign Payload")
+    @pytest.mark.covers_function("Verify Signature")
     def test_sign_round_trips_to_verify(
         self, backend: HostGpgBackend, host_fingerprint: tuple[Path, str]
     ) -> None:
@@ -106,6 +108,8 @@ class TestHostGpgBackend:
         assert "[GNUPG:] GOODSIG" in verify_result.status_text
         assert "[GNUPG:] VALIDSIG" in verify_result.status_text
 
+    @pytest.mark.covers_function("Verify Signature")
+    @pytest.mark.covers_function("Emit Backend JSON Envelope")
     def test_tampered_payload_fails_verify(
         self, backend: HostGpgBackend, host_fingerprint: tuple[Path, str]
     ) -> None:
@@ -115,6 +119,8 @@ class TestHostGpgBackend:
         with pytest.raises(GpgBadSignatureError):
             backend.verify(VerifyRequest(signature=sign_result.signature, payload=b"tampered"))
 
+    @pytest.mark.covers_function("Resolve Local-User Key")
+    @pytest.mark.covers_function("Emit Backend JSON Envelope")
     def test_unknown_key_raises_no_such_key(self, backend: HostGpgBackend) -> None:
         with pytest.raises(GpgNoSuchKeyError):
             backend.sign(
