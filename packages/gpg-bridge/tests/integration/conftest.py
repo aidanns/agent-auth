@@ -72,10 +72,11 @@ class GpgCliInvoker:
         exercise the bridge's authz path.
 
         ``entrypoint`` overrides the image's default ENTRYPOINT (which
-        is unset in ``Dockerfile.gpg-cli.test`` — ``run`` puts the
-        binary in argv[0]). The verify-path helper passes ``sh`` here
-        so it can stage the signature inside the container without
-        sharing a host bind-mount.
+        is unset in ``Dockerfile.gpg-cli.test`` — the helper prepends
+        ``gpg-cli`` as the binary when no override is set). The
+        verify-path helper passes ``sh`` here so it can stage the
+        signature inside the container without sharing a host bind-
+        mount.
         """
         cluster = self.stack.cluster
         compose_argv: list[str] = [
@@ -96,7 +97,16 @@ class GpgCliInvoker:
             compose_argv.extend(["--env", f"{key}={value}"])
         if entrypoint is not None:
             compose_argv.extend(["--entrypoint", entrypoint])
-        compose_argv.append("gpg-cli")
+        compose_argv.append("gpg-cli")  # compose service name
+        # When no entrypoint override is set, ``Dockerfile.gpg-cli.test``
+        # has no ENTRYPOINT, so the first argv item is the binary docker
+        # tries to exec. Without an explicit ``gpg-cli`` here docker
+        # would try to exec the first flag (e.g. ``--status-fd``) as a
+        # binary and fail with "executable file not found in $PATH".
+        # The entrypoint=sh path (verify) skips this prefix because
+        # ``sh -c '...'`` runs gpg-cli itself inside the script body.
+        if entrypoint is None:
+            compose_argv.append("gpg-cli")  # binary
         compose_argv.extend(argv)
 
         env = {**os.environ, **cluster.env}
