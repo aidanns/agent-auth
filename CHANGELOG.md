@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.11.0](https://github.com/aidanns/agent-auth/compare/v0.10.0...v0.11.0) (2026-04-25)
+
+### ⚠ BREAKING CHANGES
+
+- \*\* the root `install.sh` is deleted. Users must switch
+  to the per-service installers (root README lists them). Every shipped
+  console-script continues to work from its per-service package.
+
+Closes #105.
+
+## Test plan
+
+- [x] `uv run pytest tests/ --ignore=tests/integration` — 509 passed,
+  coverage 80.27 %.
+- [x] `uv run ruff check`, `uv run mypy`, `uv run pyright` — clean
+  across the new `packages/*/src` trees.
+- [x] `scripts/verify-standards.sh`,
+  `scripts/verify-integration-isolation.sh`,
+  `scripts/verify-function-tests.sh`, `scripts/verify-design.sh`,
+  `scripts/verify-token-cli-http-parity.sh`, `scripts/reuse-lint.sh` — all
+  green.
+- [ ] CI integration suite on all four `integration-*` jobs (requires
+  Docker — not run locally).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+### Features
+
+- **ci:** verify workspace dep graph against an explicit allowlist ([#285](https://github.com/aidanns/agent-auth/issues/285))
+
+- **gpg-bridge:** implement gpg-cli / gpg-bridge packages (MVP) ([#254](https://github.com/aidanns/agent-auth/issues/254))
+
+- **standards:** derive install.sh requirement from [project.scripts] ([#284](https://github.com/aidanns/agent-auth/issues/284))
+
+- **taskfile:** per-package namespaces via Taskfile includes ([#279](https://github.com/aidanns/agent-auth/issues/279))
+
+- **things-bridge:** restrict subprocess env to minimal allowlist ([#277](https://github.com/aidanns/agent-auth/issues/277))
+
+### Code Refactoring
+
+- split services into a uv workspace of per-service subprojects ([#257](https://github.com/aidanns/agent-auth/issues/257))
+
 ## [0.10.0](https://github.com/aidanns/agent-auth/compare/v0.9.1...v0.10.0) (2026-04-23)
 
 ### Features
