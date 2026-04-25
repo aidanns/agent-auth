@@ -34,6 +34,7 @@ import sys
 import threading
 import time
 import urllib.request
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 import pytest
@@ -88,7 +89,7 @@ class _NoopAuthz(AgentAuthClient):
 
 
 @pytest.fixture
-def perf_bridge(tmp_path: Path):
+def perf_bridge(tmp_path: Path) -> Iterator[str]:
     fixture_path = tmp_path / "fixture.yaml"
     fixture_path.write_text(yaml.safe_dump(_FIXTURE))
 
@@ -114,7 +115,7 @@ def perf_bridge(tmp_path: Path):
         thread.join(timeout=5.0)
 
 
-def _post_json(url: str, body: dict[str, object]) -> dict[str, object]:
+def _post_json(url: str, body: Mapping[str, object]) -> dict[str, object]:
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(
         url,
