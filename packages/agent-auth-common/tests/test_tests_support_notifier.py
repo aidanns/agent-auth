@@ -12,7 +12,11 @@ OS-assigned port so a regression is caught without a container spin-up.
 from __future__ import annotations
 
 import json
+import os
+import signal
 import socket
+import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -67,6 +71,79 @@ def test_approve_notifier_returns_approved_once(approve_notifier):
     result = client.request_approval("fam1", "things:read", "list todos")
     assert result.approved is True
     assert result.grant_type == "once"
+
+
+def test_notifier_subprocess_exits_cleanly_on_sigterm():
+    """#294: ``python -m tests_support.notifier`` must exit on SIGTERM.
+
+    The integration compose stack runs this entrypoint as PID 1 inside
+    its container. The Linux kernel ignores signals for which PID 1
+    has no handler installed (``SIG_DFL`` is *ignore*, not terminate,
+    when the receiver is PID 1), which is why every ``compose_stop``
+    sat at the 5 s ``stop_grace_period`` ceiling before this fix —
+    docker had to SIGKILL the notifier on every test teardown.
+
+    Spawn the script as a real child process, send SIGTERM, and assert
+    it exits with status 0 within a tight budget. A deadlock or a
+    missing handler would tip the test into the wall-time guard rather
+    than letting it slide past unnoticed.
+    """
+    port = _free_port()
+    cmd = [
+        sys.executable,
+        "-m",
+        "tests_support.notifier",
+        "approve",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(port),
+    ]
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        # Wait for the notifier to print its ``listening on`` line so
+        # we know the signal handlers have been registered before we
+        # send SIGTERM (signals can arrive earlier, but a ready stdout
+        # line is the minimum guarantee of a stable steady state).
+        deadline = time.monotonic() + 5.0
+        ready = False
+        assert proc.stdout is not None
+        while time.monotonic() < deadline:
+            line = proc.stdout.readline()
+            if not line:
+                time.sleep(0.01)
+                continue
+            if "listening on" in line:
+                ready = True
+                break
+        assert ready, "notifier did not print listening line in 5s"
+
+        signal_at = time.monotonic()
+        os.kill(proc.pid, signal.SIGTERM)
+        # Allow generous headroom on a slow CI runner but stay well
+        # under the 5 s ``stop_grace_period`` so a regression here
+        # surfaces as a test failure, not a SIGKILL after-effect.
+        try:
+            exit_code = proc.wait(timeout=3.0)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=2.0)
+            pytest.fail(
+                "notifier did not exit within 3s of SIGTERM — the "
+                "PID-1-in-container shutdown handler regressed (#294)"
+            )
+        elapsed = time.monotonic() - signal_at
+        assert exit_code == 0, f"notifier exited {exit_code}, expected 0"
+        assert elapsed < 3.0, f"notifier took {elapsed:.2f}s to exit on SIGTERM"
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=2.0)
 
 
 def test_approve_notifier_body_shape_is_minimal():

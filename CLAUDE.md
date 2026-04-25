@@ -62,7 +62,10 @@ simplifying for "personal project" scope.
   `CHANGELOG.md`. Link the issue with a `Closes #N` footer instead.
   See `CONTRIBUTING.md` § *Writing release-worthy commits*.
 - Every PR commit needs a DCO `Signed-off-by:` trailer — use
-  `git commit -s` (or `git config --local format.signoff true` once).
+  `git commit -s` every time, or alias it once with
+  `git config --local alias.c 'commit -s'`. Git has no native config
+  that makes `git commit` always sign off; `format.signoff` only
+  affects `git format-patch`, and `commit.signoff` is not recognised.
   Enforced by `.github/workflows/dco.yml`; forgetting it makes the
   `DCO sign-off check` fail and the remedy is
   `git rebase origin/main --signoff && git push --force-with-lease`.
