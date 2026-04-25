@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Changelog Lint
+
+# PR-time enforcement of the changelog/@unreleased/*.yml schema. See
+# scripts/changelog/lint.py for the four checks (file presence, file
+# naming, schema validation, release-as invariant). This is the
+# foundation for #289's release-workflow rewrite (#296).
+#
+# The job name `changelog-lint` is the value the maintainer must add
+# to the `main` branch ruleset's required-check list (this PR cannot
+# update the ruleset itself).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog-lint:
+    name: changelog-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Need full history so `git diff base...head` resolves and
+          # `git describe --tags` finds the latest vX.Y.Z tag.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Bootstrap the workspace venv (provides PyYAML for the lint).
+      # `task` would normally trigger this implicitly via a venv-backed
+      # task, but the lint runs as a one-shot Python entrypoint so we
+      # call uv directly.
+      - name: Bootstrap workspace venv
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv-Linux-x86_64
+        run: uv sync --extra dev
+
+      - name: Run changelog lint over PR diff
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv-Linux-x86_64
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: uv run --no-sync python scripts/changelog/lint.py
+
+      - name: Run version_logic + lint unit tests
+        # Tests are gated on every PR rather than nightly because the
+        # lint logic is the only thing standing between malformed
+        # YAML and the release workflow (#296). A regression here
+        # would silently let bad entries land.
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv-Linux-x86_64
+        run: scripts/changelog/test.sh

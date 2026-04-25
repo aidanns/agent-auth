@@ -61,6 +61,15 @@ path = "uv.lock"
 SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
 SPDX-License-Identifier = "MIT"
 
+# changelog/@unreleased/.gitkeep is an empty placeholder that materialises
+# the directory consumed by .github/workflows/changelog-lint.yml and the
+# upcoming release workflow (#296). An inline SPDX comment would defeat
+# the "empty placeholder" purpose, so the licensing metadata lives here.
+[[annotations]]
+path = "changelog/@unreleased/.gitkeep"
+SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
+SPDX-License-Identifier = "MIT"
+
 # pr-lint validator fixtures under .github/workflows/tests/pr-lint-fixtures/
 # are PR-body markdown samples whose exact byte layout is the unit under
 # test (line widths, comment positioning, block markers). Adding an inline
