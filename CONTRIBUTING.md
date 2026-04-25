@@ -533,24 +533,50 @@ A `chore:` PR (no release entry) follows the same shape — the
 `==COMMIT_MSG==` block still records the rationale even though no
 CHANGELOG line will be generated.
 
-#### Interim mechanics until the merge bot lands
+#### Merge mechanics — the `automerge` label
 
-The merge bot in #291 will paste the `==COMMIT_MSG==` block into
-the squash-merge dialog automatically. Until then, the maintainer
-performs that step by hand:
+The merge bot in
+[`.github/workflows/merge-bot.yml`](.github/workflows/merge-bot.yml)
+pastes the `==COMMIT_MSG==` block as the squash-merge commit body
+when the PR carries the `automerge` label and every required check
+is green. The bot is the merge path of record:
 
-1. The repository's
-   [`squash_merge_commit_message`](https://docs.github.com/en/rest/repos/repos#update-a-repository)
-   setting is set to `BLANK` so the squash-merge dialog defaults to
-   an empty body (rather than concatenating every PR commit and
-   polluting `git log`).
-2. At merge time, the maintainer copies the contents of the PR's
-   `==COMMIT_MSG==` block (everything between the two markers,
-   exclusive) into the squash-merge dialog's "commit message" field
-   and confirms.
+1. Once review is satisfied, apply the `automerge` label to the PR
+   (`gh pr edit <pr> --add-label automerge`). The label is the
+   single "ready to merge" signal both maintainer and CI agents
+   use; it replaces the legacy `gh pr merge --auto --squash` path.
+2. The bot listens on `pull_request: labeled` (proceed when the
+   new label is `automerge`) and `check_suite: completed`
+   (sticky-label retry once the last required check turns green
+   AFTER the label was set). Either trigger is enough; you can
+   apply the label before checks finish.
+3. On any pre-merge failure (`==COMMIT_MSG==` block missing /
+   malformed, required check failed, `Signed-off-by:` trailer
+   missing from the block) the bot posts a
+   `Claude: Cannot merge — <reason>` comment and exits non-zero.
+   The label stays applied, so a fix-and-push retriggers the bot
+   automatically via `check_suite: completed`. Remove the
+   `automerge` label only if you want the bot to stop trying.
+4. On success the bot posts `Claude: Merged via bot.` and the
+   squash commit lands on `main` with the `==COMMIT_MSG==` block
+   as its body verbatim — sign-off, `Closes #N`, and any
+   `BREAKING CHANGE:` footer all round-trip into git history.
 
-See [`docs/release/rollout-pr-template.md`](docs/release/rollout-pr-template.md)
-for the full rollout plan and rationale.
+The `Signed-off-by:` trailer must already sit inside the
+`==COMMIT_MSG==` block — the bot authors no commits and pastes the
+block as the squash-merge body. The
+[`PR Lint`](.github/workflows/pr-lint.yml) workflow rejects a PR
+whose block lacks the trailer at PR-author time so the bot
+doesn't have to. Add the trailer manually if you're hand-editing
+the block; if you ran `git commit -s` on the PR commits, copy the
+same `Signed-off-by:` line into the block.
+
+Maintainer setup of the merge-bot GitHub App is documented in
+[`docs/release/merge-bot-setup.md`](docs/release/merge-bot-setup.md).
+The interim maintainer-paste mechanics that pre-dated the bot are
+preserved in
+[`docs/release/rollout-pr-template.md`](docs/release/rollout-pr-template.md)
+for historical reference.
 
 ### Default path: semantic-release
 
