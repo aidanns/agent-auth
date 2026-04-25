@@ -785,6 +785,60 @@ Verify signing is working:
 git log --show-signature -1
 ```
 
+### Signed commits inside the devcontainer
+
+The repo's `main` ruleset requires signed commits, but devcontainers
+generally don't have access to the host's GPG keys — exporting them
+into the container would defeat the security model. This project
+solves it with a host-side signing service (`gpg-bridge`) and a
+container-side `gpg`-shaped frontend (`gpg-cli`) that forwards
+sign / verify requests over HTTPS. See
+[ADR 0033](design/decisions/0033-gpg-bridge-cli-split.md) for the
+full architecture.
+
+To wire a fresh devcontainer to the host's `gpg-bridge`:
+
+1. **On the host**, mint a `gpg:sign`-scoped agent-auth access token:
+
+   ```bash
+   task agent-auth -- token create --scope gpg:sign=allow --json
+   ```
+
+   Copy the `access_token` field. It's shown once.
+
+2. **In the devcontainer**, run the setup task with the token and
+   the bridge URL:
+
+   ```bash
+   task setup-devcontainer-signing -- \
+     --token <ACCESS_TOKEN> \
+     --bridge-url https://host.docker.internal:8443
+   ```
+
+   Optional flags: `--ca-cert-path <PATH>` if the bridge's TLS
+   certificate is signed by a CA the container's trust store doesn't
+   include, and `--timeout-seconds <N>` to override the per-request
+   timeout (default 30s).
+
+The setup task writes the `gpg-cli` config to
+`$XDG_CONFIG_HOME/gpg-cli/config.yaml` (mode `0600`) and runs two
+`git config --local` calls in the current clone:
+
+- `gpg.program = gpg-cli` — git delegates sign / verify to the
+  bridge instead of looking for `gpg` on `PATH`.
+- `commit.gpgsign = true` — every `git commit` signs without needing
+  `-S`.
+
+Override per-commit with `git -c commit.gpgsign=false commit` when
+you need an unsigned commit (e.g. an in-flight rebase that doesn't
+touch `main`).
+
+The setup is idempotent — re-running with the same arguments
+overwrites the config file and reasserts the git-config values.
+Re-run after a `gpg-bridge` URL change or a token rotation. The
+script is also runnable directly as `scripts/setup-devcontainer-signing.sh`
+if `go-task` isn't available.
+
 ### Non-interactive signing for `task release`
 
 `scripts/release.sh` creates a signed tag (`git tag -s`). If your signing
