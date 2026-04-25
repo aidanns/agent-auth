@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    Add `task setup-devcontainer-signing` (and the underlying
+    `scripts/setup-devcontainer-signing.sh`) for one-shot wiring of
+    devcontainer commit signing to the host's `gpg-bridge`. Writes
+    the gpg-cli config to `$XDG_CONFIG_HOME/gpg-cli/config.yaml` at
+    mode 0600 and runs `git config --local` for `gpg.program=gpg-cli`
+    and `commit.gpgsign=true`. Unblocks #217 (re-enable
+    `required_signatures` on the `main` ruleset).
+  links:
+    - https://github.com/aidanns/agent-auth/issues/242
+    - https://github.com/aidanns/agent-auth/pull/315
+packages:
+  - gpg-cli
