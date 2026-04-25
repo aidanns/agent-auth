@@ -38,10 +38,32 @@ jobs:
     # any commits / PRs created by an installation token.
     if: github.event.pull_request.user.login != 'agent-auth-changelog-bot[bot]'
     steps:
+      # Bail out cleanly when the bot's secrets haven't been provisioned
+      # yet (e.g. on the PR that initially adds this workflow, or in a
+      # fork that hasn't installed the App). The bot is purely additive
+      # ergonomics — contributors can still hand-author the YAML or use
+      # the marker once secrets are in place — so a not-yet-configured
+      # environment shouldn't fail the PR. Setup steps live in
+      # docs/release/changelog-bot-setup.md.
+      - name: Check secrets are configured
+        id: secrets-check
+        env:
+          APP_ID: ${{ secrets.CHANGELOG_BOT_APP_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APP_ID:-}" ]]; then
+            echo "::notice::CHANGELOG_BOT_APP_ID secret is not set; skipping bot run."
+            echo "::notice::See docs/release/changelog-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          fi
+
       # Mint a short-lived installation token from the changelog bot
       # App. Stored secrets are created once during setup; see
       # docs/release/changelog-bot-setup.md.
       - name: Create GitHub App token
+        if: steps.secrets-check.outputs.configured == 'true'
         id: app-token
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
         with:
@@ -49,6 +71,7 @@ jobs:
           private-key: ${{ secrets.CHANGELOG_BOT_PRIVATE_KEY }}
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: steps.secrets-check.outputs.configured == 'true'
         with:
           # `git log --format=%an -- <path>` (lockout detection) needs
           # the file's full history.
@@ -69,6 +92,7 @@ jobs:
       # `if:` only filters on `pull_request.user`, which is the PR
       # opener, not the latest committer.
       - name: Loop guard — skip when the head commit is bot-authored
+        if: steps.secrets-check.outputs.configured == 'true'
         id: loop-guard
         run: |
           set -euo pipefail
@@ -82,13 +106,13 @@ jobs:
           fi
 
       - name: Set up Python
-        if: steps.loop-guard.outputs.skip != 'true'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.loop-guard.outputs.skip != 'true'
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
 
       - name: Install runtime deps (PyYAML)
-        if: steps.loop-guard.outputs.skip != 'true'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.loop-guard.outputs.skip != 'true'
         # The bot's only third-party dependency is PyYAML (transitively
         # via parse_entry_file in `version_logic.py`, used by
         # tests/lint contracts). Avoid `uv sync --extra dev` here so
@@ -96,7 +120,7 @@ jobs:
         run: pip install --no-deps pyyaml
 
       - name: Run changelog bot
-        if: steps.loop-guard.outputs.skip != 'true'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.loop-guard.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           # Override the defaults from `bot.py` so a future App rename

@@ -305,7 +305,12 @@ def compose_yaml(*, entry_type: str, description: str, pr_number: int) -> str:
 
     indented = "\n".join(f"    {line}" if line else "" for line in cleaned.splitlines())
     pr_link = f"https://github.com/aidanns/agent-auth/pull/{pr_number}"
-    return (
+    # REUSE-IgnoreStart -- the SPDX header strings below are written
+    # to the generated YAML (not a declaration about this source
+    # file). Without the ignore markers, REUSE reads the multi-line
+    # Python string literal as a malformed
+    # `SPDX-License-Identifier: MIT\n` declaration on this source.
+    rendered = (
         "# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith\n"
         "#\n"
         "# SPDX-License-Identifier: MIT\n"
@@ -317,6 +322,8 @@ def compose_yaml(*, entry_type: str, description: str, pr_number: int) -> str:
         "  links:\n"
         f"    - {pr_link}\n"
     )
+    # REUSE-IgnoreEnd
+    return rendered
 
 
 # --- Lockout detection -------------------------------------------------------
