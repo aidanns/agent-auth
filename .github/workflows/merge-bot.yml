@@ -1,0 +1,443 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Merge Bot
+
+# Pastes the PR's `==COMMIT_MSG==` block as the squash-merge commit
+# body when the contributor (or an automerge-eligible CI agent)
+# applies the `automerge` label and every required check is green.
+# Replaces the maintainer-paste step from #290 with a deterministic
+# bot-mediated merge. See:
+#   - design/decisions/0038-merge-bot-via-github-app.md
+#   - docs/release/merge-bot-setup.md
+#
+# Triggers:
+#   - pull_request: labeled — proceed when the new label == `automerge`.
+#   - check_suite: completed — sticky-label retry once the last check
+#     turns green AFTER the label was set.
+#   - workflow_dispatch — maintainer break-glass against a specific
+#     PR number.
+#
+# The bot authors no commits — it only calls `PUT /pulls/{n}/merge`.
+# The squash commit body is the contents of the PR's `==COMMIT_MSG==`
+# block, extracted via `scripts/extract-commit-msg-block.py` (which
+# reuses the validator's parser — there is no second regex). The
+# DCO `Signed-off-by:` trailer must already sit inside the block;
+# `pr-lint.yml` enforces that at PR-author time and the bot
+# spot-checks it again here as defence-in-depth.
+#
+# Failure modes (ALL surface as a `Claude: Cannot merge — <reason>`
+# comment so the PR author sees the block):
+#   - Required check is FAILURE / TIMED_OUT / CANCELLED.
+#   - `==COMMIT_MSG==` extraction failed (missing block, malformed).
+#   - Block has no `Signed-off-by:` trailer.
+#   - PR is not mergeable (conflict, missing reviews, etc.).
+#
+# The label stays sticky on lint/check failure so the
+# check_suite.completed retrigger picks up the recovered run
+# automatically.
+
+on:
+  pull_request:
+    types: [labeled]
+  check_suite:
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to merge (break-glass)
+        required: true
+        type: number
+
+# `pull-requests: write` is needed to post the `Claude: ...` comment
+# and (via the App token) to call the merge endpoint. NO
+# `contents: write` — the bot does not push commits or tags. NO
+# `id-token: write` — the bot is not on the SLSA-attestation path.
+permissions:
+  pull-requests: write
+  contents: read
+  checks: read
+
+# Prevent two triggers (label + check_suite) from racing on the same
+# PR. Group key includes the PR/SHA so different PRs still run in
+# parallel; cancellation is OFF because we want each trigger to run
+# to completion (an early-exit on "already merged" is cheap, and
+# losing a trigger could leave the PR stuck waiting for the next
+# event).
+concurrency:
+  group: merge-bot-${{ github.event.pull_request.number || github.event.check_suite.head_sha || inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: Merge ==COMMIT_MSG== block as squash body
+    runs-on: ubuntu-latest
+    # Cheap pre-filter so we don't burn a runner on every label
+    # event (`labeled` fires for *every* label, not just `automerge`),
+    # and so `check_suite.completed` only proceeds when the suite
+    # itself succeeded. Per-PR sticky-label and required-check checks
+    # happen in the steps below.
+    if: |
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'automerge')
+      || (github.event_name == 'check_suite' && github.event.check_suite.conclusion == 'success')
+      || github.event_name == 'workflow_dispatch'
+    steps:
+      # The merge call needs to satisfy the `main` ruleset's
+      # `required_status_checks` administration. The default
+      # GITHUB_TOKEN is the workflow's ephemeral identity and cannot
+      # be added as a bypass actor on the ruleset; a dedicated
+      # GitHub App can. Setup: docs/release/merge-bot-setup.md.
+      - name: Mint merge-bot App token
+        id: app-token
+        # Pinned by SHA per .claude/instructions/tooling-and-ci.md —
+        # this workflow merges the squash commit that becomes a
+        # release-bumping commit on `main`, so it is release-path-
+        # adjacent. Same pin policy as release.yml.
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.MERGE_BOT_APP_ID }}
+          private-key: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
+
+      # Resolve the PR number for each trigger. `pull_request`
+      # carries it directly. `check_suite` carries a list of PRs the
+      # suite was run for; we pick the first one carrying the
+      # `automerge` label. `workflow_dispatch` takes it as input.
+      # Surface the resolved number as a step output so later steps
+      # don't have to re-derive it from the event payload.
+      - name: Resolve target PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_PR: ${{ inputs.pr_number }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+          # check_suite payload — need the head SHA to enumerate PRs
+          # in the same repo carrying the `automerge` label. Cross-
+          # repo PRs (forks) don't appear in `check_suite.pull_requests`
+          # by design; this bot only operates on same-repo PRs.
+          CHECK_SUITE_HEAD_SHA: ${{ github.event.check_suite.head_sha }}
+        run: |
+          set -euo pipefail
+          case "${EVENT_NAME}" in
+            pull_request)
+              echo "pr=${PULL_REQUEST_NUMBER}" >> "${GITHUB_OUTPUT}"
+              ;;
+            workflow_dispatch)
+              echo "pr=${DISPATCH_PR}" >> "${GITHUB_OUTPUT}"
+              ;;
+            check_suite)
+              # `gh pr list --search` returns same-repo PRs whose head
+              # SHA matches and whose labels include `automerge`. If
+              # no such PR exists, exit cleanly — the suite likely
+              # ran for a PR that hasn't been queued for the bot.
+              found="$(gh pr list \
+                --repo "${GITHUB_REPOSITORY}" \
+                --state open \
+                --label automerge \
+                --search "${CHECK_SUITE_HEAD_SHA}" \
+                --json number \
+                --jq '.[0].number // empty')"
+              if [[ -z "${found}" ]]; then
+                echo "merge-bot: no automerge-labeled PR for head sha ${CHECK_SUITE_HEAD_SHA}; nothing to do"
+                echo "pr=" >> "${GITHUB_OUTPUT}"
+              else
+                echo "pr=${found}" >> "${GITHUB_OUTPUT}"
+              fi
+              ;;
+          esac
+
+      - name: Exit early if no target PR
+        if: steps.pr.outputs.pr == ''
+        run: |
+          echo "merge-bot: no PR to act on; exiting cleanly."
+          exit 0
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: steps.pr.outputs.pr != ''
+        with:
+          # Always pin the extractor to `main` so a contributor cannot
+          # ship a malicious extractor in the same PR they want merged
+          # (the head ref of a PR carries the contributor's changes;
+          # checking out the head would make the extractor self-
+          # mutable). pr-lint.yml uses the same defensive pin via the
+          # PR base SHA — `main` is even safer because `check_suite`
+          # has no PR base SHA in its event payload.
+          ref: main
+
+      - name: Set up Python
+        if: steps.pr.outputs.pr != ''
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      # Inspect the PR — title for the squash subject, body for the
+      # ==COMMIT_MSG== block, mergeability and label state for the
+      # gating decision. One `gh pr view` call covers all of it.
+      - name: Fetch PR metadata
+        id: meta
+        if: steps.pr.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          payload="$(gh pr view "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json number,title,body,state,mergeable,mergeStateStatus,labels,headRefOid)"
+          # Persist the body to disk via env-tunnel — printing JSON
+          # through the shell would let backticks / $(...) in the PR
+          # body execute. Same defence the pr-lint workflow uses.
+          {
+            echo "title<<MERGE_BOT_EOF"
+            jq -r '.title' <<<"${payload}"
+            echo "MERGE_BOT_EOF"
+          } >> "${GITHUB_OUTPUT}"
+          echo "state=$(jq -r '.state' <<<"${payload}")" >> "${GITHUB_OUTPUT}"
+          echo "mergeable=$(jq -r '.mergeable' <<<"${payload}")" >> "${GITHUB_OUTPUT}"
+          echo "mergeStateStatus=$(jq -r '.mergeStateStatus' <<<"${payload}")" >> "${GITHUB_OUTPUT}"
+          echo "head_sha=$(jq -r '.headRefOid' <<<"${payload}")" >> "${GITHUB_OUTPUT}"
+          # Boolean: does the PR carry the `automerge` label?
+          if jq -e '.labels | map(.name) | index("automerge")' <<<"${payload}" >/dev/null; then
+            echo "has_automerge_label=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "has_automerge_label=false" >> "${GITHUB_OUTPUT}"
+          fi
+          # Stash the body for the extractor.
+          jq -r '.body // ""' <<<"${payload}" > "${RUNNER_TEMP}/pr-body.md"
+          echo "body_path=${RUNNER_TEMP}/pr-body.md" >> "${GITHUB_OUTPUT}"
+
+      - name: Skip if PR is not in scope
+        if: steps.pr.outputs.pr != '' && (steps.meta.outputs.state != 'OPEN' || steps.meta.outputs.has_automerge_label != 'true')
+        run: |
+          echo "merge-bot: PR #${{ steps.pr.outputs.pr }} state=${{ steps.meta.outputs.state }} label=${{ steps.meta.outputs.has_automerge_label }}; nothing to do."
+          exit 0
+
+      # Inspect required-check status. We classify each required
+      # check into FAILURE / PENDING / SUCCESS and react:
+      #   - FAILURE: hard-fail with a Claude comment.
+      #   - PENDING: clean exit; the check_suite.completed retrigger
+      #     will run the bot again once everything settles.
+      #   - All SUCCESS: proceed.
+      # Uses the GraphQL `statusCheckRollup` so legacy commit-status
+      # checks are included alongside Actions check-runs.
+      - name: Inspect required checks
+        id: checks
+        if: steps.pr.outputs.pr != '' && steps.meta.outputs.state == 'OPEN' && steps.meta.outputs.has_automerge_label == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          rollup="$(gh pr view "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json statusCheckRollup \
+            --jq '.statusCheckRollup')"
+          # `conclusion` is set on Actions check-runs; `state` is set
+          # on legacy commit statuses. Treat NEUTRAL/SKIPPED as pass.
+          # Anything not in the success/pending/skipped sets is a
+          # failure. Surfaced as one line per check so the failure
+          # comment can name the offending check.
+          #
+          # Filter out the merge-bot's own checks (workflowName ==
+          # "Merge Bot"). A previous failed merge-bot run would
+          # otherwise show up as a failure in the rollup and block
+          # every subsequent retrigger — the bot would refuse to
+          # merge forever after its first failure. The bot's pre-
+          # merge gating supersedes its own historical check
+          # outcomes; only the substantive required checks should
+          # gate the merge decision.
+          failed="$(jq -r '
+            map(select((.workflowName // "") != "Merge Bot"))
+            | map(select(
+              ((.conclusion // "") | ascii_upcase | IN("FAILURE","TIMED_OUT","CANCELLED","STARTUP_FAILURE","ACTION_REQUIRED"))
+              or ((.state // "") | ascii_upcase | IN("FAILURE","ERROR"))
+            ))
+            | map(.name // .context // "<unnamed>") | .[]
+          ' <<<"${rollup}")"
+          pending="$(jq -r '
+            map(select((.workflowName // "") != "Merge Bot"))
+            | map(select(
+              ((.conclusion // "") == ""
+                and ((.status // "") | ascii_upcase | IN("QUEUED","IN_PROGRESS","WAITING","PENDING","REQUESTED")))
+              or ((.state // "") | ascii_upcase == "PENDING")
+            ))
+            | map(.name // .context // "<unnamed>") | .[]
+          ' <<<"${rollup}")"
+          {
+            echo "failed<<MERGE_BOT_EOF"
+            echo "${failed}"
+            echo "MERGE_BOT_EOF"
+            echo "pending<<MERGE_BOT_EOF"
+            echo "${pending}"
+            echo "MERGE_BOT_EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Refuse to merge — required check failed
+        if: steps.pr.outputs.pr != '' && steps.checks.outputs.failed != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          FAILED_CHECKS: ${{ steps.checks.outputs.failed }}
+        run: |
+          set -euo pipefail
+          # Trim leading/trailing whitespace and join with `, ` so
+          # the PR comment is one line of names.
+          names="$(printf '%s\n' "${FAILED_CHECKS}" | awk 'NF' | paste -sd ', ' -)"
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "Claude: Cannot merge — required check(s) failed: ${names}. Fix the failing check; the \`automerge\` label stays applied so the next green run will retrigger the merge."
+          exit 1
+
+      - name: Wait for pending checks (clean exit)
+        if: steps.pr.outputs.pr != '' && steps.checks.outputs.failed == '' && steps.checks.outputs.pending != ''
+        env:
+          PENDING_CHECKS: ${{ steps.checks.outputs.pending }}
+        run: |
+          names="$(printf '%s\n' "${PENDING_CHECKS}" | awk 'NF' | paste -sd ', ' -)"
+          echo "merge-bot: pending checks (${names}); will retry on check_suite.completed."
+          exit 0
+
+      - name: Extract ==COMMIT_MSG== block
+        id: extract
+        if: steps.pr.outputs.pr != '' && steps.checks.outputs.failed == '' && steps.checks.outputs.pending == ''
+        env:
+          BODY_PATH: ${{ steps.meta.outputs.body_path }}
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/commit-message.txt"
+          if ! python3 scripts/extract-commit-msg-block.py "${BODY_PATH}" > "${out}" 2> "${RUNNER_TEMP}/extract.err"; then
+            err="$(cat "${RUNNER_TEMP}/extract.err")"
+            echo "::error::${err}"
+            echo "ok=false" >> "${GITHUB_OUTPUT}"
+            echo "error<<MERGE_BOT_EOF" >> "${GITHUB_OUTPUT}"
+            echo "${err}" >> "${GITHUB_OUTPUT}"
+            echo "MERGE_BOT_EOF" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "ok=true" >> "${GITHUB_OUTPUT}"
+          echo "commit_message_path=${out}" >> "${GITHUB_OUTPUT}"
+
+      - name: Refuse to merge — extraction failed
+        if: steps.pr.outputs.pr != '' && steps.extract.outputs.ok == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          ERROR: ${{ steps.extract.outputs.error }}
+        run: |
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "Claude: Cannot merge — \`==COMMIT_MSG==\` block extraction failed: ${ERROR}"
+          exit 1
+
+      # Defence-in-depth: pr-lint already enforces that the block
+      # contains a `Signed-off-by:` trailer. If a contributor edits
+      # the body between the lint passing and this bot running, we
+      # spot-check again — without it, the squash commit lands on
+      # `main` DCO-noncompliant.
+      - name: Verify Signed-off-by trailer
+        id: signoff
+        if: steps.pr.outputs.pr != '' && steps.extract.outputs.ok == 'true'
+        env:
+          COMMIT_MESSAGE_PATH: ${{ steps.extract.outputs.commit_message_path }}
+        run: |
+          set -euo pipefail
+          if grep -qE '^Signed-off-by: .+ <.+@.+>\s*$' "${COMMIT_MESSAGE_PATH}"; then
+            echo "ok=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "ok=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Refuse to merge — DCO trailer missing
+        if: steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+        run: |
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "Claude: Cannot merge — \`==COMMIT_MSG==\` block has no \`Signed-off-by:\` trailer. The merge bot pastes the block as the squash-merge body, so the trailer must sit inside the block. Add \`Signed-off-by: Name <email>\` and update the PR body."
+          exit 1
+
+      # Idempotency guard — re-check state right before the API call
+      # so a parallel trigger that beat us to the merge doesn't
+      # cause a double-call (the API would 405, but the comment in
+      # the failure path would be confusing).
+      - name: Re-check PR is still open
+        id: recheck
+        if: steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          state="$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json state --jq .state)"
+          if [[ "${state}" != "OPEN" ]]; then
+            echo "merge-bot: PR #${PR_NUMBER} state=${state}; skipping merge call."
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "skip=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Call PUT /pulls/{n}/merge
+        id: merge_call
+        if: steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          PR_TITLE: ${{ steps.meta.outputs.title }}
+          COMMIT_MESSAGE_PATH: ${{ steps.extract.outputs.commit_message_path }}
+          HEAD_SHA: ${{ steps.meta.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          # `gh api -F` reads `@/path` to load file contents into a
+          # JSON string field. This avoids any shell-expansion of
+          # the body content. `sha` is included so a race that
+          # advances the head past the SHA we evaluated produces a
+          # documented 409 rather than a silent merge of new code.
+          if gh api --method PUT \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/merge" \
+            -f merge_method=squash \
+            -f commit_title="${PR_TITLE}" \
+            -f "commit_message=$(cat "${COMMIT_MESSAGE_PATH}")" \
+            -f sha="${HEAD_SHA}" \
+            > "${RUNNER_TEMP}/merge.out" 2> "${RUNNER_TEMP}/merge.err"; then
+            echo "merged=true" >> "${GITHUB_OUTPUT}"
+          else
+            err="$(cat "${RUNNER_TEMP}/merge.err")"
+            # Treat "Pull Request has already been merged" as a
+            # successful no-op (idempotency). Any other 4xx/5xx is
+            # a real failure surfaced via a comment.
+            if grep -qi "already been merged" <<<"${err}"; then
+              echo "merge-bot: PR #${PR_NUMBER} was already merged by a prior trigger."
+              echo "merged=already" >> "${GITHUB_OUTPUT}"
+            else
+              echo "::error::Merge API call failed: ${err}"
+              echo "merged=false" >> "${GITHUB_OUTPUT}"
+              echo "error<<MERGE_BOT_EOF" >> "${GITHUB_OUTPUT}"
+              echo "${err}" >> "${GITHUB_OUTPUT}"
+              echo "MERGE_BOT_EOF" >> "${GITHUB_OUTPUT}"
+            fi
+          fi
+
+      - name: Comment on merge-API failure
+        if: steps.merge_call.outputs.merged == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          ERROR: ${{ steps.merge_call.outputs.error }}
+        run: |
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "Claude: Cannot merge — GitHub merge API rejected the call: ${ERROR}"
+          exit 1
+
+      - name: Post success comment
+        if: steps.merge_call.outputs.merged == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+        run: |
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "Claude: Merged via bot."

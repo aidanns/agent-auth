@@ -17,9 +17,25 @@
 #   5. Every trailer line (`Closes`, `Co-authored-by`, `Signed-off-by`,
 #      and any other `Token: value` shaped line in the trailer block)
 #      parses per git-trailer format.
+#   6. At least one `Signed-off-by:` trailer is present (DCO).
+#      The merge bot (#291) authors no commits and pastes the block
+#      verbatim as the squash-merge body, so the trailer must already
+#      sit inside the block — otherwise the squash commit lands on
+#      `main` without DCO and the post-merge `dco` workflow goes red.
+#      The DCO workflow checks per-PR-commit trailers; this rule
+#      covers the *body* the bot will paste.
 #
 # Exits 0 on success, 1 with a human-readable error on failure. Reads
 # the PR body from a file path given as argv[1].
+#
+# Library API: this module exposes a generic
+# `extract_block(body: str, marker_name: str) -> str | None` plus a
+# fixed `extract_commit_msg_block(body: str) -> str` wrapper for the
+# `==COMMIT_MSG==` case, and `validate(body: str) -> None` for callers
+# that want to run the full lint. `scripts/extract-commit-msg-block.py`
+# (used by the merge bot) imports `extract_commit_msg_block`;
+# `scripts/changelog/bot.py` (the changelog bot, #298) imports
+# `extract_block` for the `==CHANGELOG_MSG==` marker.
 
 from __future__ import annotations
 
@@ -29,7 +45,8 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-MARKER = "==COMMIT_MSG=="
+COMMIT_MSG_MARKER_NAME = "COMMIT_MSG"
+MARKER = f"=={COMMIT_MSG_MARKER_NAME}=="
 MAX_LINE_WIDTH = 72
 
 # A git-trailer line is `Token: value` where the token is RFC 5322-ish:
@@ -82,29 +99,68 @@ class ValidationError(Exception):
     """Raised when the PR body fails the commit-msg block lint."""
 
 
-def extract_block(body: str) -> str:
-    """Return the contents between the two `==COMMIT_MSG==` markers.
+class BlockMarkerError(ValueError):
+    """Raised when ``extract_block`` finds a malformed marker pair.
 
-    Raises ValidationError if the block is missing or appears more or
-    fewer than twice.
+    A separate exception type from ``ValidationError`` so callers other
+    than the commit-msg validator (e.g. the changelog bot in #298) can
+    re-raise without being tangled in the validator's exit-code
+    behaviour. ``ValidationError`` subclasses ``Exception`` for
+    historical reasons and the validator's main loop catches it
+    specifically.
     """
-    occurrences = [i for i, line in enumerate(body.splitlines()) if line.strip() == MARKER]
+
+
+def extract_block(body: str, marker_name: str) -> str | None:
+    """Return the contents between the two ``==<marker_name>==`` markers.
+
+    The marker is matched as a full line (after stripping) so an
+    inline mention of ``==FOO==`` inside surrounding prose does not
+    count as a marker.
+
+    Returns ``None`` when the body contains no marker line — this is
+    the "marker absent" signal callers use to fall through. Raises
+    ``BlockMarkerError`` when exactly one marker line appears or more
+    than two appear: those are mismatched / ambiguous and the caller
+    should report the failure.
+    """
+    marker = f"=={marker_name}=="
+    occurrences = [i for i, line in enumerate(body.splitlines()) if line.strip() == marker]
     if len(occurrences) == 0:
-        raise ValidationError(
-            f"PR body is missing the `{MARKER}` block. " "See .github/PULL_REQUEST_TEMPLATE.md."
-        )
+        return None
     if len(occurrences) == 1:
-        raise ValidationError(
-            f"PR body has only one `{MARKER}` marker; " "the block must be opened and closed."
+        raise BlockMarkerError(
+            f"PR body has only one `{marker}` marker; the block must be opened and closed."
         )
-    if len(occurrences) > 2:
+    if len(occurrences) == 2:
+        lines = body.splitlines()
+        start, end = occurrences
+        return "\n".join(lines[start + 1 : end])
+    raise BlockMarkerError(
+        f"PR body has {len(occurrences)} `{marker}` markers; "
+        "exactly one block (two markers) is required."
+    )
+
+
+def extract_commit_msg_block(body: str) -> str:
+    """Return the contents of the `==COMMIT_MSG==` block.
+
+    Wraps :func:`extract_block` so the commit-msg validator and the
+    merge-bot extractor keep their historical "block is required"
+    semantics (raising ``ValidationError`` rather than returning
+    ``None``). The shared extractor is reused by the changelog bot
+    in #298 with different absent-block semantics (a missing block
+    is a fall-through, not an error).
+    """
+    try:
+        block = extract_block(body, COMMIT_MSG_MARKER_NAME)
+    except BlockMarkerError as exc:
+        raise ValidationError(str(exc)) from exc
+    if block is None:
         raise ValidationError(
-            f"PR body has {len(occurrences)} `{MARKER}` markers; "
-            "exactly one block (two markers) is required."
+            f"PR body is missing the `{MARKER}` block. See .github/PULL_REQUEST_TEMPLATE.md."
         )
-    lines = body.splitlines()
-    start, end = occurrences
-    return "\n".join(lines[start + 1 : end])
+    return block
 
 
 def strip_html_comments(text: str) -> str:
@@ -248,14 +304,42 @@ def check_trailers(lines: list[str]) -> None:
             raise ValidationError(f"Trailer on line {idx} (`{token}:`) has an empty value.")
 
 
+SIGNOFF_RE = re.compile(r"^Signed-off-by: .+ <.+@.+>\s*$")
+
+
+def check_signoff_present(lines: list[str]) -> None:
+    """Require at least one valid `Signed-off-by:` trailer in the block.
+
+    The merge bot (#291) pastes the block verbatim as the squash-merge
+    commit body, authoring no commits of its own. Without a sign-off
+    inside the block, the merged squash commit lands on `main` without
+    DCO and the post-merge `dco` workflow goes red. Failing closed at
+    PR-author time is cheaper than discovering it post-merge.
+    """
+    trailers = parse_trailer_block(lines)
+    for _, token, value in trailers:
+        if token.lower() != "signed-off-by":
+            continue
+        if SIGNOFF_RE.match(f"Signed-off-by: {value}"):
+            return
+    raise ValidationError(
+        f"`{MARKER}` block has no `Signed-off-by:` trailer. "
+        "The merge bot (#291) pastes the block as the squash-merge "
+        "commit body, so the trailer must sit inside the block. "
+        "Format: `Signed-off-by: Name <email>`. The bot will refuse "
+        "to merge a PR whose block lacks this trailer."
+    )
+
+
 def validate(body: str) -> None:
-    block = extract_block(body)
+    block = extract_commit_msg_block(body)
     lines = block_lines(block)
     check_non_empty(lines)
     check_line_width(lines)
     check_no_markdown(lines)
     check_breaking_change_position(lines)
     check_trailers(lines)
+    check_signoff_present(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
