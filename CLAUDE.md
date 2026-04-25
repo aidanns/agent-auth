@@ -63,12 +63,16 @@ simplifying for "personal project" scope.
 - The squash-merge commit body is authored inside the
   `==COMMIT_MSG==` … `==COMMIT_MSG==` block in the PR template; the
   `## Review notes` section (test plan, screenshots) does not enter
-  git history. Until the merge bot lands (#291) the maintainer
-  pastes the block into the squash-merge dialog by hand —
-  `squash_merge_commit_message: BLANK` is set on the repo so the
-  dialog defaults to empty. See
-  `docs/release/rollout-pr-template.md` and CONTRIBUTING.md §
-  "Writing PRs" for the worked example.
+  git history. The merge bot
+  (`.github/workflows/merge-bot.yml`, ADR 0038) pastes the block
+  as the squash-merge body when the PR carries the `automerge`
+  label and every required check is green; agents apply the label
+  with `gh pr edit <pr> --add-label automerge` instead of using
+  `gh pr merge --auto --squash`. The bot authors no commits, so
+  the `Signed-off-by:` trailer must already sit inside the block —
+  `pr-lint.yml` enforces that. See
+  `docs/release/merge-bot-setup.md` for maintainer setup and
+  CONTRIBUTING.md § "Writing PRs" for the worked example.
 - Commit subjects must not include the linked issue number
   (no `(#<issue>)` suffix). GitHub's squash-merge appends the PR
   number, which the `conventionalcommits` preset auto-links; adding

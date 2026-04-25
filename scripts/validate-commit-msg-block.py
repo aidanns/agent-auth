@@ -17,9 +17,21 @@
 #   5. Every trailer line (`Closes`, `Co-authored-by`, `Signed-off-by`,
 #      and any other `Token: value` shaped line in the trailer block)
 #      parses per git-trailer format.
+#   6. At least one `Signed-off-by:` trailer is present (DCO).
+#      The merge bot (#291) authors no commits and pastes the block
+#      verbatim as the squash-merge body, so the trailer must already
+#      sit inside the block — otherwise the squash commit lands on
+#      `main` without DCO and the post-merge `dco` workflow goes red.
+#      The DCO workflow checks per-PR-commit trailers; this rule
+#      covers the *body* the bot will paste.
 #
 # Exits 0 on success, 1 with a human-readable error on failure. Reads
 # the PR body from a file path given as argv[1].
+#
+# Library API: this module exposes `extract_block(body: str) -> str` and
+# `validate(body: str) -> None` for callers that want to reuse the
+# parser without re-implementing the regex. `scripts/extract-commit-msg-
+# block.py` (used by the merge bot) imports `extract_block`.
 
 from __future__ import annotations
 
@@ -248,6 +260,33 @@ def check_trailers(lines: list[str]) -> None:
             raise ValidationError(f"Trailer on line {idx} (`{token}:`) has an empty value.")
 
 
+SIGNOFF_RE = re.compile(r"^Signed-off-by: .+ <.+@.+>\s*$")
+
+
+def check_signoff_present(lines: list[str]) -> None:
+    """Require at least one valid `Signed-off-by:` trailer in the block.
+
+    The merge bot (#291) pastes the block verbatim as the squash-merge
+    commit body, authoring no commits of its own. Without a sign-off
+    inside the block, the merged squash commit lands on `main` without
+    DCO and the post-merge `dco` workflow goes red. Failing closed at
+    PR-author time is cheaper than discovering it post-merge.
+    """
+    trailers = parse_trailer_block(lines)
+    for _, token, value in trailers:
+        if token.lower() != "signed-off-by":
+            continue
+        if SIGNOFF_RE.match(f"Signed-off-by: {value}"):
+            return
+    raise ValidationError(
+        f"`{MARKER}` block has no `Signed-off-by:` trailer. "
+        "The merge bot (#291) pastes the block as the squash-merge "
+        "commit body, so the trailer must sit inside the block. "
+        "Format: `Signed-off-by: Name <email>`. The bot will refuse "
+        "to merge a PR whose block lacks this trailer."
+    )
+
+
 def validate(body: str) -> None:
     block = extract_block(body)
     lines = block_lines(block)
@@ -256,6 +295,7 @@ def validate(body: str) -> None:
     check_no_markdown(lines)
     check_breaking_change_position(lines)
     check_trailers(lines)
+    check_signoff_present(lines)
 
 
 def main(argv: list[str] | None = None) -> int:

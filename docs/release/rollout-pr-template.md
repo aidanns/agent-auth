@@ -85,10 +85,41 @@ This translation step disappears with #295 + #296.
   matches the `==COMMIT_MSG==` block content (visible in
   `git log -1 --format=%B`).
 
+## Follow-up — once #291 lands
+
+The merge bot in [`.github/workflows/merge-bot.yml`](../../.github/workflows/merge-bot.yml)
+takes over the `==COMMIT_MSG==` paste step. Cutover steps for the
+maintainer:
+
+1. Complete the App-and-secrets setup in
+   [`docs/release/merge-bot-setup.md`](merge-bot-setup.md). The bot
+   is dormant until those four steps are done.
+2. From the next PR onward, apply the `automerge` label instead of
+   pasting the block by hand. The bot calls the merge API on
+   `pull_request: labeled`, with a `check_suite: completed`
+   retrigger covering the case where the label is applied before
+   the last required check goes green.
+3. Confirm end-to-end on the first bot-mediated merge:
+   `git log -1 --format=%B` on `main` should match the merged PR's
+   `==COMMIT_MSG==` block contents exactly (sign-off included),
+   and the `Closes #N` trailer should have closed the linked
+   issue.
+4. The `squash_merge_commit_message: BLANK` setting can stay in
+   place — the bot ignores it (it passes `commit_message`
+   explicitly). The merge-bot setup doc covers the optional
+   follow-on flips (`PR_TITLE` default; disabling the native
+   squash button after a release cycle of bot-mediated merges).
+
+Work-issues / CI agents stop calling `gh pr merge --auto --squash`
+and instead apply the `automerge` label
+(`gh pr edit <pr> --add-label automerge`). The label is the single
+"ready to merge" signal both maintainer and automation use.
+
 ## Follow-ups
 
 - #291 — merge bot pastes the `==COMMIT_MSG==` block automatically;
-  removes step 3 of the interim procedure.
+  removes step 3 of the interim procedure. **Now landed — see the
+  cutover steps above.**
 - #295 — bot-mediated `version_logic` consumes the new prefix set
   directly; removes the prefix-translation step.
 - #296 — decommissions `.releaserc.mjs`.
