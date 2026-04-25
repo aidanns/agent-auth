@@ -5,7 +5,8 @@
 name: Benchmark
 
 # Benchmarks are too noisy on shared GitHub runners to gate every PR
-# (see ADR 0029 and benchmarks/README.md for the threshold rationale).
+# (see ADR 0029 and packages/agent-auth/benchmarks/README.md for the
+# threshold rationale).
 # Run on a weekly schedule so regressions surface within a week of
 # landing, and expose workflow_dispatch so a reviewer can trigger a
 # run on-demand when refreshing the baseline.
@@ -42,20 +43,20 @@ jobs:
         # the baseline is present so the initial run can land the
         # results JSON as an artifact without failing.
         run: |
-          baseline="benchmarks/baselines/ci-linux-x86_64.json"
+          baseline="packages/agent-auth/benchmarks/baselines/ci-linux-x86_64.json"
           if [[ -f "${baseline}" ]]; then
             echo "flags=--benchmark-compare=ci-linux-x86_64 --benchmark-compare-fail=mean:25%" >> "${GITHUB_OUTPUT}"
             echo "Baseline found at ${baseline} — gating on 25% mean regression."
           else
             echo "flags=" >> "${GITHUB_OUTPUT}"
             echo "No baseline at ${baseline} — running in reporting-only mode." \
-                 "See benchmarks/README.md § 'Baseline refresh procedure'."
+                 "See packages/agent-auth/benchmarks/README.md § 'Baseline refresh procedure'."
           fi
 
       - name: Run benchmark suite
         run: |
           task benchmark -- \
-            --benchmark-json=benchmarks/results.json \
+            --benchmark-json=packages/agent-auth/benchmarks/results.json \
             ${{ steps.compare.outputs.flags }}
 
       - name: Upload results artifact
@@ -63,5 +64,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-results
-          path: benchmarks/results.json
+          path: packages/agent-auth/benchmarks/results.json
           if-no-files-found: warn

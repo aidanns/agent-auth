@@ -4,10 +4,11 @@
 
 """Shared fixtures for the agent-auth benchmark suite.
 
-The benchmark tree deliberately sits alongside ``tests/`` rather than
-inside it so the coverage gate in ``pyproject.toml`` (which runs on
-every ``pytest`` invocation against ``tests/``) does not apply to
-benchmarks. See ``benchmarks/README.md``.
+The benchmark tree sits next to the package's ``src/`` (and, once
+tests move in #270, ``tests/``) so the coverage gate in
+``pyproject.toml`` — which runs on every ``pytest`` invocation
+against the test tree — does not apply to benchmarks. See
+``packages/agent-auth/benchmarks/README.md``.
 """
 
 import os

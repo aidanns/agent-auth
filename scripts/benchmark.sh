@@ -4,16 +4,16 @@
 #
 # SPDX-License-Identifier: MIT
 
-# Run the pytest-benchmark suite under benchmarks/ inside the project
-# virtualenv. Override the pyproject.toml addopts (which wire
-# --cov=packages --cov-fail-under=74 for the test suite) so coverage
-# does not run against the benchmark tree — benchmarks measure
-# performance and exercise only a thin slice of packages/*/src/, so
-# the unit-test coverage floor would always fail.
+# Run the pytest-benchmark suite under packages/agent-auth/benchmarks/
+# inside the project virtualenv. Override the pyproject.toml addopts
+# (which wire --cov=packages --cov-fail-under=74 for the test suite)
+# so coverage does not run against the benchmark tree — benchmarks
+# measure performance and exercise only a thin slice of
+# packages/*/src/, so the unit-test coverage floor would always fail.
 #
 # Arguments after the script name are forwarded to pytest, e.g.
 #   scripts/benchmark.sh --benchmark-save=ci-linux-x86_64
-#   scripts/benchmark.sh --benchmark-json=benchmarks/results.json
+#   scripts/benchmark.sh --benchmark-json=packages/agent-auth/benchmarks/results.json
 #   scripts/benchmark.sh -k verify_token
 
 set -euo pipefail
@@ -29,6 +29,6 @@ exec uv run --no-sync pytest \
   --override-ini="addopts=" \
   --benchmark-columns=min,mean,median,stddev,ops,rounds \
   --benchmark-sort=mean \
-  --benchmark-storage=benchmarks/baselines \
-  benchmarks/ \
+  --benchmark-storage=packages/agent-auth/benchmarks/baselines \
+  packages/agent-auth/benchmarks/ \
   "$@"
