@@ -29,6 +29,17 @@ class BridgeUnavailableError(GpgCliError):
     """gpg-bridge could not complete the request (5xx, network error)."""
 
 
+class BridgeSigningBackendUnavailableError(GpgCliError):
+    """gpg-bridge reported the signing backend is wedged or unavailable.
+
+    Distinct from :class:`BridgeUnavailableError`: the bridge itself is
+    reachable and authenticated the request, but the host gpg
+    subprocess behind it could not complete (typically a misconfigured
+    ``gpg-agent``). Surfaced from a 503 response with
+    ``error == "signing_backend_unavailable"``.
+    """
+
+
 class BridgeRateLimitedError(GpgCliError):
     """gpg-bridge returned 429; token family is over its rate-limit budget."""
 
@@ -42,6 +53,7 @@ __all__ = [
     "BridgeForbiddenError",
     "BridgeNotFoundError",
     "BridgeRateLimitedError",
+    "BridgeSigningBackendUnavailableError",
     "BridgeUnauthorizedError",
     "BridgeUnavailableError",
     "GpgCliError",

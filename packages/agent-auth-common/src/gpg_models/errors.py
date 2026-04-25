@@ -27,11 +27,23 @@ class GpgPermissionError(GpgError):
     """The host gpg could not access the keyring (e.g. locked, agent down)."""
 
 
+class GpgBackendUnavailableError(GpgError):
+    """The gpg signing backend cannot complete the request right now.
+
+    Surfaced when the host ``gpg`` subprocess hangs past the bridge's
+    own deadline (typically a misconfigured ``gpg-agent`` blocking on
+    a pinentry that never appears) or otherwise fails to make progress.
+    Distinct from :class:`GpgPermissionError`, which signals an actively
+    refused operation rather than a timeout.
+    """
+
+
 class GpgUnsupportedOperationError(GpgError):
     """The requested operation is not implemented by this CLI."""
 
 
 __all__ = [
+    "GpgBackendUnavailableError",
     "GpgBadSignatureError",
     "GpgError",
     "GpgNoSuchKeyError",

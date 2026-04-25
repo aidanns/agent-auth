@@ -10,6 +10,7 @@ authz-delegation errors, mirroring the split in
 """
 
 from gpg_models.errors import (
+    GpgBackendUnavailableError,
     GpgBadSignatureError,
     GpgError,
     GpgNoSuchKeyError,
@@ -61,6 +62,7 @@ __all__ = [
     "AuthzTokenExpiredError",
     "AuthzTokenInvalidError",
     "AuthzUnavailableError",
+    "GpgBackendUnavailableError",
     "GpgBadSignatureError",
     "GpgBridgeError",
     "GpgError",

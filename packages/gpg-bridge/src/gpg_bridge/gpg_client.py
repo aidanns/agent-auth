@@ -23,6 +23,7 @@ import subprocess
 import tempfile
 
 from gpg_models.errors import (
+    GpgBackendUnavailableError,
     GpgBadSignatureError,
     GpgError,
     GpgNoSuchKeyError,
@@ -35,7 +36,16 @@ from gpg_models.models import (
     VerifyResult,
 )
 
-_DEFAULT_TIMEOUT_SECONDS = 35.0
+# Default subprocess deadline. A wedged host gpg (typically a
+# misconfigured ``gpg-agent`` blocked waiting on a non-existent
+# pinentry) needs to surface as a structured
+# ``signing_backend_unavailable`` HTTP response well before
+# ``gpg-cli``'s own per-request HTTP deadline (default 30.0s). 10s
+# leaves comfortable headroom while keeping the user-visible failure
+# fast enough to feel like a directed error rather than a hang. See
+# issue #331 and the fault-injection test under
+# ``packages/gpg-bridge/tests/fault/``.
+_DEFAULT_TIMEOUT_SECONDS = 10.0
 
 # gpg's stderr does not return structured codes; pattern-match the
 # strings the host gpg emits for the failure modes the bridge
@@ -168,7 +178,18 @@ class GpgSubprocessClient:
                     stderr_text = bytes(exc.stderr).decode("utf-8", errors="replace")
                     if stderr_text:
                         _raise_for_stderr(stderr_text, operation=argv[-1])
-            raise GpgError(f"gpg subprocess timed out after {self._timeout_seconds}s") from exc
+            # Wedge case: gpg never emitted a recognised stderr string
+            # before hanging, so the pattern map didn't fire. The
+            # most common cause is a misconfigured host gpg-agent
+            # (no ``allow-loopback-pinentry``, no primed passphrase
+            # cache). Raise the typed error so the bridge maps it to
+            # ``signing_backend_unavailable`` instead of a generic
+            # ``gpg_unavailable`` 502.
+            raise GpgBackendUnavailableError(
+                f"gpg subprocess timed out after {self._timeout_seconds}s; "
+                "host gpg-agent likely needs allow-loopback-pinentry and a "
+                "primed passphrase cache"
+            ) from exc
         stderr_text = completed.stderr.decode("utf-8", errors="replace")
         return completed.stdout, stderr_text, completed.returncode
 

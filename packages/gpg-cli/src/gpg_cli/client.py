@@ -17,6 +17,7 @@ from gpg_cli.errors import (
     BridgeForbiddenError,
     BridgeNotFoundError,
     BridgeRateLimitedError,
+    BridgeSigningBackendUnavailableError,
     BridgeUnauthorizedError,
     BridgeUnavailableError,
 )
@@ -99,6 +100,7 @@ class BridgeClient:
             return data
 
         error_code = str(data.get("error") or "")
+        error_detail = str(data.get("detail") or "")
         if response.status == 401:
             raise BridgeUnauthorizedError(error_code or "unauthorized")
         if response.status == 403:
@@ -107,6 +109,10 @@ class BridgeClient:
             raise BridgeNotFoundError(error_code or "not_found")
         if response.status == 400 and error_code == "bad_signature":
             raise BridgeBadSignatureError(error_code)
+        if response.status == 503 and error_code == "signing_backend_unavailable":
+            raise BridgeSigningBackendUnavailableError(
+                error_detail or "signing backend is unavailable"
+            )
         if response.status == 429:
             try:
                 retry_after = max(1, int(retry_after_header)) if retry_after_header else 1

@@ -20,16 +20,21 @@ Fixture YAML shape::
       deny_key: "NOKEY0000000000000000000000000000000000"
       permission_denied: false
       corrupt_verify: false
+      sleep_seconds: 0
 
 ``aliases`` are additional ``--local-user`` strings that resolve to
 the named key. ``behaviours`` steers the fake into error paths for
 negative tests; the CLI translates each into the corresponding gpg
-exit code + stderr string.
+exit code + stderr string. ``sleep_seconds`` makes the fake's
+``sign`` block for that many seconds before returning, which lets
+tests reproduce the wedge case from issue #331 (a real host gpg
+stuck on a missing pinentry) without depending on a real gpg-agent.
 """
 
 from __future__ import annotations
 
 import hashlib
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -72,6 +77,7 @@ class _Behaviours:
     deny_key: str = ""
     permission_denied: bool = False
     corrupt_verify: bool = False
+    sleep_seconds: float = 0.0
 
 
 @dataclass
@@ -83,6 +89,11 @@ class FakeKeyring:
 
     def sign(self, *, local_user: str, payload: bytes, armor: bool) -> tuple[bytes, str]:
         """Return ``(signature_bytes, status_text)`` for a ``--detach-sign``."""
+        if self.behaviours.sleep_seconds > 0:
+            # Simulate a wedged host gpg subprocess (issue #331). The
+            # bridge's per-subprocess timeout in ``GpgSubprocessClient``
+            # fires and is mapped to ``signing_backend_unavailable``.
+            time.sleep(self.behaviours.sleep_seconds)
         if self.behaviours.permission_denied:
             raise PermissionDeniedError("fake: pinentry denied")
         key = self._resolve(local_user)
@@ -148,10 +159,14 @@ def load_fixture(data: Any) -> FakeKeyring:
     behaviours_raw = data.get("behaviours") or {}
     if not isinstance(behaviours_raw, dict):
         raise ValueError("fake fixture: 'behaviours' must be a mapping")
+    sleep_seconds_raw = behaviours_raw.get("sleep_seconds", 0)
+    if not isinstance(sleep_seconds_raw, int | float):
+        raise ValueError("fake fixture: 'behaviours.sleep_seconds' must be a number")
     behaviours = _Behaviours(
         deny_key=str(behaviours_raw.get("deny_key") or "").upper(),
         permission_denied=bool(behaviours_raw.get("permission_denied", False)),
         corrupt_verify=bool(behaviours_raw.get("corrupt_verify", False)),
+        sleep_seconds=float(sleep_seconds_raw),
     )
     return FakeKeyring(keys=tuple(keys), behaviours=behaviours)
 

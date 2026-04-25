@@ -36,6 +36,7 @@ from gpg_cli.errors import (
     BridgeForbiddenError,
     BridgeNotFoundError,
     BridgeRateLimitedError,
+    BridgeSigningBackendUnavailableError,
     BridgeUnauthorizedError,
     BridgeUnavailableError,
 )
@@ -343,6 +344,15 @@ def main(argv: list[str] | None = None) -> int:
             f"gpg-cli: rate limited, retry after {exc.retry_after_seconds}s",
             file=sys.stderr,
         )
+        return EXIT_UNAVAILABLE
+    except BridgeSigningBackendUnavailableError as exc:
+        # Distinct stderr line so operators don't reach for the
+        # "bridge unreachable" remediation when the bridge is fine
+        # and the host gpg-agent is the wedge. Reuses
+        # ``EXIT_UNAVAILABLE`` because both conditions are retryable
+        # host-config issues from git's perspective; the message
+        # disambiguates them.
+        print(f"gpg-cli: signing backend unavailable: {exc}", file=sys.stderr)
         return EXIT_UNAVAILABLE
     except BridgeUnavailableError as exc:
         print(f"gpg-cli: bridge unavailable: {exc}", file=sys.stderr)
