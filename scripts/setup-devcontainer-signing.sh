@@ -6,10 +6,11 @@
 
 # Wire commit signing inside the devcontainer to the host's gpg-bridge.
 #
-# Writes the gpg-cli config (bridge URL, bearer token, optional TLS
-# CA path and timeout) to $XDG_CONFIG_HOME/gpg-cli/config.yaml with
-# 0600 permissions, then runs `git config --local` to point git at
-# `gpg-cli` and turn on auto-signing for every commit.
+# Writes the gpg-cli config (bridge URL, the agent-auth refresh-capable
+# credential pair, optional TLS CA path and timeout) to
+# $XDG_CONFIG_HOME/gpg-cli/config.yaml with 0600 permissions, then runs
+# `git config --local` to point git at `gpg-cli` and turn on
+# auto-signing for every commit.
 #
 # After writing the config, runs an end-to-end smoke test that
 # verifies (1) gpg-cli is on PATH, (2) git is configured with a
@@ -24,30 +25,48 @@
 # config file and git-config state, and re-runs the smoke test
 # against the existing config.
 #
-# The agent-auth keyring lives on the host, so the bearer token is
-# minted on the host (e.g. `task agent-auth -- token create
-# --scope gpg:sign=allow --json`) and pasted into the
-# devcontainer-side invocation of this script — see CONTRIBUTING.md
-# § "Signed commits inside the devcontainer".
+# Token model: agent-auth issues a refresh-capable credential family
+# (access token + refresh token + family id) on the host. The
+# devcontainer-side gpg-cli holds the pair on disk and rotates it on
+# every 401 token_expired (refresh) or refresh_token_expired (reissue,
+# blocks on host-side JIT approval) — the operator only re-runs this
+# script when a refresh / reissue terminally fails (reuse detected,
+# family revoked, scope denied) and a fresh family must be minted.
 
 set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: setup-devcontainer-signing.sh --token <TOKEN> --bridge-url <URL> \
+Usage: setup-devcontainer-signing.sh --access-token <T> --refresh-token <R> \
+                                     --auth-url <URL> --bridge-url <URL> \
+                                     [--family-id <ID>] \
                                      [--signing-key <FP>] \
                                      [--ca-cert-path <PATH>] \
                                      [--timeout-seconds <N>] \
                                      [--skip-smoke]
 
 Required:
-  --token <TOKEN>          agent-auth access token with the
+  --access-token <T>       agent-auth access token with the
                            `gpg:sign=allow` scope. Mint on the host
                            with `task agent-auth -- token create
-                           --scope gpg:sign=allow --json`.
+                           --scope gpg:sign=allow --json` and copy the
+                           `access_token` field.
+  --refresh-token <R>      Companion refresh token from the same
+                           token-create call (`refresh_token` field).
+                           gpg-cli rotates this pair on 401
+                           token_expired without operator action.
+  --auth-url <URL>         https URL of the host's agent-auth service.
+                           gpg-cli posts to /agent-auth/v1/token/refresh
+                           and /agent-auth/v1/token/reissue here.
   --bridge-url <URL>       https URL of the host's gpg-bridge.
 
 Optional:
+  --family-id <ID>         Token family id (`family_id` field from
+                           token-create). Required for the reissue
+                           path (refresh-token expiry recovery via
+                           host JIT approval); without it gpg-cli
+                           exits with a clear instruction to re-run
+                           this script.
   --signing-key <FP>       GPG key fingerprint git should sign with.
                            Written via `git config --local
                            user.signingkey`. If git already has a
@@ -55,9 +74,11 @@ Optional:
                            optional. Required for the smoke test
                            when no local user.signingkey exists.
   --ca-cert-path <PATH>    Path to a CA cert that signs the bridge's
-                           TLS certificate. Forwarded to gpg-cli.
-  --timeout-seconds <N>    Per-request timeout for gpg-cli -> gpg-bridge.
-                           Defaults to gpg-cli's built-in default.
+                           and agent-auth's TLS certificates. Forwarded
+                           to gpg-cli for both endpoints.
+  --timeout-seconds <N>    Per-request timeout for gpg-cli ->
+                           gpg-bridge. Defaults to gpg-cli's built-in
+                           default.
   --skip-smoke             Skip the post-install smoke test. Use only
                            when the bridge is not reachable at install
                            time (e.g. CI provisioning); the install is
@@ -68,7 +89,10 @@ Optional:
 EOF
 }
 
-token=""
+access_token=""
+refresh_token=""
+family_id=""
+auth_url=""
 bridge_url=""
 signing_key=""
 ca_cert_path=""
@@ -77,12 +101,36 @@ skip_smoke=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --token)
+    --access-token)
       [[ $# -ge 2 ]] || {
-        echo "setup-devcontainer-signing: --token requires a value." >&2
+        echo "setup-devcontainer-signing: --access-token requires a value." >&2
         exit 1
       }
-      token="$2"
+      access_token="$2"
+      shift 2
+      ;;
+    --refresh-token)
+      [[ $# -ge 2 ]] || {
+        echo "setup-devcontainer-signing: --refresh-token requires a value." >&2
+        exit 1
+      }
+      refresh_token="$2"
+      shift 2
+      ;;
+    --family-id)
+      [[ $# -ge 2 ]] || {
+        echo "setup-devcontainer-signing: --family-id requires a value." >&2
+        exit 1
+      }
+      family_id="$2"
+      shift 2
+      ;;
+    --auth-url)
+      [[ $# -ge 2 ]] || {
+        echo "setup-devcontainer-signing: --auth-url requires a value." >&2
+        exit 1
+      }
+      auth_url="$2"
       shift 2
       ;;
     --bridge-url)
@@ -133,8 +181,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${token}" ]]; then
-  echo "setup-devcontainer-signing: --token is required." >&2
+if [[ -z "${access_token}" ]]; then
+  echo "setup-devcontainer-signing: --access-token is required." >&2
+  usage >&2
+  exit 1
+fi
+
+if [[ -z "${refresh_token}" ]]; then
+  echo "setup-devcontainer-signing: --refresh-token is required." >&2
+  usage >&2
+  exit 1
+fi
+
+if [[ -z "${auth_url}" ]]; then
+  echo "setup-devcontainer-signing: --auth-url is required." >&2
   usage >&2
   exit 1
 fi
@@ -181,9 +241,15 @@ trap 'rm -f "${tmp_path}"' EXIT
   # provenance comment is enough — it tells the next reader where the
   # file came from and how to regenerate it.
   echo "# Generated by scripts/setup-devcontainer-signing.sh."
-  echo "# Re-run that script to regenerate."
+  echo "# Re-run that script to regenerate. gpg-cli rewrites the"
+  echo "# access_token / refresh_token fields after every refresh."
   echo "bridge_url: ${bridge_url}"
-  echo "token: ${token}"
+  echo "auth_url: ${auth_url}"
+  echo "access_token: ${access_token}"
+  echo "refresh_token: ${refresh_token}"
+  if [[ -n "${family_id}" ]]; then
+    echo "family_id: ${family_id}"
+  fi
   if [[ -n "${ca_cert_path}" ]]; then
     echo "ca_cert_path: ${ca_cert_path}"
   fi
@@ -284,7 +350,7 @@ fi
 # shape identical to a real probe and proves the cert chain works for
 # an authenticated request too.
 auth_header_path="${probe_tmpdir}/auth-header"
-(umask 0077 && printf 'Authorization: Bearer %s\n' "${token}" >"${auth_header_path}")
+(umask 0077 && printf 'Authorization: Bearer %s\n' "${access_token}" >"${auth_header_path}")
 
 http_status=""
 if ! http_status="$(curl "${curl_args[@]}" \
@@ -366,4 +432,5 @@ esac
 # the top of the smoke test.
 
 echo "setup-devcontainer-signing: every 'git commit' in this clone now signs through gpg-bridge."
+echo "setup-devcontainer-signing: gpg-cli auto-refreshes the access token; re-run this script only on a terminal refresh/reissue failure."
 echo "setup-devcontainer-signing: override per-commit with 'git -c commit.gpgsign=false commit'."
