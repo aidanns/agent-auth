@@ -23,6 +23,24 @@ agent-auth provides a local authorization layer between AI agents (e.g. Claude C
 - **CLI interface** for token lifecycle management (create, list, modify, revoke, rotate)
 - **HTTP validation server** for runtime token and scope checks
 
+## Packages
+
+Each service in the monorepo ships as its own installable package
+under [`packages/`](packages/). Click through for the package's own
+README — public surface, configuration, and the ADRs that motivate
+its design.
+
+| Package                                                                             | Purpose                                                                                                 |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [`agent-auth`](packages/agent-auth/README.md)                                       | Token authorization service — HMAC-signed access/refresh pairs, three-tier scope model, SQLite store.   |
+| [`things-bridge`](packages/things-bridge/README.md)                                 | HTTP bridge from agent-auth-protected clients to the Things 3 to-do app.                                |
+| [`things-cli`](packages/things-cli/README.md)                                       | Read-only command-line client for `things-bridge`.                                                      |
+| [`things-client-cli-applescript`](packages/things-client-cli-applescript/README.md) | macOS-only AppleScript-backed implementation of the Things-client contract; invoked by `things-bridge`. |
+| [`gpg-bridge`](packages/gpg-bridge/README.md)                                       | Host-side HTTP bridge that brokers GPG sign/verify on behalf of devcontainer-resident callers.          |
+| [`gpg-cli`](packages/gpg-cli/README.md)                                             | Devcontainer `gpg.program` replacement that forwards git's sign/verify argv to `gpg-bridge`.            |
+| [`gpg-backend-cli-host`](packages/gpg-backend-cli-host/README.md)                   | Host-side GPG backend invoked as a subprocess by `gpg-bridge`.                                          |
+| [`agent-auth-common`](packages/agent-auth-common/README.md)                         | Library-only workspace package: shared types, HTTP clients, Prometheus metrics helper.                  |
+
 ## Installation
 
 Each service in this repository ships as its own installable Python
