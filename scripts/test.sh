@@ -120,14 +120,22 @@ INTEGRATION_TIMING_OPTS=(
 
 case "${mode}" in
   unit)
-    exec uv run --no-sync pytest "${UNIT_IGNORE_OPTS[@]}" "${UNIT_TEST_PATHS[@]}" "$@"
+    uv run --no-sync pytest "${UNIT_IGNORE_OPTS[@]}" "${UNIT_TEST_PATHS[@]}" "$@"
+    # The workspace pytest run leaves behind a unified ``.coverage``
+    # database; per-package floors are enforced by querying it
+    # afterwards (#273). Skip the gate when extra args are present —
+    # an iterative ``-k <test>`` invocation would deliberately under-
+    # exercise its package's surface.
+    if [[ $# -eq 0 ]]; then
+      exec scripts/check-package-coverage.sh
+    fi
     ;;
   fast)
     # Disable coverage collection: --fast runs a curated smoke subset
-    # that only exercises ~6% of packages/*/src/, so the
-    # --cov-fail-under=74 floor configured in pyproject.toml would
-    # always fail. The floor is measured against --unit (the
-    # authoritative gate).
+    # that only exercises ~6% of packages/*/src/, so the per-package
+    # floors enforced by ``check-package-coverage.sh`` would always
+    # fail. The floor is measured against --unit (the authoritative
+    # gate).
     exec uv run --no-sync pytest --no-cov "${FAST_TESTS[@]}" "$@"
     ;;
   integration)
@@ -145,6 +153,10 @@ case "${mode}" in
     ;;
   all)
     uv run --no-sync pytest "${UNIT_IGNORE_OPTS[@]}" "${UNIT_TEST_PATHS[@]}" "$@"
+    # Same skip-on-extra-args carve-out as the ``unit`` mode.
+    if [[ $# -eq 0 ]]; then
+      scripts/check-package-coverage.sh
+    fi
     exec uv run --no-sync pytest --no-cov "${INTEGRATION_TIMING_OPTS[@]}" "${SERVICE_PATHS[@]}" "$@"
     ;;
 esac

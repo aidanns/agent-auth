@@ -29,3 +29,27 @@ fallback_version = "0.0.0+unknown"
 
 [tool.uv.sources]
 agent-auth-common = { workspace = true }
+
+[tool.pytest.ini_options]
+# Per-package pytest config. See packages/agent-auth/pyproject.toml
+# for the full rationale. ``tests/`` is on the pythonpath so the
+# ``things_client_fake`` test fake (run as ``python -m
+# things_client_fake`` by the bridge subprocess in unit + integration
+# tests) resolves as a top-level module from the workspace tree.
+addopts = [
+    "-p",
+    "tests_support.integration.plugin",
+    "--import-mode=importlib",
+    "--cov=things_bridge",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-fail-under=83",
+]
+pythonpath = [
+    # keep-sorted start
+    "../agent-auth-common/src",
+    "src",
+    "tests",
+    # keep-sorted end
+]
+testpaths = ["tests"]

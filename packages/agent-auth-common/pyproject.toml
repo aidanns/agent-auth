@@ -44,3 +44,27 @@ exclude = ["tests_support*"]
 # fine because everything is developed in lockstep and nothing is yet
 # published independently.
 fallback_version = "0.0.0+unknown"
+
+[tool.pytest.ini_options]
+# Per-package pytest config. See packages/agent-auth/pyproject.toml
+# for the full rationale. This package's coverage floor is
+# deliberately lower than the service packages' because much of
+# ``agent-auth-common`` is exception classes and protocol shapes
+# whose error paths only fire under cross-service-failure tests
+# (run from agent-auth or things-bridge integration suites, not
+# from this package's own tests).
+addopts = [
+    "--import-mode=importlib",
+    "--cov=agent_auth_client",
+    "--cov=gpg_backend_common",
+    "--cov=gpg_models",
+    "--cov=server_metrics",
+    "--cov=things_bridge_client",
+    "--cov=things_client_common",
+    "--cov=things_models",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-fail-under=49",
+]
+pythonpath = ["src"]
+testpaths = ["tests"]
