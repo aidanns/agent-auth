@@ -294,7 +294,11 @@ tightening their posture set the list explicitly.
 flags, environment variables, config file. Environment variables:
 
 - `AGENT_AUTH_GPG_BRIDGE_URL` — e.g. `https://host.docker.internal:9300`
-- `AGENT_AUTH_GPG_TOKEN` — bearer token
+- `AGENT_AUTH_GPG_AUTH_URL` — agent-auth base URL for refresh / reissue
+- `AGENT_AUTH_GPG_ACCESS_TOKEN` — agent-auth access token (`gpg:sign` scope)
+- `AGENT_AUTH_GPG_REFRESH_TOKEN` — companion refresh token, rotated in-place
+- `AGENT_AUTH_GPG_FAMILY_ID` — token family id; required for the reissue
+  fallback (refresh-token expiry → host JIT approval)
 - `AGENT_AUTH_GPG_CA_CERT_PATH` — CA bundle for mutual TLS trust
 - `AGENT_AUTH_GPG_TIMEOUT_SECONDS` — HTTP client timeout
 
@@ -302,6 +306,15 @@ Config file at `$XDG_CONFIG_HOME/gpg-cli/config.yaml` carries the
 same fields. Env vars win per
 [ADR 0012](0012-xdg-path-layout.md)'s layered-config pattern, matching
 `things-cli`.
+
+The pre-refresh single-`token:` schema is rejected at load time with
+a directive pointing the operator at
+`scripts/setup-devcontainer-signing.sh` — auto-migration is impossible
+because a single bearer has no refresh token to derive. `gpg-cli`
+rotates the access / refresh pair in-place on every 401 `token_expired`
+(refresh) and on `refresh_token_expired` (reissue, blocks on host JIT
+approval); the new pair is persisted *before* the retried request runs
+to honour the single-use refresh-token contract from ADR 0011.
 
 ### Scopes and authorization
 
@@ -488,9 +501,13 @@ matching the `things-*` shape.
   `echo "hello" | gpg-cli --status-fd 2 -bsau <keyid>` produces a
   detached signature to stdout exactly as `gpg` would.
 - First-time devcontainer setup gains two steps: issue a token
-  with `gpg:sign=allow` via `agent-auth token create`, write the
-  token to the container's `AGENT_AUTH_GPG_TOKEN`, and
-  `git config --global gpg.program gpg-cli`.
+  family with `gpg:sign=allow` via `agent-auth token create`, run
+  `scripts/setup-devcontainer-signing.sh` (or `task setup-devcontainer-signing`) inside the container with the
+  resulting `--access-token` / `--refresh-token` / `--family-id` /
+  `--auth-url` / `--bridge-url` flags, which writes
+  `$XDG_CONFIG_HOME/gpg-cli/config.yaml` and runs `git config --local gpg.program gpg-cli`. Token rotations after that are
+  in-band — `gpg-cli` refreshes the pair on `token_expired` and
+  reissues on `refresh_token_expired` without operator action.
 
 ## Follow-ups
 

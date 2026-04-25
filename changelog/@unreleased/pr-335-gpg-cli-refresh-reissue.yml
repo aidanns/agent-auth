@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    `gpg-cli` now persists a refresh-capable agent-auth credential pair and rotates it transparently. A 401 `token_expired` from `gpg-bridge` triggers `POST /agent-auth/v1/token/refresh`; `refresh_token_expired` falls back to `/token/reissue` (blocks on host JIT approval). The new pair is written to `$XDG_CONFIG_HOME/gpg-cli/config.yaml` at mode `0600` *before* the retried request runs, honouring the single-use refresh contract from ADR 0011. `scripts/setup-devcontainer-signing.sh` writes the new schema (`--access-token` / `--refresh-token` / `--family-id` / `--auth-url`); the old single-`--token` schema is rejected at load time with a directive to re-run the script. Operators who installed `gpg-cli` before this release must re-run `setup-devcontainer-signing.sh` to bootstrap a refresh-capable credential pair.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/327
+    - https://github.com/aidanns/agent-auth/pull/335
+packages:
+  - gpg-cli

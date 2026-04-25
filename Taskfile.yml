@@ -140,7 +140,7 @@ tasks:
       - scripts/install-hooks.sh
 
   setup-devcontainer-signing:
-    desc: "Wire commit signing inside the devcontainer to the host's gpg-bridge. Required flags: --token <agent-auth gpg:sign=allow access token> --bridge-url <https URL of host gpg-bridge>. See CONTRIBUTING.md § 'Signed commits inside the devcontainer'."
+    desc: "Wire commit signing inside the devcontainer to the host's gpg-bridge. Required flags: --access-token <T> --refresh-token <R> --auth-url <https URL of agent-auth> --bridge-url <https URL of host gpg-bridge>; optional --family-id <F> for the reissue path. See CONTRIBUTING.md § 'Signed commits inside the devcontainer'."
     cmds:
       - scripts/setup-devcontainer-signing.sh {{.CLI_ARGS}}
 

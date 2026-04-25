@@ -26,7 +26,7 @@ simplifying for "personal project" scope.
 - `task things-cli -- <args...>` (or `scripts/things-cli.sh <args...>`) — run the things-cli client. E.g. `task things-cli -- todos list`.
 - `task gpg-bridge -- <args...>` (or `scripts/gpg-bridge.sh <args...>`) — run the gpg-bridge CLI on the host. E.g. `task gpg-bridge -- serve`.
 - `task gpg-cli -- <args...>` (or `scripts/gpg-cli.sh <args...>`) — run the devcontainer gpg-cli frontend. Wired to git via `git config gpg.program gpg-cli`.
-- `task setup-devcontainer-signing -- --token <T> --bridge-url <U>` (or `scripts/setup-devcontainer-signing.sh <args...>`) — wire commit signing inside the devcontainer to the host's `gpg-bridge`. Writes `$XDG_CONFIG_HOME/gpg-cli/config.yaml` and sets `git config --local gpg.program=gpg-cli` + `commit.gpgsign=true`. See `CONTRIBUTING.md` § "Signed commits inside the devcontainer".
+- `task setup-devcontainer-signing -- --access-token <A> --refresh-token <R> --auth-url <AUTH_URL> --bridge-url <BRIDGE_URL> [--family-id <F>] [--signing-key <FP>]` (or `scripts/setup-devcontainer-signing.sh <args...>`) — wire commit signing inside the devcontainer to the host's `gpg-bridge`. Writes the refresh-capable credential pair to `$XDG_CONFIG_HOME/gpg-cli/config.yaml` and sets `git config --local gpg.program=gpg-cli` + `commit.gpgsign=true`. `gpg-cli` rotates the pair in-place on 401 `token_expired`; only re-run the script after a terminal refresh / reissue failure. The script also runs an end-to-end smoke test (probes 1..4) before exiting; pass `--skip-smoke` to bypass. See `CONTRIBUTING.md` § "Signed commits inside the devcontainer".
 
 ## Architecture
 
