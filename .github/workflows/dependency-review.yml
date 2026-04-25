@@ -9,11 +9,9 @@
 #
 # Together with Dependabot alerts (continuous, post-merge backstop) and
 # the Dependency Submission workflow that keeps CI-tool PURLs flowing
-# into the Dependency Graph (#205 / PR #251), this replaces the
-# PR-gating role pip-audit plays today. Removal of pip-audit is tracked
-# in #264; it stays in place until this gate is proven operational
-# (Dependency Graph enabled, this check added to required status
-# checks, Dependabot alerts firing).
+# into the Dependency Graph (#205 / PR #251), this is the primary
+# dependency-CVE signal for the repository. It replaced pip-audit in
+# #264.
 #
 # Requires Dependency Graph to be enabled on the repository
 # (Settings → Code security and analysis → Dependency graph). Without

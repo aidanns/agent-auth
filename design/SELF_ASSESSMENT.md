@@ -276,7 +276,9 @@ compromise would not by itself defeat it:
     treefmt),
   - `typecheck` (mypy + pyright, both in strict mode with
     module-level ratcheting),
-  - `pip-audit` (dependency vulnerability scan),
+  - Dependency Review Action (per-PR dependency vulnerability gate
+    against the Dependency Graph diff; Dependabot alerts are the
+    continuous post-merge backstop),
   - `reuse` (per-file SPDX licensing compliance),
   - `verify-standards` (checks the portable-standards invariants:
     Dependabot ecosystem coverage, task-runner coverage,
@@ -304,8 +306,11 @@ compromise would not by itself defeat it:
   [ADR 0026](decisions/0026-semantic-release-autorelease.md).
 - **Container / image signing.** Not applicable; the project
   ships source distributions and wheels, not OCI images.
-- **Vulnerability checks.** `pip-audit` runs daily on `main` and
-  on every PR; Dependabot tracks action and package CVEs.
+- **Vulnerability checks.** The Dependency Review Action blocks
+  every PR that introduces direct or transitive deps with
+  high/critical GHSA advisories; Dependabot alerts continuously
+  match pinned versions against newly-published advisories and
+  Dependabot PRs land the fixes.
 - **Fuzz / mutation testing.** Mutation testing is tracked as a
   standards-level follow-up; see
   [`.claude/instructions/testing-standards.md`](../.claude/instructions/testing-standards.md).

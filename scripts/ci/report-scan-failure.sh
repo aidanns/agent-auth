@@ -5,7 +5,8 @@
 # SPDX-License-Identifier: MIT
 
 # Open, comment on, or close a GitHub issue tracking the state of a
-# scheduled security scan (pip-audit today, Trivy when #88 lands). One
+# scheduled security scan (e.g. Trivy when #88 lands). General-purpose
+# and reusable for any future scheduled security job. One
 # open issue per (repo, label) tuple is the dedupe contract: if the
 # scheduled job fails and an open issue already carries the label we
 # append a comment with the new run-url and sha instead of opening a
@@ -15,7 +16,7 @@
 # Usage:
 #   report-scan-failure.sh <status> <label> <title> <sha> <run-url>
 #     status    : "failed" | "succeeded"
-#     label     : dedupe label (e.g. "pip-audit-failure")
+#     label     : dedupe label (e.g. "trivy-failure")
 #     title     : issue title used when opening a new failure issue
 #     sha       : commit sha the scan ran against
 #     run-url   : link to the failed/recovering workflow run

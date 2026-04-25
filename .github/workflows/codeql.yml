@@ -10,9 +10,11 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    # Daily 07:00 UTC — paired with the 06:00 pip-audit run so a
-    # newly-published CodeQL query + a newly-published advisory
-    # hit main's latest tree on the same day.
+    # Daily 07:00 UTC — keeps a newly-published CodeQL query running
+    # against main's latest tree within a day of publication.
+    # Dependency CVEs are covered by the Dependency Review Action at
+    # PR time and Dependabot alerts continuously; this schedule exists
+    # solely for static-analysis queries that live in CodeQL.
     - cron: "0 7 * * *"
 
 jobs:

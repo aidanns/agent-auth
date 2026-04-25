@@ -26,8 +26,8 @@ tree so the baseline is clean and CI is green on merge.
 
 - **Type checking** (`mypy` / `pyright`) — tracked separately; ruff only
   covers lint + format.
-- **Dependency vulnerability scanning** (`pip-audit`) — separate concern
-  under `python.md`.
+- **Dependency vulnerability scanning** (Dependency Review Action +
+  Dependabot alerts) — separate concern under `python.md`.
 - **Mdformat / taplo** — other formatter integrations tracked under
   [#45](https://github.com/aidanns/agent-auth/issues/45).
 - **Adding ruff to `lefthook.yml` beyond lint/format** — no test subset

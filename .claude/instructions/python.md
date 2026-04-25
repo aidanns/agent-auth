@@ -31,4 +31,9 @@ general coding standards in `coding-standards.md`.
   exporting `UV_PROJECT_ENVIRONMENT`) so macOS and Linux venvs can coexist
   on a shared filesystem.
 - **`pytest-cov`** — line and branch coverage with a ratcheting threshold.
-- **`pip-audit`** (or `safety`) — dependency vulnerability scanning in CI.
+- **Dependency Review Action + Dependabot alerts** — dependency
+  vulnerability scanning. The Dependency Review Action gates every
+  PR against the Dependency Graph diff (blocking high/critical GHSA
+  advisories introduced by direct or transitive deps); Dependabot
+  alerts match pinned versions against newly-published advisories
+  continuously and Dependabot PRs land the fixes.

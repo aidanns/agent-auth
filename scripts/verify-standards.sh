@@ -960,15 +960,17 @@ fi
 
 echo "verify-standards: ruff is configured in pyproject.toml, wired into treefmt and lefthook, and gated in CI."
 
-# pip-audit must be wired into at least one CI workflow
-# (.claude/instructions/python.md Tooling).
-if ! grep -qE "\\bpip-audit\\b" <<<"${workflows_stripped}"; then
-  echo "verify-standards: 'pip-audit' is not invoked in any .github/workflows/*.yml file." >&2
-  echo "  Add a workflow step that runs 'pip-audit' (see .github/workflows/security.yml)." >&2
+# Dependency vulnerability scanning must be wired into CI via the
+# Dependency Review Action (PR-time gate) backed by Dependabot alerts
+# (continuous post-merge backstop). .claude/instructions/python.md
+# names both as the current replacements for pip-audit.
+if ! grep -qE "\\bactions/dependency-review-action\\b" <<<"${workflows_stripped}"; then
+  echo "verify-standards: the Dependency Review Action is not wired into any .github/workflows/*.yml file." >&2
+  echo "  Add a job that uses 'actions/dependency-review-action' (see .github/workflows/dependency-review.yml)." >&2
   exit 1
 fi
 
-echo "verify-standards: pip-audit is wired into CI."
+echo "verify-standards: Dependency Review Action is wired into CI."
 
 # OpenSSF Scorecard must run on a schedule and gate on an aggregate
 # score floor, per design/SELF_ASSESSMENT.md → "OpenSSF Scorecard"
