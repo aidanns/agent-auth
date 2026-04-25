@@ -4,15 +4,13 @@
 # Integration-test image for the ``gpg-bridge`` service. Never publish;
 # never use in production.
 #
-# Carries the full host-side toolchain ``gpg-bridge`` shells out to in
-# production: ``gpg-backend-cli-host`` (the Python CLI launched as the
-# bridge's ``gpg_backend_command`` subprocess) and the real ``gpg``
-# binary. Production deploys split these across the host /
-# devcontainer boundary; at the integration-test layer we collapse
-# them into one container so the subprocess hop (bridge →
-# gpg-backend-cli-host → gpg) is honest while compose stays simple.
-# The devcontainer-side ``gpg-cli`` ships in the sibling
-# ``Dockerfile.gpg-cli.test`` image which carries no key material.
+# Carries the host ``gpg`` binary the bridge shells out to in
+# production. Per the ADR 0033 collapse-the-backend-hop amendment of
+# 2026-04-25 the bridge invokes ``gpg`` directly (default
+# ``gpg_command: ["gpg"]``); the historical ``gpg-backend-cli-host``
+# subprocess hop has been removed. The devcontainer-side ``gpg-cli``
+# ships in the sibling ``Dockerfile.gpg-cli.test`` image which carries
+# no key material.
 #
 # Bakes a throwaway signing key into a per-image ``GNUPGHOME`` at
 # ``/home/agent-auth/.gnupg`` so test fixtures can sign without
@@ -57,12 +55,10 @@ WORKDIR /src
 
 COPY README.md ./
 COPY packages/agent-auth-common/ ./packages/agent-auth-common/
-COPY packages/gpg-backend-cli-host/ ./packages/gpg-backend-cli-host/
 COPY packages/gpg-bridge/ ./packages/gpg-bridge/
 
 RUN pip install --no-cache-dir \
         ./packages/agent-auth-common \
-        ./packages/gpg-backend-cli-host \
         ./packages/gpg-bridge
 
 RUN mkdir -p "$XDG_CONFIG_HOME/gpg-bridge" \

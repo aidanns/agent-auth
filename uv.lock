@@ -12,7 +12,6 @@ members = [
     "agent-auth",
     "agent-auth-common",
     "agent-auth-workspace",
-    "gpg-backend-cli-host",
     "gpg-bridge",
     "gpg-cli",
     "things-bridge",
@@ -69,7 +68,6 @@ dev = [
 dev = [
     { name = "agent-auth" },
     { name = "agent-auth-common" },
-    { name = "gpg-backend-cli-host" },
     { name = "gpg-bridge" },
     { name = "gpg-cli" },
     { name = "things-bridge" },
@@ -97,7 +95,6 @@ provides-extras = ["dev"]
 dev = [
     { name = "agent-auth", editable = "packages/agent-auth" },
     { name = "agent-auth-common", extras = ["testing"], editable = "packages/agent-auth-common" },
-    { name = "gpg-backend-cli-host", editable = "packages/gpg-backend-cli-host" },
     { name = "gpg-bridge", editable = "packages/gpg-bridge" },
     { name = "gpg-cli", editable = "packages/gpg-cli" },
     { name = "things-bridge", editable = "packages/things-bridge" },
@@ -558,16 +555,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/d6/17/6e8890271880903e3
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3b/21/2f728888c45033d34a417bfcd248ea2564c9e08ab1bfd301377cf05d5586/filelock-3.28.0-py3-none-any.whl", hash = "sha256:de9af6712788e7171df1b28b15eba2446c69721433fa427a9bee07b17820a9db", size = 39189, upload-time = "2026-04-14T22:54:32.037Z" },
 ]
-
-[[package]]
-name = "gpg-backend-cli-host"
-source = { editable = "packages/gpg-backend-cli-host" }
-dependencies = [
-    { name = "agent-auth-common" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "agent-auth-common", editable = "packages/agent-auth-common" }]
 
 [[package]]
 name = "gpg-bridge"

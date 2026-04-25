@@ -5,11 +5,13 @@
 """End-to-end Docker integration tests for gpg-bridge.
 
 Drives the full sign / verify path through real HTTP and a real host
-``gpg`` binary: a containerised ``gpg-cli`` posts a bearer token (minted
-through the in-network ``agent-auth`` service) to the in-network
-``gpg-bridge``, which delegates token validation to ``agent-auth`` and
-shells out to ``gpg-backend-cli-host`` (and the real ``gpg``) inside
-the bridge container.
+``gpg`` binary: a containerised ``gpg-cli`` posts a bearer token
+(minted through the in-network ``agent-auth`` service) to the
+in-network ``gpg-bridge``, which delegates token validation to
+``agent-auth`` and shells out to the real ``gpg`` inside the bridge
+container. Per the ADR 0033 collapse-the-backend-hop amendment of
+2026-04-25, the bridge invokes ``gpg`` directly rather than through a
+separate backend CLI.
 
 Replaces the in-process ``test_gpg_end_to_end.py`` smoke test (which
 stubbed authz with ``_NoopAuthz`` and silently skipped when ``gpg``

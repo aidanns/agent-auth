@@ -10,13 +10,13 @@ gate so a regression (an extra subprocess spawn, a stray sleep, an
 unindexed lookup added later) fails CI rather than surfacing in
 production.
 
-The bridge spawns the configured ``gpg_backend_command`` per request,
-so the dominant cost is Python interpreter startup for the backend CLI
-plus the host ``gpg`` process. To keep the measurement focused on what
-the bridge can actually control, the test points the backend at the
-in-tree fake (``python -m gpg_backend_fake``) — that keeps subprocess
-startup realistic without inheriting the unbounded variance of real
-GPG key operations.
+The bridge spawns the configured ``gpg_command`` per request, so the
+dominant cost is Python interpreter startup for the gpg subprocess.
+To keep the measurement focused on what the bridge can actually
+control, the test points ``gpg_command`` at the in-tree fake
+(``python -m gpg_backend_fake``) — that keeps subprocess startup
+realistic without inheriting the unbounded variance of real GPG key
+operations.
 
 The test is sequential and in-process: concurrency-level throughput is
 out of scope per ``design/DESIGN.md`` § gpg-bridge ("Throughput is
@@ -93,16 +93,16 @@ def perf_bridge(tmp_path: Path) -> Iterator[str]:
     fixture_path = tmp_path / "fixture.yaml"
     fixture_path.write_text(yaml.safe_dump(_FIXTURE))
 
-    backend_command = [
+    gpg_command = [
         sys.executable,
         "-m",
         "gpg_backend_fake",
         "--fixtures",
         str(fixture_path),
     ]
-    gpg = GpgSubprocessClient(command=backend_command, timeout_seconds=30.0)
+    gpg = GpgSubprocessClient(command=gpg_command, timeout_seconds=30.0)
     registry, metrics = build_registry()
-    config = Config(port=0, gpg_backend_command=backend_command)
+    config = Config(port=0, gpg_command=gpg_command)
     server = GpgBridgeServer(config, gpg, _NoopAuthz(), registry, metrics)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)

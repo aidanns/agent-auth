@@ -2,13 +2,14 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Fault-injection: gpg backend subprocess hangs past the configured timeout.
+"""Fault-injection: the gpg subprocess hangs past the configured timeout.
 
-A backend that never returns (waiting on a frozen pinentry, blocked
-on a full pipe, or a real gpg-agent deadlock) must surface as a
-``GpgError`` after the configured ``timeout_seconds`` AND the child
-must be reaped — leaking a per-request subprocess on every signing
-hang would exhaust the host's process table on a busy bridge.
+A gpg invocation that never returns (waiting on a frozen pinentry,
+blocked on a full pipe, or a real gpg-agent deadlock) must surface
+as a ``GpgError`` after the configured ``timeout_seconds`` AND the
+child must be reaped — leaking a per-request subprocess on every
+signing hang would exhaust the host's process table on a busy
+bridge.
 """
 
 from __future__ import annotations
@@ -29,9 +30,9 @@ def _make_executable(path: Path, body: str) -> Path:
     return path
 
 
-@pytest.mark.covers_function("Run Backend Subprocess")
-def test_backend_hang_raises_gpg_error_with_timeout_message(tmp_path: Path) -> None:
-    """A backend that never writes stdout times out as ``GpgError`` after the deadline.
+@pytest.mark.covers_function("Sign Payload")
+def test_gpg_hang_raises_gpg_error_with_timeout_message(tmp_path: Path) -> None:
+    """A gpg subprocess that never writes stdout times out as ``GpgError`` after the deadline.
 
     The error message must mention the configured timeout so an
     operator triaging from logs can correlate with the bridge's
@@ -39,7 +40,7 @@ def test_backend_hang_raises_gpg_error_with_timeout_message(tmp_path: Path) -> N
     where the deadline came from.
     """
     script = _make_executable(
-        tmp_path / "backend_hang.sh",
+        tmp_path / "gpg_hang.sh",
         "#!/usr/bin/env bash\nsleep 30\n",
     )
     client = GpgSubprocessClient(command=[str(script)], timeout_seconds=0.5)
@@ -53,36 +54,36 @@ def test_backend_hang_raises_gpg_error_with_timeout_message(tmp_path: Path) -> N
     assert elapsed < 5.0, f"timeout took too long: {elapsed:.2f}s"
 
 
-@pytest.mark.covers_function("Run Backend Subprocess")
-def test_backend_hang_partial_stdout_still_times_out(tmp_path: Path) -> None:
-    """A backend that flushes a partial stdout chunk then hangs still times out.
+@pytest.mark.covers_function("Sign Payload")
+def test_gpg_hang_partial_stdout_still_times_out(tmp_path: Path) -> None:
+    """A gpg subprocess that flushes a partial stdout chunk then hangs still times out.
 
-    Models the case where the backend opens its envelope (``{``) but
-    blocks on something half-way through. The drain thread keeps
-    reading bytes — without a wall-clock deadline the bridge would
-    wait forever.
+    Models the case where gpg starts writing the signature but blocks
+    on something half-way through (e.g. a wedged gpg-agent prompt).
+    Without a wall-clock deadline the bridge would wait forever.
     """
     script = _make_executable(
-        tmp_path / "backend_partial_hang.sh",
-        '#!/usr/bin/env bash\nprintf \'{"signature_b64": "\'\nsleep 30\n',
+        tmp_path / "gpg_partial_hang.sh",
+        "#!/usr/bin/env bash\nprintf 'partial signature bytes'\nsleep 30\n",
     )
     client = GpgSubprocessClient(command=[str(script)], timeout_seconds=0.5)
     with pytest.raises(GpgError, match="timed out"):
         client.sign(SignRequest(local_user="k", payload=b"x"))
 
 
-@pytest.mark.covers_function("Run Backend Subprocess")
-def test_backend_hang_ignores_sigterm_still_times_out(tmp_path: Path) -> None:
-    """A backend that traps SIGTERM still gets killed when the bridge times out.
+@pytest.mark.covers_function("Sign Payload")
+def test_gpg_hang_ignores_sigterm_still_times_out(tmp_path: Path) -> None:
+    """A gpg subprocess that traps SIGTERM still gets killed when the bridge times out.
 
-    ``Popen.kill`` sends SIGKILL which cannot be trapped — that's the
-    contract that lets the bridge guarantee child reaping even when
-    the backend script tries to be cute about cleanup. Without this
-    fault the bridge would have a path that leaks zombies on every
-    misbehaving sign request.
+    ``subprocess.run`` with ``timeout=`` raises ``TimeoutExpired`` and
+    sends SIGKILL, which cannot be trapped — that's the contract that
+    lets the bridge guarantee child reaping even when the gpg script
+    tries to be cute about cleanup. Without this fault the bridge
+    would have a path that leaks zombies on every misbehaving sign
+    request.
     """
     script = _make_executable(
-        tmp_path / "backend_trap_term.sh",
+        tmp_path / "gpg_trap_term.sh",
         (
             "#!/usr/bin/env bash\n"
             "trap '' TERM\n"  # ignore SIGTERM

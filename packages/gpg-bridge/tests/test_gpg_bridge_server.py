@@ -332,14 +332,14 @@ class TestHealthEndpoint:
             handle.close()
 
     @pytest.mark.covers_function("Serve GPG Bridge Health Endpoint")
-    def test_health_unhealthy_when_backend_missing(
+    def test_health_unhealthy_when_gpg_missing(
         self, gpg_client: GpgSubprocessClient, tmp_path: Path
     ) -> None:
         authz = FakeAuthz()
-        # Inject a config whose backend points at a non-existent absolute path.
+        # Inject a config whose gpg_command points at a non-existent absolute path.
         config = Config(
             port=0,
-            gpg_backend_command=[str(tmp_path / "does-not-exist")],
+            gpg_command=[str(tmp_path / "does-not-exist")],
         )
         handle = _start_server(config, gpg_client, authz)
         try:

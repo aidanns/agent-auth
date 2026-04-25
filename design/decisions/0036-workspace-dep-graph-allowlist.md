@@ -13,14 +13,17 @@ Accepted — 2026-04-24.
 ## Context
 
 ADR 0032 (#257) split the repository into a uv workspace of per-service
-packages under `packages/*/`. The workspace currently has eight
+packages under `packages/*/`. The workspace currently has seven
 members: `agent-auth-common` (shared library), `agent-auth`,
-`gpg-backend-cli-host`, `gpg-bridge`, `gpg-cli`, `things-bridge`,
-`things-cli`, and `things-client-cli-applescript`. Each service
-package is meant to lean on `agent-auth-common` for typed HTTP clients
-and shared models — nothing else.
+`gpg-bridge`, `gpg-cli`, `things-bridge`, `things-cli`, and
+`things-client-cli-applescript`. (Originally eight — the
+`gpg-backend-cli-host` package was collapsed into `gpg-bridge`
+2026-04-25 per
+[ADR 0033](0033-gpg-bridge-cli-split.md#update--2026-04-25-collapse-the-backend-hop).)
+Each service package is meant to lean on `agent-auth-common` for
+typed HTTP clients and shared models — nothing else.
 
-Eight packages is enough that cross-package edges are easy to
+Seven packages is enough that cross-package edges are easy to
 introduce unintentionally. Three shapes of unintended edge would each
 be a regression rather than a refactor:
 
@@ -32,7 +35,9 @@ be a regression rather than a refactor:
   `agent-auth-common/src/` plus an IDE "add missing dependency"
   autofix.
 - **Service-to-service leaks.** `things-cli` picking up `things-bridge`
-  as a runtime dep, or `gpg-cli` picking up `gpg-bridge`, would make a
+  as a runtime dep, or `gpg-cli` picking up `gpg-bridge` (the latter is
+  the same shape of unwanted edge that `gpg-backend-cli-host` was
+  carved out to avoid before the 2026-04 collapse), would make a
   client pull in its server's dependency closure — exactly the coupling
   #105 wanted to break.
 - **CLI-to-service-and-back cycles.** Any edge that creates a cycle in
@@ -90,10 +95,9 @@ script. Both unexpected edges and missing allowlisted edges fail the
 check — the allowlist must stay in sync with the pyproject.toml
 tree in both directions.
 
-The allowlist today is the seven "service → `agent-auth-common`" edges:
+The allowlist today is the six "service → `agent-auth-common`" edges:
 
 - `agent-auth` → `agent-auth-common`
-- `gpg-backend-cli-host` → `agent-auth-common`
 - `gpg-bridge` → `agent-auth-common`
 - `gpg-cli` → `agent-auth-common`
 - `things-bridge` → `agent-auth-common`

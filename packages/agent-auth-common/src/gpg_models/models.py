@@ -4,11 +4,13 @@
 
 """Request / result dataclasses for the gpg sign and verify flows.
 
-These are the on-the-wire shapes between gpg-cli, gpg-bridge, and the
-backend CLI — see ADR 0030 § HTTP API and § Subprocess contract. The
-bridge translates HTTP JSON bodies into these dataclasses and then
-emits JSON again on the way out; the backend CLI reads them off stdin
-framing and writes a JSON envelope to stdout.
+These are the on-the-wire shapes between gpg-cli and gpg-bridge.
+The bridge translates HTTP JSON bodies into these dataclasses on
+ingress and serialises them back to JSON on the response. Per the
+2026-04-25 collapse-the-backend-hop amendment to ADR 0033, the
+bridge invokes ``gpg`` directly per request, so these dataclasses
+no longer flow over a separate subprocess JSON envelope —
+HTTP is the only on-the-wire usage.
 """
 
 from __future__ import annotations

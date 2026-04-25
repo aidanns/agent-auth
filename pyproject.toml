@@ -45,7 +45,6 @@ members = ["packages/*"]
 # ``pyproject.toml`` and the source override below drops out.
 agent-auth = { workspace = true }
 agent-auth-common = { workspace = true }
-gpg-backend-cli-host = { workspace = true }
 gpg-bridge = { workspace = true }
 gpg-cli = { workspace = true }
 things-bridge = { workspace = true }
@@ -62,7 +61,6 @@ dev = [
     # keep-sorted start
     "agent-auth",
     "agent-auth-common[testing]",
-    "gpg-backend-cli-host",
     "gpg-bridge",
     "gpg-cli",
     "things-bridge",
@@ -99,7 +97,6 @@ pythonpath = [
     # keep-sorted start
     "packages/agent-auth-common/src",
     "packages/agent-auth/src",
-    "packages/gpg-backend-cli-host/src",
     "packages/gpg-bridge/src",
     "packages/gpg-bridge/tests",
     "packages/gpg-cli/src",
@@ -190,7 +187,6 @@ src = [
     # keep-sorted start
     "packages/agent-auth-common/src",
     "packages/agent-auth/src",
-    "packages/gpg-backend-cli-host/src",
     "packages/gpg-bridge/src",
     "packages/gpg-cli/src",
     "packages/things-bridge/src",
@@ -236,8 +232,6 @@ files = [
     "packages/agent-auth/benchmarks",
     "packages/agent-auth/src",
     "packages/agent-auth/tests",
-    "packages/gpg-backend-cli-host/src",
-    "packages/gpg-backend-cli-host/tests",
     "packages/gpg-bridge/src",
     "packages/gpg-bridge/tests",
     "packages/gpg-cli/src",
@@ -258,7 +252,7 @@ files = [
 # https://mypy.readthedocs.io/en/stable/running_mypy.html#mapping-file-paths-to-modules.
 explicit_package_bases = true
 namespace_packages = true
-mypy_path = "$MYPY_CONFIG_FILE_DIR/packages/agent-auth-common/src:$MYPY_CONFIG_FILE_DIR/packages/agent-auth/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-backend-cli-host/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-bridge/tests:$MYPY_CONFIG_FILE_DIR/packages/gpg-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/things-bridge/tests:$MYPY_CONFIG_FILE_DIR/packages/things-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-client-cli-applescript/src"
+mypy_path = "$MYPY_CONFIG_FILE_DIR/packages/agent-auth-common/src:$MYPY_CONFIG_FILE_DIR/packages/agent-auth/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-bridge/tests:$MYPY_CONFIG_FILE_DIR/packages/gpg-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/things-bridge/tests:$MYPY_CONFIG_FILE_DIR/packages/things-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-client-cli-applescript/src"
 
 # Per-package ``tests/`` trees collapse to a flat module namespace
 # under mypy: each ``conftest.py`` becomes the ``conftest`` module and
@@ -322,7 +316,6 @@ module = [
     "test_crypto",
     "test_error_taxonomy",
     "test_gpg_backend_fake",
-    "test_gpg_backend_host",
     "test_gpg_bridge_config",
     "test_gpg_bridge_server",
     "test_gpg_cli_cli",
@@ -389,8 +382,6 @@ disallow_untyped_calls = false
 [tool.mutmut]
 paths_to_mutate = [
     # keep-sorted start
-    "packages/agent-auth-common/src/gpg_backend_common/cli.py",
-    "packages/agent-auth-common/src/gpg_backend_common/protocol.py",
     "packages/agent-auth-common/src/gpg_models/errors.py",
     "packages/agent-auth-common/src/gpg_models/models.py",
     "packages/agent-auth/src/agent_auth/crypto.py",
@@ -398,8 +389,6 @@ paths_to_mutate = [
     "packages/agent-auth/src/agent_auth/scopes.py",
     "packages/agent-auth/src/agent_auth/store.py",
     "packages/agent-auth/src/agent_auth/tokens.py",
-    "packages/gpg-backend-cli-host/src/gpg_backend_cli_host/cli.py",
-    "packages/gpg-backend-cli-host/src/gpg_backend_cli_host/gpg.py",
     "packages/gpg-bridge/src/gpg_bridge/authz.py",
     "packages/gpg-bridge/src/gpg_bridge/cli.py",
     "packages/gpg-bridge/src/gpg_bridge/config.py",
@@ -438,7 +427,6 @@ tests_dir = [
     "packages/agent-auth/tests/test_scopes.py",
     "packages/agent-auth/tests/test_store.py",
     "packages/agent-auth/tests/test_tokens.py",
-    "packages/gpg-backend-cli-host/tests/test_gpg_backend_host.py",
     "packages/gpg-bridge/tests/test_gpg_backend_fake.py",
     "packages/gpg-bridge/tests/test_gpg_bridge_config.py",
     "packages/gpg-bridge/tests/test_gpg_bridge_server.py",
@@ -447,8 +435,7 @@ tests_dir = [
     # keep-sorted end
     # The gpg-bridge end-to-end (test_gpg_end_to_end.py) and
     # subprocess-client (test_gpg_subprocess_client.py) tests shell
-    # out to the host `gpg` binary and a real
-    # gpg-backend-cli-host process, so they are too slow for the
+    # out to the host `gpg` binary, so they are too slow for the
     # per-mutant loop. They run in the regular test suite and the
     # devcontainer e2e workflow.
 ]
@@ -458,10 +445,8 @@ do_not_mutate = [
     # __init__.py modules are pure re-export surfaces; mutating them
     # just produces noise without signal on the security properties
     # we're trying to assert.
-    "packages/agent-auth-common/src/gpg_backend_common/__init__.py",
     "packages/agent-auth-common/src/gpg_models/__init__.py",
     "packages/agent-auth/src/agent_auth/__init__.py",
-    "packages/gpg-backend-cli-host/src/gpg_backend_cli_host/__init__.py",
     "packages/gpg-bridge/src/gpg_bridge/__init__.py",
     "packages/gpg-cli/src/gpg_cli/__init__.py",
     # keep-sorted end
@@ -478,8 +463,10 @@ do_not_mutate = [
 # mutants.
 #
 # Issue #309 expands paths_to_mutate to cover the gpg-bridge,
-# gpg-cli, gpg-backend-cli-host, gpg_models, and gpg_backend_common
-# modules. The combined floor stays at the existing global value
+# gpg-cli, and gpg_models modules. (Originally also covered
+# gpg-backend-cli-host and gpg_backend_common — both removed in
+# 2026-04 by issue #316 / the ADR 0033 collapse-the-backend-hop
+# amendment.) The combined floor stays at the existing global value
 # until the next nightly run produces a baseline against the wider
 # surface; the policy is to ratchet up only when the score is
 # durably above the floor across consecutive runs (CONTRIBUTING.md

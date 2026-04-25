@@ -130,21 +130,17 @@ p16_container: "" {
   p17.width: 150
   p17.height: 150
   p17.shape: circle
-  p18: gpg\nbackend\ncli\nhost
+  p18: gpg
   p18.width: 150
   p18.height: 150
   p18.shape: circle
-  p19: gpg
-  p19.width: 150
-  p19.height: 150
-  p19.shape: circle
 }
 p16 -> p16_container
 
-p20: gpg-cli
-p20.width: 400
-root -> p20
-p20_container: "" {
+p19: gpg-cli
+p19.width: 400
+root -> p19
+p19_container: "" {
   grid-columns: 3
   grid-rows: 1
   grid-gap: 5
@@ -152,9 +148,9 @@ p20_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  p21: gpg\ncli
-  p21.width: 150
-  p21.height: 150
-  p21.shape: circle
+  p20: gpg\ncli
+  p20.width: 150
+  p20.height: 150
+  p20.shape: circle
 }
-p20 -> p20_container
+p19 -> p19_container

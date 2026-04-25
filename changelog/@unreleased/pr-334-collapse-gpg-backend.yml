@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: |
+    Collapse `gpg-backend-cli-host` into `gpg-bridge` per the ADR
+    0033 amendment of 2026-04-25. The bridge now invokes the host
+    `gpg` binary directly, dropping the per-request backend
+    subprocess hop (~50 ms / request saved). Migration: rename the
+    `gpg_backend_command` config key to `gpg_command` in
+    `~/.config/gpg-bridge/config.yaml`; the new default is `["gpg"]`
+    rather than `["gpg-backend-cli-host"]`. The `gpg-backend-cli-host`
+    PyPI/install path and the `task gpg-backend-host` Taskfile entry
+    are removed; the HTTP API on `gpg-bridge` is unchanged.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/316
+packages:
+  - gpg-bridge
