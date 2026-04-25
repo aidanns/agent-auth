@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: |
+    Publish `packages/gpg-bridge/openapi/gpg-bridge.v1.yaml` covering
+    every route `gpg-bridge` serves (sign, verify, health, metrics)
+    and gate it via `tests/test_openapi_spec.py` the same way the
+    other two service specs are gated. Documents the `gpg-bridge`
+    error surface in `design/error-codes.md` so spec drift is caught
+    on every PR.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/306
+    - https://github.com/aidanns/agent-auth/pull/313
