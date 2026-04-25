@@ -1,5 +1,118 @@
 # Changelog
 
+## [0.14.0] - 2026-04-25
+
+### Features
+
+- Restructure the PR template around a `==COMMIT_MSG==` fenced
+  block (squash-merge commit body) plus a clearly separated
+  `## Review notes` section (review-only). The new `PR Lint`
+  workflow enforces the Palantir-style PR-title prefix allowlist
+  (`feature` / `improvement` / `fix` / `break` / `deprecation` /
+  `migration` / `chore`) and validates the `==COMMIT_MSG==` block
+  (line wrap, no markdown, BREAKING CHANGE positioning, trailer
+  parsing). A sibling self-test job exercises the validator
+  against every fixture on every PR so a regression in the
+  validator can never silently approve every PR.
+- Introduce the file-per-change YAML schema for `changelog/@unreleased/`
+  entries and a PR-time CI lint that enforces file presence, naming,
+  schema validity, and the `release-as` invariant. Foundation for the
+  upcoming release workflow rewrite.
+- Merge bot extracts the `==COMMIT_MSG==` block as the squash-merge
+  commit body, replacing the maintainer-paste step from #290.
+  Triggered by the `automerge` label on a PR; refuses to merge if
+  any required check failed, the block is malformed, or the block
+  lacks a `Signed-off-by:` trailer (now enforced PR-time by the
+  `pr-lint` validator). Runs as a dedicated `agent-auth-merge-bot`
+  GitHub App (least-privilege scoped); see
+  `docs/release/merge-bot-setup.md` for the one-time maintainer
+  setup.
+- Add the `agent-auth-changelog-bot` GitHub App and the
+  `Changelog Bot` workflow that backs it. Contributors uncomment a
+  `==CHANGELOG_MSG==` block in the PR template and the bot composes
+  a `changelog/@unreleased/pr-<N>-*.yml`, derives the YAML `type:`
+  from the PR-title prefix, and commits the file to the PR branch.
+  A sibling `==NO_CHANGELOG==` marker applies the `no changelog`
+  label so the changelog lint bypasses the file-presence check.
+  Reconciliation with manual edits is via author-history lockout:
+  once any non-bot commit touches the file, the bot leaves it alone
+  for the rest of the PR's life. Loop-prevention via a workflow
+  `if:` plus a head-commit-author check on every run.
+- Add `task setup-devcontainer-signing` (and the underlying
+  `scripts/setup-devcontainer-signing.sh`) for one-shot wiring of
+  devcontainer commit signing to the host's `gpg-bridge`. Writes
+  the gpg-cli config to `$XDG_CONFIG_HOME/gpg-cli/config.yaml` at
+  mode 0600 and runs `git config --local` for `gpg.program=gpg-cli`
+  and `commit.gpgsign=true`. Unblocks #217 (re-enable
+  `required_signatures` on the `main` ruleset).
+- Replace semantic-release with a YAML-driven release workflow that
+  opens a release PR per push to main and tags + publishes on its
+  merge. The release version is computed from
+  `changelog/@unreleased/*.yml` files via the shared `version_logic`
+  library. Decommissions `.releaserc.mjs`, `package.json`,
+  `package-lock.json`, the npm Dependabot ecosystem, and the legacy
+  `scripts/release.sh` local-tag flow (the script is repurposed as
+  a workflow-dispatch wrapper). See ADR 0041.
+- Add `task changelog:add` (alias `task changelog-add`) for scaffolding `changelog/@unreleased/*.yml` entries. Interactive prompt-driven walk-through by default, fully flag-driven (`--type / --description / --pr`) when stdin is not a TTY. Joins the hand-authored (#295) and bot-mediated (#298) paths as a third authoring mode; all three converge on the same on-disk YAML format.
+- `gpg-cli` now persists a refresh-capable agent-auth credential pair and rotates it transparently. A 401 `token_expired` from `gpg-bridge` triggers `POST /agent-auth/v1/token/refresh`; `refresh_token_expired` falls back to `/token/reissue` (blocks on host JIT approval). The new pair is written to `$XDG_CONFIG_HOME/gpg-cli/config.yaml` at mode `0600` *before* the retried request runs, honouring the single-use refresh contract from ADR 0011. `scripts/setup-devcontainer-signing.sh` writes the new schema (`--access-token` / `--refresh-token` / `--family-id` / `--auth-url`); the old single-`--token` schema is rejected at load time with a directive to re-run the script. Operators who installed `gpg-cli` before this release must re-run `setup-devcontainer-signing.sh` to bootstrap a refresh-capable credential pair.
+- Add `--version` to every argparse-backed CLI in the workspace (`agent-auth`, `agent-auth-notifier`, `gpg-bridge`, `things-bridge`, `things-cli`, `things-client-cli-applescript`); the version string is resolved at runtime from installed distribution metadata via `importlib.metadata.version`. `gpg-cli` keeps its existing `--version` (gpg-shaped output for git's probe) and gains a new `--gpg-cli-version` flag that prints the package version. Lets operators verify which build of a CLI is installed in a host or devcontainer.
+- `gpg-bridge` now optionally holds signing-key passphrases in
+  the system keyring (per ADR 0042). New
+  `gpg-bridge passphrase set / clear / list` subcommands manage
+  per-fingerprint entries; on each sign request the bridge feeds
+  any stored passphrase to the host `gpg` subprocess via
+  `--passphrase-fd`, removing the dependency on `gpg-agent`'s
+  cache. Passphrases never appear in stdout, stderr, server log,
+  or HTTP error responses. Operators who prefer the pre-0042
+  behaviour can disable the store with
+  `passphrase_store_enabled: false` in the bridge `config.yaml`.
+
+### Improvements
+
+- Publish `packages/gpg-bridge/openapi/gpg-bridge.v1.yaml` covering
+  every route `gpg-bridge` serves (sign, verify, health, metrics)
+  and gate it via `tests/test_openapi_spec.py` the same way the
+  other two service specs are gated. Documents the `gpg-bridge`
+  error surface in `design/error-codes.md` so spec drift is caught
+  on every PR.
+- Collapse `gpg-backend-cli-host` into `gpg-bridge` per the ADR
+  0033 amendment of 2026-04-25. The bridge now invokes the host
+  `gpg` binary directly, dropping the per-request backend
+  subprocess hop (~50 ms / request saved). Migration: rename the
+  `gpg_backend_command` config key to `gpg_command` in
+  `~/.config/gpg-bridge/config.yaml`; the new default is `["gpg"]`
+  rather than `["gpg-backend-cli-host"]`. The `gpg-backend-cli-host`
+  PyPI/install path and the `task gpg-backend-host` Taskfile entry
+  are removed; the HTTP API on `gpg-bridge` is unchanged.
+- `setup-devcontainer-signing.sh` now runs an end-to-end smoke
+  test before exiting 0. Verifies (1) `gpg-cli` is on PATH, (2)
+  `git config user.signingkey` is set, (3) the bridge URL is
+  reachable, and (4) a trial sign through gpg-cli succeeds —
+  each failure mode prints a named cause and a remediation hint
+  so operators don't discover the breakage at first `git commit`.
+  Adds `--signing-key <FP>` to write `git config --local
+  user.signingkey` and `--skip-smoke` to bypass the probes for
+  constrained environments. New troubleshooting page at
+  `docs/operations/gpg-bridge-host-setup.md`.
+
+### Fixes
+
+- Migration runner now propagates the underlying `OperationalError`
+  when an up- or down-migration's SQL fails, instead of masking it
+  behind a follow-up `cannot rollback - no transaction is active`
+  error. Operators hitting a failed migration (e.g. running against
+  a pre-#222 store where `token_families` already exists) now see
+  the real SQL error in the traceback.
+- `gpg-bridge` now fails fast on a wedged host gpg subprocess. The
+  per-subprocess deadline drops from 35s to 10s and a new
+  `signing_backend_unavailable` error code (HTTP 503) carries the
+  structured signal across the bridge / `gpg-cli` trust boundary.
+  `gpg-cli` translates it to a directed stderr message naming the
+  most likely cause (`allow-loopback-pinentry` and a primed
+  passphrase cache; see `docs/operations/gpg-bridge-host-setup.md`)
+  instead of the previous misdirecting `bridge unavailable: gpg-bridge
+  unreachable: timed out` after 30s.
+
 ## [0.13.1](https://github.com/aidanns/agent-auth/compare/v0.13.0...v0.13.1) (2026-04-25)
 
 ### Features
