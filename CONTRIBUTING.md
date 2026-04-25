@@ -400,14 +400,63 @@ range (per ADR 0026 § Pre-1.0 behaviour). Force the graduation to
 
 ### Authoring path
 
-Hand-write the YAML for now and commit it alongside the diff. A
-scaffolding helper (`task changelog-add`) lands in #297; bot-mediated
-authoring via `==CHANGELOG_MSG==` markers in the PR body lands in
-#298. Both build on the same schema enforced here.
+Three ways to satisfy the lint, in increasing order of automation:
+
+1. **Hand-author the YAML** — write
+   `changelog/@unreleased/pr-<N>-<slug>.yml` and commit it alongside
+   the diff. The schema is enforced by
+   [`Changelog Lint`](.github/workflows/changelog-lint.yml). Use this
+   when you want to fine-tune the entry (e.g. `packages:` filters or
+   a `release-as` override).
+2. **Use the scaffolding helper** — `task changelog-add` (lands in
+   #297) writes a templated entry from CLI flags. Same schema, less
+   boilerplate.
+3. **Use the bot** — uncomment the `==CHANGELOG_MSG==` block in the
+   PR template and put the release-note text between the markers.
+   The
+   [`Changelog Bot`](.github/workflows/changelog-bot.yml) workflow
+   composes the YAML, derives the `type:` from the PR-title prefix,
+   and commits the file to the PR branch on the next push. See
+   [the marker section below](#changelog-bot-markers).
 
 The `no changelog` label opt-out skips the file-presence check but
 schema validation still runs over any files that *are* present, so
 an opt-out PR can't sneak in malformed YAML.
+
+### Changelog-bot markers
+
+The PR template ships two optional markers that the changelog bot
+reads (alongside the `==COMMIT_MSG==` block from
+[ADR 0037](design/decisions/0037-palantir-commit-prefixes-and-commit-msg-block.md)).
+Both are commented out by default; uncomment one when you want the
+bot's behaviour:
+
+- **`==CHANGELOG_MSG==` … `==CHANGELOG_MSG==`** — content becomes the
+  `description:` field of an auto-created
+  `changelog/@unreleased/pr-<N>-bot-<hash>.yml`. The bot maps the
+  PR-title prefix to the YAML `type:` per
+  [ADR 0037](design/decisions/0037-palantir-commit-prefixes-and-commit-msg-block.md)'s
+  table (`feature:` -> `feature`, `fix:` -> `fix`, ...). For
+  `chore:` PRs the bot leaves a comment instead — `chore:` PRs need
+  the opt-out marker below.
+- **`==NO_CHANGELOG==`** — apply the `no changelog` label so the
+  changelog-file requirement is bypassed. Required for `chore:` PRs
+  with no user-visible change; optional for any PR where you've
+  decided no changelog entry is appropriate. Removing the marker on
+  the next push removes the label (only when the bot applied it; a
+  maintainer-applied label is preserved).
+
+The bot **stops modifying** the YAML it wrote once any non-bot commit
+touches the file. Hand-edit freely after the bot bootstraps the
+entry: a `git commit` from your identity claims authorship and the
+bot leaves the file alone for the rest of the PR's life. Re-engaging
+the bot is an explicit operation (revert your edit), not the default.
+
+Setup instructions for the bot's GitHub App live in
+[`docs/release/changelog-bot-setup.md`](docs/release/changelog-bot-setup.md).
+Architectural rationale (dedicated App, lockout strategy,
+loop-prevention guards) lives in
+[ADR 0039](design/decisions/0039-bot-mediated-changelog-authoring.md).
 
 ## Release process
 
@@ -784,6 +833,60 @@ Verify signing is working:
 ```bash
 git log --show-signature -1
 ```
+
+### Signed commits inside the devcontainer
+
+The repo's `main` ruleset requires signed commits, but devcontainers
+generally don't have access to the host's GPG keys — exporting them
+into the container would defeat the security model. This project
+solves it with a host-side signing service (`gpg-bridge`) and a
+container-side `gpg`-shaped frontend (`gpg-cli`) that forwards
+sign / verify requests over HTTPS. See
+[ADR 0033](design/decisions/0033-gpg-bridge-cli-split.md) for the
+full architecture.
+
+To wire a fresh devcontainer to the host's `gpg-bridge`:
+
+1. **On the host**, mint a `gpg:sign`-scoped agent-auth access token:
+
+   ```bash
+   task agent-auth -- token create --scope gpg:sign=allow --json
+   ```
+
+   Copy the `access_token` field. It's shown once.
+
+2. **In the devcontainer**, run the setup task with the token and
+   the bridge URL:
+
+   ```bash
+   task setup-devcontainer-signing -- \
+     --token <ACCESS_TOKEN> \
+     --bridge-url https://host.docker.internal:8443
+   ```
+
+   Optional flags: `--ca-cert-path <PATH>` if the bridge's TLS
+   certificate is signed by a CA the container's trust store doesn't
+   include, and `--timeout-seconds <N>` to override the per-request
+   timeout (default 30s).
+
+The setup task writes the `gpg-cli` config to
+`$XDG_CONFIG_HOME/gpg-cli/config.yaml` (mode `0600`) and runs two
+`git config --local` calls in the current clone:
+
+- `gpg.program = gpg-cli` — git delegates sign / verify to the
+  bridge instead of looking for `gpg` on `PATH`.
+- `commit.gpgsign = true` — every `git commit` signs without needing
+  `-S`.
+
+Override per-commit with `git -c commit.gpgsign=false commit` when
+you need an unsigned commit (e.g. an in-flight rebase that doesn't
+touch `main`).
+
+The setup is idempotent — re-running with the same arguments
+overwrites the config file and reasserts the git-config values.
+Re-run after a `gpg-bridge` URL change or a token rotation. The
+script is also runnable directly as `scripts/setup-devcontainer-signing.sh`
+if `go-task` isn't available.
 
 ### Non-interactive signing for `task release`
 

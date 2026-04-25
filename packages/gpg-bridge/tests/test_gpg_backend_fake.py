@@ -36,6 +36,7 @@ def _store() -> FakeBackendStore:
 
 
 class TestFakeSign:
+    @pytest.mark.covers_function("Run Backend Subprocess")
     def test_sign_round_trips_to_verify(self) -> None:
         store = _store()
         payload = b"commit payload"

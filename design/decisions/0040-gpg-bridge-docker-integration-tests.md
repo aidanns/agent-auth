@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
 SPDX-License-Identifier: MIT
 -->
 
-# ADR 0039 — Per-service Docker integration tests for the gpg-bridge surface
+# ADR 0040 — Per-service Docker integration tests for the gpg-bridge surface
 
 ## Status
 

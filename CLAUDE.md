@@ -27,6 +27,7 @@ simplifying for "personal project" scope.
 - `task gpg-bridge -- <args...>` (or `scripts/gpg-bridge.sh <args...>`) — run the gpg-bridge CLI on the host. E.g. `task gpg-bridge -- serve`.
 - `task gpg-cli -- <args...>` (or `scripts/gpg-cli.sh <args...>`) — run the devcontainer gpg-cli frontend. Wired to git via `git config gpg.program gpg-cli`.
 - `task gpg-backend-host -- <args...>` (or `scripts/gpg-backend-host.sh <args...>`) — run the host gpg backend CLI directly; normally invoked as a subprocess by `gpg-bridge`.
+- `task setup-devcontainer-signing -- --token <T> --bridge-url <U>` (or `scripts/setup-devcontainer-signing.sh <args...>`) — wire commit signing inside the devcontainer to the host's `gpg-bridge`. Writes `$XDG_CONFIG_HOME/gpg-cli/config.yaml` and sets `git config --local gpg.program=gpg-cli` + `commit.gpgsign=true`. See `CONTRIBUTING.md` § "Signed commits inside the devcontainer".
 
 ## Architecture
 
