@@ -125,16 +125,20 @@ workflow that handles tag + GitHub-Release creation lives in
   is redundant. Bypass added at the workflow level (not inside
   `lint.py`) so the bypass surface stays visible.
 - **Tag-pusher identity.** The release App
-  (`semantic-release-agent-auth`, retained name pending a follow-up
-  rename) mints a short-lived installation token that `release-tag.yml`
+  (`agent-auth-release-bot`, formerly `semantic-release-agent-auth`)
+  mints a short-lived installation token that `release-tag.yml`
   uses to push the tag. Using the App rather than `GITHUB_TOKEN` is
   required so the tag push fires `release-publish.yml` — this
   constraint was first documented in ADR 0026 and applies unchanged.
-- **PR-opener identity.** First cut uses the default `GITHUB_TOKEN`
-  for `gh pr create / edit`. If the `main` ruleset later blocks PRs
-  opened or merged by the workflow token, swap to the App. Tracked
-  as a follow-up rather than a blocker since the failure mode is a
-  visible CI error.
+- **PR-opener identity.** Originally first-cut planned to use the
+  default `GITHUB_TOKEN` for `gh pr create / edit`, with the App
+  swap held back as a follow-up. The first real run on `main` (for
+  `release/0.14.0`) failed at `gh pr create` because the org-level
+  *Allow GitHub Actions to create and approve pull requests* flag is
+  off, so `release-pr.yml` now also runs under the App token. The
+  alternative — flipping the org flag — would have widened
+  PR-approval rights to every workflow in the repo, which is
+  unacceptable for a project enforcing DCO and signed commits.
 
 ## Consequences
 
@@ -188,19 +192,26 @@ workflow that handles tag + GitHub-Release creation lives in
   Old sections (semantic-release-rendered) keep their bracket-link
   comparison heading and the project lives with the visual mismatch
   rather than rewriting historic sections.
-- **The release App identity.** `semantic-release-agent-auth` is no
-  longer accurate; renaming the App (and the
-  `SEMANTIC_RELEASE_APP_*` repo secrets) is a follow-up, not a
-  blocker. The workflow code references the existing secret names
-  unchanged.
+- **The release App identity.** Renamed to `agent-auth-release-bot`
+  with secrets `RELEASE_BOT_APP_ID` / `RELEASE_BOT_PRIVATE_KEY`.
+  Both `release-pr.yml` and `release-tag.yml` consume the same App;
+  permissions are widened from `Contents: write` (tags only) to
+  `Contents: write` + `Pull requests: write` (release PR + tag).
 
 ## Follow-ups
 
-- Rename the `semantic-release-agent-auth` GitHub App and rotate the
-  repo secrets to `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY`. New
-  issue, separate PR.
+- ~~Rename the `semantic-release-agent-auth` GitHub App and rotate
+  the repo secrets to `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY`.
+  New issue, separate PR.~~ **Done.** Renamed to
+  `agent-auth-release-bot`; secrets are `RELEASE_BOT_APP_ID` and
+  `RELEASE_BOT_PRIVATE_KEY` (matching the `MERGE_BOT_*` /
+  `CHANGELOG_BOT_*` naming pattern).
 - Per-package release trains (#275) — the YAML schema is ready; the
   workflow needs the per-package fan-out.
-- If the `main` ruleset blocks workflow-token PRs, switch the
+- ~~If the `main` ruleset blocks workflow-token PRs, switch the
   release-PR opener identity to the App. New issue if and when the
-  block surfaces.
+  block surfaces.~~ **Done.** Surfaced on the first real run for
+  `release/0.14.0` (the org flag *Allow GitHub Actions to create and
+  approve pull requests* was off, not the ruleset). `release-pr.yml`
+  now mints an App token and uses it for both the release-branch
+  push and the `gh pr` calls.

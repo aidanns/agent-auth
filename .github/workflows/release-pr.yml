@@ -18,10 +18,18 @@
 # under the new version, so a stale PR never lingers ahead of an
 # updated plan.
 #
-# Bot identity: uses the default GITHUB_TOKEN. If the `main` ruleset
-# blocks PRs opened or merged by the workflow token, swap to the
-# existing release App via `actions/create-github-app-token` —
-# tracked as a follow-up to ADR 0041.
+# Bot identity: PR creation goes through the `agent-auth-release-bot`
+# GitHub App (secrets `RELEASE_BOT_APP_ID` and
+# `RELEASE_BOT_PRIVATE_KEY`) via `actions/create-github-app-token`.
+# The default `GITHUB_TOKEN` cannot open PRs unless the org/repo
+# setting "Allow GitHub Actions to create and approve pull requests"
+# is on, and enabling that flag would also let every workflow
+# auto-approve PRs — too broad for a repo with DCO/signing rigour. The
+# release branch push also runs under the App token so a future ruleset
+# tightening on `release/*` does not silently break the release flow.
+# Commits on the release branch keep `github-actions[bot]` as
+# author/committer because DCO auto-bypasses any
+# `[bot]@users.noreply.github.com` address (`.github/workflows/dco.yml`).
 
 name: Release PR
 
@@ -43,9 +51,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Mint a short-lived installation token from the
+      # `agent-auth-release-bot` App. Used for the release-branch push
+      # (so checkout persists it as the origin credential) and for the
+      # `gh pr` steps below — the default `GITHUB_TOKEN` cannot open
+      # PRs without globally widening workflow permissions.
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -138,7 +159,7 @@ jobs:
       - name: Close superseded release PRs
         if: steps.plan.outputs.skip == 'false'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           KEEP_BRANCH: ${{ steps.plan.outputs.branch }}
           NEXT: ${{ steps.plan.outputs.next_version }}
         shell: bash
@@ -167,7 +188,7 @@ jobs:
       - name: Open or update release PR
         if: steps.plan.outputs.skip == 'false'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ steps.plan.outputs.branch }}
           TITLE: ${{ steps.plan.outputs.title }}
         shell: bash
