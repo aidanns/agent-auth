@@ -44,7 +44,13 @@ runs:
         SESSION: ${{ inputs.session }}
       run: |
         set -euo pipefail
-        for service in agent-auth things-bridge things-cli things-client-applescript; do
+        for service in \
+          agent-auth \
+          gpg-bridge \
+          gpg-cli \
+          things-bridge \
+          things-cli \
+          things-client-applescript; do
           # --load imports the built image into the local Docker
           # daemon so ``docker compose`` can find it downstream; by
           # default buildx leaves the image in its internal cache and
