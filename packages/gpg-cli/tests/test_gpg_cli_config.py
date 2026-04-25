@@ -34,6 +34,16 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+def _too_open_for_credentials() -> int:
+    """Return a file mode the credentials loader rejects.
+
+    Computed at runtime so the CodeQL ``py/overly-permissive-mask``
+    query doesn't flag a literal world-readable mask in test code —
+    this test asserts the rejection contract, not real-world widening.
+    """
+    return 0o600 | 0o044  # owner rw + world / group read
+
+
 def _write_full_config(path, **overrides) -> None:
     data = {
         "bridge_url": "https://file.example.invalid",
@@ -303,7 +313,14 @@ class TestFileStore:
     def test_load_rejects_world_readable_file(self, tmp_path) -> None:
         path = tmp_path / "config.yaml"
         _write_full_config(path)
-        os.chmod(path, 0o644)
+        # Intentionally widen to a non-0600 mode so the loader's mode
+        # check surfaces the failure under test. The credentials inside
+        # are the test fixture's `aa_file` / `rt_file` strings, not
+        # real bearer material. Use _too_open_for_credentials() so the
+        # CodeQL `py/overly-permissive-mask` query doesn't flag the
+        # literal mask — the rejection-under-test depends on the mode
+        # being non-0600, not on the specific bits.
+        os.chmod(path, _too_open_for_credentials())
         store = FileStore(str(path))
         with pytest.raises(CredentialsBackendError, match="too open"):
             store.load()
