@@ -538,11 +538,18 @@ Configure git to add the trailer automatically with `-s`:
 git commit -s -m "feat(thing): new thing"
 ```
 
-Or set it once per clone so every `git commit` includes it:
+Or alias the flag once per clone so it doesn't need to be typed every commit:
 
 ```bash
-git config --local format.signoff true
+git config --local alias.c 'commit -s'
+# then: git c -m "feat(thing): new thing"
 ```
+
+Git has no native config option that makes `git commit` always add the
+trailer (`format.signoff` only affects `git format-patch`, and
+`commit.signoff` is not recognised). A `prepare-commit-msg` hook is
+the alternative for contributors who'd rather not change their
+muscle memory.
 
 Bot-authored commits (Dependabot, Release Please, the GitHub
 web-flow signer used on squash merges) are exempted by the workflow.
