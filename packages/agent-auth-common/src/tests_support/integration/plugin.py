@@ -281,12 +281,16 @@ def _compose_image_env(image_tags: dict[str, str]) -> dict[str, str]:
 
     Centralised so the agent-auth-only and bridge fixtures pass the
     same keys — the compose file rejects a run that leaves a ``${VAR}``
-    unresolved.
+    unresolved. Profile-gated services (``gpg-bridge``, ``gpg-cli``)
+    still need their image vars set because docker compose interpolates
+    every ``${VAR}`` in the file before activating profiles.
     """
     return {
         "AGENT_AUTH_TEST_IMAGE": image_tags["agent-auth"],
         "THINGS_BRIDGE_TEST_IMAGE": image_tags["things-bridge"],
         "THINGS_CLI_TEST_IMAGE": image_tags["things-cli"],
+        "GPG_BRIDGE_TEST_IMAGE": image_tags["gpg-bridge"],
+        "GPG_CLI_TEST_IMAGE": image_tags["gpg-cli"],
     }
 
 
@@ -681,3 +685,223 @@ def things_bridge_stack(
     """Default integration fixture — auto-approve plugin so JIT prompts
     for ``things:read`` complete without host interaction."""
     return things_bridge_stack_factory()
+
+
+# ---------------------------------------------------------------------------
+# gpg-bridge stack fixtures.
+# ---------------------------------------------------------------------------
+# The gpg-bridge integration tests spin up the agent-auth + gpg-bridge
+# pair inside the shared compose file. ``gpg-bridge`` is profile-gated
+# (``profiles: [gpg]`` in docker-compose.yaml) so the existing
+# agent-auth and things-bridge fixtures continue to start only their
+# subset; the gpg fixtures opt in by passing ``COMPOSE_PROFILES=gpg``
+# to docker compose.
+
+GPG_BRIDGE_INTERNAL_PORT = 9300
+
+
+@dataclass
+class GpgBridgeStack:
+    """Handle for a running ``agent-auth`` + ``gpg-bridge`` Compose pair.
+
+    Carries the in-image signing key fingerprint so tests can drive
+    sign requests against a real key without a per-test
+    ``--list-secret-keys`` shell-out. ``allowed_secondary_fingerprint``
+    is the second baked key — the ``allowed_signing_keys`` integration
+    test points the bridge at the primary fingerprint and signs with
+    the secondary to assert the deny path.
+    """
+
+    base_url: str
+    cluster: StartedCluster
+    agent_auth: AgentAuthContainer
+    primary_fingerprint: str
+    secondary_fingerprint: str
+
+    def stop_agent_auth(self) -> None:
+        """Stop ``agent-auth`` mid-test to exercise the bridge's ``authz_unavailable`` path."""
+        self.cluster.stop_service("agent-auth")
+
+
+def _list_test_fingerprints(cluster: StartedCluster, *, expected: int = 2) -> list[str]:
+    """Return the per-image baked secret-key fingerprints, in baked order.
+
+    Shells into the ``gpg-bridge`` container at fixture-start time and
+    parses ``gpg --list-secret-keys --with-colons``. Two fingerprints
+    are baked into the test image (see ``Dockerfile.gpg-bridge.test``)
+    so the allowlist test has a real "different fingerprint" to assert
+    against. Raises if fewer than ``expected`` keys are found — that's
+    a regression on the image build, not a test-data variation, and
+    silent fall-through would let the allowlist test pass against the
+    same key it's trying to deny.
+    """
+    result = cluster.exec(
+        "gpg-bridge",
+        ["gpg", "--list-secret-keys", "--with-colons"],
+        timeout_seconds=15.0,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"gpg --list-secret-keys failed inside gpg-bridge container: "
+            f"exit={result.returncode} stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+    fingerprints: list[str] = []
+    for line in result.stdout.splitlines():
+        if line.startswith("fpr:"):
+            fingerprints.append(line.split(":")[9])
+    if len(fingerprints) < expected:
+        raise RuntimeError(
+            f"expected at least {expected} baked test signing keys in gpg-bridge image, "
+            f"found {len(fingerprints)}: {fingerprints!r}. Verify "
+            f"docker/Dockerfile.gpg-bridge.test still bakes both keys."
+        )
+    return fingerprints
+
+
+def _gpg_bridge_cluster(
+    *,
+    project_name: str,
+    image_tags: dict[str, str],
+    config_dir: Path,
+    fixtures_dir: Path,
+    notifier_mode: str,
+    logs_dir: Path,
+) -> DockerComposeCluster:
+    """Build the per-test cluster definition with both service waits wired up.
+
+    Activates the ``gpg`` compose profile so ``gpg-bridge`` (profile-
+    gated in docker-compose.yaml) is brought up alongside agent-auth.
+    The notifier sidecar and the empty things-bridge fixtures dir
+    follow the same pattern as the agent-auth-only fixture: the
+    compose file always wires those up, and a missing bind-mount
+    target would make the things-bridge container fail to start.
+    """
+    builder = (
+        DockerComposeCluster.builder()
+        .project_name(project_name)
+        .file(COMPOSE_FILE)
+        .env("AGENT_AUTH_TEST_CONFIG_DIR", str(config_dir))
+        .env("THINGS_BRIDGE_TEST_FIXTURES_DIR", str(fixtures_dir))
+        .env("NOTIFIER_MODE", notifier_mode)
+        # Activates ``gpg-bridge`` (and the on-demand ``gpg-cli``
+        # service for ``docker compose run --rm gpg-cli`` invocations).
+        .env("COMPOSE_PROFILES", "gpg")
+    )
+    for key, value in _compose_image_env(image_tags).items():
+        builder = builder.env(key, value)
+    return (
+        builder.waiting_for_service(
+            "agent-auth",
+            HealthChecks.to_respond_over_http(
+                internal_port=AGENT_AUTH_INTERNAL_PORT,
+                url_format="http://$HOST:$EXTERNAL_PORT/agent-auth/health",
+                accept_statuses={401, 403},
+            ),
+        )
+        .waiting_for_service(
+            "gpg-bridge",
+            HealthChecks.to_respond_over_http(
+                internal_port=GPG_BRIDGE_INTERNAL_PORT,
+                url_format="http://$HOST:$EXTERNAL_PORT/gpg-bridge/health",
+                # The bridge requires a bearer token on every endpoint
+                # including /health; an unauthenticated probe receives
+                # 401 from the auth check before the health logic runs.
+                # Treat 401/403 as "server is up" — same indirection
+                # used for things-bridge.
+                accept_statuses={401, 403},
+            ),
+        )
+        .save_logs_to(logs_dir, on_success=False)
+        .build()
+    )
+
+
+@pytest.fixture
+def gpg_bridge_stack_factory(
+    _test_image_tags: dict[str, str],
+    tmp_path_factory: pytest.TempPathFactory,
+    request: pytest.FixtureRequest,
+) -> Generator[Callable[..., GpgBridgeStack], None, None]:
+    """Factory fixture — spin up the agent-auth + gpg-bridge pair."""
+    started: list[StartedCluster] = []
+
+    def _factory(
+        *,
+        approval: str = "approve",
+        access_token_ttl_seconds: int = 900,
+        refresh_token_ttl_seconds: int = 28800,
+    ) -> GpgBridgeStack:
+        if approval not in APPROVAL_PLUGINS:
+            raise ValueError(
+                f"unknown approval mode {approval!r}; expected one of "
+                f"{sorted(APPROVAL_PLUGINS)}"
+            )
+
+        project_name = f"gpg-bridge-it-{uuid.uuid4().hex[:12]}"
+        agent_auth_config_dir = tmp_path_factory.mktemp(f"aa-cfg-{project_name}")
+        # The compose file always wires the things-bridge bind-mount
+        # even though the gpg fixture never drives it; seed an empty
+        # fixtures dir so the things-bridge container starts cleanly
+        # if compose's interpolation of the bind-mount path resolves
+        # to a real directory.
+        bridge_fixtures_dir = tmp_path_factory.mktemp(f"tb-fix-{project_name}")
+        logs_dir = tmp_path_factory.mktemp(f"logs-{project_name}")
+
+        _write_agent_auth_config_for_bridge(
+            agent_auth_config_dir,
+            access_token_ttl_seconds=access_token_ttl_seconds,
+            refresh_token_ttl_seconds=refresh_token_ttl_seconds,
+        )
+        seed_empty_fixtures_dir(bridge_fixtures_dir)
+
+        cluster = _gpg_bridge_cluster(
+            project_name=project_name,
+            image_tags=_test_image_tags,
+            config_dir=agent_auth_config_dir,
+            fixtures_dir=bridge_fixtures_dir,
+            notifier_mode=APPROVAL_PLUGINS[approval],
+            logs_dir=logs_dir,
+        )
+        with phase_timer("compose_start", project=project_name, service="gpg-bridge"):
+            running = cluster.start()
+        started.append(running)
+
+        bridge_port = running.service("gpg-bridge").port(GPG_BRIDGE_INTERNAL_PORT)
+        base_url = bridge_port.in_format("http://$HOST:$EXTERNAL_PORT")
+        agent_auth = AgentAuthContainer(
+            base_url="http://agent-auth:9100",  # internal only; CLI doesn't use it
+            cluster=running,
+            service="agent-auth",
+        )
+        primary, secondary, *_ = _list_test_fingerprints(running, expected=2)
+        return GpgBridgeStack(
+            base_url=base_url,
+            cluster=running,
+            agent_auth=agent_auth,
+            primary_fingerprint=primary,
+            secondary_fingerprint=secondary,
+        )
+
+    yield _factory
+
+    failed = _test_failed(request)
+    for running in started:
+        try:
+            with phase_timer(
+                "compose_stop",
+                project=running.project_name,
+                service="gpg-bridge",
+                budget_seconds=COMPOSE_STOP_BUDGET_SECONDS,
+            ):
+                running.stop(test_failed=failed)
+        except Exception as e:
+            print(f"warning: compose teardown failed: {e!r}")
+
+
+@pytest.fixture
+def gpg_bridge_stack(
+    gpg_bridge_stack_factory: Callable[..., GpgBridgeStack],
+) -> GpgBridgeStack:
+    """Default integration fixture — auto-approve so ``gpg:sign=allow``
+    JIT-prompt tokens never block the test on host interaction."""
+    return gpg_bridge_stack_factory()

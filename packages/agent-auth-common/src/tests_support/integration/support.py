@@ -40,6 +40,8 @@ PER_SERVICE_DOCKERFILES: dict[str, Path] = {
     "things-bridge": DOCKER_DIR / "Dockerfile.things-bridge.test",
     "things-cli": DOCKER_DIR / "Dockerfile.things-cli.test",
     "things-client-applescript": DOCKER_DIR / "Dockerfile.things-client-applescript.test",
+    "gpg-bridge": DOCKER_DIR / "Dockerfile.gpg-bridge.test",
+    "gpg-cli": DOCKER_DIR / "Dockerfile.gpg-cli.test",
 }
 
 # Phase timings are emitted as INFO logs on the ``integration.timing``

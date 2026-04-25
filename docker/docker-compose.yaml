@@ -69,6 +69,40 @@ services:
       - on-demand
     stop_grace_period: 5s
 
+  gpg-bridge:
+    image: ${GPG_BRIDGE_TEST_IMAGE}
+    # Bind only on loopback so the container is never reachable from
+    # the rest of the network.
+    ports:
+      - "127.0.0.1::9300"
+    configs:
+      - source: gpg_bridge_config
+        target: /home/agent-auth/.config/gpg-bridge/config.yaml
+        mode: 0644
+    depends_on:
+      - agent-auth
+    # gpg-bridge isn't part of the default agent-auth-only / things-bridge
+    # bring-up, so park it behind the same ``on-demand`` profile pattern
+    # used by ``things-cli``: the gpg-bridge fixture explicitly opts in
+    # by passing ``--profile gpg`` to its compose CLI, and the other
+    # per-service fixtures never start a gpg-bridge container.
+    profiles:
+      - gpg
+    stop_grace_period: 5s
+
+  gpg-cli:
+    # Launched only by the gpg-bridge integration tests via
+    # ``docker compose run --rm gpg-cli <argv>``. Same ``on-demand``
+    # rationale as ``things-cli``: no long-running ENTRYPOINT, so
+    # leaving it out of ``docker compose up --wait`` keeps the wait
+    # gate honest. The ``gpg`` profile keeps it grouped with
+    # ``gpg-bridge`` for ``--profile gpg`` activation.
+    image: ${GPG_CLI_TEST_IMAGE}
+    profiles:
+      - on-demand
+      - gpg
+    stop_grace_period: 5s
+
 # Bridge config is shipped inline rather than via a per-test bind mount.
 # No test currently overrides bridge config, so a single source of truth
 # wired through compose is simpler than a copied-tmpdir indirection.
@@ -86,4 +120,17 @@ configs:
         - things_client_fake
         - --fixtures
         - /srv/things-fixtures/things.yaml
+      request_timeout_seconds: 35.0
+  gpg_bridge_config:
+    # The bridge default ``gpg_command`` (``gpg``) already resolves on
+    # PATH inside the test image, so it is left implicit here.
+    # ``allowed_signing_keys`` is left empty by default (every key
+    # the host gpg has is allowed); the allowlist test writes a
+    # config override at fixture time when it needs to assert the
+    # deny path. The bridge speaks plaintext loopback HTTP inside the
+    # compose network — TLS posture is exercised by unit tests.
+    content: |
+      host: 0.0.0.0
+      port: 9300
+      auth_url: http://agent-auth:9100
       request_timeout_seconds: 35.0
