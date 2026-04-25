@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from cli_meta import add_version_flag
 from gpg_bridge.authz import AgentAuthClient
 from gpg_bridge.config import load_config
 from gpg_bridge.gpg_client import GpgSubprocessClient
@@ -24,6 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
             "(default ``gpg``) per ADR 0033."
         ),
     )
+    add_version_flag(parser, "gpg-bridge")
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("serve", help="Start the HTTP bridge server")
     return parser

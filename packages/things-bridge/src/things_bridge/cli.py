@@ -8,6 +8,7 @@ import argparse
 import sys
 
 from agent_auth_client import AgentAuthClient
+from cli_meta import add_version_flag
 from things_bridge.config import load_config
 from things_bridge.server import run_server
 from things_bridge.things_client import ThingsSubprocessClient
@@ -21,6 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Delegates Things interaction to a configured things-client subprocess."
         ),
     )
+    add_version_flag(parser, "things-bridge")
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("serve", help="Start the HTTP bridge server")
     return parser

@@ -5,11 +5,15 @@
 """Smoke tests for the things-cli argparse entrypoint."""
 
 import os
+import re
+from importlib.metadata import version as _dist_version
 
 import pytest
 import yaml
 
 from things_cli.cli import main
+
+_SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+")
 
 
 def _args(tmp_path, *extra: str) -> list[str]:
@@ -165,3 +169,23 @@ def test_show_commands_pass_raw_id_to_client(tmp_path, command, expected_id, mon
     rc = main(_args(tmp_path, *command))
     assert rc == 0
     assert captured_ids == [expected_id]
+
+
+def test_version_flag_prints_distribution_version(capsys):
+    """``--version`` prints ``things-cli <version>`` and exits 0.
+
+    Argparse's ``action="version"`` raises ``SystemExit(0)`` after
+    writing the banner to stdout (see ``cli_meta.add_version_flag``).
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--version"])
+    assert excinfo.value.code == 0
+    captured = capsys.readouterr()
+    line = captured.out.rstrip("\n")
+    assert line.startswith("things-cli "), f"unexpected prefix: {line!r}"
+    payload = line[len("things-cli ") :].strip()
+    assert _SEMVER_RE.match(payload), f"unexpected version payload: {payload!r}"
+    assert payload == _dist_version("things-cli"), (
+        f"CLI reported {payload!r} but importlib.metadata reports "
+        f"{_dist_version('things-cli')!r}"
+    )
