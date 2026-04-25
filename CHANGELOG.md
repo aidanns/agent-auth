@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.0](https://github.com/aidanns/agent-auth/compare/v0.11.0...v0.12.0) (2026-04-25)
+
+### Features
+
+- **coverage:** split --cov-fail-under into per-package floors ([#293](https://github.com/aidanns/agent-auth/issues/293))
+
 ## [0.11.0](https://github.com/aidanns/agent-auth/compare/v0.10.0...v0.11.0) (2026-04-25)
 
 ### ⚠ BREAKING CHANGES
