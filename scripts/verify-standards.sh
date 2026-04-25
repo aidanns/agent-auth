@@ -1531,7 +1531,7 @@ echo "verify-standards: ${ASSURANCE_FILE} declares a QM/SIL level with required 
 
 # CHANGELOG.md must exist per .claude/instructions/release-and-hygiene.md.
 # The `## [Unreleased]` section is intentionally absent: the YAML-driven
-# release workflow (ADR 0039) owns the file post-migration. Per-PR
+# release workflow (ADR 0040) owns the file post-migration. Per-PR
 # changelog entries live under `changelog/@unreleased/*.yml`;
 # `scripts/changelog/build_release.py` renders them into a new
 # versioned section at release time. The CHANGELOG itself is never
@@ -1874,14 +1874,16 @@ fi
 echo "verify-standards: ${error_taxonomy_file} exists and references all documented error codes."
 
 # OpenAPI specs live alongside the service that owns each surface
-# (packages/agent-auth/openapi/agent-auth.v1.yaml and
-# packages/things-bridge/openapi/things-bridge.v1.yaml), and
-# tests/test_openapi_spec.py must reference both so route and
-# error-taxonomy parity are enforced on every PR (#117).
+# (packages/agent-auth/openapi/agent-auth.v1.yaml,
+# packages/things-bridge/openapi/things-bridge.v1.yaml, and
+# packages/gpg-bridge/openapi/gpg-bridge.v1.yaml), and
+# tests/test_openapi_spec.py must reference all of them so route and
+# error-taxonomy parity are enforced on every PR (#117, #306).
 openapi_missing=0
 for spec in \
   packages/agent-auth/openapi/agent-auth.v1.yaml \
-  packages/things-bridge/openapi/things-bridge.v1.yaml; do
+  packages/things-bridge/openapi/things-bridge.v1.yaml \
+  packages/gpg-bridge/openapi/gpg-bridge.v1.yaml; do
   if [[ ! -f "${spec}" ]]; then
     echo "verify-standards: ${spec} is missing." >&2
     openapi_missing=1
@@ -1894,7 +1896,7 @@ if [[ ! -f "${openapi_contract_test}" ]]; then
   echo "  Add contract tests that diff spec paths against the server handlers." >&2
   openapi_missing=1
 else
-  for spec in agent-auth.v1.yaml things-bridge.v1.yaml; do
+  for spec in agent-auth.v1.yaml things-bridge.v1.yaml gpg-bridge.v1.yaml; do
     if ! grep -q "${spec}" "${openapi_contract_test}"; then
       echo "verify-standards: ${openapi_contract_test} does not reference ${spec}." >&2
       openapi_missing=1
@@ -1906,7 +1908,7 @@ if [[ ${openapi_missing} -ne 0 ]]; then
   exit 1
 fi
 
-echo "verify-standards: packages/*/openapi/*.v1.yaml exist and ${openapi_contract_test} references both."
+echo "verify-standards: packages/*/openapi/*.v1.yaml exist and ${openapi_contract_test} references all three."
 
 # Health endpoints per .claude/instructions/service-design.md
 # ("Health endpoint") and the deterministic regression check from

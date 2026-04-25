@@ -56,7 +56,12 @@ def _load_validator_module() -> ModuleType:
 
 
 _VALIDATOR = _load_validator_module()
-extract_block = _VALIDATOR.extract_block
+# Use the COMMIT_MSG-specific wrapper so a missing block raises
+# ValidationError (the merge bot must refuse to merge in that case),
+# not the generic two-arg `extract_block` which returns None for
+# absent markers (a "fall through" signal callers like the changelog
+# bot in #298 want — see scripts/validate-commit-msg-block.py).
+extract_block = _VALIDATOR.extract_commit_msg_block
 ValidationError = _VALIDATOR.ValidationError
 
 

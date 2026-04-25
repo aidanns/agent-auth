@@ -243,7 +243,7 @@ Breaking changes carry a `BREAKING CHANGE:` footer in the
 `==COMMIT_MSG==` block (see "Writing PRs" below). They normally bump
 major; while the project is in the 0.x range they are demoted to a
 minor bump via
-[ADR 0039](design/decisions/0039-yaml-driven-release-workflow.md)
+[ADR 0040](design/decisions/0040-yaml-driven-release-workflow.md)
 (carried over from
 [ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
 § Pre-1.0 behaviour). `break:` is the corresponding PR-title prefix.
@@ -402,21 +402,134 @@ range (per ADR 0026 § Pre-1.0 behaviour). Force the graduation to
 
 ### Authoring path
 
-Hand-write the YAML for now and commit it alongside the diff. A
-scaffolding helper (`task changelog-add`) lands in #297; bot-mediated
-authoring via `==CHANGELOG_MSG==` markers in the PR body lands in
-#298. Both build on the same schema enforced here.
+Three ways to satisfy the lint, in increasing order of automation:
+
+1. **Hand-author the YAML** — write
+   `changelog/@unreleased/pr-<N>-<slug>.yml` and commit it alongside
+   the diff. The schema is enforced by
+   [`Changelog Lint`](.github/workflows/changelog-lint.yml). Use this
+   when you want to fine-tune the entry (e.g. `packages:` filters or
+   a `release-as` override).
+2. **Use the scaffolding helper** — `task changelog:add` (alias:
+   `task changelog-add`) writes a templated entry from CLI flags or
+   walks an interactive prompt. Same schema, less boilerplate. See
+   [the CLI section below](#changelog-add-cli).
+3. **Use the bot** — uncomment the `==CHANGELOG_MSG==` block in the
+   PR template and put the release-note text between the markers.
+   The
+   [`Changelog Bot`](.github/workflows/changelog-bot.yml) workflow
+   composes the YAML, derives the `type:` from the PR-title prefix,
+   and commits the file to the PR branch on the next push. See
+   [the marker section below](#changelog-bot-markers).
 
 The `no changelog` label opt-out skips the file-presence check but
 schema validation still runs over any files that *are* present, so
 an opt-out PR can't sneak in malformed YAML.
+
+### `task changelog:add` CLI
+
+`task changelog:add` (alias `task changelog-add`, matching the
+spelling in #297) drives `scripts/changelog/add.py`. The CLI runs the
+same validation gates as
+[`Changelog Lint`](.github/workflows/changelog-lint.yml) before
+writing — the `--type`, `--packages`, and `--release-as` checks reuse
+`scripts/changelog/version_logic.py` directly, so a CLI-authored
+entry that *the CLI accepts* is guaranteed to also pass the CI lint.
+
+**Interactive mode** (no flags) walks through type, description,
+optional packages, PR number (auto-detected from `gh pr view`), and
+optionally `release-as`:
+
+```bash
+task changelog:add
+```
+
+`$EDITOR` is opened for the description when `--editor` is passed;
+otherwise the prompt accepts a single line. Pass `--release-as` (with
+or without a value) to be prompted for an override; without the flag
+the prompt is skipped so accidental graduations are not possible.
+
+**Non-interactive mode** is for scripted use (e.g. inside another
+agent / CI workflow). Every required field is read from flags:
+
+```bash
+task changelog:add -- \
+  --type fix \
+  --description "Tighten the HMAC comparison so it is constant-time." \
+  --pr 123
+```
+
+Optional flags:
+
+- `--packages agent-auth,agent-auth-common` — comma-separated
+  workspace member list. Validated against `packages/*/pyproject.toml`
+  `[project].name`. Omit for workspace-wide entries.
+- `--release-as 1.0.0` — force a specific next version. The CLI
+  re-runs `validate_release_as` against the new entry plus every
+  existing entry under `changelog/@unreleased/`, so a violation
+  surfaces synchronously rather than after CI.
+- `--editor` — open `$EDITOR` for multi-line input in interactive
+  mode. Ignored when `--description` is also passed.
+- `--current-version 0.4.2` — override the current version (default
+  is `git describe --tags --abbrev=0 --match v*.*.*`, falling back to
+  `0.0.0` when no tag exists yet).
+
+The slug after `pr-<N>-` is generated from a small bundled wordlist
+(`scripts/changelog/wordlist.py`); two random words joined with `-`.
+The CLI retries on filename collisions inside one PR's directory.
+
+When `stdin` is not a TTY (e.g. CI, piped invocations), the
+interactive walk-through is suppressed — pass every required flag or
+the CLI exits non-zero with a "non-interactive mode requires …"
+message rather than blocking on `input()`.
+
+A non-blocking pre-push lefthook hook (`scripts/changelog/add.sh --check`) prints a one-line warning to stderr when the local branch
+has no `changelog/@unreleased/pr-<N>-*.yml` entry vs. `origin/main`.
+The hook is advisory — the PR-time `Changelog Lint` workflow is the
+authoritative gate. Pass `--strict` (manual escape hatch) to make
+the warning a hard local failure.
+
+### Changelog-bot markers
+
+The PR template ships two optional markers that the changelog bot
+reads (alongside the `==COMMIT_MSG==` block from
+[ADR 0037](design/decisions/0037-palantir-commit-prefixes-and-commit-msg-block.md)).
+Both are commented out by default; uncomment one when you want the
+bot's behaviour:
+
+- **`==CHANGELOG_MSG==` … `==CHANGELOG_MSG==`** — content becomes the
+  `description:` field of an auto-created
+  `changelog/@unreleased/pr-<N>-bot-<hash>.yml`. The bot maps the
+  PR-title prefix to the YAML `type:` per
+  [ADR 0037](design/decisions/0037-palantir-commit-prefixes-and-commit-msg-block.md)'s
+  table (`feature:` -> `feature`, `fix:` -> `fix`, ...). For
+  `chore:` PRs the bot leaves a comment instead — `chore:` PRs need
+  the opt-out marker below.
+- **`==NO_CHANGELOG==`** — apply the `no changelog` label so the
+  changelog-file requirement is bypassed. Required for `chore:` PRs
+  with no user-visible change; optional for any PR where you've
+  decided no changelog entry is appropriate. Removing the marker on
+  the next push removes the label (only when the bot applied it; a
+  maintainer-applied label is preserved).
+
+The bot **stops modifying** the YAML it wrote once any non-bot commit
+touches the file. Hand-edit freely after the bot bootstraps the
+entry: a `git commit` from your identity claims authorship and the
+bot leaves the file alone for the rest of the PR's life. Re-engaging
+the bot is an explicit operation (revert your edit), not the default.
+
+Setup instructions for the bot's GitHub App live in
+[`docs/release/changelog-bot-setup.md`](docs/release/changelog-bot-setup.md).
+Architectural rationale (dedicated App, lockout strategy,
+loop-prevention guards) lives in
+[ADR 0039](design/decisions/0039-bot-mediated-changelog-authoring.md).
 
 ## Release process
 
 Releases are driven by `changelog/@unreleased/pr-*.yml` files (one per
 PR — see [Changelog entries](#changelog-entries-changelogunreleasedyml))
 and two GitHub Actions workflows. Rationale and trade-offs in
-[ADR 0039](design/decisions/0039-yaml-driven-release-workflow.md);
+[ADR 0040](design/decisions/0040-yaml-driven-release-workflow.md);
 the supply-chain artefact chain (SBOMs, cosign, SLSA-L3) carries over
 from
 [ADR 0016](design/decisions/0016-release-supply-chain.md) and
@@ -506,7 +619,7 @@ agreement); conflicting values fail the lint.
   `BREAKING CHANGE:` footer in the `==COMMIT_MSG==` block (paired
   with the `break:` PR-title prefix). Pre-1.0, the bump table
   demotes them to a minor bump per
-  [ADR 0039](design/decisions/0039-yaml-driven-release-workflow.md)
+  [ADR 0040](design/decisions/0040-yaml-driven-release-workflow.md)
   (carried over from ADR 0026).
 
 Hand edits to historical `CHANGELOG.md` content are preserved
@@ -628,7 +741,7 @@ pushes from the default `GITHUB_TOKEN` do **not** fire downstream
 
 The repo currently uses the App registered for the previous
 semantic-release flow (kept named `semantic-release-agent-auth`
-pending a follow-up rename — see ADR 0039 § Follow-ups). Repo
+pending a follow-up rename — see ADR 0040 § Follow-ups). Repo
 secrets:
 
 - `SEMANTIC_RELEASE_APP_ID` — the App's numeric ID.

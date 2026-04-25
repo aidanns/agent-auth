@@ -114,3 +114,47 @@ p11_container: "" {
   p15.shape: circle
 }
 p11 -> p11_container
+
+p16: gpg-bridge
+p16.width: 400
+root -> p16
+p16_container: "" {
+  grid-columns: 3
+  grid-rows: 1
+  grid-gap: 5
+  style: {
+    stroke-width: 0
+    fill: transparent
+  }
+  p17: gpg\nbridge
+  p17.width: 150
+  p17.height: 150
+  p17.shape: circle
+  p18: gpg\nbackend\ncli\nhost
+  p18.width: 150
+  p18.height: 150
+  p18.shape: circle
+  p19: gpg
+  p19.width: 150
+  p19.height: 150
+  p19.shape: circle
+}
+p16 -> p16_container
+
+p20: gpg-cli
+p20.width: 400
+root -> p20
+p20_container: "" {
+  grid-columns: 3
+  grid-rows: 1
+  grid-gap: 5
+  style: {
+    stroke-width: 0
+    fill: transparent
+  }
+  p21: gpg\ncli
+  p21.width: 150
+  p21.height: 150
+  p21.shape: circle
+}
+p20 -> p20_container

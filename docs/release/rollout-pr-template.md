@@ -63,7 +63,7 @@ While #291 is pending, the maintainer at merge time:
 4. Clicks *Confirm squash and merge*.
 
 Releases are now driven by the YAML schema introduced in #295 and the
-release-PR workflow introduced in #296 (ADR 0039). The squash-merge
+release-PR workflow introduced in #296 (ADR 0040). The squash-merge
 subject doesn't need to be translated for the release to fire — the
 release version is computed from `changelog/@unreleased/*.yml`
 entries directly.

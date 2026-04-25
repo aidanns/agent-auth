@@ -327,7 +327,7 @@ compromise would not by itself defeat it:
   merge). Both the user PR and the release PR pass through the same
   review gate; version derivation is computed by
   `scripts/changelog/version_logic.py` from per-PR YAML entries. See
-  [ADR 0039](decisions/0039-yaml-driven-release-workflow.md)
+  [ADR 0040](decisions/0040-yaml-driven-release-workflow.md)
   (supersedes ADR 0026).
 - **Container / image signing.** Not applicable; the project
   ships source distributions and wheels, not OCI images.
@@ -351,7 +351,7 @@ compromise would not by itself defeat it:
   at issues for non-security requests.
 - **Outbound (release notes, advisories, changelog).**
   `CHANGELOG.md` is rendered from per-PR YAML entries under
-  `changelog/@unreleased/` (per ADR 0039) — `scripts/changelog/build_release.py`
+  `changelog/@unreleased/` (per ADR 0040) — `scripts/changelog/build_release.py`
   groups entries by type and prepends a new section to the file when
   the release-PR workflow runs. The GitHub Release body shares the
   same renderer so the two surfaces match byte-for-byte. Older

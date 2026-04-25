@@ -12,7 +12,7 @@ feature:
     library. Decommissions `.releaserc.mjs`, `package.json`,
     `package-lock.json`, the npm Dependabot ecosystem, and the legacy
     `scripts/release.sh` local-tag flow (the script is repurposed as
-    a workflow-dispatch wrapper). See ADR 0039.
+    a workflow-dispatch wrapper). See ADR 0040.
   links:
     - https://github.com/aidanns/agent-auth/issues/296
     - https://github.com/aidanns/agent-auth/issues/215

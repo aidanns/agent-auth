@@ -45,7 +45,7 @@ table or the `release-as` invariant.
 
 ### Architecture decision
 
-A new ADR — `design/decisions/0039-yaml-driven-release-workflow.md` —
+A new ADR — `design/decisions/0040-yaml-driven-release-workflow.md` —
 records the architectural switch from semantic-release (ADR 0026) to
 the YAML-driven release-PR flow. ADR 0026 stays accepted but is
 explicitly superseded by 0039 on the autorelease driver. The carry-
@@ -173,7 +173,7 @@ existing `scripts/changelog/test.sh` covers the new
   `release-as` raises, valid `release-as` honoured, file moves are
   computed but not executed by the pure compute step, the rendered
   notes satisfy `validate-commit-msg-block.py`'s rules.
-- `design/decisions/0039-yaml-driven-release-workflow.md` — the ADR.
+- `design/decisions/0040-yaml-driven-release-workflow.md` — the ADR.
 - `changelog/@unreleased/pr-<N>-yaml-driven-release-workflow.yml` —
   the `feature` entry for this PR (filename embeds the PR number,
   filled in once `gh pr create` returns it).

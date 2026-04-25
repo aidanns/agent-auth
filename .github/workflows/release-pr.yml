@@ -21,7 +21,7 @@
 # Bot identity: uses the default GITHUB_TOKEN. If the `main` ruleset
 # blocks PRs opened or merged by the workflow token, swap to the
 # existing release App via `actions/create-github-app-token` —
-# tracked as a follow-up to ADR 0039.
+# tracked as a follow-up to ADR 0040.
 
 name: Release PR
 

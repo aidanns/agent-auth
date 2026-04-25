@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    Add the `agent-auth-changelog-bot` GitHub App and the
+    `Changelog Bot` workflow that backs it. Contributors uncomment a
+    `==CHANGELOG_MSG==` block in the PR template and the bot composes
+    a `changelog/@unreleased/pr-<N>-*.yml`, derives the YAML `type:`
+    from the PR-title prefix, and commits the file to the PR branch.
+    A sibling `==NO_CHANGELOG==` marker applies the `no changelog`
+    label so the changelog lint bypasses the file-presence check.
+    Reconciliation with manual edits is via author-history lockout:
+    once any non-bot commit touches the file, the bot leaves it alone
+    for the rest of the PR's life. Loop-prevention via a workflow
+    `if:` plus a head-commit-author check on every run.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/298
+    - https://github.com/aidanns/agent-auth/pull/314

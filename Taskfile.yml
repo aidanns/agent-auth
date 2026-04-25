@@ -46,6 +46,16 @@ tasks:
     cmds:
       - scripts/changelog/test.sh {{.CLI_ARGS}}
 
+  changelog:add:
+    desc: "Scaffold a changelog/@unreleased/*.yml entry. Interactive walk-through with no flags; pass `-- --type <T> --description <D> --pr <N>` for non-interactive scripted use. See CONTRIBUTING.md § 'Authoring path'."
+    cmds:
+      - scripts/changelog/add.sh {{.CLI_ARGS}}
+
+  changelog-add:
+    desc: "Alias for `task changelog:add` (matches the spelling in #297's issue body)."
+    cmds:
+      - scripts/changelog/add.sh {{.CLI_ARGS}}
+
   benchmark:
     desc: Run the pytest-benchmark suite under packages/agent-auth/benchmarks/. See packages/agent-auth/benchmarks/README.md for the regression threshold and baseline refresh procedure.
     cmds:
@@ -136,6 +146,6 @@ tasks:
       - scripts/setup-devcontainer-signing.sh {{.CLI_ARGS}}
 
   release:
-    desc: "Force a refresh of the YAML-driven release PR by dispatching .github/workflows/release-pr.yml on main. The default flow runs that workflow automatically on every push to main; use this task as a manual escape hatch (e.g. after editing a changelog/@unreleased/*.yml directly via the GitHub UI). The release tag itself is cut by .github/workflows/release-tag.yml when the release PR merges. See CONTRIBUTING.md § Release process and ADR 0039."
+    desc: "Force a refresh of the YAML-driven release PR by dispatching .github/workflows/release-pr.yml on main. The default flow runs that workflow automatically on every push to main; use this task as a manual escape hatch (e.g. after editing a changelog/@unreleased/*.yml directly via the GitHub UI). The release tag itself is cut by .github/workflows/release-tag.yml when the release PR merges. See CONTRIBUTING.md § Release process and ADR 0040."
     cmds:
       - scripts/release.sh {{.CLI_ARGS}}

@@ -1,0 +1,453 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+openapi: 3.1.0
+info:
+  title: gpg-bridge
+  version: "1.0.0"
+  summary: Host-side GPG sign / verify proxy for devcontainer git signing.
+  description: |
+    `gpg-bridge` runs on the developer host and exposes GPG sign / verify
+    operations to the devcontainer's `gpg-cli` shim under
+    `/gpg-bridge/v1/`. The bridge itself contains no GPG logic — every
+    request is translated into a subprocess invocation of the configured
+    `gpg_backend_command` (default `gpg-backend-cli-host`). Token
+    validation is delegated to `agent-auth` (scope `gpg:sign` for the
+    data endpoints; `gpg-bridge:health` / `gpg-bridge:metrics` for the
+    probe endpoints).
+
+    Architecture: `design/decisions/0033-gpg-bridge-cli-split.md`.
+    Error taxonomy: see `design/error-codes.md` in the project repository.
+    Versioning policy: see `design/DESIGN.md` "API Versioning Policy" —
+    breaking changes land under `/gpg-bridge/v2/`; `/gpg-bridge/health`
+    and `/gpg-bridge/metrics` are unversioned by convention.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://127.0.0.1:9300
+    description: Default loopback bind address.
+tags:
+  - name: sign
+    description: GPG sign and verify endpoints backed by the host gpg subprocess.
+  - name: health
+    description: Liveness, readiness, and metrics probes.
+paths:
+  /gpg-bridge/v1/sign:
+    post:
+      tags: [sign]
+      summary: Detach-sign a payload using the host gpg keyring.
+      description: |
+        Translates the request into a `gpg --detach-sign` invocation in
+        the configured backend. The `local_user` must appear in the
+        bridge's `allowed_signing_keys` allowlist; the bridge enforces
+        the allowlist *before* delegating to `agent-auth`, so an
+        unknown key is rejected even with a valid `gpg:sign` token.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignRequest'
+      responses:
+        '200':
+          description: Signature produced.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ScopeDenied'
+        '404':
+          $ref: '#/components/responses/NoSuchKey'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '411':
+          $ref: '#/components/responses/LengthRequired'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/Unavailable'
+        '503':
+          $ref: '#/components/responses/GpgPermissionDenied'
+
+  /gpg-bridge/v1/verify:
+    post:
+      tags: [sign]
+      summary: Verify a detached signature against a payload.
+      description: |
+        Translates the request into a `gpg --verify` invocation in the
+        configured backend. Requires the same `gpg:sign` scope as the
+        sign endpoint.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyRequest'
+      responses:
+        '200':
+          description: Verify completed (signature was valid).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ScopeDenied'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '411':
+          $ref: '#/components/responses/LengthRequired'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/Unavailable'
+        '503':
+          $ref: '#/components/responses/GpgPermissionDenied'
+
+  /gpg-bridge/health:
+    get:
+      tags: [health]
+      summary: Liveness and readiness probe (unversioned).
+      description: |
+        Unversioned by convention — probes must keep working across API
+        major bumps. Requires the `gpg-bridge:health` scope (delegated
+        to `agent-auth`).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Bridge is reachable, agent-auth accepted the token, and the configured `gpg_backend_command[0]` resolves on PATH.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthOk'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ScopeDenied'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          description: agent-auth is unreachable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: |
+            A critical downstream dependency is unavailable. Currently
+            indicates the configured `gpg_backend_command[0]` cannot
+            be resolved on PATH.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthUnhealthy'
+
+  /gpg-bridge/metrics:
+    get:
+      tags: [health]
+      summary: Prometheus metrics scrape endpoint (unversioned).
+      description: |
+        Unversioned by convention — scrape configs must keep working
+        across API major bumps. Requires the `gpg-bridge:metrics`
+        scope (delegated to agent-auth). Emits Prometheus text
+        exposition format v0.0.4.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current metric values.
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Prometheus text exposition.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ScopeDenied'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          description: agent-auth is unreachable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: aa_<id>_<hmac>
+      description: |
+        HMAC-signed agent-auth access token. Validation is delegated to
+        agent-auth.
+
+  schemas:
+    ErrorCode:
+      type: string
+      description: Stable error code. See `design/error-codes.md`.
+      enum:
+        - authz_unavailable
+        - bad_signature
+        - gpg_permission_denied
+        - gpg_unavailable
+        - invalid_content_length
+        - invalid_json
+        - invalid_request
+        - key_not_allowed
+        - length_required
+        - method_not_allowed
+        - no_such_key
+        - not_found
+        - payload_too_large
+        - rate_limited
+        - scope_denied
+        - token_expired
+        - unauthorized
+        - unsupported_operation
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorCode'
+        detail:
+          description: Optional human-readable detail or structured payload.
+
+    HealthOk:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
+    HealthUnhealthy:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [unhealthy]
+
+    KeyIdFormat:
+      type: string
+      description: |
+        Mirrors `gpg --keyid-format`. The bridge passes this through to
+        the backend gpg invocation.
+      enum: [none, short, "0xshort", long, "0xlong"]
+      default: long
+
+    SignRequest:
+      type: object
+      description: |
+        Inputs to a single `gpg --detach-sign` invocation. Mirrors
+        `gpg_models.models.SignRequest`.
+      required: [local_user, payload_b64]
+      properties:
+        local_user:
+          type: string
+          description: gpg `--local-user` value (key id, fingerprint, or email).
+          minLength: 1
+        payload_b64:
+          type: string
+          description: Base64-encoded payload to sign.
+          contentEncoding: base64
+        armor:
+          type: boolean
+          description: Emit ASCII-armored output (`gpg --armor`).
+          default: true
+        status_fd_enabled:
+          type: boolean
+          description: |
+            Capture `gpg --status-fd 2` output and return it as
+            `status_text`.
+          default: true
+        keyid_format:
+          $ref: '#/components/schemas/KeyIdFormat'
+
+    SignResult:
+      type: object
+      description: |
+        Outputs of a successful sign invocation. Mirrors
+        `gpg_models.models.SignResult`.
+      required: [signature_b64, status_text, exit_code]
+      properties:
+        signature_b64:
+          type: string
+          description: Base64-encoded detached signature.
+          contentEncoding: base64
+        status_text:
+          type: string
+          description: |
+            Captured `--status-fd 2` output, or empty if
+            `status_fd_enabled` was false.
+        exit_code:
+          type: integer
+          description: gpg subprocess exit code (always 0 on success).
+        resolved_key_fingerprint:
+          type: string
+          description: |
+            Optional 40-character primary-key fingerprint that
+            `local_user` resolved to. Empty when the backend did not
+            resolve / report it.
+
+    VerifyRequest:
+      type: object
+      description: |
+        Inputs to a single `gpg --verify` invocation. Mirrors
+        `gpg_models.models.VerifyRequest`.
+      required: [signature_b64, payload_b64]
+      properties:
+        signature_b64:
+          type: string
+          description: Base64-encoded detached signature to verify.
+          contentEncoding: base64
+        payload_b64:
+          type: string
+          description: Base64-encoded payload the signature claims to cover.
+          contentEncoding: base64
+        keyid_format:
+          $ref: '#/components/schemas/KeyIdFormat'
+
+    VerifyResult:
+      type: object
+      description: |
+        Outputs of a verify invocation. Mirrors
+        `gpg_models.models.VerifyResult`. A 200 response indicates the
+        signature is valid; an invalid signature surfaces as a 400
+        `bad_signature` error envelope.
+      required: [status_text, exit_code]
+      properties:
+        status_text:
+          type: string
+          description: Captured `--status-fd 2` output.
+        exit_code:
+          type: integer
+          description: gpg subprocess exit code.
+
+  responses:
+    BadRequest:
+      description: |
+        Request body is malformed. The `error` code distinguishes the
+        cause: `invalid_content_length`, `invalid_json`,
+        `invalid_request` (schema validation failed), `bad_signature`
+        (verify request found the signature invalid), or
+        `unsupported_operation` (the backend does not implement the
+        requested operation).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    Unauthorized:
+      description: Missing, invalid, or expired bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    ScopeDenied:
+      description: |
+        Token does not carry the required scope, or the requested
+        `local_user` is not in the bridge's `allowed_signing_keys`
+        allowlist (`key_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    NoSuchKey:
+      description: |
+        The requested signing key is not present in the host keyring
+        (`no_such_key`), or the path does not match any registered
+        endpoint (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    MethodNotAllowed:
+      description: An unsupported HTTP method was used.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    LengthRequired:
+      description: Request did not include a `Content-Length` header.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    PayloadTooLarge:
+      description: |
+        Request body exceeds the bridge's configured
+        `max_request_bytes` limit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    RateLimited:
+      description: |
+        Agent-auth refused the delegated `/validate` call for the
+        bearer token's family. Clients should retry after the integer
+        seconds in the `Retry-After` response header.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 0
+          description: Seconds to wait before retrying.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    Unavailable:
+      description: |
+        agent-auth or the gpg backend subprocess is unavailable. The
+        `error` code distinguishes between the two: `authz_unavailable`
+        for agent-auth, `gpg_unavailable` for an unclassified backend
+        failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    GpgPermissionDenied:
+      description: |
+        The host gpg could not access the keyring (e.g. agent down,
+        keyring locked).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'

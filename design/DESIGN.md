@@ -850,9 +850,9 @@ Run modes:
 `.claude/instructions/testing-standards.md` § Performance requires a
 documented latency target for critical operations plus at least one
 test that asserts the budget. This section pins the targets; the
-assertion lives in `tests/test_perf_budget.py` behind a
-`@pytest.mark.perf_budget` marker so the gate is discoverable by tag
-and independently runnable (`pytest -m perf_budget`).
+assertions live in per-package `tests/test_perf_budget.py` files
+behind a `@pytest.mark.perf_budget` marker so the gate is discoverable
+by tag and independently runnable (`pytest -m perf_budget`).
 
 The agent hot path — the one every third-party request passes through
 — is `POST /agent-auth/v1/validate`. A slow validate becomes a
@@ -865,13 +865,43 @@ budget:
 | `POST /agent-auth/v1/token/refresh` | 20 ms        | 100 ms | Mark-consumed + new-token-pair write under a transaction; inherently hotter than validate because it writes, not reads.                                                                                                                                                         |
 | `POST /agent-auth/v1/token/create`  | 30 ms        | 150 ms | Management-side, low volume; budgeted generously because it also holds an encrypted scope write.                                                                                                                                                                                |
 
-Measurement protocol: the perf-budget test drives the listed endpoint
-against a throwaway in-process `AgentAuthServer` bound to `127.0.0.1:0`
-(same fixture pattern the other handler-edge tests use), issues N=100
-sequential requests, and asserts the median and p95 of the per-request
-wall-clock duration do not exceed the numbers above. The budget is
-deliberately sequential — concurrency-level throughput is out of scope
-for a single-instance, single-user deployment.
+Measurement protocol for agent-auth: the perf-budget test drives the
+listed endpoint against a throwaway in-process `AgentAuthServer` bound
+to `127.0.0.1:0` (same fixture pattern the other handler-edge tests
+use), issues N=100 sequential requests, and asserts the median and p95
+of the per-request wall-clock duration do not exceed the numbers above.
+The budget is deliberately sequential — concurrency-level throughput is
+out of scope for a single-instance, single-user deployment.
+
+### gpg-bridge
+
+The bridge spawns the configured `gpg_backend_command` per request
+(the production binary is `gpg-backend-cli-host`, which itself shells
+out to the host `gpg`). Latency is therefore dominated by Python
+interpreter startup of the backend CLI subprocess plus the host `gpg`
+process — not by anything the bridge can shave inside the request
+handler. The budget below uses the test-only fake (`python -m gpg_backend_fake`) so the subprocess-startup cost stays in the loop
+but the unbounded wall-clock variance of real-key cryptography is
+not measured:
+
+| Endpoint                     | Median (p50) | p95    | Rationale                                                                                                                                                                                                                                                                     |
+| ---------------------------- | ------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /gpg-bridge/v1/sign`   | 200 ms       | 500 ms | Authz validate + bearer-token plumbing + Python `gpg_backend_fake` subprocess spawn (which dominates), JSON envelope round-trip, response. Local baseline on the devcontainer is ~72 ms p50 and ~75-122 ms p95; the floor adds CI / macOS-runner headroom (~3x p50, ~4x p95). |
+| `POST /gpg-bridge/v1/verify` | 200 ms       | 500 ms | Same shape as sign — the fake parses the FAKE-FP marker and returns a deterministic GOODSIG/VALIDSIG status block. Budget matches sign because both sides walk the same subprocess path; any deviation would be noise, not signal.                                            |
+
+Measurement protocol for gpg-bridge: the perf-budget test drives the
+sign and verify endpoints against a throwaway in-process
+`GpgBridgeServer` bound to `127.0.0.1:0` whose `gpg_backend_command`
+points at `python -m gpg_backend_fake` with a single-key fixture, with
+authz stubbed out. It warms up five requests, then issues N=100
+sequential requests of each shape and asserts the median and p95 of
+the per-request wall-clock duration do not exceed the numbers above.
+Throughput (signs/sec) is intentionally not budgeted — agent-auth's
+`/validate` is the per-request tax that bounds bridge throughput in
+practice, and the bridge handles a few signs per developer
+commit/push (see ADR 0033), not a sustained workload.
+
+### Ratchet policy
 
 The floor is a *never-loosen* signal, not a benchmark — it ratchets
 **downward** as the implementation improves, never upward, per the
