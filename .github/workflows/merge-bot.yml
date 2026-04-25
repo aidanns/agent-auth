@@ -238,15 +238,26 @@ jobs:
           # Anything not in the success/pending/skipped sets is a
           # failure. Surfaced as one line per check so the failure
           # comment can name the offending check.
+          #
+          # Filter out the merge-bot's own checks (workflowName ==
+          # "Merge Bot"). A previous failed merge-bot run would
+          # otherwise show up as a failure in the rollup and block
+          # every subsequent retrigger — the bot would refuse to
+          # merge forever after its first failure. The bot's pre-
+          # merge gating supersedes its own historical check
+          # outcomes; only the substantive required checks should
+          # gate the merge decision.
           failed="$(jq -r '
-            map(select(
+            map(select((.workflowName // "") != "Merge Bot"))
+            | map(select(
               ((.conclusion // "") | ascii_upcase | IN("FAILURE","TIMED_OUT","CANCELLED","STARTUP_FAILURE","ACTION_REQUIRED"))
               or ((.state // "") | ascii_upcase | IN("FAILURE","ERROR"))
             ))
             | map(.name // .context // "<unnamed>") | .[]
           ' <<<"${rollup}")"
           pending="$(jq -r '
-            map(select(
+            map(select((.workflowName // "") != "Merge Bot"))
+            | map(select(
               ((.conclusion // "") == ""
                 and ((.status // "") | ascii_upcase | IN("QUEUED","IN_PROGRESS","WAITING","PENDING","REQUESTED")))
               or ((.state // "") | ascii_upcase == "PENDING")
