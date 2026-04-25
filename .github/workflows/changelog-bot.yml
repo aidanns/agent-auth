@@ -1,0 +1,142 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Changelog Bot
+
+# Bot-mediated authoring for `changelog/@unreleased/*.yml` entries.
+# See `scripts/changelog/bot.py` for the decision tree, ADR 0039 for
+# the rationale, and `docs/release/changelog-bot-setup.md` for the
+# one-time GitHub-App setup.
+#
+# This runs on `pull_request` (NOT `pull_request_target`) so a fork
+# PR cannot mint a write-token from this workflow. The bot only acts
+# on PRs from branches in this repository.
+#
+# Loop prevention: the workflow is gated on the PR author NOT being
+# the bot's own login, AND the head commit's author email NOT being
+# the bot's own email. The bot's own commit triggering
+# `pull_request: synchronize` would otherwise fork-bomb the repo.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, unlabeled]
+
+permissions:
+  # The workflow file's GITHUB_TOKEN is unused — actions/create-github-
+  # app-token mints a separate installation token from the
+  # `agent-auth-changelog-bot` App. Keep the workflow-level perms
+  # minimal regardless.
+  contents: read
+  pull-requests: read
+
+jobs:
+  changelog-bot:
+    name: changelog-bot
+    runs-on: ubuntu-latest
+    # Loop guard #1: skip when the PR was opened by the bot itself.
+    # GitHub assigns the App-bot user `<slug>[bot]` as the actor for
+    # any commits / PRs created by an installation token.
+    if: github.event.pull_request.user.login != 'agent-auth-changelog-bot[bot]'
+    steps:
+      # Bail out cleanly when the bot's secrets haven't been provisioned
+      # yet (e.g. on the PR that initially adds this workflow, or in a
+      # fork that hasn't installed the App). The bot is purely additive
+      # ergonomics — contributors can still hand-author the YAML or use
+      # the marker once secrets are in place — so a not-yet-configured
+      # environment shouldn't fail the PR. Setup steps live in
+      # docs/release/changelog-bot-setup.md.
+      - name: Check secrets are configured
+        id: secrets-check
+        env:
+          APP_ID: ${{ secrets.CHANGELOG_BOT_APP_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APP_ID:-}" ]]; then
+            echo "::notice::CHANGELOG_BOT_APP_ID secret is not set; skipping bot run."
+            echo "::notice::See docs/release/changelog-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      # Mint a short-lived installation token from the changelog bot
+      # App. Stored secrets are created once during setup; see
+      # docs/release/changelog-bot-setup.md.
+      - name: Create GitHub App token
+        if: steps.secrets-check.outputs.configured == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.CHANGELOG_BOT_APP_ID }}
+          private-key: ${{ secrets.CHANGELOG_BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: steps.secrets-check.outputs.configured == 'true'
+        with:
+          # `git log --format=%an -- <path>` (lockout detection) needs
+          # the file's full history.
+          fetch-depth: 0
+          # Check out the PR head, not the merge commit, so the bot
+          # commits land on the contributor's branch.
+          ref: ${{ github.event.pull_request.head.sha }}
+          # Use the App token so the subsequent `git push` from the
+          # script reaches the protected branch with bot permissions.
+          token: ${{ steps.app-token.outputs.token }}
+          # Persist the App token in the local clone so `git push` in
+          # the script picks it up automatically.
+          persist-credentials: true
+
+      # Loop guard #2: bail out if the head commit was authored by the
+      # bot itself. This catches the same-PR re-trigger case where the
+      # bot's push fires `pull_request: synchronize` — the workflow's
+      # `if:` only filters on `pull_request.user`, which is the PR
+      # opener, not the latest committer.
+      - name: Loop guard — skip when the head commit is bot-authored
+        if: steps.secrets-check.outputs.configured == 'true'
+        id: loop-guard
+        run: |
+          set -euo pipefail
+          author_name=$(git log -1 --format='%an' HEAD)
+          echo "head-author=${author_name}" >> "${GITHUB_OUTPUT}"
+          if [[ "${author_name}" == "agent-auth-changelog-bot[bot]" ]]; then
+            echo "head commit was authored by the bot; skipping to avoid loop"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "skip=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Set up Python
+        if: steps.secrets-check.outputs.configured == 'true' && steps.loop-guard.outputs.skip != 'true'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install runtime deps (PyYAML)
+        if: steps.secrets-check.outputs.configured == 'true' && steps.loop-guard.outputs.skip != 'true'
+        # The bot's only third-party dependency is PyYAML (transitively
+        # via parse_entry_file in `version_logic.py`, used by
+        # tests/lint contracts). Avoid `uv sync --extra dev` here so
+        # the bot stays a thin Python entrypoint.
+        run: pip install --no-deps pyyaml
+
+      - name: Run changelog bot
+        if: steps.secrets-check.outputs.configured == 'true' && steps.loop-guard.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # Override the defaults from `bot.py` so a future App rename
+          # only needs a workflow edit.
+          CHANGELOG_BOT_LOGIN: agent-auth-changelog-bot[bot]
+          CHANGELOG_BOT_NAME: agent-auth-changelog-bot[bot]
+          # GitHub-Apps email convention is
+          # `<numeric-bot-id>+<login>@users.noreply.github.com`. The
+          # numeric ID is set during App setup and stored alongside
+          # the App-ID secret. The bot's git commits use this email
+          # for the "verified by GitHub" badge to show the App
+          # identity.
+          CHANGELOG_BOT_EMAIL: ${{ secrets.CHANGELOG_BOT_EMAIL }}
+        run: |
+          set -euo pipefail
+          python scripts/changelog/bot.py \
+            --pr ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --repo-root "${GITHUB_WORKSPACE}"
