@@ -4,8 +4,10 @@
 
 """Contract tests for the published OpenAPI specs.
 
-Keeps `packages/agent-auth/openapi/agent-auth.v1.yaml` and
-`packages/things-bridge/openapi/things-bridge.v1.yaml` in lockstep with
+Keeps the per-service OpenAPI specs
+(``packages/agent-auth/openapi/agent-auth.v1.yaml``,
+``packages/things-bridge/openapi/things-bridge.v1.yaml``,
+``packages/gpg-bridge/openapi/gpg-bridge.v1.yaml``) in lockstep with
 the server implementations:
 
 - Every route registered by ``AgentAuthHandler.do_GET`` /
@@ -13,7 +15,7 @@ the server implementations:
   ``paths`` entry in the spec.
 - Every spec path must correspond to a route the server actually
   handles (catches stale spec entries after a route rename).
-- Both spec files must parse as valid OpenAPI 3.x (via
+- All spec files must parse as valid OpenAPI 3.x (via
   ``openapi-spec-validator``).
 """
 
@@ -27,6 +29,7 @@ import yaml
 from openapi_spec_validator import validate
 
 from agent_auth import server as agent_auth_server
+from gpg_bridge import server as gpg_bridge_server
 from things_bridge import server as things_bridge_server
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -34,12 +37,13 @@ _AGENT_AUTH_SPEC = _REPO_ROOT / "packages" / "agent-auth" / "openapi" / "agent-a
 _THINGS_BRIDGE_SPEC = (
     _REPO_ROOT / "packages" / "things-bridge" / "openapi" / "things-bridge.v1.yaml"
 )
+_GPG_BRIDGE_SPEC = _REPO_ROOT / "packages" / "gpg-bridge" / "openapi" / "gpg-bridge.v1.yaml"
 
 # Pattern used to extract string literals from source — matches paths on
 # ``self.path == "..."``, ``path == "..."``, ``path.startswith("...")``,
-# plus bare ``/agent-auth/...`` or ``/things-bridge/...`` strings in
-# routing tables.
-_PATH_RE = re.compile(r'"(/(?:agent-auth|things-bridge)/[A-Za-z0-9/_\{\}-]*)"')
+# plus bare ``/agent-auth/...``, ``/things-bridge/...``, or
+# ``/gpg-bridge/...`` strings in routing tables.
+_PATH_RE = re.compile(r'"(/(?:agent-auth|things-bridge|gpg-bridge)/[A-Za-z0-9/_\{\}-]*)"')
 
 
 def _load_spec(path: Path) -> dict[str, Any]:
@@ -92,6 +96,11 @@ def test_things_bridge_spec_is_valid_openapi():
     validate(spec)
 
 
+def test_gpg_bridge_spec_is_valid_openapi():
+    spec = _load_spec(_GPG_BRIDGE_SPEC)
+    validate(spec)
+
+
 def test_agent_auth_routes_match_spec():
     """Every server route has a matching spec path, and vice versa.
 
@@ -136,11 +145,31 @@ def test_things_bridge_routes_match_spec():
     )
 
 
+def test_gpg_bridge_routes_match_spec():
+    """Every server route has a matching spec path, and vice versa."""
+    spec = _load_spec(_GPG_BRIDGE_SPEC)
+    server_paths = _normalise_parameterised(_handler_paths(gpg_bridge_server.GpgBridgeHandler))
+    spec_paths = _normalise_parameterised(_spec_paths(spec))
+
+    missing_from_spec = server_paths - spec_paths
+    stale_in_spec = spec_paths - server_paths
+
+    assert not missing_from_spec, (
+        "gpg-bridge routes missing from packages/gpg-bridge/openapi/gpg-bridge.v1.yaml: "
+        f"{missing_from_spec}"
+    )
+    assert not stale_in_spec, (
+        "packages/gpg-bridge/openapi/gpg-bridge.v1.yaml has stale entries not served by "
+        f"gpg-bridge: {stale_in_spec}"
+    )
+
+
 @pytest.mark.parametrize(
     "spec_path",
     [
         pytest.param(_AGENT_AUTH_SPEC, id="agent-auth"),
         pytest.param(_THINGS_BRIDGE_SPEC, id="things-bridge"),
+        pytest.param(_GPG_BRIDGE_SPEC, id="gpg-bridge"),
     ],
 )
 def test_error_codes_documented_in_error_taxonomy(spec_path):
