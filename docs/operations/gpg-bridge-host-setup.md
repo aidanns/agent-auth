@@ -93,25 +93,28 @@ Two distinct causes:
   fingerprint must match the form gpg uses (typically the long
   fingerprint, no spaces).
 
-### Probe 4: trial sign — `bridge unavailable` (gpg-cli exit 5)
+### Probe 4: trial sign — `signing backend unavailable` (gpg-cli exit 5)
 
-Symptom — the script prints:
+Symptom — `gpg-cli` exits with a stderr line of the form:
 
 ```
-setup-devcontainer-signing: probe failed: bridge unavailable (host gpg-bridge or its backend could not complete the request).
-setup-devcontainer-signing: causes: bridge subprocess timed out, host gpg-agent passphrase prompt blocked, or no 'allow-loopback-pinentry'.
+gpg-cli: signing backend unavailable: host gpg-agent likely needs
+allow-loopback-pinentry and a primed passphrase cache; see
+docs/operations/gpg-bridge-host-setup.md
 ```
 
-This almost always means the bridge invoked the host `gpg`
-backend, but the backend wedged or timed out. Causes:
+The bridge surfaced a 503 with `error: "signing_backend_unavailable"`
+because the host `gpg` subprocess hung past the bridge's per-request
+deadline (default 10s). The bridge itself is reachable; the wedge
+is at the gpg layer. Causes:
 
 - **Host gpg-agent is prompting for a passphrase that nothing can
   answer.** The bridge runs as a background service, so an
   interactive pinentry has no terminal to draw on. Add
   `allow-loopback-pinentry` to `~/.gnupg/gpg-agent.conf` and
-  restart the agent (`gpgconf --kill gpg-agent`). The bridge's
-  backend uses `--pinentry-mode loopback` to feed the passphrase
-  through the agent socket.
+  restart the agent (`gpgconf --kill gpg-agent`). The bridge uses
+  `--pinentry-mode loopback` to feed the passphrase through the
+  agent socket.
 - **Passphrase not cached.** Even with `allow-loopback-pinentry`,
   the agent needs to know the passphrase. Either pre-warm the
   cache (sign a dummy payload manually before starting the
@@ -121,13 +124,20 @@ backend, but the backend wedged or timed out. Causes:
   must succeed and resolve to a 2.x binary. Install via
   `brew install gnupg` on macOS or `apt-get install gnupg2` on
   Debian/Ubuntu.
-- **Bridge's backend subprocess wedged on stdin.** Tracked in
-  issue #331 — the bridge currently waits the full request
-  timeout before giving up, so a backend that blocks on a
-  passphrase prompt manifests as a 30-second hang. The fail-fast
-  fix shortens this to seconds and surfaces a structured
-  `signing_backend_unavailable` error code; until that lands,
-  this failure mode looks identical to a backend timeout.
+
+### Probe 4: trial sign — `bridge unavailable` (gpg-cli exit 5)
+
+Symptom — `gpg-cli` exits with `bridge unavailable: <detail>` on
+stderr (rather than `signing backend unavailable`). This is the
+generic 5xx / network path: the bridge process itself is the
+problem, not the gpg subprocess behind it. Distinguish from the
+`signing backend unavailable` case above, which is the wedge case
+with a directed remediation (`allow-loopback-pinentry`).
+
+Common causes: bridge crashed mid-request, an upstream proxy is
+returning 5xx, or the bridge's authz delegation to `agent-auth`
+itself failed (502 `authz_unavailable`). Check `gpg-bridge`'s log
+to disambiguate.
 
 ## Verifying the host bridge in isolation
 

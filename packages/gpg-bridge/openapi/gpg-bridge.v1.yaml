@@ -229,6 +229,7 @@ components:
         - payload_too_large
         - rate_limited
         - scope_denied
+        - signing_backend_unavailable
         - token_expired
         - unauthorized
         - unsupported_operation
@@ -447,8 +448,15 @@ components:
 
     GpgPermissionDenied:
       description: |
-        The host gpg could not access the keyring (e.g. agent down,
-        keyring locked).
+        The signing backend cannot complete the request right now. The
+        `error` code distinguishes the cause:
+        `gpg_permission_denied` for an actively refused operation
+        (e.g. keyring locked, agent declined to provide the key) or
+        `signing_backend_unavailable` for a wedged subprocess
+        (typically the host gpg-agent blocked waiting on a
+        non-existent pinentry — the response `detail` field carries
+        a remediation hint pointing at `~/.gnupg/gpg-agent.conf` and
+        `docs/operations/gpg-bridge-host-setup.md`).
       content:
         application/json:
           schema:
