@@ -15,6 +15,7 @@ from agent_auth.keys import KeyManager, SigningKey, check_key_integrity
 from agent_auth.scopes import parse_scope_arg
 from agent_auth.store import TokenStore
 from agent_auth.tokens import create_token_pair, generate_token_id
+from cli_meta import add_version_flag
 
 
 def _init_services(
@@ -316,6 +317,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="agent-auth",
         description="Token-based authorization for AI agent access to host applications.",
     )
+    add_version_flag(parser, "agent-auth")
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
     parser.add_argument("--config-dir", help="Override configuration directory")
 
