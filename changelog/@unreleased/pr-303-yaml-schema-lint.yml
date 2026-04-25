@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    Introduce the file-per-change YAML schema for `changelog/@unreleased/`
+    entries and a PR-time CI lint that enforces file presence, naming,
+    schema validity, and the `release-as` invariant. Foundation for the
+    upcoming release workflow rewrite.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/295
+    - https://github.com/aidanns/agent-auth/pull/303
