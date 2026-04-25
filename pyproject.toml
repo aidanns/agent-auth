@@ -327,7 +327,6 @@ module = [
     "test_gpg_bridge_server",
     "test_gpg_cli_cli",
     "test_gpg_cli_config",
-    "test_gpg_end_to_end",
     "test_gpg_models",
     "test_gpg_subprocess_client",
     "test_integration_harness",
