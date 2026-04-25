@@ -313,6 +313,85 @@ signing are sibling requirements, not the same thing. And
 [DCO sign-off](#dco-sign-off) — legal provenance via `Signed-off-by:`,
 distinct from both conventional-commit format and cryptographic signing.
 
+## Changelog entries (`changelog/@unreleased/*.yml`)
+
+Every PR adds at least one YAML file under `changelog/@unreleased/`
+describing the user-visible change, OR carries the `no changelog`
+label to opt out (typo fixes, internal refactors with no behaviour
+change, etc.). The PR-time
+[`Changelog Lint`](.github/workflows/changelog-lint.yml) workflow
+enforces this on every push. The release workflow (#296, in flight)
+will consume these files, compute the next version, and render
+`CHANGELOG.md` + GitHub Release notes from them — replacing the
+commit-message-derived flow described under
+[Release process](#release-process).
+
+Filename: `pr-<N>-<slug>.yml` where `<N>` is the PR number and
+`<slug>` is a short word-or-two identifier (lowercase letters, digits,
+dashes, underscores). Example: `pr-295-yaml-schema.yml`. Multiple
+files per PR are allowed when the change has more than one logically
+distinct user-visible effect.
+
+Schema (the lint rejects unknown keys, so this is the full surface):
+
+```yaml
+type: feature      # required: feature | improvement | fix | break | deprecation | migration
+feature:           # required: nested key matches `type:` for parser disambiguation
+  description: |   # required: free-text release note. Markdown allowed.
+    First-class line that becomes the bullet in CHANGELOG.md.
+  links:           # optional: extra URLs surfaced in the release notes
+    - https://github.com/aidanns/agent-auth/issues/295
+packages:          # optional: omit for a workspace-wide change
+  - agent-auth
+  - agent-auth-common
+release-as: 1.0.0  # optional: force a specific next version (must be > inferred)
+```
+
+### Picking a `type:`
+
+Mirrors the conventional-commit prefixes used in PR titles. The
+release-impact column is the source of truth in
+`scripts/changelog/version_logic.py` (the lint and the upcoming
+release workflow share it):
+
+| `type:`       | 0.x impact      | 1.x+ impact | Use for                                                            |
+| ------------- | --------------- | ----------- | ------------------------------------------------------------------ |
+| `feature`     | minor           | minor       | New user-visible feature or capability.                            |
+| `improvement` | patch           | patch       | Enhancement to an existing feature.                                |
+| `fix`         | patch           | patch       | Bug fix visible to users.                                          |
+| `break`       | minor (demoted) | major       | Backwards-incompatible change to a user-facing surface.            |
+| `deprecation` | patch           | patch       | Marking a feature deprecated (without removing it yet).            |
+| `migration`   | patch           | patch       | Schema, config, or filesystem migration that requires user action. |
+
+`break` demotes to a minor bump while the project is in the `0.x`
+range (per ADR 0026 § Pre-1.0 behaviour). Force the graduation to
+`1.0.0` with `release-as: 1.0.0` on the breaking change's YAML.
+
+### `packages:` and `release-as:`
+
+- **`packages:`** — list workspace members the change affects. Omit
+  the field for a workspace-wide change. The lint validates each
+  entry against `packages/*/pyproject.toml` `[project].name`. Today
+  every entry contributes to a single workspace-level bump (#275
+  graduates to per-package release trains).
+- **`release-as:`** — set when forcing a specific next version
+  (typically the `1.0.0` graduation). The lint requires the value
+  to be strictly greater than the version inferred from all
+  unreleased entries — equal or lower fails. Multiple entries
+  with conflicting `release-as` values also fail; multiple entries
+  with the same value pass (idempotent agreement).
+
+### Authoring path
+
+Hand-write the YAML for now and commit it alongside the diff. A
+scaffolding helper (`task changelog-add`) lands in #297; bot-mediated
+authoring via `==CHANGELOG_MSG==` markers in the PR body lands in
+#298. Both build on the same schema enforced here.
+
+The `no changelog` label opt-out skips the file-presence check but
+schema validation still runs over any files that *are* present, so
+an opt-out PR can't sneak in malformed YAML.
+
 ## Release process
 
 Two release paths exist:

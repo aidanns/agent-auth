@@ -41,6 +41,11 @@ tasks:
     cmds:
       - scripts/test.sh {{.CLI_ARGS}}
 
+  changelog:test:
+    desc: Run the unit tests for the workspace-level changelog tooling under scripts/changelog/. Kept separate from `task test` so the workspace coverage gate stays scoped to packages/*/src/.
+    cmds:
+      - scripts/changelog/test.sh {{.CLI_ARGS}}
+
   benchmark:
     desc: Run the pytest-benchmark suite under packages/agent-auth/benchmarks/. See packages/agent-auth/benchmarks/README.md for the regression threshold and baseline refresh procedure.
     cmds:
