@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    Add `task changelog:add` (alias `task changelog-add`) for scaffolding `changelog/@unreleased/*.yml` entries. Interactive prompt-driven walk-through by default, fully flag-driven (`--type / --description / --pr`) when stdin is not a TTY. Joins the hand-authored (#295) and bot-mediated (#298) paths as a third authoring mode; all three converge on the same on-disk YAML format.
+  links:
+    - https://github.com/aidanns/agent-auth/pull/322

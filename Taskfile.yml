@@ -46,6 +46,16 @@ tasks:
     cmds:
       - scripts/changelog/test.sh {{.CLI_ARGS}}
 
+  changelog:add:
+    desc: "Scaffold a changelog/@unreleased/*.yml entry. Interactive walk-through with no flags; pass `-- --type <T> --description <D> --pr <N>` for non-interactive scripted use. See CONTRIBUTING.md § 'Authoring path'."
+    cmds:
+      - scripts/changelog/add.sh {{.CLI_ARGS}}
+
+  changelog-add:
+    desc: "Alias for `task changelog:add` (matches the spelling in #297's issue body)."
+    cmds:
+      - scripts/changelog/add.sh {{.CLI_ARGS}}
+
   benchmark:
     desc: Run the pytest-benchmark suite under packages/agent-auth/benchmarks/. See packages/agent-auth/benchmarks/README.md for the regression threshold and baseline refresh procedure.
     cmds:
