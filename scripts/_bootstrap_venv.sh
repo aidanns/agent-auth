@@ -28,6 +28,19 @@ cd "${REPO_ROOT}"
 UV_PROJECT_ENVIRONMENT=".venv-$(uname -s)-$(uname -m)"
 export UV_PROJECT_ENVIRONMENT
 
+# The things-bridge / gpg-bridge integration tests launch their fakes
+# as subprocesses (``python -m things_client_fake``,
+# ``python -m gpg_backend_fake``). Subprocesses don't inherit pytest's
+# in-process ``pythonpath`` config, so export the per-package tests
+# trees (where the fakes live) on PYTHONPATH so the subprocesses
+# resolve the modules. Idempotent: prepending the same paths twice in
+# a chained `_bootstrap_venv.sh` invocation is harmless. The fakes are
+# never installed into the wheel — each package's
+# ``setuptools.packages.find`` excludes ``tests*`` — so this is a
+# dev/test-only path entry.
+PYTHONPATH="${REPO_ROOT}/packages/things-bridge/tests:${REPO_ROOT}/packages/gpg-bridge/tests${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+
 # `uv sync` creates the venv on first run and refreshes it when
 # pyproject.toml or uv.lock change — no manual hash marker needed.
 uv sync --extra dev --quiet

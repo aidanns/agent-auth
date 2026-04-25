@@ -5,7 +5,7 @@
 # never use in production.
 #
 # Unlike the ``agent-auth`` and ``things-bridge`` images this one does
-# not carry any ``tests_support`` / ``tests.things_client_fake`` — the
+# not carry any ``tests_support`` / ``things_client_fake`` — the
 # CLI has no test-only subprocess dependencies; it only speaks HTTP to
 # the in-compose ``things-bridge`` and ``agent-auth`` services.
 #

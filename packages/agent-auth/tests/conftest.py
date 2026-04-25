@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+"""Shared test fixtures for agent-auth."""
+
+import os
+import tempfile
+from unittest.mock import patch
+
+import pytest
+
+from agent_auth.config import Config
+from agent_auth.keys import EncryptionKey, SigningKey
+from agent_auth.store import TokenStore
+
+# ``preserve_signal_handlers`` lives in ``tests_support.signals`` so the
+# things-bridge shutdown tests can use it too. Re-export here so
+# agent-auth tests that name it as a fixture argument (which already
+# expect to find it via the package's conftest) keep working without
+# touching the test files.
+from tests_support.signals import preserve_signal_handlers as preserve_signal_handlers
+
+
+@pytest.fixture
+def tmp_dir():
+    with tempfile.TemporaryDirectory() as d:
+        yield d
+
+
+@pytest.fixture
+def encryption_key():
+    return EncryptionKey(os.urandom(32))
+
+
+@pytest.fixture
+def signing_key():
+    return SigningKey(os.urandom(32))
+
+
+@pytest.fixture
+def test_config(tmp_dir):
+    return Config(
+        db_path=os.path.join(tmp_dir, "tokens.db"),
+        log_path=os.path.join(tmp_dir, "audit.log"),
+    )
+
+
+@pytest.fixture
+def store(test_config, encryption_key):
+    return TokenStore(test_config.db_path, encryption_key)
+
+
+@pytest.fixture
+def mock_keyring():
+    """Mock keyring that stores passwords in memory."""
+    passwords: dict[tuple[str, str], str] = {}
+
+    def get_password(service, username):
+        return passwords.get((service, username))
+
+    def set_password(service, username, password):
+        passwords[(service, username)] = password
+
+    with (
+        patch("agent_auth.keys.keyring.get_password", side_effect=get_password),
+        patch("agent_auth.keys.keyring.set_password", side_effect=set_password),
+    ):
+        yield passwords

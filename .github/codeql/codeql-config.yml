@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# CodeQL configuration: classify the workspace test trees and the
+# tests_support library as test code, and exclude the dedicated
+# bind-mount permission helper from analysis.
+#
+# The integration test harness chmods per-test config / fixture
+# files to world-readable on purpose: each tmpdir is bind-mounted
+# into a container that runs as a different UID, and the
+# ``tmp_path_factory.mktemp`` default of mode 0700 is unreadable to
+# that UID. CodeQL's ``security-extended`` query
+# ``py/overly-permissive-file-permissions`` flags the call shape
+# regardless of context, and its query metadata doesn't honor the
+# ``test`` path classifier (no ``@tags test-only`` exclusion).
+#
+# Rather than disabling the rule project-wide, every chmod call is
+# funnelled through a dedicated helper at
+# ``packages/agent-auth-common/src/tests_support/integration/_chmod.py``,
+# and that single file is excluded via ``paths-ignore`` below. Any
+# new ``os.chmod(..., 0oXXX)`` call elsewhere in the workspace
+# stays loud.
+
+name: agent-auth CodeQL configuration
+
+queries:
+  - uses: security-extended
+
+paths-ignore:
+  - packages/agent-auth-common/src/tests_support/integration/_chmod.py
+
+path-classifiers:
+  test:
+    - packages/*/tests
+    - packages/agent-auth-common/src/tests_support
+    - tests

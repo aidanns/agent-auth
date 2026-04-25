@@ -204,13 +204,13 @@ things-client-cli-applescript projects show <project-id>
 
 #### Running on Linux with the fake Things client
 
-The bridge is indifferent to which Things-client CLI is installed — it simply runs `things_client_command`. For Linux devcontainer development and CI, a test-only fake client (`tests/things_client_fake/`, invoked as `python -m tests.things_client_fake --fixtures PATH`) reads an in-memory store from a YAML fixture so the full agent-auth + things-bridge + things-cli stack runs end-to-end without `osascript` or Things 3. Point the bridge at it via `config.yaml`:
+The bridge is indifferent to which Things-client CLI is installed — it simply runs `things_client_command`. For Linux devcontainer development and CI, a test-only fake client (`tests/things_client_fake/`, invoked as `python -m things_client_fake --fixtures PATH`) reads an in-memory store from a YAML fixture so the full agent-auth + things-bridge + things-cli stack runs end-to-end without `osascript` or Things 3. Point the bridge at it via `config.yaml`:
 
 ```yaml
 things_client_command:
   - python
   - -m
-  - tests.things_client_fake
+  - things_client_fake
   - --fixtures
   - tests/things_client_fake/fake-things.yaml
 ```

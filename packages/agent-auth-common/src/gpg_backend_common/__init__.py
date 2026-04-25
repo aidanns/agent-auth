@@ -5,7 +5,7 @@
 """Shared argparse surface and dispatcher for GPG backend CLIs.
 
 Both backend CLIs (``gpg-backend-cli-host`` and the in-tree fake
-``python -m tests.gpg_backend_fake``) build their own backend, then
+``python -m gpg_backend_fake``) build their own backend, then
 hand off to :func:`run_cli` here so the subprocess contract has a
 single source of truth.
 

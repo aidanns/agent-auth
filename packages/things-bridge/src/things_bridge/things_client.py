@@ -94,7 +94,7 @@ class ThingsSubprocessClient:
     ``command`` is a validated argv prefix (e.g.
     ``make_things_client_command(["things-client-cli-applescript"])`` or
     ``make_things_client_command([sys.executable, "-m",
-    "tests.things_client_fake", "--fixtures", P])``); sub-commands
+    "things_client_fake", "--fixtures", P])``); sub-commands
     matching the request are appended. ``timeout_seconds`` caps the
     per-call wall clock. Subprocess stderr is forwarded to the bridge's
     own stderr line-by-line as the child writes it, so a misbehaving

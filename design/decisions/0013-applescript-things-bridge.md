@@ -76,7 +76,7 @@ transport:
    `osascript`, parses the TSV output, and prints JSON on stdout.
    It runs in its own process with no knowledge of agent-auth
    tokens, HTTP, or the bridge's configuration.
-3. The test-only client is `python -m tests.things_client_fake`
+3. The test-only client is `python -m things_client_fake`
    (under `tests/things_client_fake/`). It reads fixtures from YAML
    and emits the same JSON envelope. Used for Linux devcontainer
    e2e and per-test Docker integration tests (ADR 0005).

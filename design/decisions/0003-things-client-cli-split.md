@@ -78,7 +78,7 @@ configured command per request. Two clients exist:
   the local user ran it).
 - `things-client-cli-fake` — test-only, reads a YAML fixture from
   disk. Lives under `tests/things_client_fake/` and is invoked as
-  `python -m tests.things_client_fake`. Not packaged into the sdist
+  `python -m things_client_fake`. Not packaged into the sdist
   or wheel.
 
 The bridge's `things_client_command: list[str]` config field (default
