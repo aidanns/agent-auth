@@ -379,7 +379,7 @@ New packages under `src/` (mirroring the Things split):
 - `tests/gpg_backend_fake/` — test-only fake with the same argparse
   surface as `gpg-backend-cli-host`, reading a YAML fixture from
   disk. Not shipped in the wheel; invoked as
-  `python -m tests.gpg_backend_fake --fixtures PATH`. Matches the
+  `python -m gpg_backend_fake --fixtures PATH`. Matches the
   precedent in ADR 0003.
 
 Entry points in `pyproject.toml`:

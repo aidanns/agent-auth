@@ -4,13 +4,17 @@
 # Integration-test image for the ``things-bridge`` service. Never
 # publish; never use in production.
 #
-# Carries ``tests/things_client_fake/`` at ``/opt/tests-support/tests/``
-# because the bridge's configured ``things_client_command`` launches
-# ``python -m tests.things_client_fake --fixtures PATH`` as a
-# subprocess in this container during integration tests (see
-# ADR 0003). PYTHONPATH makes the module resolvable without shipping
-# it in the distributed wheel (``tests/`` is excluded from the
-# packaged distribution).
+# Carries ``packages/things-bridge/tests/things_client_fake/`` at
+# ``/src/things_client_fake/`` (the WORKDIR) because the bridge's
+# configured ``things_client_command`` launches ``python -m
+# things_client_fake --fixtures PATH`` as a subprocess in this
+# container during integration tests (see ADR 0003). The bridge runs
+# its subprocesses with a tightly-scoped env allowlist (#277) that
+# strips ``PYTHONPATH``; ``python -m <module>`` falls back to the
+# current working directory for module resolution, so placing the
+# fake at the WORKDIR is what makes the spawn succeed without
+# touching the shipped wheel — the bridge package excludes its
+# ``tests/`` directory from the published distribution.
 
 FROM python:3.12-slim-bookworm
 
@@ -21,8 +25,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HOME=/home/agent-auth \
     XDG_CONFIG_HOME=/home/agent-auth/.config \
     XDG_DATA_HOME=/home/agent-auth/.local/share \
-    XDG_STATE_HOME=/home/agent-auth/.local/state \
-    PYTHONPATH=/opt/tests-support
+    XDG_STATE_HOME=/home/agent-auth/.local/state
 
 RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin agent-auth
 
@@ -31,15 +34,11 @@ WORKDIR /src
 COPY README.md ./
 COPY packages/agent-auth-common/ ./packages/agent-auth-common/
 COPY packages/things-bridge/ ./packages/things-bridge/
-COPY tests/__init__.py ./tests/__init__.py
-COPY tests/things_client_fake/ ./tests/things_client_fake/
 
 RUN pip install --no-cache-dir \
         ./packages/agent-auth-common \
         ./packages/things-bridge \
- && mkdir -p /opt/tests-support/tests \
- && cp tests/__init__.py /opt/tests-support/tests/__init__.py \
- && cp -r tests/things_client_fake /opt/tests-support/tests/things_client_fake
+ && cp -r packages/things-bridge/tests/things_client_fake ./things_client_fake
 
 RUN mkdir -p "$XDG_CONFIG_HOME/things-bridge" \
              "$XDG_STATE_HOME/things-bridge" \

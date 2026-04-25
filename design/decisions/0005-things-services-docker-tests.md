@@ -74,7 +74,7 @@ test image across all of them:
   entry point. Each Compose service overrides `entrypoint`/`command` to
   pick which CLI to run. The Dockerfile additionally copies
   `tests/things_client_fake/` to `/opt/tests-support/` so the bridge
-  can `python -m tests.things_client_fake` for its Things backend
+  can `python -m things_client_fake` for its Things backend
   without an installed distribution. The exclusion of both
   `tests_support` and the `tests/` tree from the production wheel keeps
   the test-only modules out of any shipped artefact.

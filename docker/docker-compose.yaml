@@ -83,7 +83,7 @@ configs:
       things_client_command:
         - python
         - -m
-        - tests.things_client_fake
+        - things_client_fake
         - --fixtures
         - /srv/things-fixtures/things.yaml
       request_timeout_seconds: 35.0

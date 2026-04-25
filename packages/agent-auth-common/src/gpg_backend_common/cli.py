@@ -5,7 +5,7 @@
 """Shared CLI dispatcher for GPG backend CLIs.
 
 The host backend (``gpg-backend-cli-host``) and the in-tree fake
-(``tests.gpg_backend_fake``) share this module so the subprocess
+(``gpg_backend_fake``) share this module so the subprocess
 contract — argv shape, stdin framing, JSON envelope — has one
 implementation under test.
 """

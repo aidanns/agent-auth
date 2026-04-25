@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-# Run the agent-auth test suite inside the project virtualenv.
+# Run the workspace test suite inside the project virtualenv.
 #
 # Modes (mutually exclusive):
 #   --unit                     (default) only the in-process unit tests
@@ -22,11 +22,44 @@
 
 set -euo pipefail
 
+# Per-package integration test directories. Each package owns its
+# slice of the Docker-backed suite under packages/<svc>/tests/
+# integration/ (relocated from the monolithic tests/integration/
+# tree in #270).
 declare -A SERVICE_PATHS=(
-  ["agent-auth"]=tests/integration/agent_auth/
-  ["things-bridge"]=tests/integration/things_bridge/
-  ["things-cli"]=tests/integration/things_cli/
-  ["things-client-applescript"]=tests/integration/things_client_applescript/
+  ["agent-auth"]=packages/agent-auth/tests/integration/
+  ["things-bridge"]=packages/things-bridge/tests/integration/
+  ["things-cli"]=packages/things-cli/tests/integration/
+  ["things-client-applescript"]=packages/things-client-cli-applescript/tests/integration/
+)
+
+# Workspace-wide unit-test paths. Each package owns a tests/ tree
+# (post-#270); the root tests/ tree only carries cross-service
+# checks (release/openapi/scan-failure). Listing them explicitly
+# rather than passing a single root keeps integration trees out of
+# the unit-mode invocation without an --ignore for every per-package
+# integration/ subdir.
+UNIT_TEST_PATHS=(
+  # keep-sorted start
+  packages/agent-auth-common/tests/
+  packages/agent-auth/tests/
+  packages/gpg-backend-cli-host/tests/
+  packages/gpg-bridge/tests/
+  packages/gpg-cli/tests/
+  packages/things-bridge/tests/
+  packages/things-cli/tests/
+  packages/things-client-cli-applescript/tests/
+  tests/
+  # keep-sorted end
+)
+
+# Pytest's discovery ignores the per-package integration/ subdirs
+# in unit mode so a `--unit` run never tries to start Docker.
+UNIT_IGNORE_OPTS=(
+  --ignore=packages/agent-auth/tests/integration
+  --ignore=packages/things-bridge/tests/integration
+  --ignore=packages/things-cli/tests/integration
+  --ignore=packages/things-client-cli-applescript/tests/integration
 )
 
 mode="unit"
@@ -63,10 +96,10 @@ source "${SCRIPT_DIR}/_bootstrap_venv.sh"
 # coverage of code whose silent breakage would block downstream tests.
 FAST_TESTS=(
   # keep-sorted start
-  tests/test_crypto.py
-  tests/test_keys.py
-  tests/test_scopes.py
-  tests/test_tokens.py
+  packages/agent-auth/tests/test_crypto.py
+  packages/agent-auth/tests/test_keys.py
+  packages/agent-auth/tests/test_scopes.py
+  packages/agent-auth/tests/test_tokens.py
   # keep-sorted end
 )
 
@@ -87,7 +120,7 @@ INTEGRATION_TIMING_OPTS=(
 
 case "${mode}" in
   unit)
-    exec uv run --no-sync pytest tests/ --ignore=tests/integration "$@"
+    exec uv run --no-sync pytest "${UNIT_IGNORE_OPTS[@]}" "${UNIT_TEST_PATHS[@]}" "$@"
     ;;
   fast)
     # Disable coverage collection: --fast runs a curated smoke subset
@@ -101,16 +134,17 @@ case "${mode}" in
     # Same rationale as --fast: integration tests exercise a different
     # surface than packages/*/src/ (Docker lifecycle, cross-service
     # contracts), so the unit-based floor doesn't apply. Integration
-    # coverage is tracked separately; see
-    # plans/pytest-cov-threshold.md "Out of scope".
-    integration_path="tests/integration/"
+    # coverage is tracked separately; see plans/pytest-cov-threshold.md
+    # "Out of scope".
     if [[ -n "${service}" ]]; then
-      integration_path="${SERVICE_PATHS[${service}]}"
+      integration_paths=("${SERVICE_PATHS[${service}]}")
+    else
+      integration_paths=("${SERVICE_PATHS[@]}")
     fi
-    exec uv run --no-sync pytest --no-cov "${INTEGRATION_TIMING_OPTS[@]}" "${integration_path}" "$@"
+    exec uv run --no-sync pytest --no-cov "${INTEGRATION_TIMING_OPTS[@]}" "${integration_paths[@]}" "$@"
     ;;
   all)
-    uv run --no-sync pytest tests/ --ignore=tests/integration "$@"
-    exec uv run --no-sync pytest --no-cov "${INTEGRATION_TIMING_OPTS[@]}" tests/integration/ "$@"
+    uv run --no-sync pytest "${UNIT_IGNORE_OPTS[@]}" "${UNIT_TEST_PATHS[@]}" "$@"
+    exec uv run --no-sync pytest --no-cov "${INTEGRATION_TIMING_OPTS[@]}" "${SERVICE_PATHS[@]}" "$@"
     ;;
 esac

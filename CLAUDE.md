@@ -31,10 +31,13 @@ simplifying for "personal project" scope.
 ## Architecture
 
 - Monorepo uv workspace: each service lives under `packages/<svc>/`
-  with its own `pyproject.toml`, `install.sh`, and `src/<module>/`
-  tree. Shared types (HTTP clients, Things models, Prometheus metrics
-  helper, test-only `tests_support`) live in
-  `packages/agent-auth-common/src/`.
+  with its own `pyproject.toml`, `install.sh`, `src/<module>/`, and
+  `tests/` tree (the latter relocated from the monolithic root
+  `tests/` in #270). Shared types (HTTP clients, Things models,
+  Prometheus metrics helper, test-only `tests_support`) live in
+  `packages/agent-auth-common/src/`. The root `tests/` tree only
+  carries workspace-wide checks (release-semver, openapi-spec,
+  pip-audit-to-sarif, scan-failure).
 - `packages/agent-auth/src/agent_auth/cli.py` — agent-auth CLI
   entrypoint using argparse
 - Token store will use SQLite at `$XDG_DATA_HOME/agent-auth/tokens.db`
@@ -82,10 +85,11 @@ simplifying for "personal project" scope.
   It runs a configured `things_client_command` (default
   `["things-client-cli-applescript"]`) per request and parses a JSON
   envelope on stdout. The production CLI is shipped; a test-only fake
-  lives under `tests/things_client_fake/` and is invoked as
-  `python -m tests.things_client_fake --fixtures PATH`. For Linux
-  devcontainer e2e, point `things_client_command` in `config.yaml` at
-  the fake. See `design/decisions/0003-things-client-cli-split.md`
+  lives under `packages/things-bridge/tests/things_client_fake/` and
+  is invoked as `python -m things_client_fake --fixtures PATH`. For
+  Linux devcontainer e2e, point `things_client_command` in
+  `config.yaml` at the fake. See
+  `design/decisions/0003-things-client-cli-split.md`
   (supersedes 0001).
 - gpg-bridge architecture: mirrors the Things split. `gpg-bridge`
   runs on the host and delegates each request to a configured
@@ -95,8 +99,8 @@ simplifying for "personal project" scope.
   sign / verify argv to `gpg-bridge` over HTTPS with a bearer token
   (scope `gpg:sign`). Per-key allowlisting sits in bridge config
   (`allowed_signing_keys`). A test-only backend fake lives under
-  `tests/gpg_backend_fake/` and is invoked as
-  `python -m tests.gpg_backend_fake --fixtures PATH`. See
+  `packages/gpg-bridge/tests/gpg_backend_fake/` and is invoked as
+  `python -m gpg_backend_fake --fixtures PATH`. See
   `design/decisions/0033-gpg-bridge-cli-split.md`.
 
 ## Detailed instructions

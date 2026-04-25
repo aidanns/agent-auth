@@ -35,16 +35,28 @@ cd "${REPO_ROOT}"
 
 fail=0
 
-integration_dir="tests/integration"
-if [[ ! -d "${integration_dir}" ]]; then
-  echo "FAIL: ${integration_dir}/ is missing" >&2
-  fail=1
-else
-  # Scan every Python file under tests/integration/ except conftest.py
-  # files (which legitimately construct base_url from the ephemeral
-  # Docker port mapping). Helper modules — not just test_*.py — could
-  # otherwise smuggle a raw loopback literal back into the black-box
-  # boundary.
+# Per-package integration trees live at packages/<svc>/tests/
+# integration/ (relocated from the monolithic tests/integration/ tree
+# in #270). Each per-package directory must exist and pass the
+# loopback-literal check; missing one signals that a per-service
+# image was added to docker-compose without a corresponding test slice.
+integration_dirs=(
+  "packages/agent-auth/tests/integration"
+  "packages/things-bridge/tests/integration"
+  "packages/things-cli/tests/integration"
+  "packages/things-client-cli-applescript/tests/integration"
+)
+for integration_dir in "${integration_dirs[@]}"; do
+  if [[ ! -d "${integration_dir}" ]]; then
+    echo "FAIL: ${integration_dir}/ is missing" >&2
+    fail=1
+    continue
+  fi
+  # Scan every Python file under the integration tree except
+  # conftest.py files (which legitimately construct base_url from the
+  # ephemeral Docker port mapping). Helper modules — not just
+  # test_*.py — could otherwise smuggle a raw loopback literal back
+  # into the black-box boundary.
   offenders=$(grep -nR --include='*.py' --exclude='conftest.py' \
     -E '127\.0\.0\.1|0\.0\.0\.0' "${integration_dir}" || true)
   if [[ -n "${offenders}" ]]; then
@@ -52,16 +64,17 @@ else
     echo "${offenders}" >&2
     fail=1
   fi
-fi
+done
 
-# The root conftest is responsible for building every per-service test
-# image once per session. Either the conftest itself does it inline or
-# it delegates to a helper module under tests/integration/. Verify the
-# build path is still wired up by checking both candidate locations.
-# Newlines are collapsed first so the regex still matches when ruff has
-# split the argv list across multiple lines.
+# The shared integration plugin (``tests_support.integration.plugin``)
+# builds each per-service test image once per session. Verify the
+# ``docker build`` invocation against the per-service Dockerfiles
+# still lives there, so a refactor that drops the build step fails
+# the gate before it ships.
+plugin_path="packages/agent-auth-common/src/tests_support/integration/plugin.py"
+support_path="packages/agent-auth-common/src/tests_support/integration/support.py"
 build_call_present=0
-for candidate in "tests/integration/conftest.py" "tests/integration/_support.py"; do
+for candidate in "${plugin_path}" "${support_path}"; do
   [[ -f "${candidate}" ]] || continue
   candidate_flat=$(tr '\n' ' ' <"${candidate}")
   if grep -qE '"docker",\s*"build"' <<<"${candidate_flat}" \
@@ -71,7 +84,7 @@ for candidate in "tests/integration/conftest.py" "tests/integration/_support.py"
   fi
 done
 if [[ "${build_call_present}" -eq 0 ]]; then
-  echo "FAIL: tests/integration/{conftest.py,_support.py} must invoke 'docker build' against a per-service docker/Dockerfile.<svc>.test" >&2
+  echo "FAIL: ${plugin_path} or ${support_path} must invoke 'docker build' against a per-service docker/Dockerfile.<svc>.test" >&2
   fail=1
 fi
 

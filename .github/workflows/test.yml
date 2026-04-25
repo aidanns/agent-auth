@@ -126,7 +126,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run Darwin-gated AppleScript client tests
-        run: uv run pytest tests/test_things_client_applescript_things.py --no-cov -v
+        run: uv run pytest packages/things-client-cli-applescript/tests/test_things_client_applescript_things.py --no-cov -v
 
   tests:
     runs-on: ubuntu-latest

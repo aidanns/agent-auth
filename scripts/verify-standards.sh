@@ -1174,12 +1174,24 @@ for override in pyproject.get("tool", {}).get("mypy", {}).get("overrides", []):
 def module_to_path(mod: str) -> str:
     path = mod.replace(".", "/")
     # ``packages/*/src/<mod>`` is the per-subproject workspace layout
-    # from #105. Fall through to a bare module path so pyright-style
-    # entries that aren't rooted in ``packages/*/src`` still resolve.
+    # from #105; ``packages/*/tests/<mod>`` covers the per-package
+    # test trees relocated in #270 (both flat ``test_*.py`` modules
+    # and ``fault.test_*`` / ``integration.*`` subtrees). Fall
+    # through to a bare module path so pyright-style entries that
+    # aren't rooted in either layout still resolve.
     candidates: list[str] = []
     for pkg_src in sorted(pathlib.Path("packages").glob("*/src")):
         candidates.append(f"{pkg_src}/{path}.py")
         candidates.append(f"{pkg_src}/{path}")
+    for pkg_tests in sorted(pathlib.Path("packages").glob("*/tests")):
+        candidates.append(f"{pkg_tests}/{path}.py")
+        candidates.append(f"{pkg_tests}/{path}")
+        # Also probe ``packages/*/tests/*/<mod>`` for the per-package
+        # ``tests/fault/`` and ``tests/integration/`` subtrees.
+        for sub in pkg_tests.glob("*"):
+            if sub.is_dir():
+                candidates.append(f"{sub}/{path}.py")
+                candidates.append(f"{sub}/{path}")
     candidates.append(f"{path}")
     for c in candidates:
         if pathlib.Path(c).exists():
@@ -1225,8 +1237,34 @@ pyright_envs_relaxing_diagnostics = {
     )
 }
 
-missing_from_pyright_envs = expected_pyright_envs - pyright_envs_relaxing_diagnostics
-missing_from_mypy_relaxed = pyright_envs_relaxing_diagnostics - expected_pyright_envs
+# mypy module patterns can resolve to a single test file under
+# ``packages/<svc>/tests/`` while pyright relaxes the entire test tree
+# via an executionEnvironments root. Treat each pyright root as
+# satisfying any expected mypy entry whose resolved path falls
+# inside it — this is the test-tree case post-#270 where listing
+# every test_*.py module in mypy is the only way to express the
+# relaxation, but the pyright side legitimately scopes the relaxation
+# to whole directories.
+def matches_pyright_root(path: str, root: str) -> bool:
+    return path == root or path.startswith(f"{root}/")
+
+
+def has_pyright_root(path: str) -> bool:
+    return any(
+        matches_pyright_root(path, root) for root in pyright_envs_relaxing_diagnostics
+    )
+
+
+def has_mypy_match(root: str) -> bool:
+    return any(matches_pyright_root(path, root) for path in expected_pyright_envs)
+
+
+missing_from_pyright_envs = {
+    p for p in expected_pyright_envs if not has_pyright_root(p)
+}
+missing_from_mypy_relaxed = {
+    r for r in pyright_envs_relaxing_diagnostics if not has_mypy_match(r)
+}
 
 problems: list[tuple[str, list[str]]] = []
 if missing_from_pyright_ignore:
@@ -1769,7 +1807,7 @@ echo "verify-standards: all non-health/metrics HTTP routes are versioned (/v1/).
 # Audit schema contract tests: tests/test_audit_schema.py must exist and
 # reference each documented event kind
 # (.claude/instructions/release-and-hygiene.md — structured output schemas).
-audit_schema_file="tests/test_audit_schema.py"
+audit_schema_file="packages/agent-auth/tests/test_audit_schema.py"
 if [[ ! -f "${audit_schema_file}" ]]; then
   echo "verify-standards: ${audit_schema_file} does not exist." >&2
   echo "  Create schema-contract tests for every documented audit event kind." >&2
@@ -1797,7 +1835,7 @@ echo "verify-standards: ${audit_schema_file} exists and references all documente
 # Error taxonomy contract tests: tests/test_error_taxonomy.py must exist and
 # reference each documented error code
 # (.claude/instructions/service-design.md — stable error taxonomy).
-error_taxonomy_file="tests/test_error_taxonomy.py"
+error_taxonomy_file="packages/agent-auth/tests/test_error_taxonomy.py"
 if [[ ! -f "${error_taxonomy_file}" ]]; then
   echo "verify-standards: ${error_taxonomy_file} does not exist." >&2
   echo "  Create contract tests for every documented error code in design/error-codes.md." >&2
@@ -1915,7 +1953,12 @@ for service, server_path, unhealthy_status in SERVICES:
 
     healthy_found = False
     unhealthy_found = False
-    for test_file in sorted(pathlib.Path("tests").rglob("*.py")):
+    test_roots = [pathlib.Path("tests")] + sorted(pathlib.Path("packages").glob("*/tests"))
+    test_files = []
+    for root in test_roots:
+        if root.is_dir():
+            test_files.extend(root.rglob("*.py"))
+    for test_file in sorted(test_files):
         source = test_file.read_text()
         if route not in source and "health_url()" not in source:
             continue
@@ -2083,7 +2126,12 @@ for service, server_path, required in SERVICES:
         continue
 
     covered: set[str] = set()
-    for test_file in sorted(pathlib.Path("tests").rglob("*.py")):
+    test_roots = [pathlib.Path("tests")] + sorted(pathlib.Path("packages").glob("*/tests"))
+    test_files = []
+    for root in test_roots:
+        if root.is_dir():
+            test_files.extend(root.rglob("*.py"))
+    for test_file in sorted(test_files):
         source = test_file.read_text()
         if route not in source:
             continue
@@ -2158,15 +2206,16 @@ for server_file in packages/agent-auth/src/agent_auth/server.py packages/things-
   fi
 done
 
-# Look for at least one test anywhere under tests/ that references
-# SIGTERM in executable code. ``test_server_shutdown.py`` and
-# ``test_things_bridge_shutdown.py`` both satisfy this today via their
+# Look for at least one test anywhere in the workspace test trees
+# that references SIGTERM in executable code. The agent-auth and
+# things-bridge ``test_*_shutdown.py`` files (under
+# packages/<svc>/tests/) satisfy this via their
 # ``invoke_installed_handler(signal.SIGTERM)`` + subprocess-driven
 # coverage.
-test_sigterm_hits="$(grep -rlE "\bSIGTERM\b" tests/ 2>/dev/null | grep -v __pycache__ || true)"
+test_sigterm_hits="$(grep -rlE "\bSIGTERM\b" tests/ packages/*/tests/ 2>/dev/null | grep -v __pycache__ || true)"
 if [[ -z "${test_sigterm_hits}" ]]; then
   fail_shutdown_check \
-    "no test under tests/ references SIGTERM." \
+    "no workspace test references SIGTERM." \
     "Add a test that sends SIGTERM to the server (or invokes the installed handler) and asserts a clean drain."
 fi
 
@@ -2185,9 +2234,14 @@ echo "verify-standards: agent-auth and things-bridge install SIGTERM handlers an
 # exists and contains at least one test file whose contents mention
 # each scenario (by keyword, because the tests are free to name
 # themselves however the author prefers).
-fault_dir="tests/fault"
-if [[ ! -d "${fault_dir}" ]]; then
-  echo "verify-standards: ${fault_dir}/ is missing." >&2
+# Per-package fault test trees (e.g. packages/agent-auth/tests/fault/,
+# packages/things-bridge/tests/fault/, packages/agent-auth-common/tests/fault/)
+# replaced the monolithic tests/fault/ tree in #270.
+shopt -s nullglob
+fault_dirs=(packages/*/tests/fault)
+shopt -u nullglob
+if [[ ${#fault_dirs[@]} -eq 0 ]]; then
+  echo "verify-standards: no packages/*/tests/fault/ directory exists." >&2
   echo "  Add a fault-injection test layer per" >&2
   echo "  .claude/instructions/testing-standards.md § Coverage." >&2
   exit 1
@@ -2204,21 +2258,29 @@ declare -A fault_scenarios=(
 
 fault_missing=0
 for scenario in "${!fault_scenarios[@]}"; do
-  # Accept matches in filenames or file contents under tests/fault/.
-  if ! { find "${fault_dir}" -type f -name "*.py" -print 2>/dev/null | grep -qi "${scenario}"; } \
-    && ! grep -r -l -i "${scenario}" "${fault_dir}" >/dev/null 2>&1; then
+  # Accept matches in filenames or file contents anywhere under the
+  # per-package fault dirs.
+  filename_hit=0
+  for dir in "${fault_dirs[@]}"; do
+    if find "${dir}" -type f -name "*.py" -print 2>/dev/null | grep -qi "${scenario}"; then
+      filename_hit=1
+      break
+    fi
+  done
+  if [[ "${filename_hit}" -eq 0 ]] \
+    && ! grep -r -l -i "${scenario}" "${fault_dirs[@]}" >/dev/null 2>&1; then
     echo "verify-standards: no fault-injection coverage for: ${fault_scenarios[${scenario}]}" >&2
     fault_missing=1
   fi
 done
 
 if [[ ${fault_missing} -ne 0 ]]; then
-  echo "  Add tests under ${fault_dir}/ (either in a file whose name mentions" >&2
+  echo "  Add tests under packages/<svc>/tests/fault/ (either in a file whose name mentions" >&2
   echo "  the scenario keyword, or referencing the keyword in the test body)." >&2
   exit 1
 fi
 
-echo "verify-standards: ${fault_dir}/ covers all required fault-injection scenarios."
+echo "verify-standards: per-package tests/fault/ trees cover all required fault-injection scenarios."
 
 # Observability design documentation per
 # .claude/instructions/service-design.md ("Observability design") and
@@ -2320,8 +2382,8 @@ if not any(str(m).startswith('perf_budget') for m in markers):
 fi
 rm -f /tmp/verify-standards-perf.err
 
-if ! grep -r -l -E "@pytest\\.mark\\.perf_budget\\b" tests/ >/dev/null 2>&1; then
-  echo "verify-standards: no test under tests/ applies @pytest.mark.perf_budget." >&2
+if ! grep -r -l -E "@pytest\\.mark\\.perf_budget\\b" tests/ packages/*/tests/ >/dev/null 2>&1; then
+  echo "verify-standards: no workspace test applies @pytest.mark.perf_budget." >&2
   echo "  Add a perf-budget-assertion test referencing ${design_file} § Performance budget." >&2
   exit 1
 fi

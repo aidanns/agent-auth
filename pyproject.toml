@@ -87,14 +87,24 @@ ignore-vuln = []
 # per-package ``src/`` roots are added explicitly so an editable
 # install drift (which hides the workspace modules behind
 # ``.venv/lib/.../site-packages``) still resolves.
+#
+# The per-package ``tests/`` trees are also on the pythonpath because
+# the things-bridge and gpg-bridge test fakes (``things_client_fake``,
+# ``gpg_backend_fake``) are launched by the production code under test
+# via ``python -m <fake> --fixtures …`` and must resolve as top-level
+# modules. The fakes never ship in any wheel — the per-package
+# ``setuptools.packages.find`` excludes ``tests*`` — so this is a
+# dev/test-only path entry.
 pythonpath = [
     # keep-sorted start
     "packages/agent-auth-common/src",
     "packages/agent-auth/src",
     "packages/gpg-backend-cli-host/src",
     "packages/gpg-bridge/src",
+    "packages/gpg-bridge/tests",
     "packages/gpg-cli/src",
     "packages/things-bridge/src",
+    "packages/things-bridge/tests",
     "packages/things-cli/src",
     "packages/things-client-cli-applescript/src",
     # keep-sorted end
@@ -109,7 +119,25 @@ markers = [
 # See CONTRIBUTING.md § "Coverage" for the bump procedure. Integration
 # tests run in a separate CI job and are excluded here — rolling them
 # into the floor would make it flaky on Docker availability.
+#
+# ``-p tests_support.integration.plugin`` registers the workspace-wide
+# Docker-backed integration fixtures (image build, agent-auth /
+# things-bridge container factories, ``pytest_runtest_makereport``
+# hook). Plugins must be registered at the top-level pytest invocation;
+# pytest forbids ``pytest_plugins`` in non-root conftests, so ``-p`` in
+# addopts is the canonical way to load it for every per-package
+# ``tests/integration/`` tree. The plugin's session-scoped fixtures
+# only activate when a test requests them, so loading it at root is
+# free for unit-test runs.
+# ``importlib`` import-mode lets each package's ``tests/`` tree carry
+# its own ``conftest.py`` without name collisions in ``sys.modules``.
+# The historical ``prepend`` default would import every conftest as a
+# top-level ``conftest`` module, which collides as soon as more than
+# one package's tests get collected in a single session.
 addopts = [
+    "-p",
+    "tests_support.integration.plugin",
+    "--import-mode=importlib",
     "--cov=packages",
     "--cov-branch",
     "--cov-report=term-missing",
@@ -119,6 +147,24 @@ addopts = [
 [tool.coverage.run]
 branch = true
 source = ["packages"]
+# Exclude every package's tests/ tree, the agent-auth benchmarks
+# tree, and the integration-only slice of ``tests_support`` from
+# coverage measurement. ``--cov=packages`` casts a wide net so the
+# ratchet keeps catching any new packages/<svc>/src/ module added to
+# the workspace, but neither the test code nor the integration plugin
+# / harness / docker support should count toward the unit-mode floor:
+# those only run inside the Docker-backed integration session, never
+# in production or in the unit-test pass that gates the floor. The
+# rest of ``tests_support`` (notifier sidecar, http helpers, factories)
+# IS exercised by unit tests and stays measured so a regression there
+# fails the gate.
+omit = [
+    # keep-sorted start
+    "packages/*/benchmarks/*",
+    "packages/*/tests/*",
+    "packages/agent-auth-common/src/tests_support/integration/*",
+    # keep-sorted end
+]
 
 [tool.coverage.report]
 show_missing = true
@@ -180,14 +226,22 @@ strict = true
 files = [
     # keep-sorted start
     "packages/agent-auth-common/src",
+    "packages/agent-auth-common/tests",
     "packages/agent-auth/benchmarks",
     "packages/agent-auth/src",
+    "packages/agent-auth/tests",
     "packages/gpg-backend-cli-host/src",
+    "packages/gpg-backend-cli-host/tests",
     "packages/gpg-bridge/src",
+    "packages/gpg-bridge/tests",
     "packages/gpg-cli/src",
+    "packages/gpg-cli/tests",
     "packages/things-bridge/src",
+    "packages/things-bridge/tests",
     "packages/things-cli/src",
+    "packages/things-cli/tests",
     "packages/things-client-cli-applescript/src",
+    "packages/things-client-cli-applescript/tests",
     "tests",
     # keep-sorted end
 ]
@@ -198,7 +252,23 @@ files = [
 # https://mypy.readthedocs.io/en/stable/running_mypy.html#mapping-file-paths-to-modules.
 explicit_package_bases = true
 namespace_packages = true
-mypy_path = "$MYPY_CONFIG_FILE_DIR/packages/agent-auth-common/src:$MYPY_CONFIG_FILE_DIR/packages/agent-auth/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-backend-cli-host/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/things-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-client-cli-applescript/src"
+mypy_path = "$MYPY_CONFIG_FILE_DIR/packages/agent-auth-common/src:$MYPY_CONFIG_FILE_DIR/packages/agent-auth/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-backend-cli-host/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/gpg-bridge/tests:$MYPY_CONFIG_FILE_DIR/packages/gpg-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-bridge/src:$MYPY_CONFIG_FILE_DIR/packages/things-bridge/tests:$MYPY_CONFIG_FILE_DIR/packages/things-cli/src:$MYPY_CONFIG_FILE_DIR/packages/things-client-cli-applescript/src"
+
+# Per-package ``tests/`` trees collapse to a flat module namespace
+# under mypy: each ``conftest.py`` becomes the ``conftest`` module and
+# every ``tests/integration/__init__.py`` becomes the ``integration``
+# module. That triggers the "duplicate module" rejection because
+# multiple paths claim the same name. Exclude the conftests and the
+# per-package integration trees from mypy's analysis — pytest still
+# imports them at runtime via ``--import-mode=importlib``, and pyright
+# still type-checks them through its rooted include logic. The
+# ``test_*.py`` files have unique names across the workspace so they
+# stay covered here.
+exclude = [
+    "(^|/)conftest\\.py$",
+    "(^|/)tests/integration(/|$)",
+]
+
 
 # Third-party imports without type stubs. These are separately
 # addressed by pulling in types-* packages as they become available;
@@ -219,11 +289,75 @@ ignore_missing_imports = true
 # each parameter a single well-known type, and adding ``-> None`` / fixture
 # type hints to every test provides no extra value while making the suite
 # much noisier. Keep strict everywhere else.
+# Per-package ``tests/`` trees collapse to flat module names under
+# mypy's path-walk: e.g.
+# ``packages/agent-auth/tests/test_audit.py`` resolves to the bare
+# module ``test_audit``. Listing every workspace test module here
+# means new test files need a corresponding entry — that's the price
+# of the per-package ``tests/`` layout. The list is kept sorted so
+# diffs against a new entry are obvious. ``tests.*`` and
+# ``tests_support.*`` cover the workspace-root tests/ tree and the
+# tests_support library; ``things_client_fake.*`` and
+# ``gpg_backend_fake.*`` cover the bridge test fakes.
 [[tool.mypy.overrides]]
 module = [
     # keep-sorted start
+    "fault.test_things_applescript_failure",
+    "gpg_backend_fake.*",
+    "test_agent_auth_client",
+    "test_agent_auth_unreachable",
+    "test_approval",
+    "test_audit",
+    "test_audit_chain",
+    "test_audit_disk_full",
+    "test_audit_schema",
+    "test_cli",
+    "test_config",
+    "test_crypto",
+    "test_error_taxonomy",
+    "test_gpg_backend_fake",
+    "test_gpg_backend_host",
+    "test_gpg_bridge_config",
+    "test_gpg_bridge_server",
+    "test_gpg_cli_cli",
+    "test_gpg_cli_config",
+    "test_gpg_end_to_end",
+    "test_gpg_models",
+    "test_gpg_subprocess_client",
+    "test_integration_harness",
+    "test_integration_support",
+    "test_keyring_unavailable",
+    "test_keys",
+    "test_migrations",
+    "test_notification_plugin_timeout",
+    "test_perf_budget",
+    "test_rate_limit",
+    "test_scopes",
+    "test_server",
+    "test_server_metrics",
+    "test_server_rate_limit",
+    "test_server_shutdown",
+    "test_server_tls",
+    "test_shutdown_subprocess",
+    "test_sqlite_failures",
+    "test_store",
+    "test_tests_support_notifier",
+    "test_things_applescript_failure",
+    "test_things_bridge_client",
+    "test_things_bridge_server",
+    "test_things_bridge_shutdown",
+    "test_things_bridge_tls",
+    "test_things_cli_cli",
+    "test_things_cli_client",
+    "test_things_cli_credentials",
+    "test_things_client_applescript_things",
+    "test_things_client_fake",
+    "test_things_models",
+    "test_things_subprocess_client",
+    "test_tokens",
     "tests.*",
     "tests_support.*",
+    "things_client_fake.*",
     # keep-sorted end
 ]
 disallow_untyped_defs = false
@@ -269,16 +403,16 @@ also_copy = [
 ]
 # Explicitly override the default tests_dir to just the unit-test
 # files that directly exercise the mutated modules. Integration
-# tests under tests/integration/* are too slow for the per-mutant
-# loop and the other tests/test_*.py files don't add signal on
+# tests under packages/<svc>/tests/integration/ are too slow for the
+# per-mutant loop and the other unit-test files don't add signal on
 # tokens / crypto / keys / scopes / store.
 tests_dir = [
     # keep-sorted start
-    "tests/test_crypto.py",
-    "tests/test_keys.py",
-    "tests/test_scopes.py",
-    "tests/test_store.py",
-    "tests/test_tokens.py",
+    "packages/agent-auth/tests/test_crypto.py",
+    "packages/agent-auth/tests/test_keys.py",
+    "packages/agent-auth/tests/test_scopes.py",
+    "packages/agent-auth/tests/test_store.py",
+    "packages/agent-auth/tests/test_tokens.py",
     # keep-sorted end
 ]
 pytest_add_cli_args = ["--no-cov"]
