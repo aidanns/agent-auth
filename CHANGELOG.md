@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.1](https://github.com/aidanns/agent-auth/compare/v0.12.0...v0.12.1) (2026-04-25)
+
+### Bug Fixes
+
+- **test-harness:** drop docker compose -t override; gate compose_stop budget ([#292](https://github.com/aidanns/agent-auth/issues/292))
+
 ## [0.12.0](https://github.com/aidanns/agent-auth/compare/v0.11.0...v0.12.0) (2026-04-25)
 
 ### Features
