@@ -55,6 +55,10 @@ class GpgKeyNotAllowedError(GpgBridgeError):
     """The requested signing key is not in the bridge's allowlist."""
 
 
+class PassphraseStoreError(GpgBridgeError):
+    """The passphrase keyring backend failed; surface to the operator."""
+
+
 __all__ = [
     "AuthzError",
     "AuthzRateLimitedError",
@@ -70,4 +74,5 @@ __all__ = [
     "GpgNoSuchKeyError",
     "GpgPermissionError",
     "GpgUnsupportedOperationError",
+    "PassphraseStoreError",
 ]

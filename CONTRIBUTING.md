@@ -903,6 +903,28 @@ Override per-commit with `git -c commit.gpgsign=false commit` when
 you need an unsigned commit (e.g. an in-flight rebase that doesn't
 touch `main`).
 
+**On the host: store the signing-key passphrase in `gpg-bridge`
+(optional but recommended).** If your signing key has a passphrase,
+the bridge's host gpg subprocess otherwise depends on `gpg-agent`
+having the passphrase cached. Cache TTL expiry, agent restart, or
+host wake-from-sleep evicts that cache and the next `git commit`
+hangs until the bridge's `signing_backend_unavailable` deadline
+fires (10 s). Per
+[ADR 0042](design/decisions/0042-gpg-bridge-passphrase-store.md),
+`gpg-bridge` can hold the passphrase in the system keyring and feed
+it directly to `gpg`:
+
+```bash
+task gpg-bridge -- passphrase set <FINGERPRINT>   # prompts no-echo
+task gpg-bridge -- passphrase list                # fingerprints only
+task gpg-bridge -- passphrase clear <FINGERPRINT> # idempotent
+```
+
+`set` rejects fingerprints not in the bridge's
+`allowed_signing_keys` and fingerprints the host `gpg` cannot
+resolve. Operators who prefer the pre-0042 behaviour set
+`passphrase_store_enabled: false` in the bridge's `config.yaml`.
+
 After writing config, the script runs an end-to-end **smoke test**
 that fails fast at install time rather than at first `git commit`.
 Probes (in order):

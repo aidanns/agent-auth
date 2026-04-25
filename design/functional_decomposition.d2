@@ -276,7 +276,7 @@ f70.width: 400
 root -> f70
 f70_container: "" {
   grid-columns: 1
-  grid-rows: 7
+  grid-rows: 8
   grid-gap: 5
   style: {
     stroke-width: 0
@@ -296,13 +296,15 @@ f70_container: "" {
   f76.width: 400
   f77: Load Bridge Configuration
   f77.width: 400
+  f78: Persist Signing Passphrase
+  f78.width: 400
 }
 f70 -> f70_container
 
-f78: GPG CLI
-f78.width: 400
-root -> f78
-f78_container: "" {
+f79: GPG CLI
+f79.width: 400
+root -> f79
+f79_container: "" {
   grid-columns: 1
   grid-rows: 5
   grid-gap: 5
@@ -310,15 +312,15 @@ f78_container: "" {
     stroke-width: 0
     fill: transparent
   }
-  f79: Parse Git GPG Argv
-  f79.width: 400
-  f80: Send Bridge Sign Request
+  f80: Parse Git GPG Argv
   f80.width: 400
-  f81: Send Bridge Verify Request
+  f81: Send Bridge Sign Request
   f81.width: 400
-  f82: Load CLI Configuration
+  f82: Send Bridge Verify Request
   f82.width: 400
-  f83: Auto Refresh Token
+  f83: Load CLI Configuration
   f83.width: 400
+  f84: Auto Refresh Token
+  f84.width: 400
 }
-f78 -> f78_container
+f79 -> f79_container
