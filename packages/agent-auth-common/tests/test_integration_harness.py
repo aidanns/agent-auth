@@ -555,14 +555,76 @@ def test_compose_down_does_not_pass_explicit_timeout_flag(tmp_path, monkeypatch)
 
     cluster.stop(test_failed=False)
 
+    for call in recorder.calls:
+        argv = call.args
+        if "stop" in argv or "down" in argv:
+            assert "-t" not in argv, (
+                f"docker compose argv contains -t, which overrides the "
+                f"compose-file stop_grace_period. argv={argv!r}"
+            )
     down_call = next(call for call in recorder.calls if "down" in call.args)
-    assert "-t" not in down_call.args, (
-        f"docker compose down argv contains -t, which overrides the "
-        f"compose-file stop_grace_period. argv={down_call.args!r}"
-    )
     # Sanity: the rest of the down shape is still what the harness needs.
     assert "-v" in down_call.args
     assert "--remove-orphans" in down_call.args
+
+
+def test_stop_runs_compose_stop_then_diagnostic_then_down(tmp_path, monkeypatch):
+    """#294 diagnostic: split into ``stop`` → ``ps`` → ``down`` so a slow
+    teardown leaves an artefact identifying which container hit the
+    grace ceiling. The order matters — ``ps`` must come AFTER ``stop``
+    (so exit codes reflect the SIGTERM-handler outcome) and BEFORE
+    ``down`` (after which containers are removed and ``ps`` returns
+    nothing).
+    """
+    cluster = _make_started_cluster(tmp_path)
+    recorder = _SubprocessRecorder(lambda argv, env: _FakeCompletedProcess(args=argv, returncode=0))
+    monkeypatch.setattr("tests_support.integration.harness._cluster.subprocess.run", recorder)
+
+    cluster.stop(test_failed=False)
+
+    phases = [c.args[c.args.index("--project-name") + 2] for c in recorder.calls]
+    assert phases.index("stop") < phases.index("ps")
+    assert phases.index("ps") < phases.index("down")
+
+
+def test_stop_diagnostic_dumps_exit_codes_for_each_service(tmp_path, monkeypatch, caplog):
+    """Per-container exit code lands on the ``integration.harness`` logger.
+
+    The shape is ``compose_stop_diag service=<name> exit_code=<n>`` so
+    grepping CI logs for ``compose_stop_diag`` after a slow teardown
+    pinpoints the offending service without requiring a uploaded log
+    artefact.
+    """
+    cluster = _make_started_cluster(tmp_path)
+
+    def _handler(argv: list[str], env: dict[str, str] | None) -> _FakeCompletedProcess:
+        if "ps" in argv and "--format" in argv:
+            return _FakeCompletedProcess(
+                args=argv,
+                stdout=(
+                    '{"Service":"agent-auth","State":"exited","ExitCode":0}\n'
+                    '{"Service":"things-bridge","State":"exited","ExitCode":137}\n'
+                ),
+                returncode=0,
+            )
+        if "logs" in argv:
+            return _FakeCompletedProcess(args=argv, stdout="line1\nline2\n", returncode=0)
+        return _FakeCompletedProcess(args=argv, returncode=0)
+
+    monkeypatch.setattr(
+        "tests_support.integration.harness._cluster.subprocess.run",
+        _SubprocessRecorder(_handler),
+    )
+
+    with caplog.at_level("INFO", logger="integration.harness"):
+        cluster.stop(test_failed=False)
+
+    diag_messages = [r.message for r in caplog.records if "compose_stop_diag" in r.message]
+    assert any("service=agent-auth" in m and "exit_code=0" in m for m in diag_messages)
+    assert any("service=things-bridge" in m and "exit_code=137" in m for m in diag_messages)
+    # Logs tail only emitted for non-clean exits — keeps the success path quiet.
+    assert any("logs_tail=" in m and "service=things-bridge" in m for m in diag_messages)
+    assert not any("logs_tail=" in m and "service=agent-auth" in m for m in diag_messages)
 
 
 # ---------------------------------------------------------------------------

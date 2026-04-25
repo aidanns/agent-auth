@@ -97,13 +97,15 @@ NOTIFIER_SIDECAR_URL = "http://notifier:9150/"
 AGENT_AUTH_INTERNAL_PORT = 9100
 
 # Per-test ``compose_stop`` budget (seconds). The compose file pins
-# ``stop_grace_period: 5s`` per service and the agent-auth /
-# things-bridge SIGTERM handlers (#154) drain in ~5 s, so a healthy
-# teardown + docker overhead lands well under this. Set high enough to
-# tolerate a slow CI runner but low enough to catch a regression to
-# 30 s like the one #288 fixed. Wired into the integration plugin's
-# fixture teardowns and asserted in ``pytest_sessionfinish`` below.
-COMPOSE_STOP_BUDGET_SECONDS = 10.0
+# ``stop_grace_period: 5s`` per service; with SIGTERM handlers wired
+# across all three (agent-auth + things-bridge from #154, notifier
+# from #294) every container exits cleanly in well under a second, so
+# a healthy teardown + docker overhead lands at ~1-2 s. The 3 s budget
+# absorbs slow-CI noise without being so loose it would have hidden
+# the original #288 regression (~30 s) or the #294 ceiling (~6 s).
+# Wired into the integration plugin's fixture teardowns and asserted
+# in ``pytest_sessionfinish`` below.
+COMPOSE_STOP_BUDGET_SECONDS = 3.0
 
 
 @dataclass
