@@ -95,7 +95,7 @@ def migrate_up(
         # is active``, masking the real SQL error via Python's
         # exception chaining.
         try:
-            conn.executescript("BEGIN;\n" + migration.up_sql)
+            conn.executescript(f"BEGIN;\n{migration.up_sql}")
             conn.execute(
                 "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
                 (migration.version, migration.name, datetime.now(UTC).isoformat()),
@@ -144,7 +144,7 @@ def migrate_down(
         # See ``migrate_up`` for why ``BEGIN`` is embedded in the
         # executescript payload rather than issued via ``conn.execute``.
         try:
-            conn.executescript("BEGIN;\n" + migration.down_sql)
+            conn.executescript(f"BEGIN;\n{migration.down_sql}")
             conn.execute("DELETE FROM schema_migrations WHERE version = ?", (migration.version,))
             conn.execute("COMMIT")
         except Exception:
