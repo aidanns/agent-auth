@@ -206,35 +206,53 @@ Adding a migration:
 
 ## Commit conventions
 
-Use [Conventional Commit](https://www.conventionalcommits.org/) messages.
-Semantic-release reads the commit type to decide whether and how to cut
-a release — the full set of accepted types and their release impact
-(mirrors `.releaserc.mjs` `releaseRules`):
+PR titles use a Palantir-style prefix set (see
+[ADR 0037](design/decisions/0037-palantir-commit-prefixes-and-commit-msg-block.md)).
+The PR title becomes the squash-merge commit subject, and the
+`pr-title` job in [`.github/workflows/pr-lint.yml`](.github/workflows/pr-lint.yml)
+enforces the allowlist:
 
-| Type        | Release impact | Use for                                             |
-| ----------- | -------------- | --------------------------------------------------- |
-| `feat:`     | minor bump     | New user-visible feature or capability.             |
-| `fix:`      | patch bump     | Bug fix visible to users.                           |
-| `perf:`     | patch bump     | User-visible performance improvement.               |
-| `revert:`   | patch bump     | Revert of an earlier commit.                        |
-| `docs:`     | no release     | Docs / comments / README / CONTRIBUTING.            |
-| `style:`    | no release     | Formatting, whitespace, no logic change.            |
-| `chore:`    | no release     | Build / tooling / dependency bumps with no API hit. |
-| `refactor:` | no release     | Internal restructuring with no behaviour change.    |
-| `test:`     | no release     | Test-only changes.                                  |
-| `build:`    | no release     | Build-system / packaging changes (non-dep).         |
-| `ci:`       | no release     | CI workflow / action changes.                       |
+| Type           | Release impact | Use for                                                                                         |
+| -------------- | -------------- | ----------------------------------------------------------------------------------------------- |
+| `feature:`     | minor bump     | New user-visible feature or capability.                                                         |
+| `improvement:` | patch bump     | User-visible enhancement of an existing feature (perf wins included).                           |
+| `fix:`         | patch bump     | Bug fix visible to users.                                                                       |
+| `deprecation:` | patch bump     | A user-visible API or behaviour is marked for removal but still works.                          |
+| `migration:`   | patch bump     | A user-visible migration step ships (e.g. a one-time data move that runs at boot).              |
+| `break:`       | major bump     | A user-visible API or behaviour is removed/changed incompatibly. Demoted to minor while in 0.x. |
+| `chore:`       | no release     | Build / tooling / dependency / docs / refactor / CI / test changes with no user-visible impact. |
 
-Breaking changes are marked with a `!` suffix on the type
-(`feat!: drop /v0 endpoint`) or a `BREAKING CHANGE:` footer. They
-would normally bump major; while the project is in the 0.x range
-they are demoted to a minor bump via
+Optional `(scope)` is allowed (e.g. `feature(ci): add pr-lint workflow`).
+Allowed scopes are listed below.
+
+The default Conventional Commits prefixes (`feat:`, `perf:`,
+`revert:`, `docs:`, `style:`, `refactor:`, `test:`, `build:`, `ci:`)
+are **not** accepted by the lint. Map them as follows:
+
+- `feat:` → `feature:`.
+- `perf:` (user-visible) → `improvement:`. Pure under-the-hood perf
+  with no user-observable change → `chore:`.
+- `revert:` → the type the original commit would have had if it
+  reverses a release-bumping change; otherwise `chore:`. Note the
+  revert in the body.
+- `docs:`, `style:`, `refactor:`, `test:`, `build:`, `ci:` → `chore:`
+  unless the change has a user-visible effect, in which case pick the
+  matching user-visible type.
+
+Breaking changes carry a `BREAKING CHANGE:` footer in the
+`==COMMIT_MSG==` block (see "Writing PRs" below). They normally bump
+major; while the project is in the 0.x range they are demoted to a
+minor bump via
 [ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
-§ Pre-1.0 behaviour.
+§ Pre-1.0 behaviour. `break:` is the corresponding PR-title prefix.
 
-`.releaserc.mjs` `releaseRules` is the authoritative source for the
-release-impact column — if this table disagrees with that file, the
-file wins. Raise a PR to fix the docs.
+The bot-mediated `version_logic` (#295) will consume the
+release-impact mapping above. While `.releaserc.mjs` is still in
+place (decommissioning tracked in #296), it operates on the *old*
+prefix set on `main`'s git log; the maintainer translates the
+new-prefix PR title into the appropriate old-prefix squash-merge
+subject when a release is desired during the rollout window. See
+[`docs/release/rollout-pr-template.md`](docs/release/rollout-pr-template.md).
 
 ### Picking a type
 
@@ -243,38 +261,37 @@ calls:
 
 - **User-visible incorrect behaviour wins over everything.** A change
   that makes a broken thing work is `fix:` (patch bump) even when the
-  implementation looks like a refactor, a perf improvement, or a test
+  implementation looks like a refactor, an improvement, or a test
   addition. Example: tightening an HMAC comparison that was previously
-  timing-leaky is `fix(tokens):`, not `perf(tokens):`.
+  timing-leaky is `fix(tokens):`, not `improvement(tokens):`.
 - **`fix(deps):` vs `chore(deps):`.** Use `fix(deps):` when the bump
   patches a CVE that our code path actually reaches, or when the
   dependency update repairs wrong behaviour we observe. Routine version
   drift on Dependabot PRs — no security advisory, no behaviour change
   — is `chore(deps):` (no release). Dev-only dependency bumps are
   `chore(deps-dev):` regardless.
-- **`refactor:` vs `fix:`.** Internal restructuring that incidentally
-  fixes a latent bug — split it if the diff allows: one `refactor:`
-  for the restructure, one `fix:` for the defect. If splitting is
-  artificial, pick `fix:` (the user-visible correction wins).
-- **`build:` vs `ci:` vs `chore:`.** `build:` is for packaging / wheel
-  / Dockerfile content that ships with the distribution. `ci:` is for
-  `.github/workflows/**` and composite actions under `.github/actions/`.
-  `chore:` covers everything else that is neither — Taskfile, scripts,
-  lefthook, dev-only tooling glue. A change to `.github/dependabot.yml`
-  is `ci:` (configures a GitHub-Actions-adjacent tool); a change to
-  `pyproject.toml` dep constraints is `build:` (affects the shipped
-  wheel); a change to `pyproject.toml` `[tool.ruff]` config is
-  `chore:` (dev ergonomics only).
-- **`test:` vs `fix:` on a test file.** A test change that fixes a
-  **product** bug surfaced by the test is `fix:` — the commit
-  qualifies for a patch release. A test change that fixes the test
-  itself (flake, setup bug, asserting the wrong thing) is `test:`
-  (no release).
-- **`perf:` and `feat:` together.** If a perf improvement changes
-  user-observable semantics (new endpoint, new config knob, changed
-  defaults), it is `feat:`; the perf win is a side-effect described
-  in the body. Pure perf changes (same contract, better numbers) are
-  `perf:`.
+- **`chore:` vs `improvement:` on internal restructuring.** A pure
+  refactor with no observable change is `chore:`. A refactor that
+  incidentally improves an observable surface (e.g. cuts p99 latency
+  visible to the caller) is `improvement:`. If the restructure also
+  fixes a latent bug, split if the diff allows: one `chore:` for the
+  restructure, one `fix:` for the defect.
+- **`chore:` is the catch-all for non-user-visible changes.** Build
+  / packaging tweaks, CI workflow changes, dev tooling, internal
+  refactors, test-only changes, and docs all collapse into `chore:`
+  under the new set. The previous distinction between `build:`,
+  `ci:`, `docs:`, `style:`, `refactor:`, `test:` is no longer
+  encoded in the prefix; reach for the **scope** to disambiguate
+  (e.g. `chore(ci): bump action SHA`, `chore(docs): rewrite README`,
+  `chore(deps-dev): bump pytest`).
+- **`improvement:` and `feature:` together.** If an improvement
+  changes user-observable semantics (new endpoint, new config knob,
+  changed defaults), it is `feature:`; the perf or quality win is a
+  side-effect described in the body. Same-contract better-numbers
+  changes are `improvement:`.
+- **`deprecation:` vs `break:`.** Deprecation announces removal but
+  keeps the surface working — a `migration:` or `break:` typically
+  follows in a later release.
 
 ### Allowed scopes
 
@@ -428,26 +445,28 @@ Two release paths exist:
 `CHANGELOG.md` is generated from Conventional Commit subjects and
 bodies, not hand-edited. To get a rich CHANGELOG entry:
 
-- Keep the subject line accurate — it becomes the bullet text in
-  the generated section.
+- Keep the PR title (= squash-merge commit subject) accurate — it
+  becomes the bullet text in the generated section.
 - Put user-visible context (behaviour change, rationale, migration
-  notes) in the commit **body**, not a separate CHANGELOG edit. The
-  body surfaces in the GitHub release notes even when the CHANGELOG
-  keeps only the subject.
-- Do **not** append the linked issue number to the subject (no
+  notes) in the `==COMMIT_MSG==` block, not a separate CHANGELOG
+  edit. The block becomes the squash-merge commit body and surfaces
+  in the GitHub release notes even when the CHANGELOG keeps only
+  the subject.
+- Do **not** append the linked issue number to the PR title (no
   `(#<issue>)` suffix). GitHub's squash-merge auto-appends the PR
   number, and the `conventionalcommits` preset auto-links it in
   `CHANGELOG.md` — a hand-typed issue number would render a second,
-  redundant link beside it. Link the issue via the `Closes #N` footer
-  below instead.
-- Reference the closing issue with `Closes #N` in the footer so
-  GitHub closes the issue when the PR merges and the PR page lists
-  the linkage. `CHANGELOG.md` intentionally does **not** render the
-  closed-issue link — see
+  redundant link beside it. Link the issue via the `Closes #N`
+  trailer in the `==COMMIT_MSG==` block instead.
+- Reference the closing issue with `Closes #N` in the
+  `==COMMIT_MSG==` trailers so GitHub closes the issue when the PR
+  merges and the PR page lists the linkage. `CHANGELOG.md`
+  intentionally does **not** render the closed-issue link — see
   [PR #220](https://github.com/aidanns/agent-auth/pull/220) for the
   rationale.
-- Mark breaking changes with a `!` after the type (`feat!:`) or a
-  `BREAKING CHANGE:` footer. Pre-1.0, these demote to a minor bump
+- Mark breaking changes with a `BREAKING CHANGE:` footer in the
+  `==COMMIT_MSG==` block (paired with the `break:` PR-title prefix).
+  Pre-1.0, these demote to a minor bump
   (see [ADR 0026](design/decisions/0026-semantic-release-autorelease.md)
   § Graduating to 1.0.0).
 
@@ -455,6 +474,83 @@ Hand edits to `CHANGELOG.md` are preserved across releases (the
 generator prepends, it does not rewrite existing content), but
 subsequent automated content renders in the commit-derived format
 rather than the Keep-a-Changelog prose style used in older sections.
+
+### Writing PRs
+
+The PR description is the authoring surface for **two distinct
+audiences**:
+
+- The `==COMMIT_MSG==` block becomes the squash-merge commit body —
+  it enters `git log` and the GitHub release notes. Treat it like a
+  commit message: prose paragraphs, ≤ 72 char wrap, trailers at
+  the end. No markdown headings, bullet lists, or task checkboxes.
+- The `## Review notes` section is for the reviewer — test plan,
+  screenshots, deploy notes, gotchas. It does **not** enter git
+  history. Use whatever markdown you like.
+
+The split is enforced by [`.github/workflows/pr-lint.yml`](.github/workflows/pr-lint.yml):
+the `pr-title` job validates the PR-title prefix, the
+`pr-body-commit-msg` job validates the `==COMMIT_MSG==` block, and
+the `validator-self-test` job exercises the validator against
+fixtures so a regression in the validator can never silently approve
+PRs.
+
+#### Worked example
+
+A PR that adds a feature, references a tracking issue, and notes a
+breaking change for reviewer attention:
+
+```markdown
+==COMMIT_MSG==
+Wire the gpg-bridge probe into agent-auth health.
+
+The /agent-auth/health response now embeds the latest probe status
+from gpg-bridge so a single GET surfaces both services. The probe
+runs every 30s and is cached; stale entries fail-open with status
+"degraded".
+
+Closes #123
+Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>
+==COMMIT_MSG==
+
+## Review notes
+
+### Test plan
+
+- [ ] `task check`
+- [ ] `task test`
+- [ ] manual: `curl -k https://localhost:8443/agent-auth/health` returns
+      `{"status":"healthy","probes":{"gpg-bridge":"healthy"}}`.
+
+### Screenshots
+
+![healthy probe](https://...)
+```
+
+PR title for that example: `feature(agent-auth): expose gpg-bridge probe in /health`.
+
+A `chore:` PR (no release entry) follows the same shape — the
+`==COMMIT_MSG==` block still records the rationale even though no
+CHANGELOG line will be generated.
+
+#### Interim mechanics until the merge bot lands
+
+The merge bot in #291 will paste the `==COMMIT_MSG==` block into
+the squash-merge dialog automatically. Until then, the maintainer
+performs that step by hand:
+
+1. The repository's
+   [`squash_merge_commit_message`](https://docs.github.com/en/rest/repos/repos#update-a-repository)
+   setting is set to `BLANK` so the squash-merge dialog defaults to
+   an empty body (rather than concatenating every PR commit and
+   polluting `git log`).
+2. At merge time, the maintainer copies the contents of the PR's
+   `==COMMIT_MSG==` block (everything between the two markers,
+   exclusive) into the squash-merge dialog's "commit message" field
+   and confirms.
+
+See [`docs/release/rollout-pr-template.md`](docs/release/rollout-pr-template.md)
+for the full rollout plan and rationale.
 
 ### Default path: semantic-release
 

@@ -49,18 +49,32 @@ simplifying for "personal project" scope.
 - Python 3.11+, no external dependencies for core functionality
 - Per-service `src/` layout under `packages/<svc>/`, one `pyproject.toml` per package
 - Follow user global instructions for shell scripts, commits, TODOs, etc.
-- Use Conventional Commit messages. Release-triggering types:
-  `feat:` (minor), `fix:` / `perf:` / `revert:` (patch). Non-release
-  types: `docs:`, `style:`, `chore:`, `refactor:`, `test:`, `build:`,
-  `ci:`. Breaking changes (`!` on the type — `feat!:` — or a
-  `BREAKING CHANGE:` footer) are demoted to a minor bump while in
-  0.x. `.releaserc.mjs` `releaseRules` is the source of truth.
+- PR titles use the Palantir-style prefix set (ADR 0037):
+  `feature:` (minor bump), `improvement:` / `fix:` / `deprecation:` /
+  `migration:` (patch bump), `break:` (major bump, demoted to minor
+  while in 0.x), `chore:` (no release entry). Optional `(scope)` is
+  allowed (e.g. `feature(ci): …`). The default Conventional Commits
+  prefixes (`feat:`, `perf:`, `revert:`, `docs:`, `style:`,
+  `refactor:`, `test:`, `build:`, `ci:`) are NOT accepted; map
+  user-visible perf wins to `improvement:` and the
+  docs/style/refactor/test/build/ci cases to `chore:` when not
+  user-visible. The PR-title lint
+  (`.github/workflows/pr-lint.yml`) enforces the allowlist.
+- The squash-merge commit body is authored inside the
+  `==COMMIT_MSG==` … `==COMMIT_MSG==` block in the PR template; the
+  `## Review notes` section (test plan, screenshots) does not enter
+  git history. Until the merge bot lands (#291) the maintainer
+  pastes the block into the squash-merge dialog by hand —
+  `squash_merge_commit_message: BLANK` is set on the repo so the
+  dialog defaults to empty. See
+  `docs/release/rollout-pr-template.md` and CONTRIBUTING.md §
+  "Writing PRs" for the worked example.
 - Commit subjects must not include the linked issue number
   (no `(#<issue>)` suffix). GitHub's squash-merge appends the PR
   number, which the `conventionalcommits` preset auto-links; adding
   an issue number by hand produces a duplicate parenthesized link in
-  `CHANGELOG.md`. Link the issue with a `Closes #N` footer instead.
-  See `CONTRIBUTING.md` § *Writing release-worthy commits*.
+  `CHANGELOG.md`. Link the issue with a `Closes #N` footer in the
+  `==COMMIT_MSG==` block. See CONTRIBUTING.md § "Writing PRs".
 - Every PR commit needs a DCO `Signed-off-by:` trailer — use
   `git commit -s` every time, or alias it once with
   `git config --local alias.c 'commit -s'`. Git has no native config

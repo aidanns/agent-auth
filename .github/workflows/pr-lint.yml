@@ -1,0 +1,144 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: PR Lint
+
+# Enforces the PR conventions described in ADR 0037 and CONTRIBUTING.md
+# § "Writing PRs":
+#
+#   1. PR title uses one of the Palantir-style prefixes
+#      (feature | improvement | fix | break | deprecation | migration |
+#      chore), with optional `(scope)`.
+#   2. The PR body contains exactly one well-formed `==COMMIT_MSG==`
+#      block (line wrap, no markdown, BREAKING CHANGE positioning,
+#      trailer parsing).
+#
+# A separate `validator-self-test` job exercises the validator against
+# the fixtures under `.github/workflows/tests/pr-lint-fixtures/` on
+# every run, so a regression in the validator (e.g. one that exits 0
+# on every input) immediately fails CI rather than silently approving
+# every PR.
+#
+# This workflow runs on `pull_request_target` so the validator
+# operates on the *base ref's* copy of the script — a fork can't
+# weaken the lint by editing scripts/validate-commit-msg-block.py
+# in the same PR. The body itself is read from
+# `github.event.pull_request.body`, which is only ever a string, so
+# the elevated token does not gain a code-execution surface from the
+# PR contents.
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-title:
+    name: PR title (conventional prefix)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate title prefix
+        # Pinned by SHA per .claude/instructions/tooling-and-ci.md
+        # "Pin release-affecting GitHub Actions to commit SHAs". This
+        # workflow is read-only (no contents:write, no id-token:write)
+        # so the pin is best-practice rather than mandatory; keep it
+        # SHA-pinned anyway because the action runs against
+        # pull_request_target which has access to repo secrets.
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Explicit allowlist — do NOT fall back to the action's
+          # default conventional-commits set. See ADR 0037.
+          # keep-sorted start
+          types: |
+            break
+            chore
+            deprecation
+            feature
+            fix
+            improvement
+            migration
+          # keep-sorted end
+          requireScope: false
+
+  pr-body-commit-msg:
+    name: PR body (==COMMIT_MSG== block)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Pin to the base ref so a fork PR cannot weaken the
+          # validator in the same PR (see workflow-level comment).
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Validate ==COMMIT_MSG== block
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp)"
+          # Write the PR body to disk via env var; piping through the
+          # shell would let backticks / $(...) in the PR body execute.
+          printf '%s' "${PR_BODY:-}" > "${tmp}"
+          python3 scripts/validate-commit-msg-block.py "${tmp}"
+
+  validator-self-test:
+    name: Validator self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Same base-ref pin as pr-body-commit-msg: the self-test
+          # exercises the validator the live job will run against.
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Run validator against every fixture
+        run: |
+          set -euo pipefail
+          fail=0
+          for fixture in .github/workflows/tests/pr-lint-fixtures/*.md; do
+            name="$(basename "${fixture}")"
+            if [[ ${name} == "README.md" ]]; then
+              continue
+            fi
+            if [[ ${name} == valid-* ]]; then
+              expected=0
+            elif [[ ${name} == invalid-* ]]; then
+              expected=1
+            else
+              echo "::error::Fixture ${name} must be named valid-*.md or invalid-*.md"
+              fail=1
+              continue
+            fi
+            if python3 scripts/validate-commit-msg-block.py "${fixture}" \
+              >/tmp/pr-lint-self-test.out 2>&1; then
+              actual=0
+            else
+              actual=$?
+            fi
+            if [[ ${actual} -eq ${expected} ]]; then
+              echo "ok: ${name} (expected ${expected}, got ${actual})"
+            else
+              echo "::error::${name}: expected exit ${expected}, got ${actual}"
+              cat /tmp/pr-lint-self-test.out
+              fail=1
+            fi
+          done
+          if [[ ${fail} -ne 0 ]]; then
+            exit 1
+          fi

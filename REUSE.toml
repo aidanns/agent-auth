@@ -69,3 +69,15 @@ SPDX-License-Identifier = "MIT"
 path = "changelog/@unreleased/.gitkeep"
 SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
 SPDX-License-Identifier = "MIT"
+
+# pr-lint validator fixtures under .github/workflows/tests/pr-lint-fixtures/
+# are PR-body markdown samples whose exact byte layout is the unit under
+# test (line widths, comment positioning, block markers). Adding an inline
+# SPDX HTML comment would alter the input the validator sees — for
+# valid-*.md the comment would land inside the ==COMMIT_MSG== block and
+# noise the trailer-block scan. Declare the licensing here instead.
+[[annotations]]
+path = ".github/workflows/tests/pr-lint-fixtures/**.md"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Aidan Nagorcka-Smith"
+SPDX-License-Identifier = "MIT"

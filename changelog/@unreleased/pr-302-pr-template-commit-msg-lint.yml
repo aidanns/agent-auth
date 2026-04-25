@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    Restructure the PR template around a `==COMMIT_MSG==` fenced
+    block (squash-merge commit body) plus a clearly separated
+    `## Review notes` section (review-only). The new `PR Lint`
+    workflow enforces the Palantir-style PR-title prefix allowlist
+    (`feature` / `improvement` / `fix` / `break` / `deprecation` /
+    `migration` / `chore`) and validates the `==COMMIT_MSG==` block
+    (line wrap, no markdown, BREAKING CHANGE positioning, trailer
+    parsing). A sibling self-test job exercises the validator
+    against every fixture on every PR so a regression in the
+    validator can never silently approve every PR.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/290
+    - https://github.com/aidanns/agent-auth/pull/302
