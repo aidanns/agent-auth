@@ -28,10 +28,14 @@
 # Exits 0 on success, 1 with a human-readable error on failure. Reads
 # the PR body from a file path given as argv[1].
 #
-# Library API: this module exposes `extract_block(body: str) -> str` and
-# `validate(body: str) -> None` for callers that want to reuse the
-# parser without re-implementing the regex. `scripts/extract-commit-msg-
-# block.py` (used by the merge bot) imports `extract_block`.
+# Library API: this module exposes a generic
+# `extract_block(body: str, marker_name: str) -> str | None` plus a
+# fixed `extract_commit_msg_block(body: str) -> str` wrapper for the
+# `==COMMIT_MSG==` case, and `validate(body: str) -> None` for callers
+# that want to run the full lint. `scripts/extract-commit-msg-block.py`
+# (used by the merge bot) imports `extract_commit_msg_block`;
+# `scripts/changelog/bot.py` (the changelog bot, #298) imports
+# `extract_block` for the `==CHANGELOG_MSG==` marker.
 
 from __future__ import annotations
 
@@ -41,7 +45,8 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-MARKER = "==COMMIT_MSG=="
+COMMIT_MSG_MARKER_NAME = "COMMIT_MSG"
+MARKER = f"=={COMMIT_MSG_MARKER_NAME}=="
 MAX_LINE_WIDTH = 72
 
 # A git-trailer line is `Token: value` where the token is RFC 5322-ish:
@@ -94,29 +99,68 @@ class ValidationError(Exception):
     """Raised when the PR body fails the commit-msg block lint."""
 
 
-def extract_block(body: str) -> str:
-    """Return the contents between the two `==COMMIT_MSG==` markers.
+class BlockMarkerError(ValueError):
+    """Raised when ``extract_block`` finds a malformed marker pair.
 
-    Raises ValidationError if the block is missing or appears more or
-    fewer than twice.
+    A separate exception type from ``ValidationError`` so callers other
+    than the commit-msg validator (e.g. the changelog bot in #298) can
+    re-raise without being tangled in the validator's exit-code
+    behaviour. ``ValidationError`` subclasses ``Exception`` for
+    historical reasons and the validator's main loop catches it
+    specifically.
     """
-    occurrences = [i for i, line in enumerate(body.splitlines()) if line.strip() == MARKER]
+
+
+def extract_block(body: str, marker_name: str) -> str | None:
+    """Return the contents between the two ``==<marker_name>==`` markers.
+
+    The marker is matched as a full line (after stripping) so an
+    inline mention of ``==FOO==`` inside surrounding prose does not
+    count as a marker.
+
+    Returns ``None`` when the body contains no marker line — this is
+    the "marker absent" signal callers use to fall through. Raises
+    ``BlockMarkerError`` when exactly one marker line appears or more
+    than two appear: those are mismatched / ambiguous and the caller
+    should report the failure.
+    """
+    marker = f"=={marker_name}=="
+    occurrences = [i for i, line in enumerate(body.splitlines()) if line.strip() == marker]
     if len(occurrences) == 0:
-        raise ValidationError(
-            f"PR body is missing the `{MARKER}` block. " "See .github/PULL_REQUEST_TEMPLATE.md."
-        )
+        return None
     if len(occurrences) == 1:
-        raise ValidationError(
-            f"PR body has only one `{MARKER}` marker; " "the block must be opened and closed."
+        raise BlockMarkerError(
+            f"PR body has only one `{marker}` marker; the block must be opened and closed."
         )
-    if len(occurrences) > 2:
+    if len(occurrences) == 2:
+        lines = body.splitlines()
+        start, end = occurrences
+        return "\n".join(lines[start + 1 : end])
+    raise BlockMarkerError(
+        f"PR body has {len(occurrences)} `{marker}` markers; "
+        "exactly one block (two markers) is required."
+    )
+
+
+def extract_commit_msg_block(body: str) -> str:
+    """Return the contents of the `==COMMIT_MSG==` block.
+
+    Wraps :func:`extract_block` so the commit-msg validator and the
+    merge-bot extractor keep their historical "block is required"
+    semantics (raising ``ValidationError`` rather than returning
+    ``None``). The shared extractor is reused by the changelog bot
+    in #298 with different absent-block semantics (a missing block
+    is a fall-through, not an error).
+    """
+    try:
+        block = extract_block(body, COMMIT_MSG_MARKER_NAME)
+    except BlockMarkerError as exc:
+        raise ValidationError(str(exc)) from exc
+    if block is None:
         raise ValidationError(
-            f"PR body has {len(occurrences)} `{MARKER}` markers; "
-            "exactly one block (two markers) is required."
+            f"PR body is missing the `{MARKER}` block. See .github/PULL_REQUEST_TEMPLATE.md."
         )
-    lines = body.splitlines()
-    start, end = occurrences
-    return "\n".join(lines[start + 1 : end])
+    return block
 
 
 def strip_html_comments(text: str) -> str:
@@ -288,7 +332,7 @@ def check_signoff_present(lines: list[str]) -> None:
 
 
 def validate(body: str) -> None:
-    block = extract_block(body)
+    block = extract_commit_msg_block(body)
     lines = block_lines(block)
     check_non_empty(lines)
     check_line_width(lines)
