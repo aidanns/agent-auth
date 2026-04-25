@@ -30,6 +30,7 @@ Design properties preserved from ``palantir/docker-compose-rule``:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
@@ -463,15 +464,48 @@ class StartedCluster:
             )
 
     def _compose_down(self) -> None:
-        # No ``-t`` here on purpose: the per-service ``stop_grace_period``
+        # Split into ``stop`` → diagnostic capture → ``down`` so a slow
+        # teardown leaves an artefact in CI logs identifying which service
+        # hit the grace ceiling. This is the diagnostic step from #294
+        # (compose_stop sits at the 5 s grace ceiling) — once #294 has a
+        # fix in hand, this can go back to a single ``down`` call.
+        #
+        # No ``-t`` on stop or down: the per-service ``stop_grace_period``
         # in ``docker/docker-compose.yaml`` is the source of truth for the
         # SIGTERM→SIGKILL window, and a CLI ``-t`` would silently override
-        # it. Passing ``-t 30`` here previously masked #154's graceful
-        # shutdown handlers and pushed every teardown to ~30 s — see #288.
-        # ``stop_timeout_seconds`` survives only as the subprocess-level
-        # safety budget below, so a wedged ``docker compose`` can't hang
-        # the harness forever.
-        result = subprocess.run(
+        # it (the original #288 regression). ``stop_timeout_seconds``
+        # survives only as the subprocess-level safety budget on each
+        # subprocess call below, so a wedged ``docker compose`` can't
+        # hang the harness forever.
+        subprocess_timeout = max(60.0, self.stop_timeout_seconds + 30.0)
+
+        stop_result = subprocess.run(
+            [
+                "docker",
+                "compose",
+                *self.file_args(),
+                "--project-name",
+                self.project_name,
+                "stop",
+            ],
+            env=self._subprocess_env(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=subprocess_timeout,
+        )
+        if stop_result.returncode != 0:
+            _log.warning(
+                "docker compose stop failed for project %r: exit=%d stdout=%r stderr=%r",
+                self.project_name,
+                stop_result.returncode,
+                stop_result.stdout,
+                stop_result.stderr,
+            )
+
+        self._dump_exit_diagnostic()
+
+        down_result = subprocess.run(
             [
                 "docker",
                 "compose",
@@ -486,18 +520,102 @@ class StartedCluster:
             capture_output=True,
             text=True,
             check=False,
-            timeout=max(60.0, self.stop_timeout_seconds + 30.0),
+            timeout=subprocess_timeout,
         )
-        if result.returncode != 0:
+        if down_result.returncode != 0:
             # Log rather than raise — teardown must be best-effort so a
             # failing-down doesn't mask the test's original failure.
             _log.warning(
                 "docker compose down failed for project %r: exit=%d stdout=%r stderr=%r",
                 self.project_name,
-                result.returncode,
-                result.stdout,
-                result.stderr,
+                down_result.returncode,
+                down_result.stdout,
+                down_result.stderr,
             )
+
+    def _dump_exit_diagnostic(self) -> None:
+        """Log per-container exit code and a tail of stderr after ``stop``.
+
+        Diagnostic for #294 — surface which container hit the
+        ``stop_grace_period: 5s`` ceiling on every teardown. Best-effort:
+        any failure here is logged and swallowed so it can't block
+        ``down`` (and mask the test's original failure).
+        """
+        ps_result = subprocess.run(
+            [
+                "docker",
+                "compose",
+                *self.file_args(),
+                "--project-name",
+                self.project_name,
+                "ps",
+                "-a",
+                "--format",
+                "json",
+            ],
+            env=self._subprocess_env(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30.0,
+        )
+        if ps_result.returncode != 0:
+            _log.warning(
+                "docker compose ps for project %r failed: exit=%d stderr=%r",
+                self.project_name,
+                ps_result.returncode,
+                ps_result.stderr,
+            )
+            return
+
+        # ``docker compose ps --format json`` emits one JSON object per
+        # line (NDJSON) on most CLI versions, but some emit a single
+        # array. Tolerate either shape so the diagnostic survives a
+        # future compose CLI tweak.
+        rows: list[dict[str, object]] = []
+        body = ps_result.stdout.strip()
+        if not body:
+            return
+        if body.startswith("["):
+            try:
+                rows = json.loads(body)
+            except json.JSONDecodeError:
+                rows = []
+        else:
+            for raw in body.splitlines():
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+
+        for row in rows:
+            service = str(row.get("Service") or row.get("Name") or "<unknown>")
+            state = str(row.get("State") or "")
+            exit_code = row.get("ExitCode")
+            _log.info(
+                "compose_stop_diag project=%s service=%s state=%s exit_code=%s",
+                self.project_name,
+                service,
+                state,
+                exit_code,
+            )
+            # Dump a tail of the container's stderr if it didn't exit
+            # cleanly. ``docker compose logs`` returns combined stdout
+            # and stderr; that's good enough — the agent-auth /
+            # things-bridge watchdog ``force-exiting`` line goes to
+            # stderr and should show up here.
+            if exit_code not in (0, "0", None):
+                logs_text = self.logs(service)
+                tail = "\n".join(logs_text.splitlines()[-20:])
+                _log.info(
+                    "compose_stop_diag project=%s service=%s logs_tail=\n%s",
+                    self.project_name,
+                    service,
+                    tail,
+                )
 
     def _save_logs(self) -> None:
         assert self.logs_dir is not None
