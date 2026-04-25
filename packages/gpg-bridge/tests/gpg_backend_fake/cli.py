@@ -187,14 +187,9 @@ class _GpgArgs:
 
 def _parse_gpg_argv(args: list[str]) -> _GpgArgs:
     parsed = _GpgArgs()
-    iterator = iter(range(len(args)))
-    i_seen: set[int] = set()
     n = len(args)
     i = 0
     while i < n:
-        if i in i_seen:
-            i += 1
-            continue
         token = args[i]
         if token == "--version":
             parsed.want_version = True
@@ -251,10 +246,6 @@ def _parse_gpg_argv(args: list[str]) -> _GpgArgs:
         # Discard anything else as well — a real gpg would honour
         # more flags, but the bridge only emits the set above.
         i += 1
-    # Reference the iterator/seen set to suppress unused-variable
-    # warnings without a top-of-function `del`; keeps the parser's
-    # control flow visible.
-    del iterator, i_seen
     return parsed
 
 
