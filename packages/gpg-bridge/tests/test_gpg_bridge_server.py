@@ -136,6 +136,7 @@ def _get(url: str, token: str | None = "valid-token") -> tuple[int, dict[str, An
 
 
 class TestSignEndpoint:
+    @pytest.mark.covers_function("Serve GPG Bridge HTTP API")
     def test_sign_happy_path(self, gpg_client: GpgSubprocessClient, tmp_path: Path) -> None:
         authz = FakeAuthz()
         config = Config(port=0)
@@ -158,6 +159,7 @@ class TestSignEndpoint:
         finally:
             handle.close()
 
+    @pytest.mark.covers_function("Serve GPG Bridge HTTP API")
     def test_sign_rejects_payload_too_large(self, gpg_client: GpgSubprocessClient) -> None:
         authz = FakeAuthz()
         config = Config(port=0, max_request_bytes=128)
@@ -173,6 +175,7 @@ class TestSignEndpoint:
         finally:
             handle.close()
 
+    @pytest.mark.covers_function("Authorize Sign Request")
     def test_sign_unknown_scope_returns_403(self, gpg_client: GpgSubprocessClient) -> None:
         authz = FakeAuthz(raise_on_validate=AuthzScopeDeniedError("scope_denied"))
         config = Config(port=0)
@@ -190,6 +193,7 @@ class TestSignEndpoint:
         finally:
             handle.close()
 
+    @pytest.mark.covers_function("Authorize Sign Request")
     def test_sign_expired_token_returns_401(self, gpg_client: GpgSubprocessClient) -> None:
         authz = FakeAuthz(raise_on_validate=AuthzTokenExpiredError("token_expired"))
         config = Config(port=0)
@@ -207,6 +211,7 @@ class TestSignEndpoint:
         finally:
             handle.close()
 
+    @pytest.mark.covers_function("Authorize Sign Request")
     def test_sign_rate_limit_propagates_retry_after(self, gpg_client: GpgSubprocessClient) -> None:
         authz = FakeAuthz(
             raise_on_validate=AuthzRateLimitedError("rate_limited", retry_after_seconds=11)
@@ -227,6 +232,7 @@ class TestSignEndpoint:
         finally:
             handle.close()
 
+    @pytest.mark.covers_function("Authorize Sign Request")
     def test_sign_authz_unavailable_returns_502(self, gpg_client: GpgSubprocessClient) -> None:
         authz = FakeAuthz(raise_on_validate=AuthzUnavailableError("unreachable"))
         config = Config(port=0)
@@ -244,6 +250,7 @@ class TestSignEndpoint:
         finally:
             handle.close()
 
+    @pytest.mark.covers_function("Authorize Sign Request")
     def test_sign_missing_bearer_returns_401(self, gpg_client: GpgSubprocessClient) -> None:
         authz = FakeAuthz()
         config = Config(port=0)
@@ -262,6 +269,7 @@ class TestSignEndpoint:
         finally:
             handle.close()
 
+    @pytest.mark.covers_function("Apply Per-Key Allowlist")
     def test_sign_key_not_allowed_when_allowlist_rejects(
         self, gpg_client: GpgSubprocessClient
     ) -> None:
@@ -283,6 +291,7 @@ class TestSignEndpoint:
 
 
 class TestVerifyEndpoint:
+    @pytest.mark.covers_function("Serve GPG Bridge HTTP API")
     def test_verify_happy_path(self, gpg_client: GpgSubprocessClient) -> None:
         authz = FakeAuthz()
         config = Config(port=0)
@@ -310,6 +319,7 @@ class TestVerifyEndpoint:
 
 
 class TestHealthEndpoint:
+    @pytest.mark.covers_function("Serve GPG Bridge Health Endpoint")
     def test_health_ok_when_backend_resolvable(self, gpg_client: GpgSubprocessClient) -> None:
         authz = FakeAuthz()
         config = Config(port=0)
@@ -321,6 +331,7 @@ class TestHealthEndpoint:
         finally:
             handle.close()
 
+    @pytest.mark.covers_function("Serve GPG Bridge Health Endpoint")
     def test_health_unhealthy_when_backend_missing(
         self, gpg_client: GpgSubprocessClient, tmp_path: Path
     ) -> None:
@@ -340,6 +351,7 @@ class TestHealthEndpoint:
 
 
 class TestRejectsUnknownRoutes:
+    @pytest.mark.covers_function("Serve GPG Bridge HTTP API")
     def test_unknown_post_returns_404(self, gpg_client: GpgSubprocessClient) -> None:
         authz = FakeAuthz()
         config = Config(port=0)
@@ -351,6 +363,7 @@ class TestRejectsUnknownRoutes:
         finally:
             handle.close()
 
+    @pytest.mark.covers_function("Serve GPG Bridge HTTP API")
     def test_unknown_get_returns_404(self, gpg_client: GpgSubprocessClient) -> None:
         authz = FakeAuthz()
         config = Config(port=0)
@@ -361,6 +374,7 @@ class TestRejectsUnknownRoutes:
         finally:
             handle.close()
 
+    @pytest.mark.covers_function("Authorize Sign Request")
     def test_invalid_token_returns_401(self, gpg_client: GpgSubprocessClient) -> None:
         authz = FakeAuthz(raise_on_validate=AuthzTokenInvalidError("bad"))
         config = Config(port=0)

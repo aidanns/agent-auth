@@ -121,6 +121,8 @@ def bridge_environment(
 
 
 class TestEndToEnd:
+    @pytest.mark.covers_function("Send Bridge Sign Request")
+    @pytest.mark.covers_function("Send Bridge Verify Request")
     def test_gpg_cli_sign_and_verify_via_bridge(
         self,
         bridge_environment: tuple[str, str, Path],
