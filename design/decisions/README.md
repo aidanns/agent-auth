@@ -91,3 +91,5 @@ is linked from this index.
   — replaces `testcontainers-python` with a subprocess-native fluent builder under `tests/integration/harness/`; supersedes the testcontainers-specific parts of ADR 0004 / 0005 while keeping the per-test Compose-project shape. Closes #80.
 - [ADR 0035 — Keep a single workspace-wide release train for now](0035-workspace-release-model.md)
   — every workspace package keeps riding the repo-wide `v<X>.<Y>.<Z>` tag produced by semantic-release; revisit when an external consumer pins a package, when any package reaches independent 1.0 readiness, or when release cadences materially diverge. Per-package `setuptools_scm` blocks already in place so the flip is a config change, not a refactor.
+- [ADR 0036 — Workspace dep graph is an explicit allowlist verified in CI](0036-workspace-dep-graph-allowlist.md)
+  — `scripts/verify_workspace_deps.py` asserts the edge set in `packages/*/pyproject.toml` matches the seven "service → `agent-auth-common`" edges baked into `ALLOWED_EDGES`; reverse deps, service-to-service leaks, and missing allowlisted edges all fail `task check`. Any new cross-package edge requires an ADR update.

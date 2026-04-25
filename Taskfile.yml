@@ -57,11 +57,17 @@ tasks:
       - scripts/format.sh {{.CLI_ARGS}}
 
   check:
-    desc: Run all linters, assert formatting, and verify integration-test isolation.
+    desc: Run all linters, assert formatting, and verify integration-test isolation + workspace dep graph.
     cmds:
       - scripts/lint.sh
       - scripts/format.sh --check
       - scripts/verify-integration-isolation.sh
+      - scripts/verify_workspace_deps.py
+
+  verify-workspace-deps:
+    desc: Verify the workspace dep graph (packages/*/pyproject.toml) matches ADR 0036's allowlist.
+    cmds:
+      - scripts/verify_workspace_deps.py
 
   typecheck:
     desc: Run mypy + pyright on every packages/<svc>/src tree and tests/.
