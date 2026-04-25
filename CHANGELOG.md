@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.2](https://github.com/aidanns/agent-auth/compare/v0.12.1...v0.12.2) (2026-04-25)
+
+### Bug Fixes
+
+- **test-support:** install SIGTERM handler in notifier so compose teardown exits cleanly ([#300](https://github.com/aidanns/agent-auth/issues/300))
+
 ## [0.12.1](https://github.com/aidanns/agent-auth/compare/v0.12.0...v0.12.1) (2026-04-25)
 
 ### Bug Fixes
