@@ -1530,9 +1530,12 @@ fi
 echo "verify-standards: ${ASSURANCE_FILE} declares a QM/SIL level with required activities and evidence."
 
 # CHANGELOG.md must exist per .claude/instructions/release-and-hygiene.md.
-# The `## [Unreleased]` section is intentionally absent: semantic-release
-# (ADR 0026) owns the file post-migration and prepends a new versioned
-# section on each release rather than promoting [Unreleased] content.
+# The `## [Unreleased]` section is intentionally absent: the YAML-driven
+# release workflow (ADR 0041) owns the file post-migration. Per-PR
+# changelog entries live under `changelog/@unreleased/*.yml`;
+# `scripts/changelog/build_release.py` renders them into a new
+# versioned section at release time. The CHANGELOG itself is never
+# hand-edited for unreleased content.
 
 if [[ ! -f CHANGELOG.md ]]; then
   echo "verify-standards: CHANGELOG.md is missing from the repo root." >&2

@@ -23,6 +23,13 @@ jobs:
   changelog-lint:
     name: changelog-lint
     runs-on: ubuntu-latest
+    # Skip on release PRs (#296). Release PRs DELETE every
+    # `@unreleased/*.yml` (renaming them under `<X.Y.Z>/`) rather than
+    # adding a new one — the file-presence check would otherwise fail
+    # closed. The release-pr workflow runs the same `version_logic`
+    # parser before opening the PR, so the schema check here is
+    # redundant on that branch anyway.
+    if: ${{ !startsWith(github.event.pull_request.head.ref, 'release/') }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:

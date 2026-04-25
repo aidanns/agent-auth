@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    Replace semantic-release with a YAML-driven release workflow that
+    opens a release PR per push to main and tags + publishes on its
+    merge. The release version is computed from
+    `changelog/@unreleased/*.yml` files via the shared `version_logic`
+    library. Decommissions `.releaserc.mjs`, `package.json`,
+    `package-lock.json`, the npm Dependabot ecosystem, and the legacy
+    `scripts/release.sh` local-tag flow (the script is repurposed as
+    a workflow-dispatch wrapper). See ADR 0041.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/296
+    - https://github.com/aidanns/agent-auth/issues/215
