@@ -12,6 +12,20 @@
 # ruff formatting options live in pyproject.toml;
 # mdformat reads .mdformat.toml; taplo reads taplo.toml.
 
+pre-push:
+  # Advisory-only checks. The PR-time CI workflows
+  # (changelog-lint.yml, pr-lint.yml) are the authoritative gates;
+  # these hooks just shorten the feedback loop for things commonly
+  # caught only after pushing.
+  commands:
+    changelog-add-reminder:
+      # Warn when the local branch has no changelog/@unreleased/pr-<N>-*.yml
+      # entry vs. origin/main. The CLI prints to stderr but exits 0
+      # (warn-only); the trailing `|| true` is belt-and-braces in case
+      # we ever flip --strict into the default. The CI changelog-lint
+      # workflow is the authoritative gate.
+      run: scripts/changelog/add.sh --check || true
+
 pre-commit:
   parallel: true
   commands:
