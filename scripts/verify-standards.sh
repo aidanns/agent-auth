@@ -1573,11 +1573,20 @@ fi
 
 echo "verify-standards: SECURITY.md exists with all required sections including the cybersecurity, SDLC, and application security standards."
 
-# Every per-service package must ship an executable ``install.sh`` per
-# .claude/instructions/release-and-hygiene.md. Under the per-subproject
-# layout introduced in #105, the root no longer carries a meta-installer;
-# each ``packages/<service>/install.sh`` is the only supported entry
-# point for that service.
+# Every per-service package that exposes a console-script (i.e. its
+# pyproject.toml carries a ``[project.scripts]`` table) must ship an
+# executable ``install.sh`` per .claude/instructions/release-and-hygiene.md.
+# Library-only workspace packages (no ``[project.scripts]``) — installed
+# transitively as a dependency of a service — must NOT carry an
+# install.sh: there is no user-facing entry point to install. Driving
+# the rule from ``[project.scripts]`` means a new CLI package added to
+# the workspace fails this check until it ships an installer, without
+# anyone having to update an allow-list here.
+#
+# Under the per-subproject layout introduced in #105, the workspace
+# root no longer carries a meta-installer; each
+# ``packages/<service>/install.sh`` is the only supported entry point
+# for that service.
 
 if [[ -f install.sh ]]; then
   echo "verify-standards: root install.sh re-introduced — per-service" >&2
@@ -1586,37 +1595,49 @@ if [[ -f install.sh ]]; then
   exit 1
 fi
 
-installer_drift=0
-shopt -s nullglob
-for pkg_dir in packages/*/; do
-  [[ -d "${pkg_dir}" ]] || continue
-  pkg_name="${pkg_dir%/}"
-  pkg_name="${pkg_name##*/}"
-  # ``agent-auth-common`` is a library-only workspace package with no
-  # console-script: users install it transitively via any service.
-  if [[ "${pkg_name}" == "agent-auth-common" ]]; then
-    continue
-  fi
-  script="${pkg_dir}install.sh"
-  if [[ ! -f "${script}" ]]; then
-    echo "verify-standards: ${script} is missing." >&2
-    installer_drift=1
-    continue
-  fi
-  if [[ ! -x "${script}" ]]; then
-    echo "verify-standards: ${script} exists but is not executable." >&2
-    installer_drift=1
-  fi
-done
-shopt -u nullglob
+if ! python3 - <<'PY' 2>/tmp/verify-standards-installers.err; then
+import pathlib
+import sys
+import tomllib
 
-if [[ "${installer_drift}" -ne 0 ]]; then
+drift: list[str] = []
+for pyproject in sorted(pathlib.Path("packages").glob("*/pyproject.toml")):
+    pkg_dir = pyproject.parent
+    install_sh = pkg_dir / "install.sh"
+    with open(pyproject, "rb") as f:
+        data = tomllib.load(f)
+    has_scripts = bool(data.get("project", {}).get("scripts"))
+    if has_scripts:
+        if not install_sh.is_file():
+            drift.append(
+                f"{install_sh} is missing — {pkg_dir.name}'s pyproject.toml "
+                f"declares [project.scripts] so it must ship an installer."
+            )
+            continue
+        # Permission bits live on the filesystem, not in git, so check
+        # both the executable bit (developer workflow) and the index
+        # mode (what gets shipped) — either being non-executable means
+        # the script will fail when ``curl | bash``-installed.
+        if not install_sh.stat().st_mode & 0o111:
+            drift.append(f"{install_sh} exists but is not executable on disk.")
+    else:
+        if install_sh.exists():
+            drift.append(
+                f"{install_sh} exists but {pkg_dir.name}'s pyproject.toml "
+                f"declares no [project.scripts] — drop the installer or add a CLI."
+            )
+
+for line in drift:
+    print(f"verify-standards: {line}", file=sys.stderr)
+sys.exit(1 if drift else 0)
+PY
+  cat /tmp/verify-standards-installers.err >&2 2>/dev/null || true
   echo "  Add / fix the per-service install.sh following the bash" >&2
   echo "  script conventions in .claude/instructions/bash.md." >&2
   exit 1
 fi
 
-echo "verify-standards: every packages/<service>/install.sh exists and is executable."
+echo "verify-standards: every packages/<service>/ with [project.scripts] ships an executable install.sh; library-only packages have none."
 
 # lefthook hooks must be installed locally so the pre-commit commands
 # configured in lefthook.yml actually fire. Skipped when CI=true — CI
