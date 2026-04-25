@@ -86,18 +86,25 @@ def migrate_up(
         if migration.version in applied_rows:
             continue
         # Each migration is its own BEGIN/COMMIT so partial failures
-        # don't leave the DB in a half-applied state.
-        conn.execute("BEGIN")
+        # don't leave the DB in a half-applied state. The BEGIN must
+        # live *inside* the executescript payload — calling
+        # ``executescript`` implicitly COMMITs any pending transaction
+        # before running, so a separate ``conn.execute("BEGIN")`` here
+        # would be silently committed and the rollback in the except
+        # branch would then raise ``cannot rollback - no transaction
+        # is active``, masking the real SQL error via Python's
+        # exception chaining.
         try:
-            conn.executescript(migration.up_sql)
+            conn.executescript(f"BEGIN;\n{migration.up_sql}")
             conn.execute(
                 "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
                 (migration.version, migration.name, datetime.now(UTC).isoformat()),
             )
+            conn.execute("COMMIT")
         except Exception:
-            conn.execute("ROLLBACK")
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
             raise
-        conn.execute("COMMIT")
         applied.append(migration)
     return applied
 
@@ -134,13 +141,15 @@ def migrate_down(
 
     reverted: list[Migration] = []
     for migration in to_revert:
-        conn.execute("BEGIN")
+        # See ``migrate_up`` for why ``BEGIN`` is embedded in the
+        # executescript payload rather than issued via ``conn.execute``.
         try:
-            conn.executescript(migration.down_sql)
+            conn.executescript(f"BEGIN;\n{migration.down_sql}")
             conn.execute("DELETE FROM schema_migrations WHERE version = ?", (migration.version,))
+            conn.execute("COMMIT")
         except Exception:
-            conn.execute("ROLLBACK")
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
             raise
-        conn.execute("COMMIT")
         reverted.append(migration)
     return reverted

@@ -140,3 +140,67 @@ def test_catalogue_initial_migration_is_reversible():
     # the partial rollback at runtime, but asserting it at the catalogue
     # level gives a nicer failure message during development.
     assert initial.down_sql.strip(), "initial migration must declare a non-empty down_sql"
+
+
+def test_migrate_up_failure_surfaces_original_sql_error(conn):
+    """A failing up-migration must propagate the SQL error verbatim.
+
+    Regression for #319: ``conn.executescript`` performs an implicit
+    ``COMMIT`` before running its payload, so a separately-issued
+    ``conn.execute("BEGIN")`` was silently committed and the rollback
+    in the except branch raised ``cannot rollback - no transaction
+    is active``, masking the real ``OperationalError`` via Python's
+    exception chaining. Reproducing the pre-#222-style "table
+    already exists" failure is the cleanest way to keep that bug
+    pinned: pre-create ``token_families`` so the catalogue's v=1
+    ``CREATE TABLE token_families`` fails on first contact.
+    """
+    conn.execute("CREATE TABLE token_families (id TEXT PRIMARY KEY)")
+    conn.commit()
+
+    with pytest.raises(sqlite3.OperationalError) as excinfo:
+        migrate_up(conn)
+
+    assert "already exists" in str(excinfo.value)
+    # The ``raise`` in the except branch must not have been shadowed by
+    # a fresh "cannot rollback" error from ``conn.execute("ROLLBACK")``
+    # against a non-existent transaction. Both the chained context
+    # (``__context__`` from a bare ``raise`` inside ``except``) and
+    # the explicit cause (``__cause__``) are checked because the
+    # original masking bug surfaced via ``__context__``.
+    assert excinfo.value.__cause__ is None
+    assert excinfo.value.__context__ is None or "cannot rollback" not in str(
+        excinfo.value.__context__
+    )
+
+
+def test_migrate_down_failure_surfaces_original_sql_error(conn):
+    """Same #319 contract as ``migrate_up`` for the reverse path.
+
+    ``migrate_down`` shares the BEGIN/executescript/ROLLBACK pattern,
+    so the same masking bug would surface there too. Drop the table
+    that the down-migration tries to drop, so its first statement
+    fails the way migration 1's would on a pre-#222 store.
+    """
+    migrations = (
+        Migration(
+            version=1,
+            name="creates_t",
+            up_sql="CREATE TABLE t (id INTEGER);",
+            down_sql="DROP TABLE t;",
+        ),
+    )
+    migrate_up(conn, migrations=migrations)
+    # Pull the table out from under the down-migration; its
+    # ``DROP TABLE t`` will then fail with "no such table".
+    conn.execute("DROP TABLE t")
+    conn.commit()
+
+    with pytest.raises(sqlite3.OperationalError) as excinfo:
+        migrate_down(conn, to_version=0, migrations=migrations)
+
+    assert "no such table" in str(excinfo.value)
+    assert excinfo.value.__cause__ is None
+    assert excinfo.value.__context__ is None or "cannot rollback" not in str(
+        excinfo.value.__context__
+    )
