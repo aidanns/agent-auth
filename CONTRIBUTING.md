@@ -858,7 +858,11 @@ label or hand-editing the block before the merge.
 
 Maintainer setup of the merge-bot GitHub App is documented in
 [`docs/release/merge-bot-setup.md`](docs/release/merge-bot-setup.md).
-The interim maintainer-paste mechanics that pre-dated the bot are
+The cross-cutting bring-up checklist for all three release-automation
+bots (changelog, merge, release) and the bypass-actor policy that
+applies to the `main` ruleset are documented in
+[`docs/release/bots-overview.md`](docs/release/bots-overview.md). The
+interim maintainer-paste mechanics that pre-dated the merge bot are
 preserved in
 [`docs/release/rollout-pr-template.md`](docs/release/rollout-pr-template.md)
 for historical reference.
