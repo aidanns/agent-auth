@@ -393,33 +393,61 @@ def _wrap_paragraph(text: str, width: int) -> str:
     greedy wrapper instead keeps each whitespace-separated token
     intact so the rendered notes never split a link.
 
-    Also refuses to break immediately before a `<digits>.` or
-    `<digits>)` token: letting one land at line start would look
-    like an ordered-list item to ``validate-commit-msg-block.py``'s
+    Also refuses to leave a `<digits>.` or `<digits>)` token at the
+    start of a wrapped line: such a token would look like an ordered
+    list item to ``validate-commit-msg-block.py``'s
     "numbered list item" rule (numbered references like `ADR 0011.`
-    and `issue 1234)` are common in changelog prose). Glueing the
-    numeric token to the previous one preserves a soft overflow
-    rather than producing a paragraph the validator rejects.
+    and `issue 1234)` are common in changelog prose). When a numeric
+    token would otherwise overflow the current line, the previous
+    token is moved down to the next line *with* it — preserving both
+    the 72-char width rule and the no-numbered-list rule. The
+    fallback (when the previous-token-plus-numeric pair still
+    overflows on its own line, or the line has no spare token to
+    move) is to soft-overflow the current line rather than emit a
+    line that opens with `<digits>[.)]`.
     """
     out_lines: list[str] = []
-    current = ""
+    current_tokens: list[str] = []
+
+    def current_width() -> int:
+        # Joined width = sum of token lengths + one space between each.
+        return sum(len(t) for t in current_tokens) + max(len(current_tokens) - 1, 0)
+
+    def flush() -> None:
+        if current_tokens:
+            out_lines.append(" ".join(current_tokens))
+            current_tokens.clear()
+
     for token in text.split():
-        if not current:
-            current = token
+        if not current_tokens:
+            current_tokens.append(token)
             continue
-        if NUMERIC_PERIOD_RE.match(token):
-            # Soft-overflow ok: a wrap here would leave the numeric
-            # token at the start of the next line and trip the
-            # validator's numbered-list-item rule.
-            current = f"{current} {token}"
+        is_numeric = bool(NUMERIC_PERIOD_RE.match(token))
+        fits = current_width() + 1 + len(token) <= width
+        if fits:
+            current_tokens.append(token)
             continue
-        if len(current) + 1 + len(token) <= width:
-            current = f"{current} {token}"
-        else:
-            out_lines.append(current)
-            current = token
-    if current:
-        out_lines.append(current)
+        if is_numeric and len(current_tokens) >= 2:
+            # Move the last token of the current line down with the
+            # numeric token so the wrap point sits between two
+            # ordinary tokens. Preserves both the width rule and the
+            # no-numbered-list rule when the moved pair fits on its
+            # own line; the rare case where it still overflows is
+            # accepted as a soft overflow rather than re-introducing a
+            # numbered-list-shaped line start.
+            last = current_tokens.pop()
+            flush()
+            current_tokens.extend([last, token])
+            continue
+        if is_numeric:
+            # Only one token on the line — moving it down would just
+            # restart the same situation. Soft-overflow instead so
+            # the numeric token does not land at line start.
+            current_tokens.append(token)
+            continue
+        flush()
+        current_tokens.append(token)
+    flush()
     return "\n".join(out_lines)
 
 

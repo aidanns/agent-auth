@@ -283,7 +283,8 @@ def test_render_commit_msg_block_keeps_lines_under_72(repo: Path) -> None:
 # 72 chars used to land tokens like `0011.` (from `ADR 0011.`) at line
 # start when the noun and the digits straddled the wrap point — see
 # issue #357 and the broken `chore(release): 0.14.0` PR. The fix in
-# `_wrap_paragraph` glues `<digits>[.)]` to the previous token.
+# `_wrap_paragraph` keeps `<digits>[.)]` tokens off the start of a
+# wrapped line by moving the preceding token down with them.
 #
 # Tests exercise `render_commit_msg_block` (public API, per
 # testing-standards.md) rather than reaching into `_wrap_paragraph`
@@ -294,15 +295,28 @@ def test_render_commit_msg_block_keeps_lines_under_72(repo: Path) -> None:
 _NUMBERED_REFERENCE_LINE_RE = re.compile(r"^\s*\d+[.)]\s+\S")
 
 
-def _assert_no_numbered_lines(block: str) -> None:
-    """Fail with a useful message if any block line opens like a numbered list."""
-    offenders = [
+def _assert_block_satisfies_validator(block: str) -> None:
+    """Assert no line opens like a numbered list AND every line wraps at 72.
+
+    Both rules sit in ``validate-commit-msg-block.py``. The renderer
+    must satisfy both simultaneously: an early version of the fix
+    glued the numeric token to the previous one but pushed the line
+    past 72 chars, trading one validator failure for another. This
+    helper guards against that regression.
+    """
+    numbered = [
         (idx, line)
         for idx, line in enumerate(block.splitlines(), start=1)
         if _NUMBERED_REFERENCE_LINE_RE.match(line)
     ]
-    assert not offenders, "wrapped numeric reference at line start: " + ", ".join(
-        f"line {idx}: {line!r}" for idx, line in offenders
+    assert not numbered, "wrapped numeric reference at line start: " + ", ".join(
+        f"line {idx}: {line!r}" for idx, line in numbered
+    )
+    too_wide = [
+        (idx, line) for idx, line in enumerate(block.splitlines(), start=1) if len(line) > 72
+    ]
+    assert not too_wide, "block line over 72 chars: " + ", ".join(
+        f"line {idx} ({len(line)} chars): {line!r}" for idx, line in too_wide
     )
 
 
@@ -330,7 +344,7 @@ def test_render_commit_msg_block_does_not_wrap_before_adr_number(repo: Path) -> 
     plan = compute_release(repo, "0.4.0")
     assert plan is not None
     block = render_commit_msg_block(plan.entries, plan.next_version)
-    _assert_no_numbered_lines(block)
+    _assert_block_satisfies_validator(block)
 
 
 def test_render_commit_msg_block_does_not_wrap_before_close_paren_number(
@@ -356,7 +370,7 @@ def test_render_commit_msg_block_does_not_wrap_before_close_paren_number(
     plan = compute_release(repo, "0.4.0")
     assert plan is not None
     block = render_commit_msg_block(plan.entries, plan.next_version)
-    _assert_no_numbered_lines(block)
+    _assert_block_satisfies_validator(block)
 
 
 def test_render_commit_msg_block_wraps_normally_around_hyphen_joined_id(
@@ -381,9 +395,7 @@ def test_render_commit_msg_block_wraps_normally_around_hyphen_joined_id(
     plan = compute_release(repo, "0.4.0")
     assert plan is not None
     block = render_commit_msg_block(plan.entries, plan.next_version)
-    _assert_no_numbered_lines(block)
-    for line in block.splitlines():
-        assert len(line) <= 72, f"line too wide: {line!r}"
+    _assert_block_satisfies_validator(block)
     # Sanity: the identifier survives unbroken — it must not be split
     # across a wrap point either (the existing URL-preservation rule).
     assert "CVE-2024-12345" in block
