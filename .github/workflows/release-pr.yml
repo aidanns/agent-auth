@@ -234,14 +234,23 @@ jobs:
           set -euo pipefail
           body="$(jq -r '.pr_body' /tmp/release-plan.json)"
           existing="$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')"
+          # Apply `automerge` and `no changelog` on both create and update
+          # paths so the merge-bot lands the release once required checks
+          # pass. The release PR body is auto-rendered prose and carries
+          # no hand-authored changelog YAML, so `no changelog` keeps
+          # changelog-lint happy. Both labels are idempotent on re-run.
+          # See ADR 0041 § Consequences ("Fully automated releases") and
+          # issue #359.
           if [[ -n "${existing}" ]]; then
             echo "release-pr: updating existing PR #${existing}"
-            gh pr edit "${existing}" --title "${TITLE}" --body "${body}"
+            gh pr edit "${existing}" --title "${TITLE}" --body "${body}" \
+              --add-label automerge,'no changelog'
           else
             echo "release-pr: opening new PR for ${BRANCH}"
             gh pr create \
               --base main \
               --head "${BRANCH}" \
               --title "${TITLE}" \
-              --body "${body}"
+              --body "${body}" \
+              --label automerge,'no changelog'
           fi
