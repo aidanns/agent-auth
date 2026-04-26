@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: fix
+fix:
+  description: |
+    The `Release PR` workflow now runs `mdformat CHANGELOG.md` after
+    rendering the next release section, so the generated `CHANGELOG.md`
+    matches the repo's mdformat conventions byte for byte. Without this
+    pass, the release PR's `Check` job failed `scripts/format.sh
+    --check` and the maintainer had to hand-reformat before merging —
+    a regression introduced when the release flow moved from
+    semantic-release (which had this pass via its prepare step) to the
+    YAML-driven workflow in #321. The shared
+    `./.github/actions/setup-toolchain` action provisions the
+    manifest-pinned mdformat the new step depends on.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/356
+    - https://github.com/aidanns/agent-auth/pull/360
