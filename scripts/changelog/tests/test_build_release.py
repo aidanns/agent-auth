@@ -17,6 +17,7 @@ from __future__ import annotations
 import datetime as _dt
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -273,6 +274,119 @@ def test_render_commit_msg_block_keeps_lines_under_72(repo: Path) -> None:
     block = render_commit_msg_block(plan.entries, plan.next_version)
     for line in block.splitlines():
         assert len(line) <= 72, f"line too wide: {line!r}"
+
+
+# --- numbered-reference wrap regressions ------------------------------------
+#
+# `validate-commit-msg-block.py` rejects any block line matching
+# `^\s*\d+[.)]\s+\S` (the `numbered list item` rule). Greedy wrap on
+# 72 chars used to land tokens like `0011.` (from `ADR 0011.`) at line
+# start when the noun and the digits straddled the wrap point — see
+# issue #357 and the broken `chore(release): 0.14.0` PR. The fix in
+# `_wrap_paragraph` glues `<digits>[.)]` to the previous token.
+#
+# Tests exercise `render_commit_msg_block` (public API, per
+# testing-standards.md) rather than reaching into `_wrap_paragraph`
+# directly: the validator only sees the rendered block, and the
+# render-then-validate path is the contract a regression would break.
+
+
+_NUMBERED_REFERENCE_LINE_RE = re.compile(r"^\s*\d+[.)]\s+\S")
+
+
+def _assert_no_numbered_lines(block: str) -> None:
+    """Fail with a useful message if any block line opens like a numbered list."""
+    offenders = [
+        (idx, line)
+        for idx, line in enumerate(block.splitlines(), start=1)
+        if _NUMBERED_REFERENCE_LINE_RE.match(line)
+    ]
+    assert not offenders, "wrapped numeric reference at line start: " + ", ".join(
+        f"line {idx}: {line!r}" for idx, line in offenders
+    )
+
+
+def test_render_commit_msg_block_does_not_wrap_before_adr_number(repo: Path) -> None:
+    """`ADR 0011.` must never end up split across a soft wrap point.
+
+    Reproduces issue #357: the source prose mirrors the wording from
+    PR #355 that broke the `==COMMIT_MSG==` lint, with enough prefix
+    text to push the `0011.` token onto a wrap boundary at width 72.
+    """
+    # Crafted so the buggy greedy wrapper would land `0011.` at the
+    # start of the second line: `Features: ` + the prose below packs
+    # exactly to 72 chars at `… from ADR`, leaving the `0011.` token
+    # (digits + period) to overflow onto the next line — exactly the
+    # failure mode from PR #355's `chore(release): 0.14.0` body.
+    description = (
+        "Switch back to the single-use refresh contract design "
+        "from ADR 0011. Then verify the rebuilt wrap."
+    )
+    _seed_unreleased(
+        repo,
+        "pr-100-feat.yml",
+        f"type: feature\nfeature:\n  description: {description}\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    block = render_commit_msg_block(plan.entries, plan.next_version)
+    _assert_no_numbered_lines(block)
+
+
+def test_render_commit_msg_block_does_not_wrap_before_close_paren_number(
+    repo: Path,
+) -> None:
+    """`issue 1234)` must not split with `1234)` opening a wrapped line.
+
+    Same failure mode as the `<digits>.` case but for the close-paren
+    variant rejected by the same validator rule.
+    """
+    # Crafted so `Fixes: ` + the prose below ends the first line at
+    # `… in (issue` (68 chars), leaving the buggy wrapper to drop
+    # `1234)` onto the next line — i.e. `1234) and verify the …`.
+    description = (
+        "Restore the long-standing renderer regression noted in "
+        "(issue 1234) and verify the rebuilt wrap."
+    )
+    _seed_unreleased(
+        repo,
+        "pr-100-fix.yml",
+        f"type: fix\nfix:\n  description: {description}\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    block = render_commit_msg_block(plan.entries, plan.next_version)
+    _assert_no_numbered_lines(block)
+
+
+def test_render_commit_msg_block_wraps_normally_around_hyphen_joined_id(
+    repo: Path,
+) -> None:
+    """Hyphen-joined identifiers like `CVE-2024-12345` must wrap normally.
+
+    The fix targets `\\d+[.)]` tokens specifically. A token containing
+    digits but joined with hyphens does not match `NUMERIC_PERIOD_RE`,
+    so the standard greedy wrap should apply and the resulting lines
+    must still satisfy the 72-char width and numbered-list rules.
+    """
+    description = (
+        "Mitigate the upstream advisory tracked as CVE-2024-12345 by "
+        "pinning the affected dependency and adding a regression test."
+    )
+    _seed_unreleased(
+        repo,
+        "pr-100-fix.yml",
+        f"type: fix\nfix:\n  description: {description}\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    block = render_commit_msg_block(plan.entries, plan.next_version)
+    _assert_no_numbered_lines(block)
+    for line in block.splitlines():
+        assert len(line) <= 72, f"line too wide: {line!r}"
+    # Sanity: the identifier survives unbroken — it must not be split
+    # across a wrap point either (the existing URL-preservation rule).
+    assert "CVE-2024-12345" in block
 
 
 # --- render_release_notes ---------------------------------------------------

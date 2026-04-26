@@ -84,6 +84,16 @@ SECTION_HEADINGS: dict[EntryType, str] = {
 # Matches `validate-commit-msg-block.py`'s `MAX_LINE_WIDTH`.
 COMMIT_MSG_WRAP = 72
 
+# Tokens shaped like `<digits>.` or `<digits>)` look like ordered-list
+# items to `validate-commit-msg-block.py`'s `numbered list item` rule
+# (DISALLOWED_PATTERNS) when they land at the start of a wrapped line.
+# This recurs in changelog prose because numbered references such as
+# `ADR 0011.`, `issue 1234)`, `RFC 2119`, or `PR 357.` are common —
+# the noun and the digits sit on either side of a soft wrap point.
+# `_wrap_paragraph` glues such a token to the previous one rather than
+# letting it open a fresh line, even at the cost of a soft overflow.
+NUMERIC_PERIOD_RE = re.compile(r"^\d+[.)]")
+
 
 @dataclass(frozen=True)
 class FileMove:
@@ -382,12 +392,26 @@ def _wrap_paragraph(text: str, width: int) -> str:
     `textwrap.fill` breaks long URLs at boundary chars; this trivial
     greedy wrapper instead keeps each whitespace-separated token
     intact so the rendered notes never split a link.
+
+    Also refuses to break immediately before a `<digits>.` or
+    `<digits>)` token: letting one land at line start would look
+    like an ordered-list item to ``validate-commit-msg-block.py``'s
+    "numbered list item" rule (numbered references like `ADR 0011.`
+    and `issue 1234)` are common in changelog prose). Glueing the
+    numeric token to the previous one preserves a soft overflow
+    rather than producing a paragraph the validator rejects.
     """
     out_lines: list[str] = []
     current = ""
     for token in text.split():
         if not current:
             current = token
+            continue
+        if NUMERIC_PERIOD_RE.match(token):
+            # Soft-overflow ok: a wrap here would leave the numeric
+            # token at the start of the next line and trip the
+            # validator's numbered-list-item rule.
+            current = f"{current} {token}"
             continue
         if len(current) + 1 + len(token) <= width:
             current = f"{current} {token}"
