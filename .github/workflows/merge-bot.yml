@@ -247,8 +247,30 @@ jobs:
           # merge gating supersedes its own historical check
           # outcomes; only the substantive required checks should
           # gate the merge decision.
+          #
+          # Dedupe-by-latest-run: `statusCheckRollup` returns one
+          # entry per check *run*, not per check *name*. A retried
+          # check (workflow rerun, fix-then-push, close+reopen
+          # retrigger) appears multiple times. Without the dedupe a
+          # historical FAILURE for a check that has since passed
+          # would keep the failure / pending predicates true forever
+          # on the same head SHA — the fail-then-pass workflow that
+          # GitHub's "Re-run failed jobs" UI is built for would
+          # wedge merge-bot indefinitely (origin: PR #346 / issue
+          # #347, where `changelog-lint` failed on the first run,
+          # passed on the rerun, and kept the bot in
+          # FAILED_CHECKS:changelog-lint until the stale run was
+          # manually deleted via `gh run delete`). Group by
+          # name+context, keep the entry with the most recent
+          # startedAt, then apply the failure / pending predicates
+          # so they read the *current* status of each check, not
+          # every historical run. The same dedupe applies to the
+          # pending selector below — a stale IN_PROGRESS entry from
+          # a cancelled run must not pin the wait-clean-exit path.
           failed="$(jq -r '
             map(select((.workflowName // "") != "Merge Bot"))
+            | group_by(.name // .context // "<unnamed>")
+            | map(max_by(.startedAt // ""))
             | map(select(
               ((.conclusion // "") | ascii_upcase | IN("FAILURE","TIMED_OUT","CANCELLED","STARTUP_FAILURE","ACTION_REQUIRED"))
               or ((.state // "") | ascii_upcase | IN("FAILURE","ERROR"))
@@ -257,6 +279,8 @@ jobs:
           ' <<<"${rollup}")"
           pending="$(jq -r '
             map(select((.workflowName // "") != "Merge Bot"))
+            | group_by(.name // .context // "<unnamed>")
+            | map(max_by(.startedAt // ""))
             | map(select(
               ((.conclusion // "") == ""
                 and ((.status // "") | ascii_upcase | IN("QUEUED","IN_PROGRESS","WAITING","PENDING","REQUESTED")))
