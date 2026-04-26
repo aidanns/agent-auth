@@ -12,6 +12,11 @@
 [formatter.mdformat]
 command = "mdformat"
 includes = ["*.md"]
+# pr-lint validator fixtures are byte-exact PR-body inputs — mdformat
+# would escape literal `<n>.` / `<n>)` lines (CommonMark ordered-list
+# markers) and defeat the very tests that exercise the validator's
+# numbered-list discrimination (#358). Keep these files unformatted.
+excludes = [".github/workflows/tests/pr-lint-fixtures/*.md"]
 
 [formatter.ruff]
 command = "ruff"

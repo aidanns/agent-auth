@@ -85,7 +85,15 @@ DISALLOWED_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("markdown heading", re.compile(r"^#{1,6}\s")),
     ("task checkbox", re.compile(r"^\s*[-*+]\s+\[[ xX]\]\s")),
     ("bullet list item", re.compile(r"^\s*[-*+]\s+\S")),
-    ("numbered list item", re.compile(r"^\s*\d+[.)]\s+\S")),
+    # Cap the digit count at 3 so a wrapped 4+ digit identifier
+    # reference (e.g. `ADR\n0011. follows.` — see #358) does not
+    # false-positive as a list marker. CommonMark ordered lists in
+    # practice use 1-3 digit markers (`1.` … `999.`); a 4+ digit
+    # prefix in prose is almost always an identifier wrap (ADR /
+    # issue / RFC / CVE). Trade-off: a literal numbered list with a
+    # 4+ digit marker sneaks through; the false-positive avoidance
+    # gain is worth the false-negative.
+    ("numbered list item", re.compile(r"^\s*\d{1,3}[.)]\s+\S")),
 ]
 
 # Comment / instruction lines the contributor may leave behind by

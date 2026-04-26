@@ -63,7 +63,13 @@ require_tool taplo \
 
 shell_files_raw="$(list_tracked '*.sh')"
 python_files_raw="$(list_tracked '*.py')"
-markdown_files_raw="$(list_tracked '*.md')"
+# Exclude pr-lint validator fixtures: these are byte-exact PR-body
+# inputs and mdformat would escape literal `<n>.` / `<n>)` lines
+# (CommonMark ordered-list markers), defeating the very tests that
+# exercise the validator's numbered-list discrimination (#358). Kept
+# in lockstep with the `excludes` entry in treefmt.toml.
+markdown_files_raw="$(list_tracked '*.md' \
+  | grep -v '^\.github/workflows/tests/pr-lint-fixtures/' || true)"
 toml_files_raw="$(list_tracked '*.toml')"
 
 format_group() {
