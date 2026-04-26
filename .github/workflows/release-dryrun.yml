@@ -33,10 +33,6 @@ permissions:
 jobs:
   build-dryrun:
     runs-on: ubuntu-latest
-    # Informational gate during the #325 soak window — see header.
-    # Removing this line is the explicit signal that the gate is now
-    # required.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -48,7 +44,21 @@ jobs:
           version: "0.11.7"
           enable-cache: true
 
+      # Informational gate during the #325 soak window — see header.
+      # `continue-on-error: true` on the build + assert steps means a
+      # broken release-build path shows up as a red sub-step inside
+      # the job (visible to anyone clicking through), while the job's
+      # check-run conclusion stays green so the rollup doesn't block
+      # PR merges. Removing both lines is the explicit signal that
+      # the gate is now required and a follow-up config-only PR adds
+      # the check to branch-protection's required-status-checks set.
+      #
+      # Step-level (not job-level) continue-on-error is load-bearing:
+      # a job-level toggle leaves the *job's* check-run reporting
+      # FAILURE even when the workflow's conclusion is success, which
+      # then blocks the merge-bot's rollup gate.
       - name: Build into temp dist/
+        continue-on-error: true
         run: scripts/build-release-artifacts.sh --out dist
 
       # Today the workspace-root `uv build` produces one wheel + one
@@ -62,14 +72,22 @@ jobs:
       # lands (issue tracks the move from informational to required
       # status check).
       - name: Assert expected artefact set
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
+          # `nullglob` makes an unmatched glob expand to nothing
+          # rather than the literal pattern, so the array stays empty
+          # when the build step (above) failed and produced no dist/.
           shopt -s nullglob
           wheels=(dist/*.whl)
           sdists=(dist/*.tar.gz)
-          echo "Built artefacts in dist/:"
-          ls -1 dist/ | sed 's/^/  /'
+          if [[ -d dist ]]; then
+            echo "Built artefacts in dist/:"
+            ls -1 dist/ | sed 's/^/  /'
+          else
+            echo "No dist/ directory — build step failed before producing any artefacts."
+          fi
           if [[ "${#wheels[@]}" -eq 0 ]]; then
             echo "::error::no .whl artefacts produced in dist/"
             exit 1
