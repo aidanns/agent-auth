@@ -721,18 +721,18 @@ The `==COMMIT_MSG==` block accepts the following trailers (see
 Unknown tokens are rejected to fail closed on typos like
 `Singed-off-by:` or `Cosed: #1`.
 
-| Trailer                          | Purpose                                                                                                                                                                               |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Signed-off-by: <name> <email>`  | DCO sign-off. Required on every PR — `git commit -s` adds it; the [DCO workflow](.github/workflows/dco.yml) enforces it.                                                              |
-| `Closes #N` / `Fixes #N`         | Link a GitHub issue. The merge bot pastes the block as the squash-merge body, so GitHub closes the linked issue when the PR merges. Both spellings work.                              |
-| `Fixes: <sha> ("subject")`       | Kernel-style: this commit fixes a previously merged commit. Use when a regression hunt has identified the introducing commit so a future bisect of the same regression finds the fix. |
-| `Reviewed-by: <name> <email>`    | Reviewer attribution. Useful when the review trail merits explicit credit (security review, external contributor with deep context).                                                  |
-| `Reported-by: <name> <email>`    | Bug reporter attribution. Useful for fixes that originated as an external bug report.                                                                                                 |
-| `Tested-by: <name> <email>`      | Testing attribution. Useful when someone other than the author validated the fix in their environment.                                                                                |
-| `Acked-by: <name> <email>`       | Maintainer / owner ack on a change that crosses ownership boundaries.                                                                                                                 |
-| `Co-authored-by: <name> <email>` | Joint authorship. GitHub renders multiple authors on the squash-merge commit.                                                                                                         |
-| `BREAKING CHANGE: <text>`        | Footer that surfaces a backwards-incompatible change in the release notes; pair with the `break:` PR-title prefix. Must be the last non-`Signed-off-by:` line in the block.           |
-| `Refs: <ref>`                    | Generic forward / back reference (issue, ADR, RFC) when none of the above fit.                                                                                                        |
+| Trailer                                  | Purpose                                                                                                                                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Signed-off-by: <name> <email>`          | DCO sign-off. Required on every PR — `git commit -s` adds it; the [DCO workflow](.github/workflows/dco.yml) enforces it.                                                              |
+| `Closes #N` / `Fixes #N` / `Resolves #N` | Link a GitHub issue. The merge bot pastes the block as the squash-merge body, so GitHub closes the linked issue when the PR merges. All three spellings work.                         |
+| `Fixes: <sha> ("subject")`               | Kernel-style: this commit fixes a previously merged commit. Use when a regression hunt has identified the introducing commit so a future bisect of the same regression finds the fix. |
+| `Reviewed-by: <name> <email>`            | Reviewer attribution. Useful when the review trail merits explicit credit (security review, external contributor with deep context).                                                  |
+| `Reported-by: <name> <email>`            | Bug reporter attribution. Useful for fixes that originated as an external bug report.                                                                                                 |
+| `Tested-by: <name> <email>`              | Testing attribution. Useful when someone other than the author validated the fix in their environment.                                                                                |
+| `Acked-by: <name> <email>`               | Maintainer / owner ack on a change that crosses ownership boundaries.                                                                                                                 |
+| `Co-authored-by: <name> <email>`         | Joint authorship. GitHub renders multiple authors on the squash-merge commit.                                                                                                         |
+| `BREAKING CHANGE: <text>`                | Footer that surfaces a backwards-incompatible change in the release notes; pair with the `break:` PR-title prefix. Must be the last non-`Signed-off-by:` line in the block.           |
+| `Refs: <ref>`                            | Generic forward / back reference (issue, ADR, RFC) when none of the above fit.                                                                                                        |
 
 #### Worked examples
 
