@@ -140,3 +140,19 @@ Negative:
 - Extend the script to include every `[project.optional-dependencies]`
   group if and when extras start carrying workspace-internal edges —
   currently not worth the code because no extra does.
+
+## Update — 2026-04-26: shared `AuthenticatedRetry` lives in `agent_auth_client`
+
+[ADR 0043](0043-shared-authenticated-retry-library.md) extracted the
+refresh + reissue retry loop shared by `things-cli` and `gpg-cli`
+into `agent_auth_client.AuthenticatedRetry` (in the
+`agent-auth-common` workspace package). The new module ships in the
+same wheel as the existing `AgentAuthClient`, so the package-level
+edges in `ALLOWED_EDGES` are unchanged — both
+`things-cli → agent-auth-common` and
+`gpg-cli → agent-auth-common` already cover the new import.
+
+This ADR is amended (rather than the script edited) to record that
+`auth_retry` is a sanctioned consumption point inside
+`agent-auth-common`: future audits of why `things-cli` and
+`gpg-cli` import from the shared library now have a named answer.
