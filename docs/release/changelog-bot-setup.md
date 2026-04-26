@@ -16,7 +16,10 @@ This App is **separate** from
 [`agent-auth-release-bot`](../../CONTRIBUTING.md#release-app-setup)
 (release path) and from #291's merge bot App. Each App is scoped to
 the narrowest set of permissions it needs so revoking one does not
-disrupt the other.
+disrupt the other. For the cross-cutting bring-up checklist that
+covers all three release-automation Apps together (and the
+bypass-actor policy that distinguishes them), see
+[`bots-overview.md`](bots-overview.md).
 
 ## Why a dedicated GitHub App?
 
