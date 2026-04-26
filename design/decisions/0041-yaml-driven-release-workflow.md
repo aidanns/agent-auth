@@ -148,10 +148,16 @@ workflow that handles tag + GitHub-Release creation lives in
   the canonical record; the CHANGELOG, the GitHub Release, and the
   release PR are all renderings of the same data. Edits to release
   notes go through the YAML, not three parallel surfaces.
-- **Maintainer review gate.** A release ships only after the
-  release PR merges. Trivial today (auto-merge possible); load-
-  bearing later when the project graduates to 1.0 and downstream
-  consumers care about each release.
+- **Fully automated releases.** A release ships once the release
+  PR's CI passes; the merge bot lands the squash without maintainer
+  involvement. Trust rests on YAML lint and the original feature
+  PR's review at YAML-commit time, plus deterministic rendering by
+  `version_logic` and `build_release`. The maintainer-review gate
+  originally proposed in this ADR was removed in #359 because pre-
+  1.0 the cost of an incorrect bump (recoverable on the next
+  release) does not justify the per-release human checkpoint. Re-
+  evaluate at the 1.0 transition (see *Re-evaluation trigger*
+  below).
 - **Simpler dependency footprint.** The repo loses
   `package.json`, `package-lock.json`, `.releaserc.mjs`, the
   `@semantic-release/*` toolchain, and the npm Dependabot ecosystem.
@@ -163,11 +169,11 @@ workflow that handles tag + GitHub-Release creation lives in
 
 ### Negative / accepted trade-offs
 
-- **Two-step release.** Cutting a release now requires a maintainer
-  to merge the release PR. On a solo project this is overhead the
-  previous flow avoided. Mitigated by `task release` (manual
-  workflow dispatch) and by GitHub auto-merge if the maintainer
-  trusts the auto-rendered notes.
+- **Two-step release.** A release now lands as two commits on
+  `main` (the feature merge then the release PR's squash) rather
+  than one direct `chore(release):` commit. With the merge bot
+  auto-landing the release PR (#359), this costs only the second
+  CI run, not maintainer time.
 - **Workflow complexity.** Two new workflow files + a Python module
   vs. semantic-release's single workflow. The Python module is
   unit-tested (mirroring `version_logic.py`); the workflow YAML
@@ -215,3 +221,13 @@ workflow that handles tag + GitHub-Release creation lives in
   approve pull requests* was off, not the ruleset). `release-pr.yml`
   now mints an App token and uses it for both the release-branch
   push and the `gh pr` calls.
+
+### Re-evaluation trigger
+
+Revisit the auto-merge decision on any of:
+
+- The project crossing 1.0.0.
+- Two consecutive incorrect-bump releases shipping where corrections
+  are disruptive.
+- Downstream consumers reporting reliance on a maintainer review
+  gate.
