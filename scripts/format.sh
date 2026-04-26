@@ -63,7 +63,21 @@ require_tool taplo \
 
 shell_files_raw="$(list_tracked '*.sh')"
 python_files_raw="$(list_tracked '*.py')"
-markdown_files_raw="$(list_tracked '*.md')"
+markdown_files_raw_unfiltered="$(list_tracked '*.md')"
+# Exclude pr-lint validator fixtures: these are byte-exact PR-body
+# inputs and mdformat would escape literal `<n>.` / `<n>)` lines
+# (CommonMark ordered-list markers), defeating the very tests that
+# exercise the validator's numbered-list discrimination (#358). Kept
+# in lockstep with the `excludes` entry in treefmt.toml. The filter
+# runs against the captured variable, not piped from `git ls-files`,
+# so a `git` failure in `list_tracked` still trips `set -e`.
+# `grep -v` exits 1 when nothing matches the filter pattern (i.e.
+# no markdown files outside the fixture dir), so swallow that with
+# `|| true` — the empty result is the legitimate "skip" signal that
+# `format_group` already handles.
+markdown_files_raw="$(grep -v \
+  '^\.github/workflows/tests/pr-lint-fixtures/' \
+  <<<"${markdown_files_raw_unfiltered}" || true)"
 toml_files_raw="$(list_tracked '*.toml')"
 
 format_group() {
