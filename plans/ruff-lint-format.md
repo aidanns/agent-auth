@@ -98,8 +98,8 @@ intentionally skipped:
 - *Verify implementation against design doc* — Python linting and
   formatting is developer tooling, not a behavioural component of
   `agent-auth` or `things-bridge`. It does not appear in
-  `design/DESIGN.md`, `functional_decomposition.yaml`, or
-  `product_breakdown.yaml`, and does not need to.
+  `design/DESIGN.md`, `functional_decomposition.yml`, or
+  `product_breakdown.yml`, and does not need to.
 - *Threat model / cybersecurity standard compliance* — no change to
   the running service's attack surface, keys, or data flow. Ruff
   runs at developer-time and CI-time only.

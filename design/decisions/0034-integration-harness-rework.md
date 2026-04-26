@@ -13,7 +13,7 @@ implementation choices from ADR 0004 § Decision ("using
 `testcontainers-python` to drive the Compose lifecycle instead of
 hand-rolled subprocess calls") and ADR 0005 § Decision (single shared
 Compose file). The broader decisions from 0004 / 0005 — per-test
-Compose project, shared `Dockerfile.test`, one `docker-compose.yaml`
+Compose project, shared `Dockerfile.test`, one `docker-compose.yml`
 for all services — are unchanged. Closes
 [#80](https://github.com/aidanns/agent-auth/issues/80).
 
@@ -25,7 +25,7 @@ services. The conftest layers in `tests/integration/` grew three
 friction points that were called out on #80:
 
 1. **Placeholder-rendered compose file.** The shared
-   `docker/docker-compose.yaml` carried `{{ COMPOSE_PROJECT_NAME }}`
+   `docker/docker-compose.yml` carried `{{ COMPOSE_PROJECT_NAME }}`
    / `{{ AGENT_AUTH_TEST_IMAGE }}` / `{{ THINGS_BRIDGE_TEST_FIXTURES_DIR }}`
    double-brace placeholders that the conftest substituted via a
    Python renderer (`render_compose_file`) before docker compose ever
@@ -120,7 +120,7 @@ an in-tree `DockerComposeCluster` module under
   before `docker compose down` runs, so a flaky CI run leaves an
   artefact to upload.
 - **Compose file uses native interpolation.** The shared
-  `docker/docker-compose.yaml` now uses `${AGENT_AUTH_TEST_IMAGE}`
+  `docker/docker-compose.yml` now uses `${AGENT_AUTH_TEST_IMAGE}`
   / `${AGENT_AUTH_TEST_CONFIG_DIR}` / `${THINGS_BRIDGE_TEST_FIXTURES_DIR}`
   / `${NOTIFIER_MODE}`. `render_compose_file` and the
   `COMPOSE_PROJECT_NAME` placeholder are gone; the project name is

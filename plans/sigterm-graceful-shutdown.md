@@ -81,7 +81,7 @@ tests/
 
 design/
     DESIGN.md                               # Graceful shutdown subsection
-    functional_decomposition.yaml           # add 2 leaf functions
+    functional_decomposition.yml           # add 2 leaf functions
     decisions/0018-graceful-shutdown.md     # ADR
 
 plans/
@@ -180,7 +180,7 @@ own process group management.
 
 ## Docker compose
 
-Once this change merges, `docker/docker-compose.yaml` can keep its
+Once this change merges, `docker/docker-compose.yml` can keep its
 current `stop_grace_period: 5s` unchanged — the new handler fits
 comfortably inside the budget and the tests above are the authoritative
 pin for the behaviour. PR #152's `stop_grace_period: 0s` line (if it

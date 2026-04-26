@@ -800,7 +800,7 @@ calls `os._exit(1)` so a hung request handler cannot hold the
 process open past its container's `stop_grace_period`.
 
 The default matches the `stop_grace_period: 5s` on each service in
-`docker/docker-compose.yaml`. See
+`docker/docker-compose.yml`. See
 `design/decisions/0018-graceful-shutdown.md` for the rationale.
 
 ## Network Configuration

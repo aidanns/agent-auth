@@ -32,7 +32,7 @@ out-of-process JIT approval prompt for `prompt`-tier scopes.
 ### HTTP — `/agent-auth/v1/*`
 
 Validate, refresh, and management endpoints documented in
-[`openapi/agent-auth.v1.yaml`](./openapi/agent-auth.v1.yaml). The
+[`openapi/agent-auth.v1.yml`](./openapi/agent-auth.v1.yml). The
 unversioned `/agent-auth/health` and `/agent-auth/metrics` endpoints
 are also served.
 

@@ -17,9 +17,9 @@ Every project should maintain a `design/` directory containing:
   interfaces, and behaviour.
 - **`ASSURANCE.md`** — QM / SIL level declaration and verification results.
 - **`decisions/`** — Architecture Decision Records (see below).
-- **`functional_decomposition.yaml`** — hierarchical breakdown of system
+- **`functional_decomposition.yml`** — hierarchical breakdown of system
   functions (see below).
-- **`product_breakdown.yaml`** — hierarchical breakdown of system components
+- **`product_breakdown.yml`** — hierarchical breakdown of system components
   and deliverables (see below).
 
 ## Architecture Decision Records
@@ -33,7 +33,7 @@ the rationale discoverable for future contributors.
 ## Functional decomposition
 
 Document the system's functional decomposition in
-`design/functional_decomposition.yaml`. This is a hierarchical breakdown
+`design/functional_decomposition.yml`. This is a hierarchical breakdown
 of the system's functions — what the system does, decomposed into
 progressively finer-grained capabilities. Each leaf function should be
 traceable to tests via a function-to-test allocation mechanism — decide
@@ -45,7 +45,7 @@ must match the format expected by the
 ## Product breakdown
 
 Document the system's product breakdown in
-`design/product_breakdown.yaml`. This is a hierarchical breakdown of the
+`design/product_breakdown.yml`. This is a hierarchical breakdown of the
 system's components and deliverables — what the system is made of,
 decomposed into progressively finer-grained parts (modules, packages,
 config files, scripts, etc.). The YAML schema must match the format
@@ -69,7 +69,7 @@ plans should verify compliance against the chosen standard (see
 
 ## Rendered design artefacts
 
-`functional_decomposition.yaml` and `product_breakdown.yaml` are the
+`functional_decomposition.yml` and `product_breakdown.yml` are the
 source of truth, but the repo also ships rendered variants for
 human browsing (`.md` tables, `.csv` exports, `.d2` / `.svg` / `.png`
 diagrams) so reviewers do not have to run the generator to read the

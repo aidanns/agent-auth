@@ -109,7 +109,7 @@ inside `server_close` to defeat the deadline.
 Subsequent signals are ignored (idempotent; one shutdown at a time).
 
 `shutdown_deadline_seconds` defaults to `5.0` on both services to
-match the existing `docker/docker-compose.yaml` `stop_grace_period: 5s` budget. It lives on the service `Config` dataclasses so
+match the existing `docker/docker-compose.yml` `stop_grace_period: 5s` budget. It lives on the service `Config` dataclasses so
 operators can tune it per deployment.
 
 ## Consequences

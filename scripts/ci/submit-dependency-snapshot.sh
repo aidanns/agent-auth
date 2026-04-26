@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-# Build a Dependency Graph snapshot from .github/tool-versions.yaml and
+# Build a Dependency Graph snapshot from .github/tool-versions.yml and
 # POST it to /repos/{owner}/{repo}/dependency-graph/snapshots so
 # Dependabot Alerts can ingest CVEs for every pinned CI tool. See
 # ADR 0031 and issue #205.
@@ -12,7 +12,7 @@
 # Called from .github/workflows/dependency-submission.yml. Expects the
 # usual GitHub Actions env (GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_REF,
 # GITHUB_RUN_ID, GITHUB_WORKFLOW, GITHUB_JOB, GITHUB_TOKEN) and
-# MANIFEST_PATH pointing at .github/tool-versions.yaml.
+# MANIFEST_PATH pointing at .github/tool-versions.yml.
 
 set -euo pipefail
 
@@ -121,7 +121,7 @@ snapshot = {
     "detector": {
         "name": "tool-versions-manifest",
         "version": "1.0.0",
-        "url": "https://github.com/aidanns/agent-auth/blob/main/.github/tool-versions.yaml",
+        "url": "https://github.com/aidanns/agent-auth/blob/main/.github/tool-versions.yml",
     },
     "scanned": datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "manifests": {

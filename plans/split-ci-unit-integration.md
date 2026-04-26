@@ -64,7 +64,7 @@ intentionally skipped, with reasons:
 
 - *Verify implementation against design doc* — the test workflow is
   developer/CI tooling. It does not appear in `design/DESIGN.md`,
-  `functional_decomposition.yaml`, or `product_breakdown.yaml`. The
+  `functional_decomposition.yml`, or `product_breakdown.yml`. The
   only design-doc touchpoint is `design/ASSURANCE.md:49`'s CI-gating
   bullet, which lists `task test` abstractly; splitting its execution
   across two runners does not change that statement.

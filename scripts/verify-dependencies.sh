@@ -6,7 +6,7 @@
 
 # Verify that the external CLI tools required to run this project's
 # Taskfile targets are available on PATH and meet the minimum versions
-# pinned in .github/tool-versions.yaml. Intended as a pre-flight check
+# pinned in .github/tool-versions.yml. Intended as a pre-flight check
 # — run it locally before `task test`, `task verify-standards`, etc.
 #
 # Version policy: the manifest pin is a MINIMUM within the same major.
@@ -21,7 +21,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-MANIFEST="${REPO_ROOT}/.github/tool-versions.yaml"
+MANIFEST="${REPO_ROOT}/.github/tool-versions.yml"
 
 if [[ ! -f "${MANIFEST}" ]]; then
   echo "verify-dependencies: ${MANIFEST} is missing." >&2

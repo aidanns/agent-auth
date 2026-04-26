@@ -63,8 +63,8 @@ intentionally skipped:
 
 - *Verify implementation against design doc* — the task runner is project
   infrastructure, not a behavioural component of the `agent-auth` service.
-  It does not appear in `design/DESIGN.md`, `functional_decomposition.yaml`,
-  or `product_breakdown.yaml`, and does not need to.
+  It does not appear in `design/DESIGN.md`, `functional_decomposition.yml`,
+  or `product_breakdown.yml`, and does not need to.
 - *Threat model / cybersecurity standard compliance* — no change to the
   running service's attack surface, keys, or data flow. The Taskfile is a
   developer-tooling dispatcher; it is not loaded by the server or CLI at

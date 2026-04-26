@@ -115,7 +115,7 @@ intentionally skipped:
 - *Verify implementation against design doc* — the wrapper scripts
   and task runner are developer tooling, not behavioural components
   of `agent-auth`. They do not appear in `design/DESIGN.md`,
-  `functional_decomposition.yaml`, or `product_breakdown.yaml`.
+  `functional_decomposition.yml`, or `product_breakdown.yml`.
 - *Threat model / cybersecurity standard compliance* — no change to
   the running service's attack surface, keys, or data flow. The
   marker file is a local developer-tooling artefact that is never

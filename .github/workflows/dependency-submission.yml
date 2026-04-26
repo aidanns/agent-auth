@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-# Submit a Dependency Graph snapshot built from .github/tool-versions.yaml
+# Submit a Dependency Graph snapshot built from .github/tool-versions.yml
 # so GitHub Dependabot Alerts fire for CVEs in the CI tools the repo
 # pins (shellcheck, shfmt, ruff, taplo, keep-sorted, ripsecrets,
 # treefmt, go-task, d2, uv, mdformat + plugins). See ADR 0031.
@@ -37,5 +37,5 @@ jobs:
       - name: Build and submit snapshot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MANIFEST_PATH: .github/tool-versions.yaml
+          MANIFEST_PATH: .github/tool-versions.yml
         run: bash scripts/ci/submit-dependency-snapshot.sh

@@ -5,7 +5,7 @@
 type: improvement
 improvement:
   description: |
-    Publish `packages/gpg-bridge/openapi/gpg-bridge.v1.yaml` covering
+    Publish `packages/gpg-bridge/openapi/gpg-bridge.v1.yml` covering
     every route `gpg-bridge` serves (sign, verify, health, metrics)
     and gate it via `tests/test_openapi_spec.py` the same way the
     other two service specs are gated. Documents the `gpg-bridge`

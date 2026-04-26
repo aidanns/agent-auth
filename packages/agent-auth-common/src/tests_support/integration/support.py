@@ -26,7 +26,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
 DOCKER_DIR = REPO_ROOT / "docker"
-COMPOSE_FILE = DOCKER_DIR / "docker-compose.yaml"
+COMPOSE_FILE = DOCKER_DIR / "docker-compose.yml"
 
 DOCKER_BUILD_TIMEOUT_SECONDS = 600.0
 

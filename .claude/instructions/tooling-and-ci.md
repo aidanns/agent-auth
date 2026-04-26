@@ -15,6 +15,21 @@ tool, integrate it into `treefmt` (if it's a formatter) and `lefthook`
 See language-specific instruction files for tooling tied to a particular
 language: `python.md`, `bash.md`.
 
+## YAML
+
+- **YAML files use the `.yml` extension** — every committed YAML file
+  in this repository ends in `.yml`. Tools that fix the filename
+  (Taskfile, lefthook, GitHub Actions, Dependabot, changelog entries)
+  already require `.yml`; project-owned configs (docker-compose,
+  OpenAPI specs, the tool-versions manifest, design source-of-truth
+  files) follow the same rule so contributors do not have to remember
+  which extension a given file wants. `scripts/verify-standards.sh`
+  fails the build if any committed `*.yaml` file appears in the tree.
+
+  Runtime user-authored files referenced from in-tree code by string
+  literal (`~/.config/<svc>/config.yaml`, `credentials.yaml`) are not
+  project files and are out of scope for this rule.
+
 ## Markdown
 
 - **`mdformat`** — formatting with plugins for tables and GitHub-flavoured
@@ -58,7 +73,7 @@ language: `python.md`, `bash.md`.
   have a CI workflow.
 
 - **Central tool-versions manifest** — pinned CLI tool versions live in a
-  single YAML file at `.github/tool-versions.yaml`. Both the CI composite
+  single YAML file at `.github/tool-versions.yml`. Both the CI composite
   action (`.github/actions/setup-toolchain/action.yml`) and the local
   preflight (`scripts/verify-dependencies.sh`) read this file; neither
   consumer may hard-code a version literal that also lives in the

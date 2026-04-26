@@ -193,7 +193,7 @@ all log call sites" step.
 
 ### Functional decomposition must stay implementation-agnostic
 
-PR #9 introduced a `functional_decomposition.yaml` entry that
+PR #9 introduced a `functional_decomposition.yml` entry that
 referenced "via AppleScript" in the Things Bridge description and
 "via AppleScript (osascript)" in the Execute External System
 Interaction function. These are implementation details — the
@@ -203,7 +203,7 @@ by a database query, a REST API, or a different scripting bridge
 without changing the function the system needs to perform.
 
 The post-change review checklist should include: "review any updates
-to `design/functional_decomposition.yaml` and verify that
+to `design/functional_decomposition.yml` and verify that
 descriptions reference only the required function (what), not the
 implementation mechanism (how)."
 

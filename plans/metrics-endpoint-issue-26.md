@@ -133,7 +133,7 @@ routes map to `/unknown`.
   table, note the label sets and escape rules.
 - `design/error-codes.md` — add `/metrics` entry mirroring
   `/health` entries.
-- `openapi/agent-auth.v1.yaml`, `openapi/things-bridge.v1.yaml` —
+- `openapi/agent-auth.v1.yml`, `openapi/things-bridge.v1.yml` —
   add `/metrics` paths (text/plain response schema).
 - `CLAUDE.md` "Project-specific notes" — note that `/metrics` now
   exists.

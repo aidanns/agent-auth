@@ -65,7 +65,7 @@ In scope:
   `tests/things_client_fake/` on `PYTHONPATH` so
   `python -m tests.things_client_fake` resolves inside the container.
 - Consolidate the integration topology into a single
-  `docker/docker-compose.yaml` that runs `agent-auth` + `things-bridge`
+  `docker/docker-compose.yml` that runs `agent-auth` + `things-bridge`
   together and bind-mounts per-test config dirs into both services.
   Every per-service fixture spins up this same file (the agent-auth-only
   fixture also provisions a baseline bridge config + empty fixtures dir
@@ -151,7 +151,7 @@ guarantee covers the fake client because it lives under `tests/`.
 
 ### Shared compose stack
 
-`docker/docker-compose.yaml` declares two services:
+`docker/docker-compose.yml` declares two services:
 
 - `agent-auth` — same image, runs `agent-auth serve`, bind-mounts a
   per-test config dir to `/home/agent-auth/.config/agent-auth/`.
@@ -212,7 +212,7 @@ path; the AppleScript-specific tests in
 - For each subdirectory, require that the local `conftest.py` (or one
   inherited from `tests/integration/conftest.py`) references
   `docker/Dockerfile.test` and pins its container topology — either to
-  `docker/docker-compose.yaml`, a `compose.test.*.yaml` file, or a
+  `docker/docker-compose.yml`, a `compose.test.*.yaml` file, or a
   direct `docker run` invocation.
 - Reject `127.0.0.1` / `0.0.0.0` literals in any subdirectory's test
   files (excluding `conftest.py`), preserving the existing rule.

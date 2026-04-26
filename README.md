@@ -172,9 +172,9 @@ curl -H "Authorization: Bearer aa_<id>_<sig>" \
 
 The complete wire contract for both servers is published as OpenAPI 3.1 alongside
 the service that owns each surface:
-[`packages/agent-auth/openapi/agent-auth.v1.yaml`](./packages/agent-auth/openapi/agent-auth.v1.yaml)
+[`packages/agent-auth/openapi/agent-auth.v1.yml`](./packages/agent-auth/openapi/agent-auth.v1.yml)
 and
-[`packages/things-bridge/openapi/things-bridge.v1.yaml`](./packages/things-bridge/openapi/things-bridge.v1.yaml).
+[`packages/things-bridge/openapi/things-bridge.v1.yml`](./packages/things-bridge/openapi/things-bridge.v1.yml).
 Versioning guarantees are documented under "API Versioning Policy" in
 [`design/DESIGN.md`](./design/DESIGN.md).
 
@@ -208,7 +208,7 @@ things_client_command:
   - -m
   - things_client_fake
   - --fixtures
-  - tests/things_client_fake/fake-things.yaml
+  - tests/things_client_fake/fake-things.yml
 ```
 
 The fake CLI is not shipped in the sdist/wheel — it lives under `tests/` and is only reachable when running from a development checkout. It exists for integration and end-to-end testing only; never point production traffic at it.
