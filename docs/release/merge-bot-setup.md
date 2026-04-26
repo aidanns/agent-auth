@@ -93,11 +93,19 @@ useful as soon as the next workflow run mints a fresh token.
 
 ## Step 3 — Add the App as a bypass actor on the `main` ruleset
 
-The `main` branch ruleset enforces required status checks. The
+The `main` branch ruleset enforces required status checks; the
 default `GITHUB_TOKEN` cannot bypass `required_status_checks`
-administration; a GitHub App installation can. Add the
-`agent-auth-merge-bot` App installation to the ruleset's bypass-actor
-list:
+administration but a GitHub App installation can. The cross-cutting
+rationale — why merge-bot specifically needs this bypass and the
+other two release-automation bots do not, and the
+fresh-rebase-vs-stale-but-green tradeoff the bypass implies — lives
+in [`bots-overview.md` § "Bypass-actor
+policy"](bots-overview.md#bypass-actor-policy). The mechanics for
+adding the bypass entry (and removing the stale
+`semantic-release-agent-auth` entry from PR #321) are below.
+
+Add the `agent-auth-merge-bot` App installation to the ruleset's
+bypass-actor list:
 
 Via the UI:
 

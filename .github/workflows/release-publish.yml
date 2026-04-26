@@ -103,9 +103,21 @@ jobs:
           cd "$(dirname "${SDIST}")"
           echo "hashes=$(sha256sum "$(basename "${SDIST}")" "$(basename "${WHEEL}")" | base64 -w0)" >> "${GITHUB_OUTPUT}"
 
+      # Mint an App installation token so the asset-upload events show
+      # `agent-auth-release-bot[bot]` as the actor in the audit trail and
+      # release timeline, matching release-pr.yml and release-tag.yml.
+      # The App's `contents: write` installation permission covers the
+      # `gh release upload` call (no workflow-level perms change needed).
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
       - name: Upload artefacts to GitHub release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TAG: ${{ github.ref_name }}
           SDIST: ${{ steps.artefacts.outputs.sdist }}
           WHEEL: ${{ steps.artefacts.outputs.wheel }}
