@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: fix
+fix:
+  description: |
+    `merge-bot` now refires automatically when CI goes green after the
+    `automerge` label was already applied. The bot's old
+    `check_suite: completed` trigger never delivered because GitHub's
+    anti-recursion rule suppresses `check_suite` events for upstream
+    workflows authenticated with the default `GITHUB_TOKEN` — which
+    every CI workflow in this repo uses. The trigger has been swapped
+    for `workflow_run: completed` with each PR-gating CI workflow
+    listed by name; `workflow_run` events fire regardless of the
+    upstream's authenticating token, so contributors no longer have
+    to remove and re-add the `automerge` label as an undocumented
+    kick once CI completes.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/348
+    - https://github.com/aidanns/agent-auth/pull/354

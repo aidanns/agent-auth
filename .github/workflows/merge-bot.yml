@@ -14,8 +14,16 @@ name: Merge Bot
 #
 # Triggers:
 #   - pull_request: labeled — proceed when the new label == `automerge`.
-#   - check_suite: completed — sticky-label retry once the last check
-#     turns green AFTER the label was set.
+#   - workflow_run: completed — sticky-label retry once the last
+#     watched CI workflow completes AFTER the label was set. We list
+#     every PR-gating workflow by name so each one's completion fires
+#     the bot. `workflow_run` is used here (not `check_suite`) because
+#     `check_suite` events are suppressed by GitHub's anti-recursion
+#     rule when the upstream workflow runs under the default
+#     `GITHUB_TOKEN` — every CI workflow in this repo does, so
+#     `check_suite: completed` never delivered. `workflow_run` is the
+#     documented escape hatch and fires regardless of the upstream
+#     authenticating token. Origin: issue #348.
 #   - workflow_dispatch — maintainer break-glass against a specific
 #     PR number.
 #
@@ -35,13 +43,35 @@ name: Merge Bot
 #   - PR is not mergeable (conflict, missing reviews, etc.).
 #
 # The label stays sticky on lint/check failure so the
-# check_suite.completed retrigger picks up the recovered run
+# workflow_run.completed retrigger picks up the recovered run
 # automatically.
 
 on:
   pull_request:
     types: [labeled]
-  check_suite:
+  # Every PR-gating workflow listed by name so each completion fires
+  # the bot. Adding a new required-check workflow requires updating
+  # this list — that's intentional. Excludes:
+  #   - Merge Bot itself (anti-recursion).
+  #   - Release / publish / scorecard / dependency-submission /
+  #     mutation / benchmark workflows that don't run on PRs.
+  #   - Release Tag (only fires on PR `closed`, well after merge).
+  workflow_run:
+    workflows:
+      - Test
+      - Check
+      - Typecheck
+      - CodeQL
+      - PR Lint
+      - DCO
+      - Changelog Lint
+      - REUSE
+      - Dependency Review
+      - Verify Design
+      - Verify Function Tests
+      - Verify Standards
+      - Verify Token CLI / HTTP Parity
+      - Changelog Bot
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -59,14 +89,14 @@ permissions:
   contents: read
   checks: read
 
-# Prevent two triggers (label + check_suite) from racing on the same
+# Prevent two triggers (label + workflow_run) from racing on the same
 # PR. Group key includes the PR/SHA so different PRs still run in
 # parallel; cancellation is OFF because we want each trigger to run
 # to completion (an early-exit on "already merged" is cheap, and
 # losing a trigger could leave the PR stuck waiting for the next
 # event).
 concurrency:
-  group: merge-bot-${{ github.event.pull_request.number || github.event.check_suite.head_sha || inputs.pr_number }}
+  group: merge-bot-${{ github.event.pull_request.number || github.event.workflow_run.head_sha || inputs.pr_number }}
   cancel-in-progress: false
 
 jobs:
@@ -75,12 +105,12 @@ jobs:
     runs-on: ubuntu-latest
     # Cheap pre-filter so we don't burn a runner on every label
     # event (`labeled` fires for *every* label, not just `automerge`),
-    # and so `check_suite.completed` only proceeds when the suite
-    # itself succeeded. Per-PR sticky-label and required-check checks
-    # happen in the steps below.
+    # and so `workflow_run.completed` only proceeds when the upstream
+    # workflow itself succeeded. Per-PR sticky-label and required-check
+    # checks happen in the steps below.
     if: |
       (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'automerge')
-      || (github.event_name == 'check_suite' && github.event.check_suite.conclusion == 'success')
+      || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
       || github.event_name == 'workflow_dispatch'
     steps:
       # The merge call needs to satisfy the `main` ruleset's
@@ -100,11 +130,12 @@ jobs:
           private-key: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
 
       # Resolve the PR number for each trigger. `pull_request`
-      # carries it directly. `check_suite` carries a list of PRs the
-      # suite was run for; we pick the first one carrying the
-      # `automerge` label. `workflow_dispatch` takes it as input.
-      # Surface the resolved number as a step output so later steps
-      # don't have to re-derive it from the event payload.
+      # carries it directly. `workflow_run` carries the head SHA of
+      # the upstream workflow's run; we resolve the same-repo PR by
+      # `automerge` label and matching head SHA. `workflow_dispatch`
+      # takes it as input. Surface the resolved number as a step
+      # output so later steps don't have to re-derive it from the
+      # event payload.
       - name: Resolve target PR
         id: pr
         env:
@@ -112,11 +143,13 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_PR: ${{ inputs.pr_number }}
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
-          # check_suite payload — need the head SHA to enumerate PRs
+          # workflow_run payload — need the head SHA to enumerate PRs
           # in the same repo carrying the `automerge` label. Cross-
-          # repo PRs (forks) don't appear in `check_suite.pull_requests`
-          # by design; this bot only operates on same-repo PRs.
-          CHECK_SUITE_HEAD_SHA: ${{ github.event.check_suite.head_sha }}
+          # repo workflow runs (forks) carry the contributor's head
+          # SHA, but `gh pr list --search <SHA>` still locates the
+          # same-repo PR row that owns it; the search is by SHA, not
+          # by repo of authorship.
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           case "${EVENT_NAME}" in
@@ -126,20 +159,20 @@ jobs:
             workflow_dispatch)
               echo "pr=${DISPATCH_PR}" >> "${GITHUB_OUTPUT}"
               ;;
-            check_suite)
+            workflow_run)
               # `gh pr list --search` returns same-repo PRs whose head
               # SHA matches and whose labels include `automerge`. If
-              # no such PR exists, exit cleanly — the suite likely
+              # no such PR exists, exit cleanly — the workflow likely
               # ran for a PR that hasn't been queued for the bot.
               found="$(gh pr list \
                 --repo "${GITHUB_REPOSITORY}" \
                 --state open \
                 --label automerge \
-                --search "${CHECK_SUITE_HEAD_SHA}" \
+                --search "${WORKFLOW_RUN_HEAD_SHA}" \
                 --json number \
                 --jq '.[0].number // empty')"
               if [[ -z "${found}" ]]; then
-                echo "merge-bot: no automerge-labeled PR for head sha ${CHECK_SUITE_HEAD_SHA}; nothing to do"
+                echo "merge-bot: no automerge-labeled PR for head sha ${WORKFLOW_RUN_HEAD_SHA}; nothing to do"
                 echo "pr=" >> "${GITHUB_OUTPUT}"
               else
                 echo "pr=${found}" >> "${GITHUB_OUTPUT}"
@@ -161,7 +194,7 @@ jobs:
           # (the head ref of a PR carries the contributor's changes;
           # checking out the head would make the extractor self-
           # mutable). pr-lint.yml uses the same defensive pin via the
-          # PR base SHA — `main` is even safer because `check_suite`
+          # PR base SHA — `main` is even safer because `workflow_run`
           # has no PR base SHA in its event payload.
           ref: main
 
@@ -209,14 +242,28 @@ jobs:
 
       - name: Skip if PR is not in scope
         if: steps.pr.outputs.pr != '' && (steps.meta.outputs.state != 'OPEN' || steps.meta.outputs.has_automerge_label != 'true')
+        env:
+          # Pass step outputs via env rather than `${{ }}` interpolation
+          # into the shell. CodeQL js/actions/command-injection treats
+          # `workflow_run` / `workflow_dispatch` triggers as external
+          # sources, so any value derived from them (even via gh-API
+          # outputs like `steps.meta.outputs.state`) becomes a tainted
+          # input the moment it lands in a `run:` block via inline
+          # interpolation. Binding through `env:` puts the value in the
+          # process environment and lets bash quote it normally — the
+          # same defensive shape every other run-block in this file
+          # already uses.
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          PR_STATE: ${{ steps.meta.outputs.state }}
+          HAS_AUTOMERGE_LABEL: ${{ steps.meta.outputs.has_automerge_label }}
         run: |
-          echo "merge-bot: PR #${{ steps.pr.outputs.pr }} state=${{ steps.meta.outputs.state }} label=${{ steps.meta.outputs.has_automerge_label }}; nothing to do."
+          echo "merge-bot: PR #${PR_NUMBER} state=${PR_STATE} label=${HAS_AUTOMERGE_LABEL}; nothing to do."
           exit 0
 
       # Inspect required-check status. We classify each required
       # check into FAILURE / PENDING / SUCCESS and react:
       #   - FAILURE: hard-fail with a Claude comment.
-      #   - PENDING: clean exit; the check_suite.completed retrigger
+      #   - PENDING: clean exit; the workflow_run.completed retrigger
       #     will run the bot again once everything settles.
       #   - All SUCCESS: proceed.
       # Uses the GraphQL `statusCheckRollup` so legacy commit-status
@@ -319,7 +366,7 @@ jobs:
           PENDING_CHECKS: ${{ steps.checks.outputs.pending }}
         run: |
           names="$(printf '%s\n' "${PENDING_CHECKS}" | awk 'NF' | paste -sd ', ' -)"
-          echo "merge-bot: pending checks (${names}); will retry on check_suite.completed."
+          echo "merge-bot: pending checks (${names}); will retry on workflow_run.completed."
           exit 0
 
       - name: Extract ==COMMIT_MSG== block
