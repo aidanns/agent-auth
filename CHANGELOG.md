@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.14.1] - 2026-04-26
+
+### Improvements
+
+- `release-publish.yml` now mints an installation token from the
+  `agent-auth-release-bot` GitHub App and passes it as `GH_TOKEN`
+  to the `gh release upload` step, instead of relying on the
+  default `GITHUB_TOKEN`. Asset-upload events on the release
+  timeline and audit trail now show `agent-auth-release-bot[bot]`
+  as the actor, matching `release-pr.yml` and `release-tag.yml`
+  so all three legs of the release pipeline share a single bot
+  identity. The App's existing `contents: write` installation
+  permission covers the upload; the artefact set, cosign keyless
+  signing, SBOM generation, and the SLSA provenance reusable
+  workflow are unchanged.
+
 ## [0.14.0] - 2026-04-26
 
 ### Features
