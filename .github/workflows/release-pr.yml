@@ -80,6 +80,15 @@ jobs:
         # this workflow only needs the changelog tooling.
         run: pip install --no-cache-dir 'pyyaml>=6'
 
+      # mdformat (and uv, which provisions it) lives behind the shared
+      # toolchain action. Needed for the post-apply CHANGELOG.md format
+      # step below — without it the rendered CHANGELOG drifts from the
+      # repo's mdformat conventions and the next-push `Check` job fails
+      # `scripts/format.sh --check` on the release PR. See issue #356.
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+
       - name: Resolve current version
         id: current
         shell: bash
@@ -128,6 +137,20 @@ jobs:
           python3 scripts/changelog/build_release.py apply \
             --repo-root . \
             --current-version "${CURRENT_VERSION}"
+
+      - name: Format generated CHANGELOG.md
+        # The apply step's renderer doesn't match the repo's mdformat
+        # conventions (wrap, list-numbering, blank-line rules) byte for
+        # byte, so without this step the next-push `Check` job fails
+        # `scripts/format.sh --check` on the release PR and the maintainer
+        # has to hand-reformat. Keep this narrowly scoped to CHANGELOG.md
+        # rather than running `task format` over the full tree — only
+        # CHANGELOG.md was just rewritten, and the subsequent
+        # `git add changelog CHANGELOG.md` would drop any other rewrites
+        # anyway. mdformat picks up `.mdformat.toml` automatically. See
+        # issue #356.
+        if: steps.plan.outputs.skip == 'false'
+        run: mdformat CHANGELOG.md
 
       - name: Configure git identity
         # Look up the App's bot user ID at runtime so the
