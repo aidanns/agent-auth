@@ -561,12 +561,14 @@ name = "gpg-bridge"
 source = { editable = "packages/gpg-bridge" }
 dependencies = [
     { name = "agent-auth-common" },
+    { name = "keyring" },
     { name = "pyyaml" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "agent-auth-common", editable = "packages/agent-auth-common" },
+    { name = "keyring", specifier = ">=25.0" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
 

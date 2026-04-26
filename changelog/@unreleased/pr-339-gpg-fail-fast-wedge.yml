@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: fix
+fix:
+  description: |
+    `gpg-bridge` now fails fast on a wedged host gpg subprocess. The
+    per-subprocess deadline drops from 35s to 10s and a new
+    `signing_backend_unavailable` error code (HTTP 503) carries the
+    structured signal across the bridge / `gpg-cli` trust boundary.
+    `gpg-cli` translates it to a directed stderr message naming the
+    most likely cause (`allow-loopback-pinentry` and a primed
+    passphrase cache; see `docs/operations/gpg-bridge-host-setup.md`)
+    instead of the previous misdirecting `bridge unavailable: gpg-bridge
+    unreachable: timed out` after 30s.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/331

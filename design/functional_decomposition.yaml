@@ -171,7 +171,9 @@ functions:
       - name: Serve GPG Bridge Health Endpoint
         description: Handle GET /gpg-bridge/health readiness probes; require an access token carrying the gpg-bridge:health scope, verify that the configured gpg_command is resolvable, return 200 when the gpg binary is reachable and 503 when it cannot be resolved.
       - name: Load Bridge Configuration
-        description: Read $XDG_CONFIG_HOME/gpg-bridge/config.yaml, apply defaults (host, port, gpg_command, request_timeout_seconds), validate that TLS cert / key paths are configured together, normalise allowed_signing_keys, and reject empty gpg commands.
+        description: Read $XDG_CONFIG_HOME/gpg-bridge/config.yaml, apply defaults (host, port, gpg_command, request_timeout_seconds, passphrase_store_enabled), validate that TLS cert / key paths are configured together, normalise allowed_signing_keys, and reject empty gpg commands.
+      - name: Persist Signing Passphrase
+        description: Persist per-fingerprint signing-key passphrases in the system keyring under service "gpg-bridge" via the gpg-bridge passphrase set / clear / list subcommands; the bridge consults the store on each sign request and feeds any stored passphrase to host gpg via --passphrase-fd, with set rejecting fingerprints that are not on allowed_signing_keys or that gpg cannot resolve. See ADR 0042.
   - name: GPG CLI
     description: Devcontainer-side gpg.program replacement that maps git's gpg argv shape onto gpg-bridge's HTTP API. Holds no private key material. See ADR 0033.
     functions:

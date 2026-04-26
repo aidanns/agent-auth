@@ -126,6 +126,13 @@ simplifying for "personal project" scope.
   layout in 2026-04 (issue #316); see the
   `design/decisions/0033-gpg-bridge-cli-split.md`
   collapse-the-backend-hop amendment.
+- gpg-bridge passphrase store: `gpg-bridge passphrase set / clear / list` (ADR 0042) persists per-fingerprint signing-key passphrases
+  in the system keyring (`service = "gpg-bridge"`,
+  `username = <FP>`); when present the bridge feeds the passphrase
+  to host gpg via `--passphrase-fd` instead of relying on
+  `gpg-agent`'s cache. Operators who want to keep the pre-0042
+  behaviour set `passphrase_store_enabled: false` in the bridge
+  `config.yaml`.
 
 ## Detailed instructions
 

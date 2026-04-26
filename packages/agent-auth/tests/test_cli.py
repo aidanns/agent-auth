@@ -14,7 +14,9 @@ through the CLI, it is not worth locking in with a test here.
 import contextlib
 import json
 import os
+import re
 import sys
+from importlib.metadata import version as _dist_version
 from io import StringIO
 from unittest.mock import patch
 
@@ -198,3 +200,60 @@ def test_token_modify(cli_env):
         "a:read": "allow",
         "b:write": "prompt",
     }
+
+
+# --- ``--version`` flag (CLI metadata) -------------------------------------
+#
+# Both CLIs ship from the ``agent-auth`` distribution (see
+# ``packages/agent-auth/pyproject.toml``), so both surface the same
+# distribution version. The format ``<prog> <version>`` is argparse's
+# default for ``action="version"`` — we assert the prefix and a
+# semver-shaped suffix so a setuptools_scm fallback like
+# ``0.0.0+unknown`` (used in dirty checkouts) still matches.
+_SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+")
+
+
+def _assert_version_line(line: str, prog: str, dist_name: str) -> None:
+    expected_prefix = f"{prog} "
+    assert line.startswith(expected_prefix), f"unexpected prefix: {line!r}"
+    payload = line[len(expected_prefix) :].strip()
+    assert _SEMVER_RE.match(payload), f"unexpected version payload: {payload!r}"
+    # The CLI must report the same string as
+    # ``importlib.metadata.version(dist_name)`` so operators can correlate
+    # the CLI banner with what's on disk.
+    assert payload == _dist_version(dist_name), (
+        f"CLI reported {payload!r} but importlib.metadata reports " f"{_dist_version(dist_name)!r}"
+    )
+
+
+def test_agent_auth_version_flag():
+    argv = ["agent-auth", "--version"]
+    stdout = StringIO()
+    with (
+        patch.object(sys, "argv", argv),
+        patch.object(sys, "stdout", stdout),
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        main()
+    assert excinfo.value.code == 0
+    _assert_version_line(stdout.getvalue().rstrip("\n"), "agent-auth", "agent-auth")
+
+
+def test_agent_auth_notifier_version_flag():
+    from agent_auth_notifier.cli import main as notifier_main
+
+    argv = ["agent-auth-notifier", "--version"]
+    stdout = StringIO()
+    with (
+        patch.object(sys, "argv", argv),
+        patch.object(sys, "stdout", stdout),
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        notifier_main()
+    assert excinfo.value.code == 0
+    _assert_version_line(
+        stdout.getvalue().rstrip("\n"),
+        "agent-auth-notifier",
+        # Notifier ships from the ``agent-auth`` distribution.
+        "agent-auth",
+    )

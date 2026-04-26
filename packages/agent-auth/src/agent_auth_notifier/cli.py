@@ -17,10 +17,15 @@ import argparse
 import sys
 
 from agent_auth_notifier.terminal_server import run_terminal_notifier
+from cli_meta import add_version_flag
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agent-auth-notifier")
+    # ``agent-auth-notifier`` ships from the ``agent-auth`` distribution
+    # (see ``packages/agent-auth/pyproject.toml``); resolve its version
+    # against that distribution name.
+    add_version_flag(parser, "agent-auth")
     sub = parser.add_subparsers(dest="command")
     terminal = sub.add_parser(
         "terminal",

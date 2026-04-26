@@ -8,6 +8,7 @@ import argparse
 import os
 import sys
 
+from cli_meta import add_version_flag
 from things_bridge_client import (
     ThingsBridgeClientError,
     ThingsBridgeForbiddenError,
@@ -140,6 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="things-cli",
         description="CLI client for the Things 3 bridge (read-only).",
     )
+    add_version_flag(parser, "things-cli")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument(
         "--credential-store",

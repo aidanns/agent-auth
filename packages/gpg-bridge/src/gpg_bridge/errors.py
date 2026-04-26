@@ -10,6 +10,7 @@ authz-delegation errors, mirroring the split in
 """
 
 from gpg_models.errors import (
+    GpgBackendUnavailableError,
     GpgBadSignatureError,
     GpgError,
     GpgNoSuchKeyError,
@@ -54,6 +55,10 @@ class GpgKeyNotAllowedError(GpgBridgeError):
     """The requested signing key is not in the bridge's allowlist."""
 
 
+class PassphraseStoreError(GpgBridgeError):
+    """The passphrase keyring backend failed; surface to the operator."""
+
+
 __all__ = [
     "AuthzError",
     "AuthzRateLimitedError",
@@ -61,6 +66,7 @@ __all__ = [
     "AuthzTokenExpiredError",
     "AuthzTokenInvalidError",
     "AuthzUnavailableError",
+    "GpgBackendUnavailableError",
     "GpgBadSignatureError",
     "GpgBridgeError",
     "GpgError",
@@ -68,4 +74,5 @@ __all__ = [
     "GpgNoSuchKeyError",
     "GpgPermissionError",
     "GpgUnsupportedOperationError",
+    "PassphraseStoreError",
 ]

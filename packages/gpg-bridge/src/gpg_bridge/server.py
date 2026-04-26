@@ -34,6 +34,7 @@ from gpg_bridge.errors import (
     AuthzTokenExpiredError,
     AuthzTokenInvalidError,
     AuthzUnavailableError,
+    GpgBackendUnavailableError,
     GpgBadSignatureError,
     GpgError,
     GpgKeyNotAllowedError,
@@ -153,6 +154,26 @@ class GpgBridgeHandler(BaseHTTPRequestHandler):
             return
         if isinstance(exc, GpgBadSignatureError):
             self._send_json(400, {"error": "bad_signature"})
+            return
+        if isinstance(exc, GpgBackendUnavailableError):
+            # Wedged gpg subprocess (typically a misconfigured host
+            # gpg-agent waiting on a non-existent pinentry). Surface
+            # a directed detail so operators don't have to dig
+            # through bridge logs to learn it's a host-side gpg
+            # config issue. The detail string is the public API
+            # surface that gpg-cli bubbles up to the user — keep the
+            # wording stable.
+            self._send_json(
+                503,
+                {
+                    "error": "signing_backend_unavailable",
+                    "detail": (
+                        "host gpg-agent likely needs allow-loopback-pinentry "
+                        "and a primed passphrase cache; see "
+                        "docs/operations/gpg-bridge-host-setup.md"
+                    ),
+                },
+            )
             return
         if isinstance(exc, GpgPermissionError):
             self._send_json(503, {"error": "gpg_permission_denied"})

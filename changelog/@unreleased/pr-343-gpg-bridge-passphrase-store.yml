@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    `gpg-bridge` now optionally holds signing-key passphrases in
+    the system keyring (per ADR 0042). New
+    `gpg-bridge passphrase set / clear / list` subcommands manage
+    per-fingerprint entries; on each sign request the bridge feeds
+    any stored passphrase to the host `gpg` subprocess via
+    `--passphrase-fd`, removing the dependency on `gpg-agent`'s
+    cache. Passphrases never appear in stdout, stderr, server log,
+    or HTTP error responses. Operators who prefer the pre-0042
+    behaviour can disable the store with
+    `passphrase_store_enabled: false` in the bridge `config.yaml`.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/332

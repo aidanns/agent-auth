@@ -63,6 +63,17 @@ class Config:
     # Cap on HTTP request body size. Commit payloads are a few KiB in
     # practice; 1 MiB fails closed before the gpg subprocess spawn.
     max_request_bytes: int = 1 * 1024 * 1024
+    # When true (default), the bridge consults its keyring-backed
+    # :class:`gpg_bridge.passphrase_store.KeyringPassphraseStore` on
+    # each sign request and feeds any stored passphrase to ``gpg``
+    # via ``--passphrase-fd``. Operators who prefer to keep relying
+    # on the host ``gpg-agent``'s passphrase cache (or who run with
+    # passphrase-less signing keys) set this to ``false`` to revert
+    # the sign path to its pre-ADR-0042 shape (no keyring read, no
+    # ``--passphrase-fd`` in argv). The keyring is empty on first
+    # boot, so a no-op default still matches the keyless / cached
+    # path until the operator runs ``gpg-bridge passphrase set``.
+    passphrase_store_enabled: bool = True
 
     def __post_init__(self) -> None:
         if not self.log_path:

@@ -126,6 +126,7 @@ components:
           - Serve GPG Bridge HTTP API
           - Serve GPG Bridge Health Endpoint
           - Load Bridge Configuration
+          - Persist Signing Passphrase
       - name: gpg
         description: Operating-system gpg binary (GnuPG) and the user's ~/.gnupg keyring. Invoked by gpg-bridge as the configured gpg_command (default ``["gpg"]``).
         functions: []

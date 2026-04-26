@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    Add `--version` to every argparse-backed CLI in the workspace (`agent-auth`, `agent-auth-notifier`, `gpg-bridge`, `things-bridge`, `things-cli`, `things-client-cli-applescript`); the version string is resolved at runtime from installed distribution metadata via `importlib.metadata.version`. `gpg-cli` keeps its existing `--version` (gpg-shaped output for git's probe) and gains a new `--gpg-cli-version` flag that prints the package version. Lets operators verify which build of a CLI is installed in a host or devcontainer.
+  links:
+    - https://github.com/aidanns/agent-auth/pull/341

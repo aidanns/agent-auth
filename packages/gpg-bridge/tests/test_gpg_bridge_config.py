@@ -21,6 +21,17 @@ class TestConfigDefaults:
         assert cfg.port == 9300
         assert cfg.gpg_command == ["gpg"]
         assert cfg.allowed_signing_keys == []
+        # ADR 0042: the passphrase store is enabled by default; the
+        # backwards-compatible no-op shape comes from the keyring being
+        # empty on first boot, not from the flag default flipping.
+        assert cfg.passphrase_store_enabled is True
+
+    @pytest.mark.covers_function("Load Bridge Configuration")
+    def test_passphrase_store_disabled_round_trip(self, tmp_path) -> None:
+        cfg_path = tmp_path / "config.yaml"
+        cfg_path.write_text("passphrase_store_enabled: false\n")
+        cfg = load_config(str(cfg_path))
+        assert cfg.passphrase_store_enabled is False
 
     @pytest.mark.covers_function("Load Bridge Configuration")
     def test_tls_half_configured_raises(self) -> None:
