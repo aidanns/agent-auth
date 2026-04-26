@@ -732,29 +732,35 @@ for historical reference.
 
 ### Release App setup
 
-`release-tag.yml` mints a short-lived installation token via
-[`actions/create-github-app-token`](https://github.com/actions/create-github-app-token)
-to push the `vX.Y.Z` tag. An App token is required because tag
-pushes from the default `GITHUB_TOKEN` do **not** fire downstream
-`on: push: tags:` workflows — the SLSA / SBOM / cosign chain in
-`release-publish.yml` would silently break.
+Both `release-pr.yml` and `release-tag.yml` mint a short-lived
+installation token via
+[`actions/create-github-app-token`](https://github.com/actions/create-github-app-token).
 
-The repo currently uses the App registered for the previous
-semantic-release flow (kept named `semantic-release-agent-auth`
-pending a follow-up rename — see ADR 0041 § Follow-ups). Repo
-secrets:
+- `release-pr.yml` opens / refreshes the `release/X.Y.Z` PR. The
+  default `GITHUB_TOKEN` cannot create PRs unless the org/repo
+  setting *Allow GitHub Actions to create and approve pull requests*
+  is on, and enabling that flag would let every workflow auto-approve
+  PRs — too broad for a repo with DCO and signing enforcement.
+- `release-tag.yml` pushes the `vX.Y.Z` tag. An App token is required
+  here because tag pushes from the default `GITHUB_TOKEN` do **not**
+  fire downstream `on: push: tags:` workflows — the SLSA / SBOM /
+  cosign chain in `release-publish.yml` would silently break.
 
-- `SEMANTIC_RELEASE_APP_ID` — the App's numeric ID.
-- `SEMANTIC_RELEASE_APP_PRIVATE_KEY` — the App's `.pem` private key
-  (full contents, including the `-----BEGIN/END` markers and the
-  trailing newline).
+Both workflows share a single GitHub App, **`agent-auth-release-bot`**.
+Repo secrets:
 
-To re-register or rotate the App:
+- `RELEASE_BOT_APP_ID` — the App's numeric ID.
+- `RELEASE_BOT_PRIVATE_KEY` — the App's `.pem` private key (full
+  contents, including the `-----BEGIN/END` markers and the trailing
+  newline).
+
+To register or rotate the App:
 
 1. Create or edit the App at
    [github.com/settings/apps](https://github.com/settings/apps).
-   Required permissions: **Contents: Read & write** (push tags,
-   create releases). All other permissions can be **No access**.
+   Required permissions: **Contents: Read & write** (push tags and
+   the release branch), **Pull requests: Read & write** (open, edit,
+   and close release PRs). All other permissions can be **No access**.
 2. Install it against `aidanns/agent-auth` only — not *All
    repositories*.
 3. Generate a private key on the App's settings page and download

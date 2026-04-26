@@ -13,7 +13,7 @@ PR descriptions and either commits a `changelog/@unreleased/*.yml`
 file to the PR branch or applies / removes the `no changelog` label.
 
 This App is **separate** from
-[`semantic-release-agent-auth`](../../CONTRIBUTING.md#one-time-register-the-semantic-release-agent-auth-github-app)
+[`agent-auth-release-bot`](../../CONTRIBUTING.md#release-app-setup)
 (release path) and from #291's merge bot App. Each App is scoped to
 the narrowest set of permissions it needs so revoking one does not
 disrupt the other.
