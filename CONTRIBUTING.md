@@ -723,6 +723,15 @@ doesn't have to. Add the trailer manually if you're hand-editing
 the block; if you ran `git commit -s` on the PR commits, copy the
 same `Signed-off-by:` line into the block.
 
+Dependabot PRs are adapted to this flow automatically by
+[`.github/workflows/dependabot-adapter.yml`](.github/workflows/dependabot-adapter.yml):
+on every `dependabot[bot]` PR the adapter prepends a synthesized
+`==COMMIT_MSG==` block (with a Dependabot `Signed-off-by:` trailer)
+and applies the `no changelog` and `automerge` labels, so routine
+`chore(deps):` upgrades flow through pr-lint, changelog-lint, and
+merge-bot without manual intervention. Override by removing either
+label or hand-editing the block before the merge.
+
 Maintainer setup of the merge-bot GitHub App is documented in
 [`docs/release/merge-bot-setup.md`](docs/release/merge-bot-setup.md).
 The interim maintainer-paste mechanics that pre-dated the bot are
