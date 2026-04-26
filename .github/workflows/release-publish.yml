@@ -206,8 +206,16 @@ jobs:
           jq -r '.[]' <<<"${assets}" | sed 's/^/  /'
 
           fail=0
-          # `wheel + sdist` = 2 source artefacts; one SBOM each = 2;
-          # cosign signs all 4 of those = 4 bundles; SLSA = 1 file.
+          # Today (workspace-root build): 1 wheel + 1 sdist = 2 source
+          # artefacts; one SBOM each = 2; cosign signs all 4 of those
+          # = 4 bundles; SLSA = 1 file. The thresholds use `-ge` rather
+          # than `-eq` because issue #324's per-package build will
+          # multiply every count by the workspace-member count once it
+          # lands; tightening to `-eq` here would make this gate fail
+          # the moment that PR merges. The trade-off is that the gate
+          # won't catch a future regression that *over*-uploads (e.g.
+          # a flag change duplicates an asset). Revisit and tighten
+          # once #324 settles and the per-package count is stable.
           [[ "${wheels}" -ge 1 ]] || { echo "::error::no .whl asset on release ${TAG}"; fail=1; }
           [[ "${sdists}" -ge 1 ]] || { echo "::error::no .tar.gz sdist asset on release ${TAG}"; fail=1; }
           [[ "${sboms}" -ge 2 ]] || { echo "::error::expected at least 2 .spdx.json SBOMs (sdist + wheel), got ${sboms}"; fail=1; }

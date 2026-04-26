@@ -30,6 +30,17 @@ on:
 permissions:
   contents: read
 
+# Cancel an in-flight dry-run when a new commit lands on the same PR
+# (or `main` push). The dry-run is informational during the soak window
+# and runs on every push, so without this a force-push or rapid `git
+# push` cycle queues full duplicate runs against stale heads. Other
+# release-affecting workflows (release-publish, release-tag) use
+# `cancel-in-progress: false` to protect mid-release state; the
+# dry-run has no such state to protect.
+concurrency:
+  group: release-dryrun-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-dryrun:
     runs-on: ubuntu-latest
