@@ -18,18 +18,19 @@
 # under the new version, so a stale PR never lingers ahead of an
 # updated plan.
 #
-# Bot identity: PR creation goes through the `agent-auth-release-bot`
-# GitHub App (secrets `RELEASE_BOT_APP_ID` and
-# `RELEASE_BOT_PRIVATE_KEY`) via `actions/create-github-app-token`.
+# Bot identity: PR creation, the release-branch push, AND the release
+# commit's author/committer all attribute to the
+# `agent-auth-release-bot` GitHub App (secrets `RELEASE_BOT_APP_ID`
+# and `RELEASE_BOT_PRIVATE_KEY`) via `actions/create-github-app-token`.
 # The default `GITHUB_TOKEN` cannot open PRs unless the org/repo
 # setting "Allow GitHub Actions to create and approve pull requests"
 # is on, and enabling that flag would also let every workflow
 # auto-approve PRs — too broad for a repo with DCO/signing rigour. The
 # release branch push also runs under the App token so a future ruleset
 # tightening on `release/*` does not silently break the release flow.
-# Commits on the release branch keep `github-actions[bot]` as
-# author/committer because DCO auto-bypasses any
-# `[bot]@users.noreply.github.com` address (`.github/workflows/dco.yml`).
+# DCO auto-bypasses the bot's `[bot]@users.noreply.github.com` email
+# (`.github/workflows/dco.yml`) so unifying the committer identity does
+# not affect the sign-off check.
 
 name: Release PR
 
@@ -129,10 +130,24 @@ jobs:
             --current-version "${CURRENT_VERSION}"
 
       - name: Configure git identity
+        # Look up the App's bot user ID at runtime so the
+        # author/committer + Signed-off-by trailer on the release
+        # commit attribute to the same identity that opens the PR
+        # (`agent-auth-release-bot[bot]`). The `app-slug` output of
+        # `actions/create-github-app-token` plus `gh api /users/<slug>[bot]`
+        # gives the numeric ID without hardcoding it. DCO still
+        # auto-bypasses because `[bot]@users.noreply.github.com` is
+        # the suffix the check matches on.
         if: steps.plan.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          set -euo pipefail
+          user_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
 
       - name: Create or refresh release branch
         if: steps.plan.outputs.skip == 'false'
