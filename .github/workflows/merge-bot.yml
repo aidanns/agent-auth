@@ -242,8 +242,22 @@ jobs:
 
       - name: Skip if PR is not in scope
         if: steps.pr.outputs.pr != '' && (steps.meta.outputs.state != 'OPEN' || steps.meta.outputs.has_automerge_label != 'true')
+        env:
+          # Pass step outputs via env rather than `${{ }}` interpolation
+          # into the shell. CodeQL js/actions/command-injection treats
+          # `workflow_run` / `workflow_dispatch` triggers as external
+          # sources, so any value derived from them (even via gh-API
+          # outputs like `steps.meta.outputs.state`) becomes a tainted
+          # input the moment it lands in a `run:` block via inline
+          # interpolation. Binding through `env:` puts the value in the
+          # process environment and lets bash quote it normally — the
+          # same defensive shape every other run-block in this file
+          # already uses.
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          PR_STATE: ${{ steps.meta.outputs.state }}
+          HAS_AUTOMERGE_LABEL: ${{ steps.meta.outputs.has_automerge_label }}
         run: |
-          echo "merge-bot: PR #${{ steps.pr.outputs.pr }} state=${{ steps.meta.outputs.state }} label=${{ steps.meta.outputs.has_automerge_label }}; nothing to do."
+          echo "merge-bot: PR #${PR_NUMBER} state=${PR_STATE} label=${HAS_AUTOMERGE_LABEL}; nothing to do."
           exit 0
 
       # Inspect required-check status. We classify each required

@@ -39,6 +39,7 @@ shape, same regression-pin pattern.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -74,18 +75,20 @@ EXPECTED_WORKFLOWS: frozenset[str] = frozenset(
 )
 
 
-def _load_workflow() -> dict:
-    return yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+def _load_workflow() -> dict[Any, Any]:
+    return cast("dict[Any, Any]", yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8")))
 
 
 # `on` is parsed as the Python boolean key `True` by PyYAML 1.1 semantics
 # (the YAML 1.1 spec treats `on` / `off` / `yes` / `no` as booleans).
 # Look it up via either key so the test is robust to PyYAML version drift.
-def _on_block(workflow: dict) -> dict:
+# Hence the dict key type is Any: a string under modern PyYAML, the
+# boolean True under YAML 1.1 strict parsers.
+def _on_block(workflow: dict[Any, Any]) -> dict[str, Any]:
     if "on" in workflow:
-        return workflow["on"]
+        return cast("dict[str, Any]", workflow["on"])
     if True in workflow:
-        return workflow[True]
+        return cast("dict[str, Any]", workflow[True])
     raise AssertionError("merge-bot.yml has no `on:` block")
 
 
