@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: fix
+fix:
+  description: |
+    `scripts/changelog/build_release.py` no longer produces a
+    release-PR `==COMMIT_MSG==` body that fails the PR-body lint
+    when changelog descriptions cite an ADR, issue, or spec by
+    number. Greedy 72-char word wrap previously landed tokens like
+    `0011.` (from `ADR 0011.`) or `1234)` (from `(issue 1234)`) at
+    line start, which `validate-commit-msg-block.py`'s
+    `numbered list item` rule rejects as an ordered-list item — see
+    PR #355's broken `chore(release): 0.14.0` body. When a numeric
+    token would otherwise overflow the current line, the renderer
+    now moves the preceding token down with it so the wrap point
+    sits between two ordinary tokens — preserving both the 72-char
+    width rule and the no-numbered-list rule. Hyphen-joined
+    identifiers like `CVE-2024-12345` still wrap normally.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/357
+    - https://github.com/aidanns/agent-auth/pull/362
