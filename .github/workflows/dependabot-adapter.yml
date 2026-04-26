@@ -1,0 +1,141 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Dependabot Adapter
+
+# Adapt Dependabot PRs to the project's PR conventions so they pass
+# the required `pr-lint` and `changelog-lint` checks without manual
+# intervention. Dependabot only writes a PR title plus an upstream
+# release-notes body — neither the curated `==COMMIT_MSG==` block
+# (ADR 0037, .github/workflows/pr-lint.yml) nor the changelog-entry
+# requirement (.github/workflows/changelog-lint.yml) is satisfied
+# out of the box.
+#
+# What this does on every `dependabot[bot]` PR:
+#
+#   1. Prepends a synthesized `==COMMIT_MSG==` block (with a
+#      Dependabot `Signed-off-by:` trailer that mirrors the trailer
+#      Dependabot already puts on its own commits, so the squash-
+#      merge body lands on `main` with valid DCO).
+#   2. Applies the `no changelog` label — Dependabot upgrades are
+#      `chore(deps)` and don't warrant a CHANGELOG entry, and
+#      `scripts/changelog/lint.py` already supports the label as a
+#      bypass.
+#   3. Applies the `automerge` label — hands the PR to merge-bot
+#      (.github/workflows/merge-bot.yml, ADR 0038) once every
+#      required check is green.
+#
+# Both edits go through the `agent-auth-changelog-bot` App token
+# (not `secrets.GITHUB_TOKEN`) because GitHub does not fire
+# downstream workflows for events caused by `GITHUB_TOKEN` — the
+# label-add must trigger merge-bot's `pull_request: labeled` and the
+# body-edit must trigger pr-lint's `pull_request_target: edited`.
+# App-token-driven events do trigger downstream workflows.
+#
+# Runs on `pull_request` (NOT `pull_request_target`) so a fork PR
+# can never reach this workflow's elevated token. The `if:` gate
+# narrows execution to PRs whose `user.login` is `dependabot[bot]`,
+# which GitHub assigns to PRs opened by the Dependabot App and
+# cannot be spoofed by a contributor.
+#
+# Idempotent: re-running on the same PR is a no-op (the body edit
+# is skipped when a `==COMMIT_MSG==` marker is already present; `gh
+# pr edit --add-label` is a no-op for labels already applied).
+
+on:
+  pull_request:
+    # `synchronize` is included so the adapter picks up Dependabot
+    # PRs that were opened before the workflow shipped (their next
+    # rebase / `@dependabot recreate` push fires `synchronize`).
+    # Idempotency is enforced by the body-block check below — if a
+    # `==COMMIT_MSG==` marker is already in the body, the whole step
+    # is a no-op, which means a maintainer who removes the
+    # `automerge` label mid-flight is not fought by the adapter.
+    types: [opened, reopened, synchronize]
+
+permissions:
+  # Workflow-level perms stay minimal — the App token mints its own
+  # `pull-requests: write` for the body edit and label adds. See
+  # changelog-bot.yml for the same pattern.
+  contents: read
+  pull-requests: read
+
+jobs:
+  adapt:
+    name: dependabot-adapter
+    runs-on: ubuntu-latest
+    # `dependabot[bot]` is the GitHub-assigned login for the
+    # Dependabot App; a fork PR's `user.login` is always the fork
+    # owner, never the bot login, so this gate cannot be spoofed.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      # Bail out cleanly when the bot's secrets haven't been
+      # provisioned yet (e.g. on the PR that adds this workflow, or
+      # in a fork that hasn't installed the App). Mirrors the
+      # changelog-bot pattern so a not-yet-configured environment
+      # doesn't fail the PR.
+      - name: Check secrets are configured
+        id: secrets-check
+        env:
+          APP_ID: ${{ secrets.CHANGELOG_BOT_APP_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APP_ID:-}" ]]; then
+            echo "::notice::CHANGELOG_BOT_APP_ID secret is not set; skipping adapter run."
+            echo "::notice::See docs/release/changelog-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Create GitHub App token
+        if: steps.secrets-check.outputs.configured == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.CHANGELOG_BOT_APP_ID }}
+          private-key: ${{ secrets.CHANGELOG_BOT_PRIVATE_KEY }}
+
+      - name: Inject ==COMMIT_MSG== block and apply labels
+        if: steps.secrets-check.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          existing_body=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" \
+            --json body --jq .body)
+
+          if printf '%s' "${existing_body}" | grep -Fq '==COMMIT_MSG=='; then
+            echo "::notice::PR #${PR_NUMBER} already has a ==COMMIT_MSG== block; adapter is a no-op."
+            exit 0
+          fi
+
+          # Build the new body with printf rather than a heredoc:
+          # the validator (scripts/validate-commit-msg-block.py)
+          # matches the `==COMMIT_MSG==` markers as a full line
+          # after stripping, so leading whitespace on the marker
+          # line would defeat extract_block. printf keeps every
+          # line flush-left regardless of YAML script indentation.
+          tmp=$(mktemp)
+          printf '%s\n' \
+            '==COMMIT_MSG==' \
+            'Routine dependency upgrade authored by Dependabot.' \
+            '' \
+            'See the PR description for upstream release notes.' \
+            '' \
+            'Signed-off-by: dependabot[bot] <support@github.com>' \
+            '==COMMIT_MSG==' \
+            '' \
+            > "${tmp}"
+          printf '%s' "${existing_body}" >> "${tmp}"
+          gh pr edit "${PR_NUMBER}" --repo "${REPO}" --body-file "${tmp}"
+          echo "::notice::Prepended ==COMMIT_MSG== block to PR #${PR_NUMBER} body."
+
+          gh pr edit "${PR_NUMBER}" --repo "${REPO}" \
+            --add-label "no changelog" \
+            --add-label "automerge"
+          echo "::notice::Applied 'no changelog' and 'automerge' labels to PR #${PR_NUMBER}."
