@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: fix
+fix:
+  description: |
+    `merge-bot` no longer wedges on a fail-then-pass for the same
+    required check on a single head SHA. The `Inspect required checks`
+    step now groups `statusCheckRollup` entries by check name (falling
+    back to `.context` for legacy commit statuses) and evaluates only
+    the most-recent run per name, so a check that failed on the first
+    workflow attempt and passed on a rerun reads as "currently passing"
+    instead of carrying its historical FAILURE entry forward forever.
+    The same dedupe applies to the pending selector — a stale
+    `IN_PROGRESS` from a cancelled rerun no longer pins the bot in the
+    wait-clean-exit path.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/347
+    - https://github.com/aidanns/agent-auth/pull/350
