@@ -88,6 +88,11 @@ simplifying for "personal project" scope.
   `DCO sign-off check` fail and the remedy is
   `git rebase origin/main --signoff && git push --force-with-lease`.
   See `CONTRIBUTING.md` → "DCO sign-off".
+- Commit-message prose (imperative subject, lowercase post-prefix
+  summary, "lead with why", `fix:` includes symptoms, accepted
+  trailers including `Fixes: <sha>`) is documented in
+  `CONTRIBUTING.md` → "Writing release-worthy commits". Don't
+  duplicate the prose here.
 
 ## Project-specific notes
 
