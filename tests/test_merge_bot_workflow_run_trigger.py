@@ -243,15 +243,20 @@ def test_concurrency_group_includes_workflow_run_head_sha() -> None:
     workflow_run trigger's group key collapses to `merge-bot-` (the
     PR number is unset on workflow_run events) and every workflow_run
     trigger contends on the same singleton group regardless of PR.
+
+    The concurrency key lives on the `merge` job (not the workflow's
+    top-level) since the sweep job introduced for the `push:main`
+    trigger surface needs its own `merge-bot-sweep` group; workflow-
+    level concurrency would force the two to share.
     """
     workflow = _load_workflow()
-    group_expr = workflow["concurrency"]["group"]
+    group_expr = workflow["jobs"]["merge"]["concurrency"]["group"]
     assert "github.event.workflow_run.head_sha" in group_expr, (
-        "merge-bot.yml concurrency-group key must include "
+        "merge-bot.yml `merge` job concurrency-group key must include "
         "`github.event.workflow_run.head_sha` as a fallback."
     )
     assert "github.event.check_suite.head_sha" not in group_expr, (
-        "merge-bot.yml concurrency-group key still references "
-        "`check_suite.head_sha`; it should reference "
+        "merge-bot.yml `merge` job concurrency-group key still "
+        "references `check_suite.head_sha`; it should reference "
         "`workflow_run.head_sha` (issue #348)."
     )

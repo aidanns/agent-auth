@@ -24,8 +24,34 @@ name: Merge Bot
 #     `check_suite: completed` never delivered. `workflow_run` is the
 #     documented escape hatch and fires regardless of the upstream
 #     authenticating token. Origin: issue #348.
+#   - pull_request_review: submitted | dismissed — re-fire merge-bot
+#     when a review state changes. Covers the gap where `automerge`
+#     was applied before the final approval landed: the bot exits
+#     once on `pull_request: labeled` (review requirement unmet) and
+#     no `workflow_run.completed` is tied to a review submission, so
+#     without this trigger the PR sits stuck. The `if:` chain accepts
+#     the event regardless of `review.state` and lets the existing
+#     in-job gating (mergeable / mergeStateStatus / required reviews
+#     via the merge-API call) decide — duplicating GitHub's required-
+#     reviews logic in a workflow predicate would drift. `dismissed`
+#     is included so a queued-but-now-unapproved PR no-ops cleanly
+#     instead of sitting on the label. Origin: issue #388.
+#   - push: branches: [main] — sweep open `automerge` PRs whenever
+#     `main` advances. Covers the gap where a labeled PR was up-to-
+#     date when the bot last fired, then `main` moved and nothing
+#     else triggered the bot — `workflow_run.completed` never fires
+#     on this PR until someone pushes to it. The new sweep job lists
+#     every open `automerge` PR and dispatches the existing per-PR
+#     `merge` job via `workflow_dispatch`, keeping the resolve-PR
+#     logic single-sourced. Sweep-level concurrency
+#     (`merge-bot-sweep`, `cancel-in-progress: true`) collapses a
+#     burst of merges into one sweep; the existing per-PR
+#     concurrency key (`merge-bot-<n>`) is unchanged. Restricted to
+#     `branches: [main]` so tag pushes (release tags) don't trigger
+#     sweeps with nothing to do. Origin: issue #388.
 #   - workflow_dispatch — maintainer break-glass against a specific
-#     PR number.
+#     PR number. Also the sweep job's fan-out target — see the
+#     `push:main` trigger above.
 #
 # The bot authors no commits — it only calls `PUT /pulls/{n}/merge`.
 # The squash commit body is the contents of the PR's `==COMMIT_MSG==`
@@ -73,6 +99,12 @@ on:
       - Verify Token CLI / HTTP Parity
       - Changelog Bot
     types: [completed]
+  pull_request_review:
+    types: [submitted, dismissed]
+  # `branches: [main]` only — tag pushes (release tags) would
+  # otherwise trigger sweeps with nothing to do.
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -85,35 +117,54 @@ on:
 # is needed for the BEHIND-handling auto-update branch — the
 # `PUT /pulls/{n}/update-branch` endpoint requires write access to
 # the repo's contents to push the merge commit that fast-forwards
-# the PR head onto the latest `main`. NO `id-token: write` — the bot
-# is not on the SLSA-attestation path.
+# the PR head onto the latest `main`. `actions: write` is needed by
+# the `push:main` sweep job to fan out via `gh workflow run` (which
+# calls `POST /repos/.../actions/workflows/{id}/dispatches`); the
+# default `GITHUB_TOKEN` carries that grant when set here, which
+# avoids needing to mint an App token in the sweep job at all (the
+# App's `actions:write` grant is not currently provisioned, and the
+# issue body's "no additional bot-token plumbing" constraint rules
+# out adding it). NO `id-token: write` — the bot is not on the
+# SLSA-attestation path.
 permissions:
   pull-requests: write
   contents: write
   checks: read
-
-# Prevent two triggers (label + workflow_run) from racing on the same
-# PR. Group key includes the PR/SHA so different PRs still run in
-# parallel; cancellation is OFF because we want each trigger to run
-# to completion (an early-exit on "already merged" is cheap, and
-# losing a trigger could leave the PR stuck waiting for the next
-# event).
-concurrency:
-  group: merge-bot-${{ github.event.pull_request.number || github.event.workflow_run.head_sha || inputs.pr_number }}
-  cancel-in-progress: false
+  actions: write
 
 jobs:
   merge:
     name: Merge ==COMMIT_MSG== block as squash body
     runs-on: ubuntu-latest
+    # Per-PR concurrency so two triggers (label + workflow_run +
+    # pull_request_review + sweep-dispatched workflow_dispatch)
+    # cannot race on the same PR. `pull_request_review` carries
+    # `github.event.pull_request.number` on the same shape as
+    # `pull_request`, so the existing first fallback already covers
+    # it. Group key includes the PR/SHA so different PRs still run
+    # in parallel; cancellation is OFF because we want each trigger
+    # to run to completion (an early-exit on "already merged" is
+    # cheap, and losing a trigger could leave the PR stuck waiting
+    # for the next event).
+    concurrency:
+      group: merge-bot-${{ github.event.pull_request.number || github.event.workflow_run.head_sha || inputs.pr_number }}
+      cancel-in-progress: false
     # Cheap pre-filter so we don't burn a runner on every label
     # event (`labeled` fires for *every* label, not just `automerge`),
     # and so `workflow_run.completed` only proceeds when the upstream
-    # workflow itself succeeded. Per-PR sticky-label and required-check
-    # checks happen in the steps below.
+    # workflow itself succeeded. For `pull_request_review`, gate on
+    # the PR carrying `automerge` (the event payload's
+    # `pull_request.labels` is reliable) so reviews on non-automerge
+    # PRs don't burn a runner each. `pull_request_review` is
+    # otherwise accepted regardless of `review.state` — the existing
+    # in-job gating (mergeable / required-reviews via the merge API)
+    # is the source of truth; duplicating the required-reviews logic
+    # in this predicate would drift. Per-PR sticky-label and
+    # required-check checks happen in the steps below.
     if: |
       (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'automerge')
       || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      || (github.event_name == 'pull_request_review' && contains(github.event.pull_request.labels.*.name, 'automerge'))
       || github.event_name == 'workflow_dispatch'
     steps:
       # Distinguish two configuration states before minting the App
@@ -171,13 +222,14 @@ jobs:
           app-id: ${{ secrets.MERGE_BOT_APP_ID }}
           private-key: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
 
-      # Resolve the PR number for each trigger. `pull_request`
-      # carries it directly. `workflow_run` carries the head SHA of
-      # the upstream workflow's run; we resolve the same-repo PR by
-      # `automerge` label and matching head SHA. `workflow_dispatch`
-      # takes it as input. Surface the resolved number as a step
-      # output so later steps don't have to re-derive it from the
-      # event payload.
+      # Resolve the PR number for each trigger. `pull_request` and
+      # `pull_request_review` both carry it directly via
+      # `event.pull_request.number`. `workflow_run` carries the head
+      # SHA of the upstream workflow's run; we resolve the same-repo
+      # PR by `automerge` label and matching head SHA.
+      # `workflow_dispatch` takes it as input. Surface the resolved
+      # number as a step output so later steps don't have to
+      # re-derive it from the event payload.
       - name: Resolve target PR
         id: pr
         if: steps.secrets-check.outputs.configured == 'true'
@@ -196,7 +248,7 @@ jobs:
         run: |
           set -euo pipefail
           case "${EVENT_NAME}" in
-            pull_request)
+            pull_request|pull_request_review)
               echo "pr=${PULL_REQUEST_NUMBER}" >> "${GITHUB_OUTPUT}"
               ;;
             workflow_dispatch)
@@ -724,3 +776,73 @@ jobs:
           gh pr comment "${PR_NUMBER}" \
             --repo "${GITHUB_REPOSITORY}" \
             --body "Claude: Merged via bot."
+
+  # `push:main` sweep. Whenever `main` advances, list every open
+  # PR carrying the `automerge` label and re-process each by
+  # firing a `workflow_dispatch` against this same workflow. The
+  # existing `merge` job's `Resolve target PR` step already
+  # accepts a PR number via `inputs.pr_number`, so the sweep
+  # delegates to it verbatim — resolve / metadata / required-check
+  # gating / BEHIND handling / merge-API call all stay
+  # single-sourced in the `merge` job. See the `push:` trigger
+  # comment block at the top of this file for the full rationale.
+  #
+  # Uses the default `GITHUB_TOKEN` (not the App token) for both
+  # `gh pr list` and `gh workflow run`. `pull-requests: read`
+  # covers the list call and `actions: write` (granted in the
+  # workflow-level `permissions:` block above) covers the
+  # dispatch call. `GITHUB_TOKEN` can fire `workflow_dispatch`
+  # events (the `workflow_run` anti-recursion rule does not apply
+  # to `workflow_dispatch`); using the App token here would
+  # require an `actions: write` grant on the App installation
+  # that is not currently provisioned. Issue #388.
+  sweep:
+    name: Sweep open automerge PRs after main advances
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # `cancel-in-progress: true` so a burst of merges to `main`
+    # collapses into one sweep — only the latest sweep needs to
+    # run, since each sweep enumerates the *current* set of
+    # open `automerge` PRs. The per-PR `merge-bot-<n>` group on
+    # the `merge` job remains the source of truth for per-PR
+    # serialisation; the sweep just decides which PRs to dispatch.
+    concurrency:
+      group: merge-bot-sweep
+      cancel-in-progress: true
+    steps:
+      - name: List open automerge PRs and dispatch merge-bot per PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # `gh pr list --json number` returns a JSON array of
+          # `{number: <int>}`; `--jq '.[].number'` flattens it to
+          # one number per line. Empty output means no PRs to
+          # dispatch — exit 0 cleanly. Bind through `mapfile` so
+          # the per-PR loop body sees one number at a time and
+          # the dispatch call quotes `${pr}` rather than splitting
+          # on whitespace.
+          mapfile -t prs < <(gh pr list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --state open \
+            --label automerge \
+            --json number \
+            --jq '.[].number')
+          if [[ "${#prs[@]}" -eq 0 ]]; then
+            echo "merge-bot sweep: no open automerge PRs; nothing to dispatch."
+            exit 0
+          fi
+          echo "merge-bot sweep: dispatching merge-bot for PRs: ${prs[*]}"
+          for pr in "${prs[@]}"; do
+            # `gh workflow run` posts to
+            # `POST /repos/.../actions/workflows/{id}/dispatches`,
+            # which fires a `workflow_dispatch` event. Each
+            # dispatched run hits the existing per-PR
+            # `merge-bot-<n>` concurrency group on the `merge`
+            # job, so a sweep-triggered dispatch for a PR already
+            # being processed by another trigger queues cleanly.
+            gh workflow run merge-bot.yml \
+              --repo "${GITHUB_REPOSITORY}" \
+              --ref main \
+              -f pr_number="${pr}"
+          done
