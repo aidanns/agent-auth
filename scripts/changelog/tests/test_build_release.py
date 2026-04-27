@@ -278,18 +278,22 @@ def test_render_commit_msg_block_keeps_lines_under_72(repo: Path) -> None:
 
 # --- numbered-reference wrap regressions ------------------------------------
 #
-# `validate-commit-msg-block.py` rejects any block line matching
-# `^\s*\d+[.)]\s+\S` (the `numbered list item` rule). Greedy wrap on
-# 72 chars used to land tokens like `0011.` (from `ADR 0011.`) at line
-# start when the noun and the digits straddled the wrap point — see
-# issue #357 and the broken `chore(release): 0.14.0` PR. The fix in
-# `_wrap_paragraph` keeps `<digits>[.)]` tokens off the start of a
-# wrapped line by moving the preceding token down with them.
+# Greedy wrap on 72 chars used to land tokens like `0011.` (from
+# `ADR 0011.`) at line start when the noun and the digits straddled
+# the wrap point — see issue #357 and the broken
+# `chore(release): 0.14.0` PR. Pre-#345 this was a hard validator
+# failure (the `numbered list item` rule rejected any block line
+# matching `^\s*\d+[.)]\s+\S`); post-#345 the validator no longer
+# bans those, but a wrapped numeric-reference opener still reads
+# as a list bullet at a glance and the renderer's `_wrap_paragraph`
+# keeps such tokens off the start of a wrapped line by moving the
+# preceding token down with them.
 #
 # Tests exercise `render_commit_msg_block` (public API, per
 # testing-standards.md) rather than reaching into `_wrap_paragraph`
-# directly: the validator only sees the rendered block, and the
-# render-then-validate path is the contract a regression would break.
+# directly: the readability invariant only matters at the rendered
+# surface, and render-then-check is the contract a regression
+# would break.
 
 
 _NUMBERED_REFERENCE_LINE_RE = re.compile(r"^\s*\d+[.)]\s+\S")
@@ -298,11 +302,16 @@ _NUMBERED_REFERENCE_LINE_RE = re.compile(r"^\s*\d+[.)]\s+\S")
 def _assert_block_satisfies_validator(block: str) -> None:
     """Assert no line opens like a numbered list AND every line wraps at 72.
 
-    Both rules sit in ``validate-commit-msg-block.py``. The renderer
-    must satisfy both simultaneously: an early version of the fix
+    The 72-char rule is enforced by ``validate-commit-msg-block.py``.
+    The "no numbered-reference opener" rule used to be too (the
+    pre-#345 ``numbered list item`` predicate); post-#345 it is a
+    readability invariant the renderer keeps voluntarily — a
+    wrapped numeric reference at line start reads as a list
+    bullet at a glance and confuses the eye. The renderer must
+    satisfy both simultaneously: an early version of the fix
     glued the numeric token to the previous one but pushed the line
-    past 72 chars, trading one validator failure for another. This
-    helper guards against that regression.
+    past 72 chars, trading one regression for another. This
+    helper guards against that.
     """
     numbered = [
         (idx, line)

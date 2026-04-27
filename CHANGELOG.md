@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.15.3] - 2026-04-27
+
+### Improvements
+
+- `merge-bot` now fires on two additional event surfaces so
+  `automerge`-labeled PRs no longer wedge on state transitions
+  that produced no merge-bot trigger event before. New
+  `pull_request_review` trigger (types `submitted` and
+  `dismissed`) re-fires the bot when a review state changes,
+  closing the gap where `automerge` was applied before the
+  final approval landed and no `workflow_run.completed` was
+  tied to the review submission. New `push: branches: [main]`
+  trigger plus a `sweep` job lists every open `automerge` PR
+  whenever `main` advances and dispatches the existing per-PR
+  `merge` job via `gh workflow run merge-bot.yml -f pr_number=<N>`, closing the gap where a labeled PR was
+  up-to-date when the bot last fired and then `main` moved
+  with nothing else to re-trigger the bot. Sweep concurrency
+  (`merge-bot-sweep`, `cancel-in-progress: true`) collapses a
+  burst of merges to `main` into one sweep; per-PR concurrency
+  (`merge-bot-<n>`) is unchanged. The sweep uses the default
+  `GITHUB_TOKEN` (with `actions: write` added to the
+  workflow-level `permissions:` block) rather than the App
+  token, so no additional App permission grant is required.
+
+## [0.15.2] - 2026-04-27
+
+### Improvements
+
+- Relax the `==COMMIT_MSG==` block validator to permit plain `-` /
+  `*` bullets and `1.` numbered lists. The kernel/cbea.ms
+  enumerated-changes form often reads better in `git log` than the
+  run-on prose paragraphs authors fell back to under the previous
+  blanket no-markdown rule. The audience-split defence — keep
+  test-plan, deploy-checklist, and screenshot content out of
+  `git log` — is now carried by three structural bans (markdown
+  headings, task checkboxes, image embeds) rather than a
+  blanket markdown ban.
+
+## [0.15.1] - 2026-04-27
+
+### Improvements
+
+- `merge-bot` now auto-updates a PR whose head sits behind `main`
+  instead of treating the merge API's 405 as a hard failure. After
+  the green-check and DCO gates the bot re-fetches
+  `mergeStateStatus`; if the value is `BEHIND`, it calls
+  `PUT /pulls/{n}/update-branch` (with `expected_head_sha` pinned),
+  posts a one-line `Claude: Branch was behind main — updated; …`
+  comment, and exits 0. The new head SHA retriggers every PR-gating
+  CI workflow, and the existing `workflow_run.completed` trigger
+  re-fires merge-bot for the second-pass merge once those workflows
+  complete. A loop guard caps the worst case at three auto-updates
+  per PR — the fourth `BEHIND` state surfaces
+  `Claude: Auto-update loop exceeded — main is moving too fast or this PR keeps falling behind. Investigate manually.` and fails the
+  job rather than burning further CI cycles. Requires
+  `contents: write` on both the workflow's top-level `permissions:`
+  block and the App installation.
+
 ## [0.15.0] - 2026-04-27
 
 ### Features

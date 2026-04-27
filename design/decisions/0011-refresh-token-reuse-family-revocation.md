@@ -98,7 +98,10 @@ The logic is implemented in `src/agent_auth/server.py`
   correlate with their own expectations of what's logged in.
 - Clients must handle the reuse-detected error distinctly from the
   expired error. The CLI helper library does this centrally so
-  individual commands don't re-implement the logic.
+  individual commands don't re-implement the logic. The shared
+  refresh + reissue retry loop that owns the
+  persistence-before-retry ordering is documented in
+  [ADR 0043](0043-shared-authenticated-retry-library.md).
 - Re-issuance requires physical presence at the host, so a refresh-
   token thief can't trigger re-issuance even if they happen to also
   know the family ID.

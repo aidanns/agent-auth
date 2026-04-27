@@ -24,8 +24,34 @@ name: Merge Bot
 #     `check_suite: completed` never delivered. `workflow_run` is the
 #     documented escape hatch and fires regardless of the upstream
 #     authenticating token. Origin: issue #348.
+#   - pull_request_review: submitted | dismissed — re-fire merge-bot
+#     when a review state changes. Covers the gap where `automerge`
+#     was applied before the final approval landed: the bot exits
+#     once on `pull_request: labeled` (review requirement unmet) and
+#     no `workflow_run.completed` is tied to a review submission, so
+#     without this trigger the PR sits stuck. The `if:` chain accepts
+#     the event regardless of `review.state` and lets the existing
+#     in-job gating (mergeable / mergeStateStatus / required reviews
+#     via the merge-API call) decide — duplicating GitHub's required-
+#     reviews logic in a workflow predicate would drift. `dismissed`
+#     is included so a queued-but-now-unapproved PR no-ops cleanly
+#     instead of sitting on the label. Origin: issue #388.
+#   - push: branches: [main] — sweep open `automerge` PRs whenever
+#     `main` advances. Covers the gap where a labeled PR was up-to-
+#     date when the bot last fired, then `main` moved and nothing
+#     else triggered the bot — `workflow_run.completed` never fires
+#     on this PR until someone pushes to it. The new sweep job lists
+#     every open `automerge` PR and dispatches the existing per-PR
+#     `merge` job via `workflow_dispatch`, keeping the resolve-PR
+#     logic single-sourced. Sweep-level concurrency
+#     (`merge-bot-sweep`, `cancel-in-progress: true`) collapses a
+#     burst of merges into one sweep; the existing per-PR
+#     concurrency key (`merge-bot-<n>`) is unchanged. Restricted to
+#     `branches: [main]` so tag pushes (release tags) don't trigger
+#     sweeps with nothing to do. Origin: issue #388.
 #   - workflow_dispatch — maintainer break-glass against a specific
-#     PR number.
+#     PR number. Also the sweep job's fan-out target — see the
+#     `push:main` trigger above.
 #
 # The bot authors no commits — it only calls `PUT /pulls/{n}/merge`.
 # The squash commit body is the contents of the PR's `==COMMIT_MSG==`
@@ -73,6 +99,12 @@ on:
       - Verify Token CLI / HTTP Parity
       - Changelog Bot
     types: [completed]
+  pull_request_review:
+    types: [submitted, dismissed]
+  # `branches: [main]` only — tag pushes (release tags) would
+  # otherwise trigger sweeps with nothing to do.
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -81,36 +113,58 @@ on:
         type: number
 
 # `pull-requests: write` is needed to post the `Claude: ...` comment
-# and (via the App token) to call the merge endpoint. NO
-# `contents: write` — the bot does not push commits or tags. NO
-# `id-token: write` — the bot is not on the SLSA-attestation path.
+# and (via the App token) to call the merge endpoint. `contents: write`
+# is needed for the BEHIND-handling auto-update branch — the
+# `PUT /pulls/{n}/update-branch` endpoint requires write access to
+# the repo's contents to push the merge commit that fast-forwards
+# the PR head onto the latest `main`. `actions: write` is needed by
+# the `push:main` sweep job to fan out via `gh workflow run` (which
+# calls `POST /repos/.../actions/workflows/{id}/dispatches`); the
+# default `GITHUB_TOKEN` carries that grant when set here, which
+# avoids needing to mint an App token in the sweep job at all (the
+# App's `actions:write` grant is not currently provisioned, and the
+# issue body's "no additional bot-token plumbing" constraint rules
+# out adding it). NO `id-token: write` — the bot is not on the
+# SLSA-attestation path.
 permissions:
   pull-requests: write
-  contents: read
+  contents: write
   checks: read
-
-# Prevent two triggers (label + workflow_run) from racing on the same
-# PR. Group key includes the PR/SHA so different PRs still run in
-# parallel; cancellation is OFF because we want each trigger to run
-# to completion (an early-exit on "already merged" is cheap, and
-# losing a trigger could leave the PR stuck waiting for the next
-# event).
-concurrency:
-  group: merge-bot-${{ github.event.pull_request.number || github.event.workflow_run.head_sha || inputs.pr_number }}
-  cancel-in-progress: false
+  actions: write
 
 jobs:
   merge:
     name: Merge ==COMMIT_MSG== block as squash body
     runs-on: ubuntu-latest
+    # Per-PR concurrency so two triggers (label + workflow_run +
+    # pull_request_review + sweep-dispatched workflow_dispatch)
+    # cannot race on the same PR. `pull_request_review` carries
+    # `github.event.pull_request.number` on the same shape as
+    # `pull_request`, so the existing first fallback already covers
+    # it. Group key includes the PR/SHA so different PRs still run
+    # in parallel; cancellation is OFF because we want each trigger
+    # to run to completion (an early-exit on "already merged" is
+    # cheap, and losing a trigger could leave the PR stuck waiting
+    # for the next event).
+    concurrency:
+      group: merge-bot-${{ github.event.pull_request.number || github.event.workflow_run.head_sha || inputs.pr_number }}
+      cancel-in-progress: false
     # Cheap pre-filter so we don't burn a runner on every label
     # event (`labeled` fires for *every* label, not just `automerge`),
     # and so `workflow_run.completed` only proceeds when the upstream
-    # workflow itself succeeded. Per-PR sticky-label and required-check
-    # checks happen in the steps below.
+    # workflow itself succeeded. For `pull_request_review`, gate on
+    # the PR carrying `automerge` (the event payload's
+    # `pull_request.labels` is reliable) so reviews on non-automerge
+    # PRs don't burn a runner each. `pull_request_review` is
+    # otherwise accepted regardless of `review.state` — the existing
+    # in-job gating (mergeable / required-reviews via the merge API)
+    # is the source of truth; duplicating the required-reviews logic
+    # in this predicate would drift. Per-PR sticky-label and
+    # required-check checks happen in the steps below.
     if: |
       (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'automerge')
       || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      || (github.event_name == 'pull_request_review' && contains(github.event.pull_request.labels.*.name, 'automerge'))
       || github.event_name == 'workflow_dispatch'
     steps:
       # Distinguish two configuration states before minting the App
@@ -168,13 +222,14 @@ jobs:
           app-id: ${{ secrets.MERGE_BOT_APP_ID }}
           private-key: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
 
-      # Resolve the PR number for each trigger. `pull_request`
-      # carries it directly. `workflow_run` carries the head SHA of
-      # the upstream workflow's run; we resolve the same-repo PR by
-      # `automerge` label and matching head SHA. `workflow_dispatch`
-      # takes it as input. Surface the resolved number as a step
-      # output so later steps don't have to re-derive it from the
-      # event payload.
+      # Resolve the PR number for each trigger. `pull_request` and
+      # `pull_request_review` both carry it directly via
+      # `event.pull_request.number`. `workflow_run` carries the head
+      # SHA of the upstream workflow's run; we resolve the same-repo
+      # PR by `automerge` label and matching head SHA.
+      # `workflow_dispatch` takes it as input. Surface the resolved
+      # number as a step output so later steps don't have to
+      # re-derive it from the event payload.
       - name: Resolve target PR
         id: pr
         if: steps.secrets-check.outputs.configured == 'true'
@@ -193,7 +248,7 @@ jobs:
         run: |
           set -euo pipefail
           case "${EVENT_NAME}" in
-            pull_request)
+            pull_request|pull_request_review)
               echo "pr=${PULL_REQUEST_NUMBER}" >> "${GITHUB_OUTPUT}"
               ;;
             workflow_dispatch)
@@ -490,9 +545,178 @@ jobs:
             echo "skip=false" >> "${GITHUB_OUTPUT}"
           fi
 
+      # The `main` ruleset enforces `strict_required_status_checks_policy`,
+      # so a PR whose head sits behind `main` cannot merge until its
+      # required checks have re-run on the post-rebase head SHA. The
+      # merge API surfaces this as a 405 the moment the head falls
+      # behind. Detect it here, call `PUT /pulls/{n}/update-branch` to
+      # fast-forward the PR head onto `main` (default merge-method;
+      # equivalent to clicking GitHub's "Update branch" button), and
+      # exit the job cleanly — the resulting new head SHA retriggers
+      # CI, and `workflow_run.completed` then re-fires merge-bot for
+      # the second-pass merge.
+      #
+      # `mergeStateStatus` is re-fetched here rather than reused from
+      # the earlier `meta` step because the value can become stale
+      # over the lifetime of the run (someone could push to `main`
+      # between steps). The fresh read is the source of truth for the
+      # BEHIND decision.
+      #
+      # `mergeStateStatus` UNKNOWN race: when `workflow_run.completed`
+      # fires before GitHub finishes computing the merge state, the
+      # status comes back UNKNOWN. Without polling, the step would
+      # fall through to the merge call and the API would reject a
+      # behind PR with a noisy "GitHub merge API rejected the call"
+      # comment that contradicts the auto-update story. Poll for up
+      # to ~30s (10 attempts × 3s) and bail out cleanly if the value
+      # never resolves — the next CI completion (or any state change
+      # on `main`) will retrigger merge-bot via
+      # `workflow_run.completed`.
+      #
+      # Loop guard: count prior auto-update comments authored by this
+      # App on the same PR *since the most recent push to the PR
+      # head*. If we have already auto-updated three times without
+      # merging, a flapping `main` (or a PR that keeps falling behind
+      # faster than CI completes) is the cause; refuse the fourth
+      # update so the bot stops burning CI cycles and surfaces the
+      # situation to a human. Anchoring the count on the head
+      # commit's `committer.date` makes "push a new commit to reset
+      # the count" the actual recovery path — without the timestamp
+      # filter, every auto-update comment ever posted on the PR
+      # keeps counting and the bot would refuse forever after the
+      # third update. Counting by author + prefix + `created_at`
+      # keeps the count tied to *this* App's auto-updates posted
+      # since the latest push, and ignores arbitrary `Claude: `
+      # comments from human / agent authors.
+      - name: Detect BEHIND and auto-update branch
+        id: behind
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          # `app-slug` is the App's slug (e.g. `agent-auth-merge-bot`);
+          # the matching bot user login is `<slug>[bot]`. Resolved
+          # from the token-mint step rather than at runtime so the
+          # filter doesn't depend on App identity endpoints that
+          # behave inconsistently with installation tokens.
+          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
+        run: |
+          set -euo pipefail
+          # Re-fetch mergeStateStatus + headRefOid so the BEHIND
+          # decision is based on current state, not state from the
+          # earlier `meta` step. Poll for up to ~30s while
+          # mergeStateStatus is UNKNOWN — that's GitHub's "still
+          # computing" sentinel and falling through to the merge
+          # call while it's UNKNOWN produces a misleading failure
+          # comment if the PR is in fact behind.
+          merge_state=""
+          head_sha=""
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            state_payload="$(gh pr view "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json mergeStateStatus,headRefOid)"
+            merge_state="$(jq -r '.mergeStateStatus' <<<"${state_payload}")"
+            head_sha="$(jq -r '.headRefOid' <<<"${state_payload}")"
+            if [[ "${merge_state}" != "UNKNOWN" ]]; then
+              break
+            fi
+            echo "merge-bot: mergeStateStatus=UNKNOWN on attempt ${attempt}; sleeping 3s before retry."
+            sleep 3
+          done
+          if [[ "${merge_state}" == "UNKNOWN" ]]; then
+            echo "merge-bot: mergeStateStatus stayed UNKNOWN after polling; exiting cleanly so workflow_run.completed retriggers."
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --body "Claude: GitHub is still computing merge state — will retry on next workflow_run.completed."
+            # Set behind=true so the merge step is skipped this run.
+            echo "behind=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [[ "${merge_state}" != "BEHIND" ]]; then
+            echo "merge-bot: mergeStateStatus=${merge_state}; not BEHIND, proceeding to merge."
+            echo "behind=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          # Count prior auto-update comments by this App posted
+          # since the most recent push to the PR head. The PR head
+          # commit's `committer.date` is the natural anchor: pushing
+          # a new commit advances it, which makes "push a new commit
+          # to reset the count" actually reset the count. Without
+          # the `created_at >= since` filter, every auto-update
+          # comment ever posted would count forever.
+          #
+          # `--paginate` alone (no `--slurp`) returns concatenated
+          # arrays from each page; piping into `jq -r '.[] | select(...) | .id'`
+          # flattens and filters in a single pass and `wc -l`
+          # counts. `--slurp` was avoided because it requires gh
+          # ≥ 2.50 — a stale gh on a self-hosted runner would
+          # silently flip the JSON shape and the count would always
+          # be 0, bypassing the loop guard. The marker, App login,
+          # and `since` cutoff are passed to jq via `--arg` rather
+          # than templated into the jq program so the embedded
+          # UTF-8 em dash, `;`, and ISO-8601 colons survive shell
+          # quoting verbatim.
+          head_pushed_at="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/commits" \
+            --paginate \
+            --jq '.[].commit.committer.date' \
+            | tail -n 1)"
+          if [[ -z "${head_pushed_at}" ]]; then
+            echo "::error::Could not determine head commit timestamp for PR #${PR_NUMBER}."
+            exit 1
+          fi
+          marker="Claude: Branch was behind main — updated;"
+          prior_updates="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --paginate \
+            | jq -r --arg login "${APP_LOGIN}" \
+                    --arg marker "${marker}" \
+                    --arg since "${head_pushed_at}" \
+                  '.[] | select(.user.login == $login) | select(.body | startswith($marker)) | select(.created_at >= $since) | .id' \
+            | wc -l)"
+          # Strip whitespace from `wc -l` output (some `wc` implementations left-pad).
+          prior_updates="${prior_updates//[[:space:]]/}"
+          echo "merge-bot: prior auto-update count since ${head_pushed_at} = ${prior_updates}"
+          if [[ "${prior_updates}" -ge 3 ]]; then
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --body "Claude: Auto-update loop exceeded — main is moving too fast or this PR keeps falling behind. Investigate manually."
+            echo "::error::Auto-update loop guard tripped after ${prior_updates} prior updates."
+            exit 1
+          fi
+          # Call `PUT /pulls/{n}/update-branch`. Pin `expected_head_sha`
+          # so a contributor push that races us produces a documented
+          # 422 (`expected_head_sha`) rather than us silently
+          # fast-forwarding past their commit. Treat 422 as a clean
+          # exit — the contributor's push will retrigger merge-bot
+          # via `workflow_run.completed` once CI runs against the new
+          # head.
+          if gh api --method PUT \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/update-branch" \
+            -f expected_head_sha="${head_sha}" \
+            > "${RUNNER_TEMP}/update.out" 2> "${RUNNER_TEMP}/update.err"; then
+            echo "merge-bot: branch updated; CI will retrigger and workflow_run.completed will re-fire merge-bot."
+          else
+            err="$(cat "${RUNNER_TEMP}/update.err")"
+            if grep -qi "expected_head_sha" <<<"${err}"; then
+              echo "merge-bot: head SHA advanced under us (contributor push); exiting cleanly."
+              echo "behind=true" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+            echo "::error::update-branch API call failed: ${err}"
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --body "Claude: Cannot merge — \`update-branch\` API rejected the call: ${err}"
+            exit 1
+          fi
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "Claude: Branch was behind main — updated; will retry merge after CI completes."
+          echo "behind=true" >> "${GITHUB_OUTPUT}"
+
       - name: Call PUT /pulls/{n}/merge
         id: merge_call
-        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true' && steps.behind.outputs.behind == 'false'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
@@ -552,3 +776,73 @@ jobs:
           gh pr comment "${PR_NUMBER}" \
             --repo "${GITHUB_REPOSITORY}" \
             --body "Claude: Merged via bot."
+
+  # `push:main` sweep. Whenever `main` advances, list every open
+  # PR carrying the `automerge` label and re-process each by
+  # firing a `workflow_dispatch` against this same workflow. The
+  # existing `merge` job's `Resolve target PR` step already
+  # accepts a PR number via `inputs.pr_number`, so the sweep
+  # delegates to it verbatim — resolve / metadata / required-check
+  # gating / BEHIND handling / merge-API call all stay
+  # single-sourced in the `merge` job. See the `push:` trigger
+  # comment block at the top of this file for the full rationale.
+  #
+  # Uses the default `GITHUB_TOKEN` (not the App token) for both
+  # `gh pr list` and `gh workflow run`. `pull-requests: read`
+  # covers the list call and `actions: write` (granted in the
+  # workflow-level `permissions:` block above) covers the
+  # dispatch call. `GITHUB_TOKEN` can fire `workflow_dispatch`
+  # events (the `workflow_run` anti-recursion rule does not apply
+  # to `workflow_dispatch`); using the App token here would
+  # require an `actions: write` grant on the App installation
+  # that is not currently provisioned. Issue #388.
+  sweep:
+    name: Sweep open automerge PRs after main advances
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # `cancel-in-progress: true` so a burst of merges to `main`
+    # collapses into one sweep — only the latest sweep needs to
+    # run, since each sweep enumerates the *current* set of
+    # open `automerge` PRs. The per-PR `merge-bot-<n>` group on
+    # the `merge` job remains the source of truth for per-PR
+    # serialisation; the sweep just decides which PRs to dispatch.
+    concurrency:
+      group: merge-bot-sweep
+      cancel-in-progress: true
+    steps:
+      - name: List open automerge PRs and dispatch merge-bot per PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # `gh pr list --json number` returns a JSON array of
+          # `{number: <int>}`; `--jq '.[].number'` flattens it to
+          # one number per line. Empty output means no PRs to
+          # dispatch — exit 0 cleanly. Bind through `mapfile` so
+          # the per-PR loop body sees one number at a time and
+          # the dispatch call quotes `${pr}` rather than splitting
+          # on whitespace.
+          mapfile -t prs < <(gh pr list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --state open \
+            --label automerge \
+            --json number \
+            --jq '.[].number')
+          if [[ "${#prs[@]}" -eq 0 ]]; then
+            echo "merge-bot sweep: no open automerge PRs; nothing to dispatch."
+            exit 0
+          fi
+          echo "merge-bot sweep: dispatching merge-bot for PRs: ${prs[*]}"
+          for pr in "${prs[@]}"; do
+            # `gh workflow run` posts to
+            # `POST /repos/.../actions/workflows/{id}/dispatches`,
+            # which fires a `workflow_dispatch` event. Each
+            # dispatched run hits the existing per-PR
+            # `merge-bot-<n>` concurrency group on the `merge`
+            # job, so a sweep-triggered dispatch for a PR already
+            # being processed by another trigger queues cleanly.
+            gh workflow run merge-bot.yml \
+              --repo "${GITHUB_REPOSITORY}" \
+              --ref main \
+              -f pr_number="${pr}"
+          done
