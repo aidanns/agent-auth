@@ -85,13 +85,20 @@ SECTION_HEADINGS: dict[EntryType, str] = {
 COMMIT_MSG_WRAP = 72
 
 # Tokens shaped like `<digits>.` or `<digits>)` look like ordered-list
-# items to `validate-commit-msg-block.py`'s `numbered list item` rule
-# (DISALLOWED_PATTERNS) when they land at the start of a wrapped line.
+# items at a glance when they land at the start of a wrapped line.
 # This recurs in changelog prose because numbered references such as
 # `ADR 0011.`, `issue 1234)`, `RFC 2119`, or `PR 357.` are common —
 # the noun and the digits sit on either side of a soft wrap point.
 # `_wrap_paragraph` glues such a token to the previous one rather than
 # letting it open a fresh line, even at the cost of a soft overflow.
+#
+# Pre-#345 this was a hard validator requirement (the
+# `numbered list item` rule rejected any wrapped line opening with
+# `<digits>[.)]`). The validator's list bans relaxed in #345, so the
+# wrap behaviour is now a readability invariant rather than a CI
+# gate; the regression test in
+# ``tests/test_build_release.py::_assert_block_satisfies_validator``
+# keeps the invariant honest.
 NUMERIC_PERIOD_RE = re.compile(r"^\d+[.)]")
 
 
@@ -291,11 +298,16 @@ def _render_changelog_bullet(entry: ChangelogEntry) -> list[str]:
 def render_release_notes(entries: Sequence[ChangelogEntry], next_version: str) -> str:
     """Render the prose body shared by the release-PR and the GitHub Release.
 
-    Output is plain prose — no markdown headings, no bullet lists, no
-    checkboxes — so it satisfies ``validate-commit-msg-block.py``. The
-    structure is one paragraph per group, prefixed with the group
-    label, followed by the wrapped descriptions. Lines wrap at
+    Output structure: one paragraph per group, prefixed with the
+    group label, followed by the wrapped descriptions, with a
+    leading ``- `` bullet per entry. Lines wrap at
     :data:`COMMIT_MSG_WRAP` characters.
+
+    The release-PR ``==COMMIT_MSG==`` block has its own renderer
+    (``render_commit_msg_block``) that emits prose-only — bullets
+    here are fine for the GitHub Release surface but the per-PR
+    commit body deliberately collapses them to semicolon-joined
+    sentences, see that function's docstring.
 
     The shape:
 
@@ -311,10 +323,12 @@ def render_release_notes(entries: Sequence[ChangelogEntry], next_version: str) -
         ...
 
     The leading bullets here are emitted with a single ``- `` prefix.
-    The PR-body validator's "no bullet lists" rule is checked against
-    the *==COMMIT_MSG== block*, which we render WITHOUT bullets — see
-    ``render_commit_msg_block``. ``render_release_notes`` is the
-    GitHub Release body; that surface accepts markdown.
+    Bullets are valid in the *==COMMIT_MSG== block* too post-#345,
+    but ``render_commit_msg_block`` historically emits semicolon-
+    joined prose and there is no reason to change that purely on
+    the back of the validator relaxation. ``render_release_notes``
+    is the GitHub Release body; that surface accepts arbitrary
+    markdown either way.
     """
     grouped = _grouped(entries)
     parts: list[str] = [f"Release v{next_version}.", ""]
@@ -350,13 +364,20 @@ def render_commit_msg_block(entries: Sequence[ChangelogEntry], next_version: str
 
     Differs from ``render_release_notes`` in that:
 
-    - No markdown bullets / dashes (the PR-body lint forbids them).
-    - Prose is grouped by type and joined with semicolons.
+    - No markdown bullets — prose is grouped by type and joined
+      with semicolons.
     - Lines wrap at :data:`COMMIT_MSG_WRAP` chars.
 
-    Uses prose rather than bullets so the validator's
-    ``DISALLOWED_PATTERNS`` (markdown headings, bullet lists,
-    numbered lists, task checkboxes) all pass.
+    The bullet ban here is a *historical* shape, not a hard
+    requirement: pre-#345 the validator's ``DISALLOWED_PATTERNS``
+    rejected bullets in the block, and this renderer was written
+    around that. Post-#345 plain bullets are valid in the block,
+    but the semicolon-joined prose form remains the renderer's
+    output because it predates the relaxation and there is no
+    behavioural reason to churn it. The validator's remaining
+    ``DISALLOWED_PATTERNS`` (markdown headings, task checkboxes,
+    image embeds) still pass trivially — the renderer emits none
+    of those.
     """
     grouped = _grouped(entries)
     paragraphs: list[str] = [f"Release v{next_version}."]
@@ -377,10 +398,13 @@ def _flatten_description(text: str) -> str:
     """Collapse a multi-line YAML description into a single sentence.
 
     YAML `description: |` block scalars routinely span multiple lines
-    (the schema encourages prose). The ==COMMIT_MSG== block can't
-    carry markdown bullets, so each entry is collapsed to a single
-    semicolon-separated phrase. Trailing periods are trimmed so the
-    final paragraph period (added by the caller) doesn't double up.
+    (the schema encourages prose). The renderer historically emits
+    semicolon-joined prose into the ==COMMIT_MSG== block (the
+    pre-#345 bullet ban shaped this; the shape is kept post-#345
+    for stability — see ``render_commit_msg_block``). Each entry
+    is therefore collapsed to a single semicolon-separated phrase.
+    Trailing periods are trimmed so the final paragraph period
+    (added by the caller) doesn't double up.
     """
     flat = " ".join(line.strip() for line in text.splitlines() if line.strip())
     return flat.rstrip(".")
@@ -395,16 +419,19 @@ def _wrap_paragraph(text: str, width: int) -> str:
 
     Also refuses to leave a `<digits>.` or `<digits>)` token at the
     start of a wrapped line: such a token would look like an ordered
-    list item to ``validate-commit-msg-block.py``'s
-    "numbered list item" rule (numbered references like `ADR 0011.`
-    and `issue 1234)` are common in changelog prose). When a numeric
-    token would otherwise overflow the current line, the previous
-    token is moved down to the next line *with* it — preserving both
-    the 72-char width rule and the no-numbered-list rule. The
-    fallback (when the previous-token-plus-numeric pair still
-    overflows on its own line, or the line has no spare token to
-    move) is to soft-overflow the current line rather than emit a
-    line that opens with `<digits>[.)]`.
+    list item at a glance even though it's actually a wrapped
+    numbered reference (`ADR 0011.`, `issue 1234)`, common in
+    changelog prose). Pre-#345 this was a hard validator
+    requirement; post-#345 it's a readability invariant the
+    renderer keeps because numbered-reference openers read as
+    list bullets and confuse the eye. When a numeric token would
+    otherwise overflow the current line, the previous token is
+    moved down to the next line *with* it — preserving both the
+    72-char width rule and the no-numbered-reference-opener
+    invariant. The fallback (when the previous-token-plus-numeric
+    pair still overflows on its own line, or the line has no
+    spare token to move) is to soft-overflow the current line
+    rather than emit a line that opens with `<digits>[.)]`.
     """
     out_lines: list[str] = []
     current_tokens: list[str] = []

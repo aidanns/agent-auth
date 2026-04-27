@@ -9,9 +9,12 @@
 # Rules:
 #   1. Exactly one `==COMMIT_MSG==` … `==COMMIT_MSG==` block.
 #   2. Every non-empty line in the block wraps at <= 72 chars.
-#   3. No markdown headings (`#`), bullet lists (`-`, `*`, `+`),
-#      numbered lists (`<n>.`, `<n>)`), or task checkboxes
-#      (`- [ ]`, `- [x]`) inside the block.
+#   3. No markdown headings (`#`), task checkboxes (`- [ ]`, `- [x]`),
+#      or image embeds (`![alt](url)`) inside the block. Plain bullet
+#      and numbered lists are permitted (kernel/cbea.ms style for
+#      enumerating several related changes); the three structural
+#      bans above carry the audience-split signal that previously
+#      justified a blanket no-markdown rule (see #345).
 #   4. If a `BREAKING CHANGE:` footer appears, it sits on the last
 #      non-`Signed-off-by:` line.
 #   5. Every trailer line (`Closes`, `Co-authored-by`, `Signed-off-by`,
@@ -103,20 +106,24 @@ KNOWN_TRAILER_TOKENS = frozenset(
     }
 )
 
-# Patterns that must NOT appear inside the block (rule 3).
+# Patterns that must NOT appear inside the block (rule 3). Each
+# pattern's presence reliably signals reviewer-surface content
+# leaking into the commit body — task checkboxes are the strongest
+# tell of a test plan / deploy checklist; markdown headings are
+# section dividers that belong in `## Review notes`; image embeds
+# are screenshots. Plain bullet / numbered lists used to live here
+# too but the kernel/cbea.ms enumerated-changes form reads better
+# in `git log` than the run-on prose paragraphs authors fell back
+# to under the stricter rule (see #345).
+#
+# `pattern.search` (not `pattern.match`) is used in
+# `check_no_markdown` so the `image embed` pattern catches a
+# mid-line embed; the heading/checkbox patterns are anchored at
+# start-of-line (`^`) inside their own regex regardless.
 DISALLOWED_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("markdown heading", re.compile(r"^#{1,6}\s")),
     ("task checkbox", re.compile(r"^\s*[-*+]\s+\[[ xX]\]\s")),
-    ("bullet list item", re.compile(r"^\s*[-*+]\s+\S")),
-    # Cap the digit count at 3 so a wrapped 4+ digit identifier
-    # reference (e.g. `ADR\n0011. follows.` — see #358) does not
-    # false-positive as a list marker. CommonMark ordered lists in
-    # practice use 1-3 digit markers (`1.` … `999.`); a 4+ digit
-    # prefix in prose is almost always an identifier wrap (ADR /
-    # issue / RFC / CVE). Trade-off: a literal numbered list with a
-    # 4+ digit marker sneaks through; the false-positive avoidance
-    # gain is worth the false-negative.
-    ("numbered list item", re.compile(r"^\s*\d{1,3}[.)]\s+\S")),
+    ("image embed", re.compile(r"!\[[^\]]*\]\([^)]*\)")),
 ]
 
 # Comment / instruction lines the contributor may leave behind by
@@ -230,10 +237,17 @@ def check_line_width(lines: Iterable[str]) -> None:
 
 
 def check_no_markdown(lines: Iterable[str]) -> None:
+    """Reject the three reviewer-surface markdown shapes.
+
+    Uses `pattern.search` rather than `pattern.match` so the
+    `image embed` predicate catches a mid-line embed (a screenshot
+    placed inline in prose). The other two predicates anchor on
+    `^` inside their own regex, so search-vs-match is moot for them.
+    """
     findings: list[str] = []
     for idx, line in enumerate(lines, start=1):
         for label, pattern in DISALLOWED_PATTERNS:
-            if pattern.match(line):
+            if pattern.search(line):
                 findings.append(f"  line {idx} ({label}): {line!r}")
                 break
     if findings:
@@ -241,7 +255,10 @@ def check_no_markdown(lines: Iterable[str]) -> None:
         raise ValidationError(
             f"`{MARKER}` block contains markdown formatting that does "
             f"not belong in a git commit body:\n{details}\n"
-            "Use prose paragraphs only; trailers go at the end."
+            "Headings, task checkboxes, and image embeds are "
+            "reviewer-surface and belong in `## Review notes`. "
+            "Plain `-` / `*` bullets and `1.` numbered lists are "
+            "fine in the commit body."
         )
 
 

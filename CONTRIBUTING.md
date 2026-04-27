@@ -635,7 +635,12 @@ audiences**:
 - The `==COMMIT_MSG==` block becomes the squash-merge commit body —
   it enters `git log` and the GitHub release notes. Treat it like a
   commit message: prose paragraphs, ≤ 72 char wrap, trailers at
-  the end. No markdown headings, bullet lists, or task checkboxes.
+  the end. Three markdown shapes are banned because they reliably
+  signal reviewer-surface content has leaked in: markdown headings
+  (`#` … `######`), task checkboxes (`- [ ]` / `- [x]`), and image
+  embeds (`![alt](url)`). Plain `-` / `*` bullets and `1.` numbered
+  lists are fine — the kernel/cbea.ms enumerated-changes form often
+  reads better in `git log` than a run-on prose paragraph.
 - The `## Review notes` section is for the reviewer — test plan,
   screenshots, deploy notes, gotchas. It does **not** enter git
   history. Use whatever markdown you like.
@@ -680,7 +685,7 @@ A subset of the rules below is **CI-enforced**; the rest are
 | Title summary capitalisation (project lowercases post-prefix)                    | Convention only                                                                                                                   |
 | Imperative mood beyond the past-tense closed list                                | Convention only (no clean regex without false positives)                                                                          |
 | Body wraps at ≤ 72 chars                                                         | CI (`pr-body-commit-msg` job, `scripts/validate-commit-msg-block.py`)                                                             |
-| Body has no markdown headings / bullet lists / numbered lists / task checkboxes  | CI (`pr-body-commit-msg` job)                                                                                                     |
+| Body has no markdown headings / task checkboxes / image embeds                   | CI (`pr-body-commit-msg` job — plain `-` / `*` bullets and `1.` numbered lists are permitted)                                     |
 | Body opens non-blank (after PR-template scaffolding)                             | CI (`pr-body-commit-msg` job)                                                                                                     |
 | Body's first line does not duplicate the PR title                                | CI (`pr-body-commit-msg` job, with the title passed in via env var)                                                               |
 | `Fixes: <sha> ("subject")` follows the kernel-style shape when SHA-style is used | CI (`pr-body-commit-msg` job)                                                                                                     |
