@@ -732,7 +732,7 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, int | None, bool, str], ...
         "passing-suffixed-fits",
     ),
     (
-        # 84-char un-suffixed title — the existing failing-too-long
+        # 86-char un-suffixed title — the existing failing-too-long
         # fixture, this time with a PR number passed in. Catches the
         # regression where the suffix-aware path drops the title
         # length out of the error message: the contributor must still
@@ -744,6 +744,21 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, int | None, bool, str], ...
         9999,
         False,
         "failing-too-long-with-pr-number",
+    ),
+    (
+        # 72-char title with ``pr_number=None`` — positive control for
+        # the un-suffixed boundary that local invocations and the
+        # ``pr-title-self-test`` job rely on. Locks down the no-
+        # ``--pr-number`` path so a future regression that re-applies
+        # the suffix-aware cap (e.g. a refactor of ``_projected_suffix``
+        # that returns ``" (#)"`` for the ``None`` case, eating four
+        # chars of headroom) trips the self-test instead of landing
+        # silently.
+        "improvement(agent-auth): tighten the JIT approval audit-log emit pathway",
+        None,
+        None,
+        True,
+        "passing-unsuffixed-at-cap",
     ),
 )
 
