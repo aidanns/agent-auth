@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: |
+    Relax the `==COMMIT_MSG==` block validator to permit plain `-` /
+    `*` bullets and `1.` numbered lists. The kernel/cbea.ms
+    enumerated-changes form often reads better in `git log` than the
+    run-on prose paragraphs authors fell back to under the previous
+    blanket no-markdown rule. The audience-split defence — keep
+    test-plan, deploy-checklist, and screenshot content out of
+    `git log` — is now carried by three structural bans (markdown
+    headings, task checkboxes, image embeds) rather than a
+    blanket markdown ban.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/345
+    - https://github.com/aidanns/agent-auth/pull/384
