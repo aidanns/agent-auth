@@ -17,16 +17,11 @@ out rather than duplicating.
 
 ## The three Apps at a glance
 
-| App slug / actor login          | Workflow file(s)                                                                                                         | Permissions                                                                                       | Required secrets                                                           | Main-ruleset bypass? |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------- |
-| `agent-auth-changelog-bot[bot]` | [`changelog-bot.yml`](../../.github/workflows/changelog-bot.yml)                                                         | See [changelog-bot-setup.md](changelog-bot-setup.md#one-time-registration)                        | `CHANGELOG_BOT_APP_ID`, `CHANGELOG_BOT_PRIVATE_KEY`, `CHANGELOG_BOT_EMAIL` | No                   |
-| `agent-auth-merge-bot[bot]`     | [`merge-bot.yml`](../../.github/workflows/merge-bot.yml)                                                                 | See [merge-bot-setup.md](merge-bot-setup.md#step-1--register-the-agent-auth-merge-bot-github-app) | `MERGE_BOT_APP_ID`, `MERGE_BOT_PRIVATE_KEY`                                | **Yes**              |
-| `agent-auth-release-bot[bot]`   | [`release-pr.yml`](../../.github/workflows/release-pr.yml), [`release-tag.yml`](../../.github/workflows/release-tag.yml) | See [Release App setup](../../CONTRIBUTING.md#release-app-setup)                                  | `RELEASE_BOT_APP_ID`, `RELEASE_BOT_PRIVATE_KEY`                            | No                   |
-
-A dedicated `docs/release/release-bot-setup.md` is pending
-(companion follow-up to PR #342). Until it lands, the
-[`CONTRIBUTING.md` § "Release App setup"](../../CONTRIBUTING.md#release-app-setup)
-entry is the source of truth for release-bot setup.
+| App slug / actor login          | Workflow file(s)                                                                                                                                                                               | Permissions                                                                                       | Required secrets                                                           | Main-ruleset bypass? |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------- |
+| `agent-auth-changelog-bot[bot]` | [`changelog-bot.yml`](../../.github/workflows/changelog-bot.yml)                                                                                                                               | See [changelog-bot-setup.md](changelog-bot-setup.md#one-time-registration)                        | `CHANGELOG_BOT_APP_ID`, `CHANGELOG_BOT_PRIVATE_KEY`, `CHANGELOG_BOT_EMAIL` | No                   |
+| `agent-auth-merge-bot[bot]`     | [`merge-bot.yml`](../../.github/workflows/merge-bot.yml)                                                                                                                                       | See [merge-bot-setup.md](merge-bot-setup.md#step-1--register-the-agent-auth-merge-bot-github-app) | `MERGE_BOT_APP_ID`, `MERGE_BOT_PRIVATE_KEY`                                | **Yes**              |
+| `agent-auth-release-bot[bot]`   | [`release-pr.yml`](../../.github/workflows/release-pr.yml), [`release-tag.yml`](../../.github/workflows/release-tag.yml), [`release-publish.yml`](../../.github/workflows/release-publish.yml) | See [release-bot-setup.md](release-bot-setup.md#one-time-registration)                            | `RELEASE_BOT_APP_ID`, `RELEASE_BOT_PRIVATE_KEY`                            | No                   |
 
 The canonical secret-name shape is `<BOT>_BOT_APP_ID` /
 `<BOT>_BOT_PRIVATE_KEY` where `<BOT>` is the short bot name
@@ -46,7 +41,7 @@ is resolvable when the bypass-actor step looks it up.
    - `agent-auth-merge-bot` — see
      [merge-bot-setup.md](merge-bot-setup.md).
    - `agent-auth-release-bot` — see
-     [`CONTRIBUTING.md` § "Release App setup"](../../CONTRIBUTING.md#release-app-setup).
+     [release-bot-setup.md](release-bot-setup.md).
 2. **Install all three Apps on `aidanns/agent-auth` only.** Not
    *All repositories*. Each App's installation token is scoped to
    the repo it is installed on; widening the install scope would
@@ -171,8 +166,7 @@ truth:
 
 - [changelog-bot-setup.md](changelog-bot-setup.md)
 - [merge-bot-setup.md](merge-bot-setup.md)
-- [`CONTRIBUTING.md` § "Release App setup"](../../CONTRIBUTING.md#release-app-setup)
-  (interim, until a dedicated `release-bot-setup.md` lands)
+- [release-bot-setup.md](release-bot-setup.md)
 
 If a per-App detail conflicts with this doc, the per-App doc
 wins; please open an issue so this overview can be brought back
