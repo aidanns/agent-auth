@@ -115,10 +115,19 @@ jobs:
           # the env-var path keeps shell expansion off the title and
           # mirrors the injection-safety pattern of pr-body-commit-msg.
           TITLE: ${{ github.event.pull_request.title }}
+          # Same env-var pattern for the PR number so the suffix-aware
+          # length cap (#399) runs against the projected squash-merge
+          # subject (un-suffixed title + ` (#<n>)`). The number is an
+          # integer in the event payload, but routing it through env
+          # rather than inlining ${{ github.event.pull_request.number }}
+          # keeps `pull_request_target` workflows off CodeQL's
+          # `js/actions/command-injection` flagged channel.
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           python3 scripts/validate-pr-title.py \
             --changed-files-from "${RUNNER_TEMP}/changed-files.txt" \
+            --pr-number "${PR_NUMBER}" \
             "${TITLE:-}"
 
   pr-body-commit-msg:
