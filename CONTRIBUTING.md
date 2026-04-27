@@ -469,6 +469,14 @@ to the lint and the release workflow:
 range (per ADR 0026 § Pre-1.0 behaviour). Force the graduation to
 `1.0.0` with `release-as: 1.0.0` on the breaking change's YAML.
 
+The `release-impact-comment` job in
+[`.github/workflows/pr-lint.yml`](.github/workflows/pr-lint.yml)
+posts an idempotent `Claude:` comment on every PR that touches
+`changelog/@unreleased/*.yml`, surfacing the predicted
+`current → next` version transition so a mislabelled `type:` (e.g.
+`feature` for what should have been `improvement`) is caught at
+review time rather than after release.
+
 ### `packages:` and `release-as:`
 
 - **`packages:`** — list workspace members the change affects. Omit
