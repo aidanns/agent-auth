@@ -134,6 +134,11 @@ tasks:
     cmds:
       - scripts/build.sh
 
+  build-release-artifacts:
+    desc: "Run the same build commands `release-publish.yml` will run on a tag push. Shared between the publish workflow and the PR-time dry-run (`release-dryrun.yml`) so the two cannot drift; use this locally to reproduce the exact CI build before tagging. See issue #325."
+    cmds:
+      - scripts/build-release-artifacts.sh {{.CLI_ARGS}}
+
   install-hooks:
     desc: Install project git hooks (lefthook).
     cmds:

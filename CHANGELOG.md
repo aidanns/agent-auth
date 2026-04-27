@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.15.0] - 2026-04-27
+
+### Features
+
+- Add CI gates that catch broken release-publish pipelines before
+  they ship: a PR-time dry-run (`release-dryrun.yml`) that runs the
+  same build commands the publish path will run via the new shared
+  `scripts/build-release-artifacts.sh`, and a post-publish
+  `verify-assets` job in `release-publish.yml` that fails the
+  workflow if any expected asset (wheel, sdist, SBOM, cosign
+  bundle, SLSA provenance) is missing from the GitHub release.
+  Closes the gap that hid the workspace-split release-build
+  regression for ~13 consecutive releases. The dry-run is
+  informational (`continue-on-error: true`) until #324 unbreaks
+  the build; a follow-up config-only PR will move it to required
+  status checks once the soak window passes.
+
+## [0.14.1] - 2026-04-26
+
+### Improvements
+
+- `release-publish.yml` now mints an installation token from the
+  `agent-auth-release-bot` GitHub App and passes it as `GH_TOKEN`
+  to the `gh release upload` step, instead of relying on the
+  default `GITHUB_TOKEN`. Asset-upload events on the release
+  timeline and audit trail now show `agent-auth-release-bot[bot]`
+  as the actor, matching `release-pr.yml` and `release-tag.yml`
+  so all three legs of the release pipeline share a single bot
+  identity. The App's existing `contents: write` installation
+  permission covers the upload; the artefact set, cosign keyless
+  signing, SBOM generation, and the SLSA provenance reusable
+  workflow are unchanged.
+
 ## [0.14.0] - 2026-04-26
 
 ### Features
