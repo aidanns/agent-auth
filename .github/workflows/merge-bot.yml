@@ -525,6 +525,12 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          # `app-slug` is the App's slug (e.g. `agent-auth-merge-bot`);
+          # the matching bot user login is `<slug>[bot]`. Resolved
+          # from the token-mint step rather than at runtime so the
+          # filter doesn't depend on App identity endpoints that
+          # behave inconsistently with installation tokens.
+          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
         run: |
           set -euo pipefail
           # Re-fetch mergeStateStatus + headRefOid so the BEHIND
@@ -541,20 +547,21 @@ jobs:
             exit 0
           fi
           # Count prior auto-update comments by this App. The App's
-          # comments are authored by `agent-auth-merge-bot[bot]` (App
-          # type = `Bot`); the prefix below is the literal first line
-          # of the success path's auto-update comment. `--paginate
+          # comments are authored as `${APP_LOGIN}` (the App slug
+          # from the token-mint step plus `[bot]`). `--paginate
           # --slurp` wraps every page into an outer JSON array so a
           # single `jq` pass sees every comment regardless of page
-          # boundary; flattening with `.[] | .[]` gives the per-comment
-          # iteration. The marker is passed via `--arg` rather than
-          # templated into the jq program so the embedded UTF-8 em
-          # dash and `;` survive shell quoting verbatim.
+          # boundary; flattening with `.[] | .[]` gives the
+          # per-comment iteration. The marker is passed via `--arg`
+          # rather than templated into the jq program so the
+          # embedded UTF-8 em dash and `;` survive shell quoting
+          # verbatim.
           marker="Claude: Branch was behind main — updated;"
           prior_updates="$(gh api \
             "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
             --paginate --slurp \
-            | jq --arg marker "${marker}" '[.[] | .[] | select(.user.type == "Bot") | select(.body | startswith($marker))] | length')"
+            | jq --arg marker "${marker}" --arg login "${APP_LOGIN}" \
+                '[.[] | .[] | select(.user.login == $login) | select(.body | startswith($marker))] | length')"
           echo "merge-bot: prior auto-update count=${prior_updates}"
           if [[ "${prior_updates}" -ge 3 ]]; then
             gh pr comment "${PR_NUMBER}" \
