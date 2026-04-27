@@ -491,13 +491,18 @@ jobs:
           # filters in a single pass so we don't depend on a particular
           # gh version's output shape. `--arg` keeps the marker out of
           # the jq program text so its `<`, `!`, `-` characters survive
-          # shell quoting verbatim.
+          # shell quoting verbatim. `first(...)` (rather than a trailing
+          # `head -n 1`) caps the result inside jq itself: under
+          # `set -euo pipefail`, closing the pipe early via `head` can
+          # deliver SIGPIPE upstream and fail the pipeline on
+          # long-lived PRs whose comment list spans multiple pages.
+          # `// empty` keeps the assignment empty (rather than emitting
+          # the literal string "null") when no matching comment exists.
           existing_id="$(gh api \
             "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
             --paginate \
             | jq -r --arg marker "${MARKER}" \
-                '.[] | select((.body // "") | startswith($marker)) | .id' \
-            | head -n 1)"
+                'first(.[] | select((.body // "") | startswith($marker)) | .id) // empty')"
           # `-F body=@<file>` reads the body from disk as a JSON
           # string field — identical semantics to inlining
           # `body="$(cat <file>)"` but binary-safe and free of any
@@ -545,4 +550,12 @@ jobs:
           # `conftest.py` under scripts/changelog/tests/ puts
           # scripts/changelog/ and scripts/lint/ on sys.path so the
           # bare-name imports in the test file resolve.
-          python3 -m pytest scripts/changelog/tests/test_predict_release_impact.py -v
+          # `-o addopts=` overrides the workspace `pyproject.toml`'s
+          # `[tool.pytest.ini_options].addopts` (which injects
+          # `--cov=packages --cov-branch --cov-report=term-missing`).
+          # Without this override, bare pytest would reject those
+          # flags with `error: unrecognized arguments` and exit 4
+          # because this isolated job intentionally does not install
+          # `pytest-cov`; the job exercises one script in isolation,
+          # not the workspace's full coverage matrix.
+          python3 -m pytest -o addopts= scripts/changelog/tests/test_predict_release_impact.py -v
