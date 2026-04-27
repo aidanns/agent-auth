@@ -57,10 +57,12 @@ release-App identity rationale.
   other two workflows.
 
 The App authors no commits on `main`. `release-pr.yml`'s release
-commit on the `release/X.Y.Z` branch keeps `github-actions[bot]`
-as author/committer because DCO already auto-bypasses any
-`[bot]@users.noreply.github.com` address (see
-[`dco.yml`](../../.github/workflows/dco.yml)).
+commit on the `release/X.Y.Z` branch is also attributed to
+`agent-auth-release-bot[bot]` as author/committer (the workflow's
+`Configure git identity` step looks up the App's bot user ID at
+runtime); DCO auto-bypasses the bot identity's
+`[bot]@users.noreply.github.com` email per
+[`dco.yml`](../../.github/workflows/dco.yml).
 
 ## One-time registration
 
@@ -154,8 +156,10 @@ end-to-end signal is one full release cycle attributed to
 - `release-pr.yml` opens (or refreshes) the `release/X.Y.Z` PR
   with `agent-auth-release-bot[bot]` as the PR author and as the
   pusher of the release branch. The release commit on the branch
-  keeps `github-actions[bot]` as author/committer (DCO bypass —
-  see [What the bot does](#what-the-bot-does)).
+  is also attributed to `agent-auth-release-bot[bot]` as
+  author/committer (DCO auto-bypasses the bot's
+  `[bot]@users.noreply.github.com` email — see
+  [What the bot does](#what-the-bot-does)).
 - `release-tag.yml` pushes the `vX.Y.Z` tag on the release-PR
   merge under `agent-auth-release-bot[bot]`. The tag push fires
   `release-publish.yml` because the App-minted token (unlike the
