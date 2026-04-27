@@ -17,7 +17,7 @@ contributors switch to the `automerge` label.
 
 ## What the bot does
 
-When the `automerge` label is applied to a PR (or a `check_suite`
+When the `automerge` label is applied to a PR (or a `workflow_run`
 completes successfully on a PR that already carries the label), the
 workflow:
 
@@ -26,10 +26,20 @@ workflow:
    [`scripts/extract-commit-msg-block.py`](../../scripts/extract-commit-msg-block.py).
 2. Verifies every required check is green and the block carries a
    `Signed-off-by:` trailer.
-3. Calls `PUT /repos/aidanns/agent-auth/pulls/{n}/merge` with
-   `merge_method: squash`, `commit_title: <PR title>`,
+3. If the PR head sits behind `main` (`mergeStateStatus = BEHIND`),
+   calls `PUT /repos/aidanns/agent-auth/pulls/{n}/update-branch`
+   to fast-forward the PR head onto `main`, comments
+   `Claude: Branch was behind main — updated; will retry merge after CI completes.`, and exits 0. The new head SHA retriggers
+   CI; once those workflows complete, `workflow_run.completed`
+   re-fires merge-bot for the second-pass merge. Capped at three
+   auto-updates per PR — the fourth BEHIND state surfaces
+   `Claude: Auto-update loop exceeded — main is moving too fast or this PR keeps falling behind. Investigate manually.` and
+   fails the job rather than burning further CI cycles. See
+   [Auto-update on BEHIND](#auto-update-on-behind) below.
+4. Otherwise calls `PUT /repos/aidanns/agent-auth/pulls/{n}/merge`
+   with `merge_method: squash`, `commit_title: <PR title>`,
    `commit_message: <extracted block>`.
-4. Comments `Claude: Merged via bot.` on success, or
+5. Comments `Claude: Merged via bot.` on success, or
    `Claude: Cannot merge — <reason>` on any pre-merge failure
    (label stays applied so the next green run retriggers the
    merge).
@@ -50,14 +60,24 @@ trailer at PR-author time.
    - **Webhook**: uncheck *Active* — this App does not handle
      events.
    - **Repository permissions**:
-     - *Contents*: **Read-only** (needed to inspect the head SHA
-       referenced by the merge call).
+     - *Contents*: **Read & write** (`PUT /pulls/{n}/update-branch`
+       — used by the BEHIND-handling auto-update path — pushes the
+       merge commit that fast-forwards the PR head onto the latest
+       `main`, which counts as a write to repo contents. Read-only
+       was sufficient before that path existed).
      - *Metadata*: **Read-only** (mandatory when any other repo
        permission is granted).
      - *Pull requests*: **Read & write** (call `PUT /pulls/{n}/merge`,
        post comments, read body and labels).
      - *Checks*: **Read-only** (inspect required-check status via
        the `statusCheckRollup` GraphQL field).
+     - *Workflows*: **Read & write** (any PR that edits a file under
+       `.github/workflows/` cannot merge through `PUT /pulls/{n}/merge`
+       unless the calling App has the `workflows` permission;
+       GitHub returns `refusing to allow a GitHub App to create or update workflow ... without "workflows" permission`. Required
+       even on PRs that touch no workflow files, since the App
+       installation's permission set is fixed at install time, not
+       per-call).
      - All other permissions: **No access**.
    - **Where can this GitHub App be installed?**: *Only on this
      account*.
@@ -247,6 +267,60 @@ If any of those signals is wrong, the most likely cause is a setup
 gap: missing secret, App not installed on the repo, or the App not
 yet added to the `main` ruleset bypass-actor list.
 
+## Auto-update on BEHIND
+
+The `main` ruleset has `strict_required_status_checks_policy: true`
+— required checks must run on the post-rebase head SHA before a PR
+can merge. When `main` advances after a PR's CI completed, the PR's
+`mergeStateStatus` becomes `BEHIND` and the merge endpoint refuses
+the call (`Repository rule violations found ... required status checks are expected.`, HTTP 405).
+
+The bot now handles this autonomously instead of stalling the PR:
+
+1. After the green-check gate and DCO trailer check, the bot
+   re-fetches `mergeStateStatus`. If the value is `BEHIND`, the
+   merge step is skipped.
+2. Counts prior auto-update comments authored by the bot on the
+   same PR (matched by author = `agent-auth-merge-bot[bot]` plus
+   the literal comment-body prefix
+   `Claude: Branch was behind main — updated;`).
+3. If the count is **3 or more**, refuses the fourth update,
+   posts `Claude: Auto-update loop exceeded — main is moving too fast or this PR keeps falling behind. Investigate manually.`,
+   and fails the job. The `automerge` label stays sticky so a
+   contributor / maintainer can fix the underlying issue (e.g.
+   slow `main`, conflict in the PR) and the next push will
+   retrigger the bot.
+4. Otherwise calls
+   `PUT /repos/aidanns/agent-auth/pulls/{n}/update-branch` with
+   `expected_head_sha` pinned, posts
+   `Claude: Branch was behind main — updated; will retry merge after CI completes.`, and exits 0. The new head SHA retriggers
+   every PR-gating CI workflow; once they complete,
+   `workflow_run.completed` re-fires merge-bot, which sees a
+   green and up-to-date PR and merges it.
+
+Operational notes:
+
+- **Each auto-update burns a full CI cycle.** A PR that sits
+  behind through three rebases will run all required checks 4×
+  total. Acceptable cost for hands-off merging; the loop guard
+  caps the worst case at 3 auto-updates.
+- **The PR's commit history accumulates merge commits.** The
+  default `update-branch` merge-method produces a merge commit on
+  the PR head — the same shape as clicking GitHub's "Update
+  branch" button. The squash-merge collapses them on landing, so
+  `main` history stays linear.
+- **Race with concurrent contributor pushes.** The `expected_head_sha`
+  pin makes a contributor push between the BEHIND-check and the
+  update-branch call produce a documented 422
+  (`expected_head_sha`); the bot treats that as a clean exit (the
+  push will retrigger the bot anyway).
+- **Required permissions.** The `contents: write` workflow-level
+  permission and the matching App installation grant (Step 1) are
+  what make the API call succeed. `workflows: write` on the App
+  installation is what lets the merge call land for PRs that
+  touch any file under `.github/workflows/` — including
+  workflow-only PRs that never trigger the auto-update path.
+
 ## Failure modes the bot surfaces
 
 Each `Claude: Cannot merge — <reason>` comment on a PR maps to one
@@ -254,7 +328,7 @@ of:
 
 - **Required check failed**: a check listed in the `main` ruleset
   is `FAILURE` / `TIMED_OUT` / `CANCELLED`. Fix the check, push,
-  and the `check_suite: completed` retrigger will run the bot
+  and the `workflow_run.completed` retrigger will run the bot
   again.
 - **`==COMMIT_MSG==` block extraction failed**: the PR body has
   zero or two-or-more `==COMMIT_MSG==` markers. Edit the PR body
@@ -262,6 +336,18 @@ of:
 - **`==COMMIT_MSG==` block has no `Signed-off-by:` trailer**: the
   block parses but lacks DCO. Add `Signed-off-by: Name <email>` as
   the last line of the block.
+- **`update-branch` API rejected the call**: surfaced as the
+  literal API error string. Most commonly a missing
+  `contents: write` grant on the App installation, or a
+  ruleset rule that blocks the App from pushing the merge commit.
+- **Auto-update loop exceeded**: the bot has already updated this
+  PR three times without merging. `main` is moving faster than
+  CI completes for this PR, or the PR keeps re-falling-behind for
+  another reason (e.g. a conflict that `update-branch` can't
+  resolve). Investigate manually; once the underlying cause is
+  fixed, push a new commit to reset the count (the prior
+  auto-update comments stay on the PR but the `automerge` label
+  retrigger will start a fresh attempt).
 - **GitHub merge API rejected the call**: surfaced as the literal
   API error string. The most common cause is the App not being a
   bypass actor on the `main` ruleset (returns

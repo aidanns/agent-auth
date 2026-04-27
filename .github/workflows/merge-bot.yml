@@ -81,12 +81,15 @@ on:
         type: number
 
 # `pull-requests: write` is needed to post the `Claude: ...` comment
-# and (via the App token) to call the merge endpoint. NO
-# `contents: write` — the bot does not push commits or tags. NO
-# `id-token: write` — the bot is not on the SLSA-attestation path.
+# and (via the App token) to call the merge endpoint. `contents: write`
+# is needed for the BEHIND-handling auto-update branch — the
+# `PUT /pulls/{n}/update-branch` endpoint requires write access to
+# the repo's contents to push the merge commit that fast-forwards
+# the PR head onto the latest `main`. NO `id-token: write` — the bot
+# is not on the SLSA-attestation path.
 permissions:
   pull-requests: write
-  contents: read
+  contents: write
   checks: read
 
 # Prevent two triggers (label + workflow_run) from racing on the same
@@ -490,9 +493,109 @@ jobs:
             echo "skip=false" >> "${GITHUB_OUTPUT}"
           fi
 
+      # The `main` ruleset enforces `strict_required_status_checks_policy`,
+      # so a PR whose head sits behind `main` cannot merge until its
+      # required checks have re-run on the post-rebase head SHA. The
+      # merge API surfaces this as a 405 the moment the head falls
+      # behind. Detect it here, call `PUT /pulls/{n}/update-branch` to
+      # fast-forward the PR head onto `main` (default merge-method;
+      # equivalent to clicking GitHub's "Update branch" button), and
+      # exit the job cleanly — the resulting new head SHA retriggers
+      # CI, and `workflow_run.completed` then re-fires merge-bot for
+      # the second-pass merge.
+      #
+      # `mergeStateStatus` is re-fetched here rather than reused from
+      # the earlier `meta` step because the value can become stale
+      # over the lifetime of the run (someone could push to `main`
+      # between steps). The fresh read is the source of truth for the
+      # BEHIND decision.
+      #
+      # Loop guard: count prior auto-update comments authored by this
+      # App on the same PR. If we have already auto-updated three
+      # times without merging, a flapping `main` (or a PR that keeps
+      # falling behind faster than CI completes) is the cause; refuse
+      # the fourth update so the bot stops burning CI cycles and
+      # surfaces the situation to a human. The marker is the literal
+      # comment-body prefix below; counting by author + prefix keeps
+      # the count tied to *this* App's auto-updates and ignores
+      # arbitrary `Claude: ` comments from human / agent authors.
+      - name: Detect BEHIND and auto-update branch
+        id: behind
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          # Re-fetch mergeStateStatus + headRefOid so the BEHIND
+          # decision is based on current state, not state from the
+          # earlier `meta` step.
+          state_payload="$(gh pr view "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json mergeStateStatus,headRefOid)"
+          merge_state="$(jq -r '.mergeStateStatus' <<<"${state_payload}")"
+          head_sha="$(jq -r '.headRefOid' <<<"${state_payload}")"
+          if [[ "${merge_state}" != "BEHIND" ]]; then
+            echo "merge-bot: mergeStateStatus=${merge_state}; not BEHIND, proceeding to merge."
+            echo "behind=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          # Count prior auto-update comments by this App. The App's
+          # comments are authored by `agent-auth-merge-bot[bot]` (App
+          # type = `Bot`); the prefix below is the literal first line
+          # of the success path's auto-update comment. `--paginate
+          # --slurp` wraps every page into an outer JSON array so a
+          # single `jq` pass sees every comment regardless of page
+          # boundary; flattening with `.[] | .[]` gives the per-comment
+          # iteration. The marker is passed via `--arg` rather than
+          # templated into the jq program so the embedded UTF-8 em
+          # dash and `;` survive shell quoting verbatim.
+          marker="Claude: Branch was behind main — updated;"
+          prior_updates="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --paginate --slurp \
+            | jq --arg marker "${marker}" '[.[] | .[] | select(.user.type == "Bot") | select(.body | startswith($marker))] | length')"
+          echo "merge-bot: prior auto-update count=${prior_updates}"
+          if [[ "${prior_updates}" -ge 3 ]]; then
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --body "Claude: Auto-update loop exceeded — main is moving too fast or this PR keeps falling behind. Investigate manually."
+            echo "::error::Auto-update loop guard tripped after ${prior_updates} prior updates."
+            exit 1
+          fi
+          # Call `PUT /pulls/{n}/update-branch`. Pin `expected_head_sha`
+          # so a contributor push that races us produces a documented
+          # 422 (`expected_head_sha`) rather than us silently
+          # fast-forwarding past their commit. Treat 422 as a clean
+          # exit — the contributor's push will retrigger merge-bot
+          # via `workflow_run.completed` once CI runs against the new
+          # head.
+          if gh api --method PUT \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/update-branch" \
+            -f expected_head_sha="${head_sha}" \
+            > "${RUNNER_TEMP}/update.out" 2> "${RUNNER_TEMP}/update.err"; then
+            echo "merge-bot: branch updated; CI will retrigger and workflow_run.completed will re-fire merge-bot."
+          else
+            err="$(cat "${RUNNER_TEMP}/update.err")"
+            if grep -qi "expected_head_sha" <<<"${err}"; then
+              echo "merge-bot: head SHA advanced under us (contributor push); exiting cleanly."
+              echo "behind=true" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+            echo "::error::update-branch API call failed: ${err}"
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --body "Claude: Cannot merge — \`update-branch\` API rejected the call: ${err}"
+            exit 1
+          fi
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "Claude: Branch was behind main — updated; will retry merge after CI completes."
+          echo "behind=true" >> "${GITHUB_OUTPUT}"
+
       - name: Call PUT /pulls/{n}/merge
         id: merge_call
-        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true' && steps.behind.outputs.behind == 'false'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
