@@ -186,17 +186,23 @@ jobs:
   # SLSA `multiple.intoto.jsonl` lives in `provenance`, so this job
   # gates on both.
   #
-  # Today the expected set is one entry per category (one wheel + one
-  # sdist + their SBOMs + a cosign bundle for each signed file + one
-  # SLSA provenance file). Issue #324 multiplies the wheel/sdist/SBOM/
-  # cosign categories per workspace member; when that lands, tighten
-  # the asserts below to enumerate per-package names.
+  # Per-package release-asset layout (ADR 0044): one wheel + one sdist
+  # per workspace member, one SBOM per artefact (so 2N SBOMs), one
+  # cosign bundle per signed file (each artefact + each SBOM, so 4N
+  # bundles), and one SLSA provenance file per release. The expected
+  # member count is derived from `packages/<svc>/pyproject.toml` so a
+  # new workspace member tightens the gate automatically.
   verify-assets:
     needs: [publish, provenance]
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Only need `packages/` to count workspace members; a shallow
+          # clone is enough.
+          fetch-depth: 1
       - name: Verify expected release assets are uploaded
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -204,6 +210,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          # Workspace member count (matches `[tool.uv.workspace].members
+          # = ["packages/*"]` in the root pyproject.toml). Drives every
+          # per-package count below.
+          members=$(find packages -mindepth 2 -maxdepth 2 -name pyproject.toml | wc -l)
+          if [[ "${members}" -lt 1 ]]; then
+            echo "::error::no workspace members found under packages/* — release-asset count derivation is broken"
+            exit 1
+          fi
 
           # `gh release view --json assets` returns one record per
           # uploaded asset. The publish + provenance jobs upload in
@@ -223,6 +238,11 @@ jobs:
 
           wheels="$(count 'endswith(".whl")')"
           sdists="$(count 'endswith(".tar.gz")')"
+          # `.sha256` sidecars are uploaded for every wheel + sdist
+          # (the install scripts read them for tamper-evident
+          # verification). `endswith(".sha256")` matches both
+          # `<wheel>.sha256` and `<sdist>.sha256`.
+          sha256_sidecars="$(count 'endswith(".sha256")')"
           # SBOM files end in `.spdx.json`; cosign bundles end in
           # `.sig.bundle` and may sign either an artefact or its SBOM.
           sboms="$(count 'endswith(".spdx.json")')"
@@ -231,27 +251,28 @@ jobs:
           # single `multiple.intoto.jsonl` file (one per release).
           slsa="$(count 'endswith(".intoto.jsonl")')"
 
-          echo "Release ${TAG} assets:"
-          echo "  wheels=${wheels} sdists=${sdists} sboms=${sboms}"
-          echo "  cosign_bundles=${cosign_bundles} slsa=${slsa}"
+          expected_wheels="${members}"
+          expected_sdists="${members}"
+          expected_sha256_sidecars=$((members * 2))
+          expected_sboms=$((members * 2))
+          expected_cosign_bundles=$((members * 4))
+
+          echo "Release ${TAG} assets (workspace members=${members}):"
+          echo "  wheels=${wheels} (expected ${expected_wheels})"
+          echo "  sdists=${sdists} (expected ${expected_sdists})"
+          echo "  sha256_sidecars=${sha256_sidecars} (expected ${expected_sha256_sidecars})"
+          echo "  sboms=${sboms} (expected ${expected_sboms})"
+          echo "  cosign_bundles=${cosign_bundles} (expected ${expected_cosign_bundles})"
+          echo "  slsa=${slsa} (expected 1)"
           echo "Asset list:"
           jq -r '.[]' <<<"${assets}" | sed 's/^/  /'
 
           fail=0
-          # Today (workspace-root build): 1 wheel + 1 sdist = 2 source
-          # artefacts; one SBOM each = 2; cosign signs all 4 of those
-          # = 4 bundles; SLSA = 1 file. The thresholds use `-ge` rather
-          # than `-eq` because issue #324's per-package build will
-          # multiply every count by the workspace-member count once it
-          # lands; tightening to `-eq` here would make this gate fail
-          # the moment that PR merges. The trade-off is that the gate
-          # won't catch a future regression that *over*-uploads (e.g.
-          # a flag change duplicates an asset). Revisit and tighten
-          # once #324 settles and the per-package count is stable.
-          [[ "${wheels}" -ge 1 ]] || { echo "::error::no .whl asset on release ${TAG}"; fail=1; }
-          [[ "${sdists}" -ge 1 ]] || { echo "::error::no .tar.gz sdist asset on release ${TAG}"; fail=1; }
-          [[ "${sboms}" -ge 2 ]] || { echo "::error::expected at least 2 .spdx.json SBOMs (sdist + wheel), got ${sboms}"; fail=1; }
-          [[ "${cosign_bundles}" -ge 4 ]] || { echo "::error::expected at least 4 .sig.bundle cosign signatures (sdist + wheel + 2 SBOMs), got ${cosign_bundles}"; fail=1; }
-          [[ "${slsa}" -ge 1 ]] || { echo "::error::missing SLSA provenance (multiple.intoto.jsonl) on release ${TAG}"; fail=1; }
+          [[ "${wheels}" -eq "${expected_wheels}" ]] || { echo "::error::expected ${expected_wheels} .whl assets (one per workspace member), got ${wheels}"; fail=1; }
+          [[ "${sdists}" -eq "${expected_sdists}" ]] || { echo "::error::expected ${expected_sdists} .tar.gz sdist assets (one per workspace member), got ${sdists}"; fail=1; }
+          [[ "${sha256_sidecars}" -eq "${expected_sha256_sidecars}" ]] || { echo "::error::expected ${expected_sha256_sidecars} .sha256 sidecars (one per wheel + one per sdist), got ${sha256_sidecars}"; fail=1; }
+          [[ "${sboms}" -eq "${expected_sboms}" ]] || { echo "::error::expected ${expected_sboms} .spdx.json SBOMs (one per wheel + one per sdist), got ${sboms}"; fail=1; }
+          [[ "${cosign_bundles}" -eq "${expected_cosign_bundles}" ]] || { echo "::error::expected ${expected_cosign_bundles} .sig.bundle cosign signatures (one per artefact + one per SBOM), got ${cosign_bundles}"; fail=1; }
+          [[ "${slsa}" -eq 1 ]] || { echo "::error::expected exactly 1 SLSA provenance file (multiple.intoto.jsonl) on release ${TAG}, got ${slsa}"; fail=1; }
 
           exit "${fail}"

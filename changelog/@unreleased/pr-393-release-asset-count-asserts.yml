@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: |
+    The `release-publish.yml` `verify-assets` post-publish gate and
+    the `release-dryrun.yml` PR-time gate now assert exact per-package
+    counts derived from the workspace member count, instead of the
+    pre-#324 "at least one" thresholds. With N workspace members the
+    gates expect N wheels, N sdists, 2N `.sha256` sidecars, 2N SBOMs
+    (one per artefact), and 4N cosign signature bundles (one per
+    artefact + one per SBOM). A regression that drops one package's
+    asset set (e.g. a `gh release upload` glob change that misses
+    `*.spdx.json.sig.bundle`, or a `uv build --all-packages` skip)
+    will now fail the gate; the previous `-ge 1` thresholds would
+    silently pass. Adds `.sha256` sidecar enumeration, which the
+    earlier check did not cover at all, and a `actions/checkout`
+    step on `verify-assets` so the workspace member count is read
+    from `packages/*/pyproject.toml` rather than hard-coded.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/382

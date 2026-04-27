@@ -72,21 +72,18 @@ jobs:
         continue-on-error: true
         run: scripts/build-release-artifacts.sh --out dist
 
-      # Today the workspace-root `uv build` produces one wheel + one
-      # sdist (when it works); after #324 the per-package loop
-      # produces one pair per `packages/<svc>/`. The assertion is
-      # "the build produced at least one wheel + one sdist", which
-      # is the weakest meaningful contract that still catches the
-      # workspace-split regression (build error → zero artefacts)
-      # and stays valid through the #324 transition without needing
-      # an update. Tighten this to per-package enumeration once #324
-      # lands (issue tracks the move from informational to required
-      # status check).
+      # Per-package release-asset layout (ADR 0044): one wheel + one
+      # sdist per workspace member. The expected count is derived from
+      # `packages/<svc>/pyproject.toml` so adding a new workspace
+      # member tightens the gate automatically with no edit here. A
+      # regression that drops one package's pair will fail the assert
+      # — the looser "at least one" gate this replaces could not.
       - name: Assert expected artefact set
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
+          expected=$(find packages -mindepth 2 -maxdepth 2 -name pyproject.toml | wc -l)
           # `nullglob` makes an unmatched glob expand to nothing
           # rather than the literal pattern, so the array stays empty
           # when the build step (above) failed and produced no dist/.
@@ -99,12 +96,16 @@ jobs:
           else
             echo "No dist/ directory — build step failed before producing any artefacts."
           fi
-          if [[ "${#wheels[@]}" -eq 0 ]]; then
-            echo "::error::no .whl artefacts produced in dist/"
-            exit 1
+          fail=0
+          if [[ "${#wheels[@]}" -ne "${expected}" ]]; then
+            echo "::error::expected ${expected} .whl artefacts (one per workspace member), got ${#wheels[@]}"
+            fail=1
           fi
-          if [[ "${#sdists[@]}" -eq 0 ]]; then
-            echo "::error::no .tar.gz sdist artefacts produced in dist/"
-            exit 1
+          if [[ "${#sdists[@]}" -ne "${expected}" ]]; then
+            echo "::error::expected ${expected} .tar.gz sdist artefacts (one per workspace member), got ${#sdists[@]}"
+            fail=1
           fi
-          echo "OK: ${#wheels[@]} wheel(s), ${#sdists[@]} sdist(s)."
+          if [[ "${fail}" -eq 0 ]]; then
+            echo "OK: ${#wheels[@]} wheel(s), ${#sdists[@]} sdist(s) for ${expected} workspace member(s)."
+          fi
+          exit "${fail}"
