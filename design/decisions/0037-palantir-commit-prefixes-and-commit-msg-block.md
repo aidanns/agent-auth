@@ -121,6 +121,36 @@ falls out of it, and the interim mechanics until #291 lands.
    `main`'s git log clean during rollout. Documented in
    `docs/release/rollout-pr-template.md`.
 
+### Amendment (#345, 2026-04-27): relax the no-markdown ban
+
+The block originally rejected any markdown list shape — the
+`==COMMIT_MSG==` validator listed `markdown heading`, `task checkbox`, `bullet list item`, and `numbered list item` as
+disallowed predicates. In practice the bullet / numbered bans
+over-rejected: the kernel/cbea.ms enumerated-changes form is the
+standard way to list several closely-related changes in one commit
+body, and contributors confronted with the ban fell back to
+run-on prose paragraphs that read worse in `git log`.
+
+The ban relaxes to three structural predicates whose presence
+reliably signals reviewer-surface content (test plans, deploy
+checklists, screenshots) leaking into the commit body:
+
+- task checkboxes (`- [ ]` / `- [x]`) — strongest possible signal
+  of a test plan or deploy checklist;
+- markdown headings (`#` … `######`) — section dividers belong in
+  `## Review notes`;
+- image embeds (`![alt](url)`) — screenshots are reviewer-surface
+  artefacts.
+
+Plain `-` / `*` bullets and `1.` numbered lists become valid. The
+audience-split defence — keep the test-plan / deploy-checklist /
+screenshot content out of `git log` — is now carried by the three
+structural bans rather than by the blanket no-markdown rule. The
+self-test fixture set is updated accordingly: `invalid-bullet-list`
+and `invalid-numbered-list` are removed, `invalid-image` is added,
+and `valid-bulleted-changes` covers the now-permitted enumerated
+prose form.
+
 ## Consequences
 
 - `CONTRIBUTING.md` and `CLAUDE.md` are rewritten to drop the

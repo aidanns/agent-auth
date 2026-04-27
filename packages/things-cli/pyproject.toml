@@ -41,7 +41,14 @@ addopts = [
     "--cov=things_cli",
     "--cov-branch",
     "--cov-report=term-missing",
-    "--cov-fail-under=67",
+    # Lowered from 67% to 65% in #328 when the refresh + reissue retry
+    # ladder moved out of ``things_cli.client`` into the shared
+    # ``agent_auth_client.AuthenticatedRetry`` (ADR 0043). The
+    # orchestration is still covered — by
+    # ``packages/agent-auth-common/tests/test_authenticated_retry.py``
+    # — but those statements no longer count toward this package's
+    # ratio because ``--cov=things_cli`` is scoped to this package.
+    "--cov-fail-under=65",
 ]
 pythonpath = [
     # keep-sorted start

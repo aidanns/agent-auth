@@ -524,6 +524,11 @@ matching the `things-*` shape.
   the bridge boundary; per-fingerprint scopes only pay off if the
   token has to express that policy because the allowlist cannot.
   Defer until a concrete use case motivates it.
+- The refresh + reissue retry loop that gpg-cli runs against
+  agent-auth was extracted into a shared library and is now described
+  in [ADR 0043](0043-shared-authenticated-retry-library.md);
+  `gpg_cli.client.BridgeClient` constructs an `AuthenticatedRetry`
+  rather than carrying its own ladder.
 
 ## Update — 2026-04-25: collapse the backend hop
 

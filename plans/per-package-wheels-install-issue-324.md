@@ -27,7 +27,7 @@ SPDX-License-Identifier: MIT
 
 ## Decision summary (drives detail in the relevant sections below)
 
-- **ADR shape.** Add a new ADR (0043) covering the per-package
+- **ADR shape.** Add a new ADR (0044) covering the per-package
   distribution model. ADR 0016 documents the *signing/SBOM/SLSA
   policy*; the per-package wheel layout is a distinct distribution
   decision and the way it interacts with workspace deps deserves its
@@ -191,7 +191,7 @@ plus tag pushes (defence in depth):
 - [ ] Note that the SLSA provenance subjects span every wheel +
   sdist in the release.
 
-### 7. Add ADR 0043 — Per-package release-asset layout
+### 7. Add ADR 0044 — Per-package release-asset layout
 
 - [ ] Title: "Per-package wheels as release assets, workspace deps
   shipped alongside".

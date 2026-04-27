@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 <!-- REUSE-IgnoreStart -->
 
-# ADR 0043 — Per-package wheels as release assets, workspace deps shipped alongside
+# ADR 0044 — Per-package wheels as release assets, workspace deps shipped alongside
 
 ## Status
 

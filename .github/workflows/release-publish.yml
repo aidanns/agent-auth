@@ -4,7 +4,7 @@
 
 # Verification recipe: see SECURITY.md § Supply-chain artifacts.
 #
-# Per-package distribution model: see ADR 0043. ``uv build
+# Per-package distribution model: see ADR 0044. ``uv build
 # --all-packages`` produces one wheel + one sdist per workspace
 # member; this workflow signs and uploads every artefact as its own
 # release asset (each gets its own SBOM, its own cosign bundle, and

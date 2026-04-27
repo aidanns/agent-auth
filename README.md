@@ -53,7 +53,7 @@ symlinks the entrypoint(s) into `~/.local/bin/`.
 Requires Python 3.11+ with the stdlib `venv` module on PATH (e.g.
 `brew install python@3.12` on macOS, `apt install python3 python3-venv`
 on Ubuntu/Debian). `uv` is not required at install time. See
-[ADR 0043](design/decisions/0043-per-package-release-asset-layout.md)
+[ADR 0044](design/decisions/0044-per-package-release-asset-layout.md)
 for the per-package distribution model.
 
 ### Per-service installers

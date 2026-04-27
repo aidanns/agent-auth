@@ -5,7 +5,7 @@
 type: feature
 feature:
   description: |
-    Each `packages/<svc>/install.sh` no longer requires `uv` at install time — only Python 3.11+ with the stdlib `venv` module. The release pipeline now publishes one wheel + sdist + `.sha256` + SBOM + cosign bundle per workspace package (`uv build --all-packages`); install scripts download the service wheel + every workspace-dep wheel, verify sha256, install into `~/.local/share/<svc>/venv`, and symlink entrypoints into `~/.local/bin`. SLSA Build L3 provenance subjects now enumerate every wheel + sdist in the release. `--local <dir>` lets CI exercise the install path end-to-end without a published release. See ADR 0043.
+    Each `packages/<svc>/install.sh` no longer requires `uv` at install time — only Python 3.11+ with the stdlib `venv` module. The release pipeline now publishes one wheel + sdist + `.sha256` + SBOM + cosign bundle per workspace package (`uv build --all-packages`); install scripts download the service wheel + every workspace-dep wheel, verify sha256, install into `~/.local/share/<svc>/venv`, and symlink entrypoints into `~/.local/bin`. SLSA Build L3 provenance subjects now enumerate every wheel + sdist in the release. `--local <dir>` lets CI exercise the install path end-to-end without a published release. See ADR 0044.
   links:
     - https://github.com/aidanns/agent-auth/issues/324
     - https://github.com/aidanns/agent-auth/pull/378

@@ -311,6 +311,7 @@ module = [
     "test_audit_chain",
     "test_audit_disk_full",
     "test_audit_schema",
+    "test_authenticated_retry",
     "test_cli",
     "test_config",
     "test_crypto",

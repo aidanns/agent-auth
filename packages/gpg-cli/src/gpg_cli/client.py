@@ -5,42 +5,38 @@
 """Authenticated bridge client with refresh + reissue retry.
 
 Composes the raw HTTP wire calls to ``/gpg-bridge/v1/{sign,verify}``
-with :class:`agent_auth_client.AgentAuthClient` so the public
-:meth:`BridgeClient.sign` / :meth:`BridgeClient.verify` methods own
-the credential lifecycle:
+with :class:`agent_auth_client.AuthenticatedRetry` (the shared refresh +
+reissue retry loop) so the public :meth:`BridgeClient.sign` /
+:meth:`BridgeClient.verify` methods own the credential lifecycle:
 
 1. Attaches ``Authorization: Bearer <access_token>`` from
    :class:`gpg_cli.config.Credentials`.
-2. On ``401 {"error": "token_expired"}`` the client calls
+2. On ``401 {"error": "token_expired"}`` the shared retry loop calls
    ``POST /agent-auth/v1/token/refresh``, persists the new pair via
    :class:`gpg_cli.config.FileStore`, and retries the original request
    once.
 3. If the refresh token has expired (``401 refresh_token_expired``),
-   the client falls back to ``POST /agent-auth/v1/token/reissue``
+   the loop falls back to ``POST /agent-auth/v1/token/reissue``
    (which blocks on host-side JIT approval) and retries once.
 4. Any further 401 surfaces as :class:`BridgeUnauthorizedError`.
 
 The persistence ordering — write before retry — is the load-bearing
 safety property from ADR 0011: refresh tokens are single-use, so a
 crash between the refresh response and the retried request must not
-leave a consumed refresh token on disk.
+leave a consumed refresh token on disk. The orchestration ladder lives
+in :class:`agent_auth_client.AuthenticatedRetry` so ``things-cli`` and
+``gpg-cli`` share a single implementation (issue #328).
 """
 
 from __future__ import annotations
 
 import json
 import ssl
-from collections.abc import Callable
 from http.client import HTTPConnection, HTTPSConnection
 from typing import Any
 from urllib.parse import urlparse
 
-from agent_auth_client import (
-    AgentAuthClient,
-    AuthzError,
-    AuthzUnavailableError,
-    RefreshTokenExpiredError,
-)
+from agent_auth_client import AgentAuthClient, AuthenticatedRetry
 from gpg_cli.config import Credentials, FileStore
 from gpg_cli.errors import (
     BridgeBadSignatureError,
@@ -54,14 +50,20 @@ from gpg_cli.errors import (
 )
 from gpg_models.models import SignRequest, SignResult, VerifyRequest, VerifyResult
 
+_NO_FAMILY_ID_MESSAGE = (
+    "refresh_token_expired and no family_id stored; re-run "
+    "scripts/setup-devcontainer-signing.sh to bootstrap a new pair"
+)
+
 
 class BridgeClient:
     """Authenticated client for ``/gpg-bridge/v1/{sign,verify}`` endpoints.
 
-    Each public method ``call`` runs through :meth:`_with_retry`, which
-    catches :class:`BridgeTokenExpiredError`, refreshes the credential
-    pair, and retries once. The single-retry budget mirrors the
-    things-cli implementation and means a persistent 401 surfaces as
+    Each public method ``call`` runs through the shared
+    :class:`agent_auth_client.AuthenticatedRetry`, which catches
+    :class:`BridgeTokenExpiredError`, refreshes the credential pair,
+    and retries once. The single-retry budget mirrors the things-cli
+    implementation and means a persistent 401 surfaces as
     :class:`BridgeUnauthorizedError` rather than spinning forever.
     """
 
@@ -92,11 +94,18 @@ class BridgeClient:
             self._ssl_context = None
 
         self._credentials = credentials
-        self._store = store
-        self._auth = AgentAuthClient(
-            credentials.auth_url,
-            timeout_seconds=timeout_seconds,
-            ca_cert_path=ca_cert_path,
+        self._retry = AuthenticatedRetry[dict[str, Any], Credentials](
+            credentials,
+            store,
+            AgentAuthClient(
+                credentials.auth_url,
+                timeout_seconds=timeout_seconds,
+                ca_cert_path=ca_cert_path,
+            ),
+            token_expired_exc=BridgeTokenExpiredError,
+            unauthorized_exc=BridgeUnauthorizedError,
+            unavailable_exc=BridgeUnavailableError,
+            no_family_id_message=_NO_FAMILY_ID_MESSAGE,
         )
 
     @property
@@ -107,81 +116,17 @@ class BridgeClient:
 
     def sign(self, request: SignRequest) -> SignResult:
         return SignResult.from_json(
-            self._with_retry(
+            self._retry.with_retry(
                 lambda token: self._post(token, "/gpg-bridge/v1/sign", request.to_json())
             )
         )
 
     def verify(self, request: VerifyRequest) -> VerifyResult:
         return VerifyResult.from_json(
-            self._with_retry(
+            self._retry.with_retry(
                 lambda token: self._post(token, "/gpg-bridge/v1/verify", request.to_json())
             )
         )
-
-    # -- internal: refresh / reissue retry loop --
-
-    def _with_retry(self, call: Callable[[str], dict[str, Any]]) -> dict[str, Any]:
-        """Invoke ``call`` with the current access token; refresh once on 401 token_expired.
-
-        Mirrors :meth:`things_cli.client.BridgeClient._with_retry` —
-        single retry budget, with the new credential pair persisted
-        *before* the retried call runs (see :meth:`_refresh_access_token`).
-        """
-        try:
-            return call(self._credentials.access_token)
-        except BridgeTokenExpiredError:
-            pass
-        self._refresh_access_token()
-        # A second ``token_expired`` after a successful refresh shouldn't
-        # happen in practice. Collapse it to a plain unauthorized so the
-        # CLI maps it to exit 3 like any other post-retry 401, rather
-        # than leaking the internal retry contract.
-        try:
-            return call(self._credentials.access_token)
-        except BridgeTokenExpiredError as exc:
-            raise BridgeUnauthorizedError(str(exc) or "token_expired") from exc
-
-    def _refresh_access_token(self) -> None:
-        """Exchange the stored refresh token, falling back to reissue on expiry.
-
-        Persists the new pair *before* returning so a crash between the
-        refresh response and the next retry attempt cannot leave a
-        consumed (single-use) refresh token on disk — see ADR 0011.
-        """
-        try:
-            refreshed = self._auth.refresh(self._credentials.refresh_token)
-        except RefreshTokenExpiredError:
-            self._reissue_tokens()
-            return
-        except AuthzUnavailableError as exc:
-            raise BridgeUnavailableError(f"agent-auth refresh unavailable: {exc}") from exc
-        except AuthzError as exc:
-            # Reuse detected, family revoked, scope denied, or any
-            # other refresh-side 4xx is terminal. Surface it with the
-            # server-supplied error code so the operator sees the
-            # specific reason to re-bootstrap.
-            raise BridgeUnauthorizedError(str(exc)) from exc
-        self._credentials.access_token = refreshed.access_token
-        self._credentials.refresh_token = refreshed.refresh_token
-        self._store.save(self._credentials)
-
-    def _reissue_tokens(self) -> None:
-        """Call the agent-auth reissue endpoint, then persist the new pair."""
-        if not self._credentials.family_id:
-            raise BridgeUnauthorizedError(
-                "refresh_token_expired and no family_id stored; re-run "
-                "scripts/setup-devcontainer-signing.sh to bootstrap a new pair"
-            )
-        try:
-            reissued = self._auth.reissue(self._credentials.family_id)
-        except AuthzUnavailableError as exc:
-            raise BridgeUnavailableError(f"agent-auth reissue unavailable: {exc}") from exc
-        except AuthzError as exc:
-            raise BridgeUnauthorizedError(str(exc)) from exc
-        self._credentials.access_token = reissued.access_token
-        self._credentials.refresh_token = reissued.refresh_token
-        self._store.save(self._credentials)
 
     # -- internal HTTP plumbing --
 
@@ -227,9 +172,9 @@ class BridgeClient:
         error_detail = str(data.get("detail") or "")
         if response.status == 401:
             # Discriminate ``token_expired`` from generic ``unauthorized``
-            # so :meth:`_with_retry` can refresh on the former and exit
-            # on the latter. ADR 0011 is explicit that the bridge
-            # surfaces both codes distinctly.
+            # so :class:`AuthenticatedRetry` can refresh on the former
+            # and exit on the latter. ADR 0011 is explicit that the
+            # bridge surfaces both codes distinctly.
             if error_code == "token_expired":
                 raise BridgeTokenExpiredError(error_code)
             raise BridgeUnauthorizedError(error_code or "unauthorized")

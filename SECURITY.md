@@ -393,7 +393,7 @@ rationale for selecting ASVS is recorded in
 
 Every GitHub release attaches one set of artefacts per workspace
 package
-([ADR 0043](design/decisions/0043-per-package-release-asset-layout.md)
+([ADR 0044](design/decisions/0044-per-package-release-asset-layout.md)
 covers the per-package distribution model). The workspace ships
 seven packages today: `agent-auth`, `agent-auth-common`, `gpg-bridge`,
 `gpg-cli`, `things-bridge`, `things-cli`, and
