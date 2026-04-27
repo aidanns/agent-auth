@@ -307,33 +307,59 @@ stay browsable. Adding a new scope is a CONTRIBUTING edit, not an
 ad-hoc invention in a PR — if none of the scopes below fit, raise a
 PR to add one. The Python lint surface mirrors these lists in
 [`scripts/lint/commit_taxonomy.py`](scripts/lint/commit_taxonomy.py):
-`PACKAGE_SCOPES` is discovered at import time from `packages/*/`, and
-`AREA_SCOPES` currently mirrors a conservative subset of the area
-scopes documented below (the scopes already pinned by existing tests
-and tooling). #402 (the two-tier internal-only scope rule) will
-refine the constant against the full prose set; until it lands,
-expect the constant to be narrower than this section's enumeration.
+`PACKAGE_SCOPES` is discovered at import time from `packages/*/`,
+and `AREA_SCOPES` is the fixed cross-cutting-concern list documented
+below. The two surfaces are kept in lockstep by the
+`pr-title-types-self-test` job and by code review against this
+section.
 
-- **Subsystem scopes** — the module or surface the commit touches.
-  `agent-auth`, `things-bridge`, `things-cli`,
-  `things-client-cli-applescript`, `server`, `audit`, `store`,
-  `keys`, `scopes`, `rate-limit`, `tls`, `notifier`, `metrics`, `api`,
-  `benchmark`, `observability`.
-- **Area scopes** — cross-cutting concerns.
-  `release` (release automation, CHANGELOG, versioning), `ci` (CI
-  workflow / composite action changes), `deps` (runtime dep bumps),
+The validator at
+[`scripts/validate-pr-title.py`](scripts/validate-pr-title.py)
+applies a **two-tier rule** (#402) when the PR's changed-files list
+is available:
+
+1. **Package tier.** If every changed file lives under a single
+   `packages/<name>/` directory, the scope MUST be `(<name>)` —
+   `feature(server):` on a PR contained to `packages/agent-auth/`
+   is rejected with a remediation hint pointing at `(agent-auth)`.
+   Mechanically derived from the diff, so adding a new package and
+   using its name as the scope works on day one.
+2. **Area tier.** Otherwise (the diff spans multiple packages, or
+   touches files outside `packages/`), the scope MUST be in
+   `AREA_SCOPES`. Historical drift like `(merge-bot)`, `(pr-lint)`,
+   `(release-pr)`, `(release-publish)`, `(build_release)` is
+   rejected; the validator suggests `(ci)` for workflow-tweak
+   scopes and `(release)` for release-tooling scopes.
+3. **Bare scope** (no `(scope)`) is always accepted — reserved for
+   genuinely cross-cutting changes (a sweeping rename, a repo-wide
+   lint pass). Multi-package PRs that don't fit a single area name
+   should go bare too: it is the conservative answer per #402's
+   "define behaviour explicitly" rule.
+
+- **Package scopes** (the package-tier branch of the rule) — the
+  workspace package the commit is contained to. Auto-discovered
+  from `packages/*/` so adding a new package never drifts from the
+  lint: `agent-auth`, `agent-auth-common`, `gpg-bridge`, `gpg-cli`,
+  `things-bridge`, `things-cli`, `things-client-cli-applescript`.
+- **Area scopes** (the area-tier branch of the rule) — cross-cutting
+  concerns. The fixed set is `release` (release automation,
+  CHANGELOG, versioning), `ci` (CI workflow / composite action
+  changes — covers what historical drift called `(merge-bot)`,
+  `(pr-lint)`, `(dco)`, etc.), `deps` (runtime dep bumps),
   `deps-dev` (dev dep bumps), `docs` (README, CONTRIBUTING,
   CLAUDE.md, SECURITY.md, SUPPORT.md), `design` (`design/**`, ADRs),
-  `security` (SECURITY.md content, security controls, scorecard, dco,
-  supply-chain), `typecheck` (mypy / pyright), `verify-standards`
-  (`scripts/verify-standards.sh`), `python` (ruff, pytest, project
-  Python config), `setup-toolchain` (`.github/actions/setup-toolchain`),
-  `docker` (Dockerfiles, compose, image pipeline), `vscode`
-  (`.vscode/`), `claude` (CLAUDE.md / `.claude/instructions/`).
+  `security` (SECURITY.md content, security controls, scorecard,
+  dco, supply-chain), `claude` (CLAUDE.md / `.claude/instructions/`).
+  Other internal-only names that the type-x-scope matrix references
+  (`typecheck`, `verify-standards`, `python`, `setup-toolchain`,
+  `vscode`) are not first-class area scopes for the two-tier rule —
+  fold those changes under the closest area name (typically `(ci)`
+  for tooling wired into the workflow, or `(deps-dev)` for the
+  underlying dependency bump).
 
 Bare (no-scope) commits are reserved for changes that genuinely
-don't fit a single scope — a sweeping rename, a repo-wide lint pass.
-Prefer a scope when one applies.
+don't fit a single scope — a sweeping rename, a repo-wide lint pass,
+or a multi-package PR. Prefer a scope when one applies.
 
 #### Type × scope matrix
 
@@ -347,13 +373,24 @@ workflow tweak would surface in `CHANGELOG.md` as a feature and bump
 the minor version — internal plumbing isn't user-visible and
 shouldn't move the public version.
 
-| Scope class                                                                                                                                    | Allowed types                                                                 |
-| ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **Subsystem scopes** (the package / module surface list above)                                                                                 | `feature`, `improvement`, `fix`, `chore`, `deprecation`, `migration`, `break` |
-| `release`                                                                                                                                      | `feature`, `improvement`, `fix`, `chore`                                      |
-| `deps` (runtime dep bumps — a CVE patch on a reachable dep is release-worthy)                                                                  | `feature`, `improvement`, `fix`, `chore`                                      |
-| `security` (security controls, supply-chain — fixes are release-worthy)                                                                        | `feature`, `improvement`, `fix`, `chore`                                      |
-| **Internal-only scopes:** `ci`, `deps-dev`, `typecheck`, `verify-standards`, `python`, `setup-toolchain`, `vscode`, `claude`, `design`, `docs` | `chore`, `fix` only                                                           |
+| Scope class                                                                     | Allowed types                                                                 |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **Package scopes** (the package list above; auto-discovered from `packages/*/`) | `feature`, `improvement`, `fix`, `chore`, `deprecation`, `migration`, `break` |
+| `release`                                                                       | `feature`, `improvement`, `fix`, `chore`                                      |
+| `deps` (runtime dep bumps — a CVE patch on a reachable dep is release-worthy)   | `feature`, `improvement`, `fix`, `chore`                                      |
+| `security` (security controls, supply-chain — fixes are release-worthy)         | `feature`, `improvement`, `fix`, `chore`                                      |
+| **Internal-only scopes:** `ci`, `deps-dev`, `claude`, `design`, `docs`          | `chore`, `fix` only                                                           |
+
+`commit_taxonomy.INTERNAL_ONLY_SCOPES` carries a few extra names
+(`typecheck`, `verify-standards`, `python`, `setup-toolchain`,
+`vscode`) inherited from #401 for the matrix check. After #402,
+those names are no longer first-class area scopes — the two-tier
+rule above rejects them. Pick `(ci)` for tooling wired into the
+workflow, `(deps-dev)` for the underlying dev-dep bump, or drop the
+scope. The matrix entry for those names is preserved as a
+belt-and-braces guard so a contributor who tries them gets the
+matrix error first; the eventual cleanup is tracked in the same
+issue thread.
 
 A failing PR title produces:
 

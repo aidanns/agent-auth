@@ -86,6 +86,28 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: List changed files
+        # Fetch the PR's changed-files list so the validator can apply
+        # the two-tier scope rule (#402): a PR contained to a single
+        # `packages/<name>/` MUST use `(<name>)` as the scope; otherwise
+        # the scope MUST be in `commit_taxonomy.AREA_SCOPES`. We pull
+        # the list via `gh pr view --json files` instead of a checkout
+        # + `git diff` so the workflow doesn't have to fetch base-ref
+        # history; `pull_request_target` already has read access to the
+        # PR metadata via the default GITHUB_TOKEN. Output is written
+        # to RUNNER_TEMP rather than piped through a shell variable so
+        # paths with spaces or other shell metacharacters survive.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh pr view "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json files \
+            --jq '.files[].path' \
+            > "${RUNNER_TEMP}/changed-files.txt"
+
       - name: Validate PR title prose style
         env:
           # Read the title via env var instead of inlining
@@ -95,7 +117,9 @@ jobs:
           TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
-          python3 scripts/validate-pr-title.py "${TITLE:-}"
+          python3 scripts/validate-pr-title.py \
+            --changed-files-from "${RUNNER_TEMP}/changed-files.txt" \
+            "${TITLE:-}"
 
   pr-body-commit-msg:
     name: PR body (==COMMIT_MSG== block)
