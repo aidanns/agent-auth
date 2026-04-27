@@ -1,9 +1,10 @@
 ==COMMIT_MSG==
 Add a thing.
 
-1. ran `task check`
-2. ran `task test`
+The thing is small but useful.
 
-Closes #8
+![screenshot](https://example.com/shot.png)
+
+Closes #10
 Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>
 ==COMMIT_MSG==

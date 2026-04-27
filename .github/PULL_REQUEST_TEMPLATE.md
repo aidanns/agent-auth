@@ -28,8 +28,9 @@ Author the squash-merge commit body inside the ==COMMIT_MSG== block
 below. Rules (enforced by .github/workflows/pr-lint.yml):
 
 - Lines wrap at <= 72 chars.
-- No markdown headings (#), bullet lists (-, *, +), numbered lists,
-  or task checkboxes inside this block.
+- No markdown headings (#), task checkboxes (- [ ] / - [x]), or
+  image embeds (![alt](url)) inside this block. Plain - / * bullets
+  and 1. numbered lists are permitted (kernel/cbea.ms style).
 - If a `BREAKING CHANGE:` footer is present, it must be on the last
   non-`Signed-off-by:` line.
 - Trailers (`Closes`, `Co-authored-by`, `Signed-off-by`) follow the
