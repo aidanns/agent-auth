@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.15.0] - 2026-04-27
+
+### Features
+
+- Add CI gates that catch broken release-publish pipelines before
+  they ship: a PR-time dry-run (`release-dryrun.yml`) that runs the
+  same build commands the publish path will run via the new shared
+  `scripts/build-release-artifacts.sh`, and a post-publish
+  `verify-assets` job in `release-publish.yml` that fails the
+  workflow if any expected asset (wheel, sdist, SBOM, cosign
+  bundle, SLSA provenance) is missing from the GitHub release.
+  Closes the gap that hid the workspace-split release-build
+  regression for ~13 consecutive releases. The dry-run is
+  informational (`continue-on-error: true`) until #324 unbreaks
+  the build; a follow-up config-only PR will move it to required
+  status checks once the soak window passes.
+
 ## [0.14.1] - 2026-04-26
 
 ### Improvements
