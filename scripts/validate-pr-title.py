@@ -230,14 +230,13 @@ def check_type_scope_matrix(title: str) -> None:
 
 
 def _single_package_for(changed_files: list[str]) -> str | None:
-    """Return the package name if every changed file lives in one
-    ``packages/<name>/`` directory, else ``None``.
+    """Return the contained ``packages/<name>/`` directory, else ``None``.
 
     Path normalisation: ``gh pr view --json files --jq '.files[].path'``
     yields forward-slash POSIX paths regardless of runner OS, so we
     split on ``/`` rather than ``os.sep``. Empty / whitespace-only
-    lines (the ``mktemp`` rounding error from a no-op PR) are skipped
-    so a stray newline in the input file doesn't collapse the check.
+    lines are skipped so a trailing newline in the file written by
+    ``gh pr view`` does not collapse the check.
 
     The function returns ``None`` if any file lives outside
     ``packages/`` (a workflow tweak, a docs change, a root-level
@@ -245,10 +244,14 @@ def _single_package_for(changed_files: list[str]) -> str | None:
     Returns ``None`` if the diff spans multiple packages too: a
     multi-package PR can't claim a package-tier scope, and
     CONTRIBUTING.md's bare-scope-for-cross-cutting rule applies.
-    Returns ``None`` if the discovered package isn't in
-    ``PACKAGE_SCOPES`` — defensive against a stale workspace
-    snapshot, though in practice ``PACKAGE_SCOPES`` is auto-derived
-    from the same ``packages/*/`` listing.
+
+    The returned name is *not* filtered against ``PACKAGE_SCOPES``:
+    the caller distinguishes "registered package" (apply the
+    package-tier rule) from "unregistered ``packages/<name>/``
+    directory" (typo'd path or a brand-new package added in the same
+    PR before ``PACKAGE_SCOPES`` is reseeded) so the diagnostic can
+    name the actual problem instead of falling through to the
+    area-tier "pick from AREA_SCOPES" hint.
     """
     package: str | None = None
     for raw in changed_files:
@@ -263,10 +266,6 @@ def _single_package_for(changed_files: list[str]) -> str | None:
             package = candidate
         elif package != candidate:
             return None
-    if package is None:
-        return None
-    if package not in PACKAGE_SCOPES:
-        return None
     return package
 
 
@@ -277,13 +276,22 @@ def _area_scope_suggestion(scope: str) -> str | None:
     ``(merge-bot)`` / ``(pr-lint)`` / ``(dco)`` and friends are
     GitHub Actions tweaks (``ci``); ``(release-pr)`` /
     ``(release-publish)`` / ``(build_release)`` belong under
-    ``release``. Returns ``None`` when no obvious mapping exists —
-    the caller falls back to a generic remediation hint.
+    ``release``. The internal-only names that the type x scope
+    matrix still recognises but the two-tier rule no longer treats
+    as area scopes (``typecheck``, ``verify-standards``, ``python``,
+    ``setup-toolchain``, ``vscode``) all map to ``ci`` — they name
+    tooling / config surfaces wired into CI, so the closest
+    first-class area is ``ci`` (a contributor adjusting a dev-dep
+    pin underneath one of those names should pick ``deps-dev`` by
+    hand). Returns ``None`` when no obvious mapping exists — the
+    caller falls back to a generic remediation hint.
     """
     if scope in {"merge-bot", "pr-lint", "dco", "changelog-bot", "scorecard"}:
         return "ci"
     if scope in {"release-pr", "release-publish", "build_release", "build-release"}:
         return "release"
+    if scope in {"typecheck", "verify-standards", "python", "setup-toolchain", "vscode"}:
+        return "ci"
     return None
 
 
@@ -334,6 +342,21 @@ def check_two_tier_scope(title: str, changed_files: list[str] | None) -> None:
         return
     package = _single_package_for(changed_files)
     if package is not None:
+        if package not in PACKAGE_SCOPES:
+            # Single ``packages/<name>/`` directory found but not
+            # registered: a typo in the path, or a new package added
+            # in the same PR before ``PACKAGE_SCOPES`` is reseeded.
+            # Surface the actual problem instead of falling through
+            # to the area-tier "pick from AREA_SCOPES" hint, which is
+            # wrong here.
+            raise TitleValidationError(
+                f"changed files live under `packages/{package}/`, but "
+                f"`{package}` is not registered in `PACKAGE_SCOPES` "
+                f"({', '.join(PACKAGE_SCOPES)}). Either fix the "
+                f"directory name or add the package to the workspace "
+                'so `PACKAGE_SCOPES` picks it up. See CONTRIBUTING.md '
+                '→ "Allowed scopes".'
+            )
         # Package-tier: scope MUST match the contained package.
         if scope == package:
             return
@@ -403,8 +426,15 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         "passing-feature-package-scope",
     ),
     (
-        "fix(tokens): use constant-time HMAC comparison",
-        None,
+        # Package-tier accept on `fix:` — exercises the `fix` prefix
+        # alongside a realistic `packages/<name>/` diff. The original
+        # fixture used `fix(tokens):` with no diff context, which the
+        # two-tier rule would reject in real CI (``tokens`` is neither
+        # a package nor in ``AREA_SCOPES``); pairing the title with a
+        # representative ``packages/agent-auth/`` path keeps the
+        # passing case honest.
+        "fix(agent-auth): use constant-time HMAC comparison",
+        ["packages/agent-auth/src/agent_auth/tokens.py"],
         True,
         "passing-fix",
     ),
@@ -555,11 +585,39 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         "passing-multi-package-bare-scope",
     ),
     (
+        # Multi-package reject: a PR touching two packages cannot
+        # claim either package's name as its scope — once the diff
+        # spans both, the package-tier rule no longer applies and
+        # the scope must come from ``AREA_SCOPES`` (or be dropped).
+        # Symmetric with ``passing-multi-package-bare-scope``: that
+        # fixture proves bare scope is accepted, this one proves a
+        # package-named scope is not.
+        "feature(agent-auth): wire shared HTTP client retry policy",
+        [
+            "packages/agent-auth/src/agent_auth/http.py",
+            "packages/gpg-bridge/src/gpg_bridge/http.py",
+        ],
+        False,
+        "failing-multi-package-pkg-scope",
+    ),
+    (
         # Cross-cutting changes (root config, docs) accept bare scope.
         "chore: standardise YAML extension on .yml",
         ["Taskfile.yml", "CHANGELOG.md"],
         True,
         "passing-cross-cutting-bare-scope",
+    ),
+    (
+        # Unregistered ``packages/<name>/`` directory: the diff is
+        # contained to one package directory but the name is not in
+        # ``PACKAGE_SCOPES`` (a typo'd path, or a brand-new package
+        # added in the same PR before discovery is reseeded). The
+        # validator names the actual problem instead of falling
+        # through to the area-tier "pick from AREA_SCOPES" hint.
+        "feature(novel): scaffold a new package",
+        ["packages/novel/src/novel/__init__.py"],
+        False,
+        "failing-unregistered-package-dir",
     ),
 )
 
