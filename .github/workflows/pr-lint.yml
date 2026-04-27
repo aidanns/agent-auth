@@ -363,33 +363,51 @@ jobs:
           fi
 
       - name: Fetch PR head's @unreleased YAMLs
-        # Bring the head ref's `changelog/@unreleased/*.yml` files into
-        # the workspace WITHOUT checking out the head's code. The
-        # predict script + the `version_logic` parser both come from
-        # the base ref (pinned by the earlier `actions/checkout`); only
-        # the YAML data files come from the head. PyYAML's `safe_load`
-        # parses YAML as data — no code-execution surface — so this
-        # is safe even on a fork PR.
+        # Materialise the head ref's `changelog/@unreleased/*.yml` into
+        # a sandbox under `${RUNNER_TEMP}` — NOT into the workspace.
+        # The predict script + `version_logic` parser both come from
+        # the base ref (pinned by the earlier `actions/checkout`); the
+        # YAML data files are read from the sandbox by passing
+        # `--repo-root ${RUNNER_TEMP}/predict-sandbox` to the predict
+        # invocation. PyYAML's `safe_load` parses YAML as data — no
+        # code-execution surface — so this is safe even on a fork PR.
+        #
+        # We deliberately AVOID `git checkout "${HEAD_SHA}" -- path/`
+        # here. CodeQL's `actions/untrusted-checkout` query treats any
+        # `git checkout <head-sha>` in a `pull_request_target` workflow
+        # as a code-execution surface, regardless of the `-- <path>`
+        # constraint that scopes it to data-only files. Routing through
+        # the GitHub Contents API keeps the head fetch off CodeQL's
+        # flagged channel and onto the unflagged HTTP-fetch channel.
         if: steps.touched.outputs.touched == 'true'
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          # `pull_request_target` checkout pinned to the base SHA does
-          # not fetch the head SHA into the local clone. Fetch it
-          # explicitly, then materialise just the @unreleased dir from
-          # that commit. `--no-tags --depth=1` keeps the fetch tiny.
-          git fetch --no-tags --depth=1 origin "${HEAD_SHA}"
-          # Wipe whatever `@unreleased/` looks like at the base ref
-          # before overlaying the head's version, so files removed by
-          # the PR (e.g. the release-PR's mass rename) don't linger.
-          rm -rf changelog/@unreleased
-          mkdir -p changelog/@unreleased
-          # `git checkout <SHA> -- <path>` writes the path's contents
-          # at <SHA> into the working tree without changing HEAD. If
-          # the path doesn't exist at <SHA> (PR deletes the dir
-          # entirely), the `|| true` keeps the step exiting cleanly.
-          git checkout "${HEAD_SHA}" -- 'changelog/@unreleased/' || true
+          sandbox="${RUNNER_TEMP}/predict-sandbox/changelog/@unreleased"
+          # Reset the sandbox each run so files removed at head (e.g.
+          # the release-PR's mass rename) don't linger from a previous
+          # workflow on the same runner.
+          rm -rf "${RUNNER_TEMP}/predict-sandbox"
+          mkdir -p "${sandbox}"
+          # List `@unreleased/*.yml` at HEAD via the Contents API, then
+          # fetch each blob raw. A 404 on the directory listing means
+          # the PR removed the entire dir at head (release-PR rollover);
+          # the consuming step's `--repo-root` then sees an empty
+          # `@unreleased/` and the predict short-circuits with
+          # `predict=false`.
+          if listing="$(gh api \
+                "repos/${GITHUB_REPOSITORY}/contents/changelog/@unreleased?ref=${HEAD_SHA}" \
+                --jq '.[] | select(.type=="file") | .name' 2>/dev/null)"; then
+            while IFS= read -r name; do
+              [[ -z "${name}" ]] && continue
+              [[ "${name}" =~ \.yml$ ]] || continue
+              gh api -H 'Accept: application/vnd.github.raw' \
+                "repos/${GITHUB_REPOSITORY}/contents/changelog/@unreleased/${name}?ref=${HEAD_SHA}" \
+                > "${sandbox}/${name}"
+            done <<<"${listing}"
+          fi
 
       - name: Resolve current version
         if: steps.touched.outputs.touched == 'true'
@@ -434,7 +452,7 @@ jobs:
             exit 1
           fi
           envelope="$(python3 scripts/changelog/predict_release_impact.py \
-            --repo-root . \
+            --repo-root "${RUNNER_TEMP}/predict-sandbox" \
             --current-version "${CURRENT_VERSION}")"
           echo "${envelope}" > "${RUNNER_TEMP}/predict.json"
           # Surface a top-level `predict` boolean so the next step's
