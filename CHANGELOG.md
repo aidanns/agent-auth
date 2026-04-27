@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.15.2] - 2026-04-27
+
+### Improvements
+
+- Relax the `==COMMIT_MSG==` block validator to permit plain `-` /
+  `*` bullets and `1.` numbered lists. The kernel/cbea.ms
+  enumerated-changes form often reads better in `git log` than the
+  run-on prose paragraphs authors fell back to under the previous
+  blanket no-markdown rule. The audience-split defence — keep
+  test-plan, deploy-checklist, and screenshot content out of
+  `git log` — is now carried by three structural bans (markdown
+  headings, task checkboxes, image embeds) rather than a
+  blanket markdown ban.
+
 ## [0.15.1] - 2026-04-27
 
 ### Improvements
