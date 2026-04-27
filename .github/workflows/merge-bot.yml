@@ -730,10 +730,20 @@ jobs:
           # the body content. `sha` is included so a race that
           # advances the head past the SHA we evaluated produces a
           # documented 409 rather than a silent merge of new code.
+          #
+          # Append ` (#<n>)` to the commit subject so GitHub renders
+          # it as a clickable link to the originating PR in the
+          # commit log. The `PUT /pulls/{n}/merge` REST endpoint does
+          # NOT auto-append the suffix the way the web UI's "Squash
+          # and merge" button does — the bot has to add it
+          # explicitly. `pr-lint.yml`'s `pr-title-style` job budgets
+          # for the suffix at PR-author time
+          # (`validate-pr-title.py --pr-number`) so the projected
+          # subject still respects the 72-char hard cap. See #399.
           if gh api --method PUT \
             "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/merge" \
             -f merge_method=squash \
-            -f commit_title="${PR_TITLE}" \
+            -f commit_title="${PR_TITLE} (#${PR_NUMBER})" \
             -f "commit_message=$(cat "${COMMIT_MESSAGE_PATH}")" \
             -f sha="${HEAD_SHA}" \
             > "${RUNNER_TEMP}/merge.out" 2> "${RUNNER_TEMP}/merge.err"; then

@@ -16,7 +16,14 @@
 #   1. Length: 72-char hard cap on the full subject (prefix + summary).
 #      The 50-char soft target on the post-prefix summary documented in
 #      CONTRIBUTING.md is *not* enforced (false-positive risk on long
-#      scopes); only the hard cap is mechanical.
+#      scopes); only the hard cap is mechanical. When ``--pr-number``
+#      is provided, the cap is applied to the *projected* squash-merge
+#      subject — the un-suffixed PR title plus the ``(#<n>)`` suffix
+#      ``merge-bot.yml`` appends. The REST merge endpoint does not
+#      auto-append the suffix the way GitHub's UI "Squash and merge"
+#      button does, so the bot adds it explicitly to keep commit
+#      subjects clickable in the commit log; the validator therefore
+#      has to budget for the suffix at PR-author time. See #399.
 #   2. No trailing period: the subject is a fragment, not a sentence.
 #   3. Imperative mood: reject subjects whose summary opens with a
 #      narrow, closed list of past-tense / participle / gerund verbs
@@ -144,12 +151,47 @@ def _strip_prefix(title: str) -> str:
     return title[match.end() :]
 
 
-def check_length(title: str) -> None:
-    if len(title) > MAX_TITLE_WIDTH:
+def _projected_suffix(pr_number: int | None) -> str:
+    """Return the ``(#<n>)`` suffix ``merge-bot.yml`` will append, or ``""``.
+
+    Kept as a helper so the suffix's exact shape lives in one place;
+    the bot's `commit_title="${PR_TITLE} (#${PR_NUMBER})"` mirrors this
+    string verbatim. Returns the empty string when no PR number was
+    provided so the caller's length math degrades to the un-suffixed
+    cap.
+    """
+    if pr_number is None:
+        return ""
+    return f" (#{pr_number})"
+
+
+def check_length(title: str, pr_number: int | None = None) -> None:
+    """Reject titles that overflow the 72-char cap on the squash subject.
+
+    When ``pr_number`` is provided, the cap is applied to the
+    *projected* subject (un-suffixed title + ``(#<n>)``), since the
+    merge bot pastes that exact string into the squash-merge commit
+    title. The error message surfaces the un-suffixed length, the
+    suffix length, and the projected total so a contributor can see
+    which constraint is binding without having to redo the arithmetic
+    themselves. See #399.
+    """
+    suffix = _projected_suffix(pr_number)
+    projected = len(title) + len(suffix)
+    if projected <= MAX_TITLE_WIDTH:
+        return
+    if not suffix:
         raise TitleValidationError(
             f"subject is {len(title)} chars (limit {MAX_TITLE_WIDTH}) — "
             "shorten the summary or drop the scope."
         )
+    raise TitleValidationError(
+        f"subject would be {projected} chars after merge-bot appends "
+        f"`{suffix.lstrip()}` ({len(title)}-char title + {len(suffix)}-char "
+        f"suffix; limit {MAX_TITLE_WIDTH}) — shorten the summary or drop "
+        "the scope. The bot appends the PR number so GitHub renders the "
+        "commit subject as a link in the commit log; see #399."
+    )
 
 
 def check_no_trailing_period(title: str) -> None:
@@ -384,13 +426,17 @@ def check_two_tier_scope(title: str, changed_files: list[str] | None) -> None:
     )
 
 
-def validate(title: str, changed_files: list[str] | None = None) -> None:
+def validate(
+    title: str,
+    changed_files: list[str] | None = None,
+    pr_number: int | None = None,
+) -> None:
     if not title.strip():
         raise TitleValidationError(
             "subject is empty — author a PR title with the "
             "Palantir-style `prefix: summary` shape."
         )
-    check_length(title)
+    check_length(title, pr_number)
     check_no_trailing_period(title)
     check_imperative_mood(title)
     check_type_scope_matrix(title)
@@ -400,19 +446,24 @@ def validate(title: str, changed_files: list[str] | None = None) -> None:
 # Inline self-test cases. The PR-title input is a single string from
 # `${{ github.event.pull_request.title }}`, so file-based fixtures
 # (the body validator's pattern) buy nothing here. Each tuple is
-# (title, changed_files, expect_pass, label):
+# (title, changed_files, pr_number, expect_pass, label):
 #
 # - ``changed_files`` is ``None`` when the case doesn't exercise the
 #   two-tier scope rule (rule 5). Pre-#402 cases keep ``None`` and
 #   stay focused on the rules they were written for; the #402 cases
 #   each provide a representative diff.
+# - ``pr_number`` is ``None`` for cases that don't exercise the
+#   suffix-aware length rule (#399). The suffix-aware fixtures below
+#   each pass a representative number so the cap math runs against a
+#   real ``(#<n>)`` width.
 # - ``label`` shows up in the self-test log so a regression points at
 #   the failing case immediately.
-_SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
+_SELF_TEST_CASES: tuple[tuple[str, list[str] | None, int | None, bool, str], ...] = (
     # Passing cases: representative titles drawn from recent merged
     # PRs and the worked examples in CONTRIBUTING.md.
     (
         "chore(ci): enforce subject-style rules in pr-lint validator",
+        None,
         None,
         True,
         "passing-chore",
@@ -421,6 +472,7 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         # Package scope — release-bumping types are fine here; only
         # the internal-only scopes are restricted.
         "feature(agent-auth): add JIT approval flow for prompt-tier scope",
+        None,
         None,
         True,
         "passing-feature-package-scope",
@@ -435,11 +487,13 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         # passing case honest.
         "fix(agent-auth): use constant-time HMAC comparison",
         ["packages/agent-auth/src/agent_auth/tokens.py"],
+        None,
         True,
         "passing-fix",
     ),
     (
         "improvement: tighten numbered-list regex",
+        None,
         None,
         True,
         "passing-no-scope",
@@ -449,6 +503,7 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         # changes can be user-visible and bump the version.
         "feature(release): wire workflow-dispatch tag re-runs",
         None,
+        None,
         True,
         "passing-feature-release-scope",
     ),
@@ -457,6 +512,7 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         # escape hatch for a real bug in CI / dev-dep / docs surface.
         "fix(claude): correct outdated worktree path in plan template",
         None,
+        None,
         True,
         "passing-fix-internal-scope",
     ),
@@ -464,17 +520,20 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
     (
         "fix: drop the trailing period.",
         None,
+        None,
         False,
         "failing-trailing-period",
     ),
     (
         "improvement: Fixed gpg-bridge timeout",
         None,
+        None,
         False,
         "failing-past-tense-fixed",
     ),
     (
         "feature: Added a thing",
+        None,
         None,
         False,
         "failing-past-tense-added",
@@ -483,11 +542,13 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         # 84 chars — the example from the issue body.
         "fix(very-long-scope): a summary that runs on and on past the seventy two char cap easy",
         None,
+        None,
         False,
         "failing-too-long",
     ),
     (
         "",
+        None,
         None,
         False,
         "failing-empty",
@@ -504,11 +565,13 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
     (
         "feature(ci): add release-build dry-run and post-publish smoke",
         None,
+        None,
         False,
         "failing-matrix-feature-ci",
     ),
     (
         "improvement(deps-dev): tighten pytest config",
+        None,
         None,
         False,
         "failing-matrix-improvement-deps-dev",
@@ -516,17 +579,20 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
     (
         "break(claude): rewrite plan-template to call EnterWorktree",
         None,
+        None,
         False,
         "failing-matrix-break-claude",
     ),
     (
         "deprecation(docs): retire the legacy onboarding guide",
         None,
+        None,
         False,
         "failing-matrix-deprecation-docs",
     ),
     (
         "migration(python): bump minimum interpreter to 3.12",
+        None,
         None,
         False,
         "failing-matrix-migration-python",
@@ -539,6 +605,7 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         # Package-tier accept: scope matches the contained package.
         "feature(agent-auth): add JIT approval flow for prompt-tier scope",
         ["packages/agent-auth/src/agent_auth/cli.py"],
+        None,
         True,
         "passing-pkg-tier-agent-auth",
     ),
@@ -547,6 +614,7 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         # but claims a fictional `(server)` scope.
         "feature(server): rename the listener entrypoint",
         ["packages/agent-auth/src/agent_auth/server.py"],
+        None,
         False,
         "failing-pkg-tier-server-on-agent-auth",
     ),
@@ -554,6 +622,7 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         # Area-tier accept: workflow tweak under (ci).
         "chore(ci): pin merge-bot action to a SHA",
         [".github/workflows/merge-bot.yml"],
+        None,
         True,
         "passing-area-tier-ci",
     ),
@@ -562,6 +631,7 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         # issue body calls out — the validator must point at `(ci)`.
         "improvement(merge-bot): post link to merged PR in slack",
         [".github/workflows/merge-bot.yml"],
+        None,
         False,
         "failing-area-tier-merge-bot",
     ),
@@ -570,6 +640,7 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         # — the validator points at `(release)`.
         "fix(release-pr): drop stale changelog YAMLs after publish",
         [".github/workflows/release-pr.yml"],
+        None,
         False,
         "failing-area-tier-release-pr",
     ),
@@ -581,6 +652,7 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
             "packages/agent-auth/src/agent_auth/http.py",
             "packages/gpg-bridge/src/gpg_bridge/http.py",
         ],
+        None,
         True,
         "passing-multi-package-bare-scope",
     ),
@@ -597,6 +669,7 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
             "packages/agent-auth/src/agent_auth/http.py",
             "packages/gpg-bridge/src/gpg_bridge/http.py",
         ],
+        None,
         False,
         "failing-multi-package-pkg-scope",
     ),
@@ -604,6 +677,7 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         # Cross-cutting changes (root config, docs) accept bare scope.
         "chore: standardise YAML extension on .yml",
         ["Taskfile.yml", "CHANGELOG.md"],
+        None,
         True,
         "passing-cross-cutting-bare-scope",
     ),
@@ -616,17 +690,84 @@ _SELF_TEST_CASES: tuple[tuple[str, list[str] | None, bool, str], ...] = (
         # through to the area-tier "pick from AREA_SCOPES" hint.
         "feature(novel): scaffold a new package",
         ["packages/novel/src/novel/__init__.py"],
+        None,
         False,
         "failing-unregistered-package-dir",
+    ),
+    # Suffix-aware length rule (#399). The merge bot appends
+    # ``(#<n>)`` to the squash-merge subject so GitHub renders it as
+    # a clickable link in the commit log; ``check_length`` budgets
+    # for the suffix at PR-author time when ``--pr-number`` is
+    # threaded in. Three fixtures cover the matrix:
+    #
+    # - the un-suffixed title fits but the projected total exceeds
+    #   the cap (the regression these fixtures exist to catch);
+    # - both un-suffixed and suffixed totals fit (positive control);
+    # - the un-suffixed title already overflows the cap (the error
+    #   message must still surface both lengths so the contributor
+    #   sees that the title alone is the binding constraint).
+    (
+        # 72-char title + " (#9999)" (8 chars) = 80-char projected
+        # subject, 8 over the cap. The un-suffixed title sits exactly
+        # at the 72-char cap so the un-suffixed-only length check
+        # accepts it; only the suffix-aware path catches the overflow.
+        # Without the suffix-aware rule the bug from the issue body's
+        # example would land verbatim on `main` (the bot appends the
+        # suffix at merge time and GitHub silently truncates the
+        # commit subject in the commit log view).
+        "improvement(agent-auth): tighten the JIT approval audit-log emit pathway",
+        None,
+        9999,
+        False,
+        "failing-suffixed-overflow",
+    ),
+    (
+        # 47-char title + " (#9999)" (8 chars) = 55-char projected
+        # subject, well under the 72-char cap. Positive control: the
+        # suffix-aware path must accept titles that leave headroom.
+        "improvement(agent-auth): tighten audit log emit",
+        None,
+        9999,
+        True,
+        "passing-suffixed-fits",
+    ),
+    (
+        # 86-char un-suffixed title — the existing failing-too-long
+        # fixture, this time with a PR number passed in. Catches the
+        # regression where the suffix-aware path drops the title
+        # length out of the error message: the contributor must still
+        # see both totals (un-suffixed length + suffix width = projected
+        # total) so they know the title alone is over the cap, not the
+        # suffix.
+        "fix(very-long-scope): a summary that runs on and on past the seventy two char cap easy",
+        None,
+        9999,
+        False,
+        "failing-too-long-with-pr-number",
+    ),
+    (
+        # 72-char title with ``pr_number=None`` — positive control for
+        # the un-suffixed boundary that local invocations and the
+        # ``pr-title-self-test`` job rely on. Locks down the no-
+        # ``--pr-number`` path so a future regression that re-applies
+        # the suffix-aware cap (e.g. a refactor of ``_projected_suffix``
+        # that returns ``" (#)"`` for the ``None`` case, eating four
+        # chars of headroom) trips the self-test instead of landing
+        # silently.
+        "improvement(agent-auth): tighten the JIT approval audit-log emit pathway",
+        None,
+        None,
+        True,
+        "passing-unsuffixed-at-cap",
     ),
 )
 
 
 def _run_self_test() -> int:
     fail = 0
-    for title, changed_files, expect_pass, label in _SELF_TEST_CASES:
+    for title, changed_files, pr_number, expect_pass, label in _SELF_TEST_CASES:
         try:
-            validate(title, changed_files)
+            validate(title, changed_files, pr_number)
         except TitleValidationError as err:
             if expect_pass:
                 print(f"FAIL: {label}: expected pass, got {err}", file=sys.stderr)
@@ -697,6 +838,21 @@ def main(argv: list[str] | None = None) -> int:
             "`gh pr view --json files --jq '.files[].path'`."
         ),
     )
+    parser.add_argument(
+        "--pr-number",
+        default=None,
+        type=int,
+        metavar="N",
+        help=(
+            "PR number this title belongs to. When provided, the 72-char "
+            "length cap is applied to the *projected* squash-merge subject "
+            "(un-suffixed title + ` (#<n>)`), since `merge-bot.yml` "
+            "appends the suffix at merge time so GitHub renders the "
+            "commit subject as a clickable link in the commit log. The "
+            "`pr-title-style` job in pr-lint.yml passes "
+            "`github.event.pull_request.number`. See #399."
+        ),
+    )
     args = parser.parse_args(argv)
     if args.self_test:
         return _run_self_test()
@@ -706,7 +862,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.changed_files_from is not None:
         changed_files = _read_changed_files(args.changed_files_from)
     try:
-        validate(args.title, changed_files)
+        validate(args.title, changed_files, args.pr_number)
     except TitleValidationError as err:
         print(f"pr-title: {err}", file=sys.stderr)
         return 1

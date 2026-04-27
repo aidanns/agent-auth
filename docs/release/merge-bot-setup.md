@@ -37,8 +37,13 @@ workflow:
    fails the job rather than burning further CI cycles. See
    [Auto-update on BEHIND](#auto-update-on-behind) below.
 4. Otherwise calls `PUT /repos/aidanns/agent-auth/pulls/{n}/merge`
-   with `merge_method: squash`, `commit_title: <PR title>`,
-   `commit_message: <extracted block>`.
+   with `merge_method: squash`,
+   `commit_title: <PR title> (#<n>)`,
+   `commit_message: <extracted block>`. The bot appends ` (#<n>)`
+   to the subject so GitHub renders the squash-merge commit subject
+   as a clickable link to the originating PR in the commit log;
+   the REST merge endpoint does not auto-append the suffix the
+   way the web UI's "Squash and merge" button does. See #399.
 5. Comments `Claude: Merged via bot.` on success, or
    `Claude: Cannot merge — <reason>` on any pre-merge failure
    (label stays applied so the next green run retriggers the

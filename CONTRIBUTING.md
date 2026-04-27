@@ -769,7 +769,7 @@ A subset of the rules below is **CI-enforced**; the rest are
 | Rule                                                                             | Enforced by                                                                                                                       |
 | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Title prefix in the Palantir allowlist                                           | CI (`pr-title` job, `amannn/action-semantic-pull-request`)                                                                        |
-| Title ≤ 72 chars                                                                 | CI (`pr-title-style` job, `scripts/validate-pr-title.py`)                                                                         |
+| Title ≤ 72 chars (after `merge-bot.yml` appends ` (#<n>)`)                       | CI (`pr-title-style` job, `scripts/validate-pr-title.py --pr-number`)                                                             |
 | Title has no trailing period                                                     | CI (`pr-title-style` job)                                                                                                         |
 | Title does not open with a past-tense / participle verb in the closed list       | CI (`pr-title-style` job — list: `Added` / `Fixed` / `Updated` / `Changed` / `Removed` / `Refactored` / `Implemented` / `Bumped`) |
 | Title summary ≤ 50 chars (soft target on the post-prefix summary)                | Convention only                                                                                                                   |
@@ -811,7 +811,13 @@ A subset of the rules below is **CI-enforced**; the rest are
   style prefixes — the prefix alone eats the budget. The 50-char soft
   target is therefore measured on the post-prefix summary; the
   72-char hard cap (CI-enforced separately) is on the full title
-  including the prefix and is the immutable line.
+  including the prefix and is the immutable line. The hard cap is
+  applied to the *projected* squash-merge subject — the bot appends
+  ` (#<n>)` at merge time so GitHub renders the commit subject as a
+  clickable link in the commit log, and the validator (passed
+  `--pr-number` by `pr-lint.yml`) budgets for the suffix at PR-author
+  time. Authoring a 72-char un-suffixed title is therefore over the
+  cap; aim for ≤ 64 chars or so to leave headroom for the suffix.
 
 ##### Body (`==COMMIT_MSG==` block)
 
