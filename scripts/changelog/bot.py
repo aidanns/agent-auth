@@ -76,6 +76,29 @@ _spec.loader.exec_module(_validator)
 extract_block = _validator.extract_block
 BlockMarkerError = _validator.BlockMarkerError
 
+# Canonical PR-title taxonomy (single source of truth — see #405). Loaded
+# via ``spec_from_file_location`` to avoid layering an extra
+# ``sys.path`` mutation on top of the validator import above; the
+# cached entry in ``sys.modules`` is reused on second import so this
+# module shares one ``commit_taxonomy`` instance with
+# ``version_logic`` (preserving identity contracts the tests assert).
+# ``ALLOWED_TYPES`` is the full prefix allowlist;
+# ``RELEASE_BUMPING_TYPES`` is the subset that produces a changelog
+# YAML (i.e. ``ALLOWED_TYPES`` minus ``chore``).
+_taxonomy = sys.modules.get("commit_taxonomy")
+if _taxonomy is None:
+    _TAXONOMY_PATH = _SCRIPTS_DIR / "lint" / "commit_taxonomy.py"
+    _taxonomy_spec = _importlib_util.spec_from_file_location("commit_taxonomy", _TAXONOMY_PATH)
+    if (  # pragma: no cover - import-time guard
+        _taxonomy_spec is None or _taxonomy_spec.loader is None
+    ):
+        raise ImportError(f"cannot load commit_taxonomy from {_TAXONOMY_PATH}")
+    _taxonomy = _importlib_util.module_from_spec(_taxonomy_spec)
+    sys.modules["commit_taxonomy"] = _taxonomy
+    _taxonomy_spec.loader.exec_module(_taxonomy)
+_ALLOWED_TYPES = _taxonomy.ALLOWED_TYPES
+_RELEASE_BUMPING_TYPES = _taxonomy.RELEASE_BUMPING_TYPES
+
 
 # --- Constants ---------------------------------------------------------------
 
@@ -94,24 +117,24 @@ NO_CHANGELOG_LABEL = "no changelog"
 #: Directory entries land in.
 UNRELEASED_DIR = Path("changelog/@unreleased")
 
-#: Mapping from PR-title prefix to YAML ``type:``. Mirrors ADR 0037
-#: and the table in #298's issue body. ``chore`` is intentionally
-#: omitted: a chore PR is expected to carry ``==NO_CHANGELOG==`` or
-#: the label.
-PREFIX_TO_TYPE: dict[str, str] = {
-    # keep-sorted start
-    "break": "break",
-    "deprecation": "deprecation",
-    "feature": "feature",
-    "fix": "fix",
-    "improvement": "improvement",
-    "migration": "migration",
-    # keep-sorted end
-}
+#: Mapping from PR-title prefix to YAML ``type:``. Derived from the
+#: canonical taxonomy in ``scripts/lint/commit_taxonomy`` (#405) so
+#: adding a new release-bumping prefix is a single-file edit there.
+#: The mapping is identity today (the YAML ``type:`` is the same
+#: string as the PR-title prefix); kept as a dict so a future
+#: divergence (e.g. accepting ``feat`` as an alias for ``feature``) is
+#: a one-line change here without touching the call sites in
+#: ``decide_and_act`` / ``map_prefix_to_type``. ``chore`` is excluded
+#: because chore PRs do not produce a changelog YAML — they are
+#: expected to carry ``==NO_CHANGELOG==`` or the label.
+PREFIX_TO_TYPE: dict[str, str] = {prefix: prefix for prefix in sorted(_RELEASE_BUMPING_TYPES)}
 
 #: PR-title prefixes the lint accepts that the bot does not produce
-#: a changelog for.
-NON_CHANGELOG_PREFIXES = frozenset({"chore"})
+#: a changelog for. Derived from the canonical taxonomy: the full
+#: allowlist minus the release-bumping subset (i.e. just ``chore``
+#: today). Adding a new non-changelog prefix is a single-line edit in
+#: ``commit_taxonomy.ALLOWED_TYPES`` (with ``ReleaseImpact.NONE``).
+NON_CHANGELOG_PREFIXES = frozenset(_ALLOWED_TYPES) - _RELEASE_BUMPING_TYPES
 
 
 # --- Public types ------------------------------------------------------------

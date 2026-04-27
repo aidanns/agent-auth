@@ -58,13 +58,52 @@ rather than a mix of ``ValueError``, ``KeyError``, ``TypeError``.
 from __future__ import annotations
 
 import enum
+import importlib.util
 import re
+import sys
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+# Single source of truth for the type→release-impact mapping lives in
+# ``scripts/lint/commit_taxonomy``. ``version_logic`` consumes the
+# canonical data and re-exposes it under the names this module's
+# downstream callers (lint, release workflow, CLI) already import:
+# ``BumpType`` (the enum) and ``EntryType`` (the YAML ``type:`` enum
+# of release-bumping types). Adding a new PR-title prefix is therefore
+# a single-file edit in ``commit_taxonomy``.
+#
+# Loaded via ``importlib.util.spec_from_file_location`` rather than a
+# regular ``import`` so this production module never mutates
+# ``sys.path``. A ``sys.path.insert`` here would be inherited by every
+# caller that imports ``version_logic`` (lint, release workflow, CLI,
+# tests), and could shadow same-named modules in unrelated
+# environments. Same pattern that ``scripts/changelog/bot.py`` uses to
+# load ``validate-commit-msg-block.py`` without touching ``sys.path``.
+#
+# The loaded module is cached under ``sys.modules["commit_taxonomy"]``
+# so a subsequent bare-name ``import commit_taxonomy`` (used by tests
+# whose ``conftest.py`` puts ``scripts/lint/`` on the path) returns
+# *this* module instance — preserving identity contracts like
+# ``version_logic.BumpType is commit_taxonomy.ReleaseImpact``. The
+# inverse case (this module's load happens after a bare-name import
+# already populated ``sys.modules``) reuses the cached module instead
+# of re-executing the file, for the same reason.
+_COMMIT_TAXONOMY_PATH = Path(__file__).resolve().parent.parent / "lint" / "commit_taxonomy.py"
+_commit_taxonomy = sys.modules.get("commit_taxonomy")
+if _commit_taxonomy is None:
+    _spec = importlib.util.spec_from_file_location("commit_taxonomy", _COMMIT_TAXONOMY_PATH)
+    if _spec is None or _spec.loader is None:  # pragma: no cover - import-time guard
+        raise ImportError(f"cannot load commit_taxonomy from {_COMMIT_TAXONOMY_PATH}")
+    _commit_taxonomy = importlib.util.module_from_spec(_spec)
+    sys.modules["commit_taxonomy"] = _commit_taxonomy
+    _spec.loader.exec_module(_commit_taxonomy)
+ALLOWED_TYPES = _commit_taxonomy.ALLOWED_TYPES
+RELEASE_BUMPING_TYPES = _commit_taxonomy.RELEASE_BUMPING_TYPES
+ReleaseImpact = _commit_taxonomy.ReleaseImpact
 
 # Filename pattern used by both the schema parser and the lint's
 # file-presence/file-naming checks. Captures the PR number so the lint
@@ -80,28 +119,31 @@ ENTRY_FILENAME_PATTERN = re.compile(r"^pr-(?P<pr_number>\d+)-[A-Za-z0-9_-]+\.yml
 _SEMVER_PATTERN = re.compile(r"^(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)$")
 
 
-class EntryType(str, enum.Enum):
-    """Allowed values of the YAML ``type:`` field.
+# ``EntryType`` is derived from the canonical taxonomy: it's exactly
+# ``ALLOWED_TYPES`` minus ``chore`` (chore PRs do not produce a
+# changelog YAML, so ``chore`` is not a valid YAML ``type:`` value).
+# Using ``enum.Enum(...)`` functional form lets us name members from
+# the canonical strings without re-typing them — the (NAME, value)
+# pairs are generated from ``RELEASE_BUMPING_TYPES``.
+EntryType = enum.Enum(
+    "EntryType",
+    {name.upper(): name for name in sorted(RELEASE_BUMPING_TYPES)},
+    type=str,
+)
+EntryType.__doc__ = (
+    "Allowed values of the YAML ``type:`` field.\n\n"
+    "String-valued so YAML literals compare directly: "
+    "``EntryType.FEATURE == 'feature'`` is ``True``. Members are "
+    "derived from ``commit_taxonomy.RELEASE_BUMPING_TYPES``; adding a "
+    "new release-bumping type is a single-line edit there."
+)
 
-    String-valued so YAML literals compare directly: ``EntryType.FEATURE
-    == "feature"`` is ``True``.
-    """
 
-    FEATURE = "feature"
-    IMPROVEMENT = "improvement"
-    FIX = "fix"
-    BREAK = "break"
-    DEPRECATION = "deprecation"
-    MIGRATION = "migration"
-
-
-class BumpType(enum.IntEnum):
-    """SemVer bump category, ordered so ``max(bumps)`` yields the largest."""
-
-    NONE = 0
-    PATCH = 1
-    MINOR = 2
-    MAJOR = 3
+# ``BumpType`` is the historical name this module exposed before #405
+# extracted ``ReleaseImpact`` to ``commit_taxonomy``. Kept as an alias
+# so every existing caller (the lint, ``build_release``, the CLI, the
+# tests) keeps importing ``BumpType`` from ``version_logic`` unchanged.
+BumpType = ReleaseImpact
 
 
 @dataclass(frozen=True)
@@ -156,16 +198,11 @@ class ChangelogValidationError(ValueError):
 
 # --- Bump table ---------------------------------------------------------------
 
-# Source of truth for the type → bump mapping. Mirrors `.releaserc.mjs`
-# `releaseRules` and the table in #295's body. The 0.x demote-to-minor
-# rule for `break` is applied separately in ``bump_for``.
+# Type → bump mapping for the post-1.x case, derived from the canonical
+# taxonomy in ``commit_taxonomy.ALLOWED_TYPES``. The 0.x demote-to-minor
+# rule for ``break`` is applied separately in ``bump_for``.
 _BUMP_TABLE_POST_1X: dict[EntryType, BumpType] = {
-    EntryType.FEATURE: BumpType.MINOR,
-    EntryType.IMPROVEMENT: BumpType.PATCH,
-    EntryType.FIX: BumpType.PATCH,
-    EntryType.BREAK: BumpType.MAJOR,
-    EntryType.DEPRECATION: BumpType.PATCH,
-    EntryType.MIGRATION: BumpType.PATCH,
+    entry_type: ALLOWED_TYPES[entry_type.value] for entry_type in EntryType
 }
 
 
