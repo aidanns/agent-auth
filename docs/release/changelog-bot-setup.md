@@ -13,8 +13,8 @@ PR descriptions and either commits a `changelog/@unreleased/*.yml`
 file to the PR branch or applies / removes the `no changelog` label.
 
 This App is **separate** from
-[`agent-auth-release-bot`](../../CONTRIBUTING.md#release-app-setup)
-(release path) and from #291's merge bot App. Each App is scoped to
+[`agent-auth-release-bot`](release-bot-setup.md) (release path) and
+from #291's merge bot App. Each App is scoped to
 the narrowest set of permissions it needs so revoking one does not
 disrupt the other. For the cross-cutting bring-up checklist that
 covers all three release-automation Apps together (and the
