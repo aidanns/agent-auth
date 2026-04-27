@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.16.1] - 2026-04-27
+
+### Improvements
+
+- `release-publish.yml` now accepts a `workflow_dispatch` trigger
+  with a required `tag` input so a maintainer can run
+  `gh workflow run release-publish.yml -f tag=<TAG>` to re-publish
+  an existing tag whose original `push: tags:` run produced an
+  incomplete asset set. The dispatched run threads
+  `inputs.tag || github.ref_name` through the concurrency group,
+  both `actions/checkout` ref: fields, and the
+  `gh release upload` / `gh release view` env blocks so the
+  build / sign / SBOM / SLSA-provenance chain binds to the tag's
+  commit (not `main`'s tip). `gh release upload --clobber`
+  overwrites partial assets idempotently. Adds SECURITY.md
+  § Supply-chain artifacts notes for tag ranges where the
+  per-package verification recipe will not match the release
+  page: `v0.6.0..v0.10.0` ship the legacy single-package shape;
+  `v0.11.0..v0.15.3` have incomplete asset sets pending the
+  post-merge re-publish ops driven by #372; `v0.16.0` carries
+  `0.0.0+unknown`-versioned wheels per #408.
+
 ## [0.16.0] - 2026-04-27
 
 ### Features
