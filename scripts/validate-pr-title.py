@@ -301,12 +301,15 @@ _SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         False,
         "failing-empty",
     ),
-    # Failing cases: type x scope matrix (#401). Three representative
-    # combinations — one per release-bumping type the matrix forbids
-    # on an internal-only scope. The full 5 release-bumping types x 10
-    # internal-only scopes = 50 combinations all share one code path
-    # (membership lookups on two frozensets), so exhaustive
-    # enumeration would be churn rather than coverage.
+    # Failing cases: type x scope matrix (#401). One fixture per
+    # release-bumping type the matrix forbids on an internal-only
+    # scope (`feature`, `improvement`, `break`, `deprecation`,
+    # `migration`), each paired with a different internal-only scope
+    # so a regression that special-cases one scope still trips a
+    # neighbour. The full 5 release-bumping types x 10 internal-only
+    # scopes = 50 combinations all share one code path (membership
+    # lookups on two frozensets), so exhaustive enumeration would be
+    # churn rather than coverage.
     (
         "feature(ci): add release-build dry-run and post-publish smoke",
         False,
@@ -318,9 +321,19 @@ _SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         "failing-matrix-improvement-deps-dev",
     ),
     (
-        "feature(claude): rewrite plan-template to call EnterWorktree",
+        "break(claude): rewrite plan-template to call EnterWorktree",
         False,
-        "failing-matrix-feature-claude",
+        "failing-matrix-break-claude",
+    ),
+    (
+        "deprecation(docs): retire the legacy onboarding guide",
+        False,
+        "failing-matrix-deprecation-docs",
+    ),
+    (
+        "migration(python): bump minimum interpreter to 3.12",
+        False,
+        "failing-matrix-migration-python",
     ),
 )
 

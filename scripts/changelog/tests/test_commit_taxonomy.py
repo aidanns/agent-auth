@@ -158,13 +158,16 @@ def test_internal_only_scopes_matches_issue_401_matrix() -> None:
     )
 
 
-def test_internal_only_scopes_does_not_overlap_release_bumping_types() -> None:
+def test_internal_only_scopes_does_not_overlap_allowed_types() -> None:
     """No internal-only scope name accidentally collides with a type prefix.
 
     A scope that shares a name with a type would make the validator's
     error message confusing (``feature(feature):``). The two namespaces
     are disjoint by construction; this test pins the invariant so a
-    future scope addition can't accidentally re-use a type name.
+    future scope addition can't accidentally re-use a type name. The
+    check spans the full ``ALLOWED_TYPES`` (including ``chore``) — a
+    scope literally named ``chore`` would be just as confusing as one
+    named after a release-bumping type.
     """
     assert not (INTERNAL_ONLY_SCOPES & frozenset(ALLOWED_TYPES))
 
