@@ -24,6 +24,29 @@
 #      `main` without DCO and the post-merge `dco` workflow goes red.
 #      The DCO workflow checks per-PR-commit trailers; this rule
 #      covers the *body* the bot will paste.
+#   7. The first content line of the block (after stripping HTML
+#      comments) is non-blank — git commits open with the subject,
+#      not a leading blank line.
+#   8. When a `Fixes:` trailer carries a SHA-style value (i.e. it is
+#      not the `Fixes #N` GitHub-keyword form), it follows the
+#      kernel-style `Fixes: <sha> ("subject")` shape: a hex SHA of
+#      at least 7 characters followed by a parenthesised
+#      double-quoted subject.
+#
+# The PR title (subject) has its own prose-style rules — length cap,
+# trailing period, past-tense imperative — enforced by the sibling
+# `scripts/validate-pr-title.py` script in the `pr-title-style` job
+# of `.github/workflows/pr-lint.yml`. The two scripts split because
+# the title and the body have different inputs (string vs. file) and
+# different runtime audiences (the action consumes the title via env
+# var; the body validator works against a file on disk).
+#
+# These rules sit alongside the prose conventions documented in
+# CONTRIBUTING.md → "Writing release-worthy commits" (#337); the
+# "Convention only / not CI-enforced" subset there (one-logical-change,
+# why-not-how, ≤50-char summary soft target, capitalisation,
+# imperative mood beyond the past-tense blacklist) is deliberately
+# left to human review.
 #
 # Exits 0 on success, 1 with a human-readable error on failure. Reads
 # the PR body from a file path given as argv[1].
@@ -339,8 +362,140 @@ def check_signoff_present(lines: list[str]) -> None:
     )
 
 
-def validate(body: str) -> None:
+# Kernel-style `Fixes: <sha> ("subject")` shape. The SHA must be at
+# least 7 hex chars (git's default short-SHA width) and the subject
+# must be parenthesised double-quoted text. The trailing-only `\.?`
+# accommodates the historical `Fixes: ... .` shape some contributors
+# use; otherwise the structure is rigid by design.
+FIXES_SHA_TRAILER_RE = re.compile(r'^[0-9a-fA-F]{7,}\s+\("[^"]+"\)\.?$')
+
+# Issue-ref shapes accepted as alternatives to the kernel-style SHA
+# form: `#123` and `owner/repo#123`.
+GITHUB_ISSUE_REF_RE = re.compile(r"^(?:#\d+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)\.?$")
+
+
+def _is_github_issue_ref(value: str) -> bool:
+    return GITHUB_ISSUE_REF_RE.match(value) is not None
+
+
+def check_first_line_non_blank(block: str) -> None:
+    """Reject a leading blank line at the top of the block.
+
+    The git-commit shape is "subject on the first line, blank line,
+    body" — a leading blank line in the *authored* block means the
+    bot pastes a body whose first line is empty, which renders
+    without a subject in `git log`.
+
+    Template scaffolding is the recognised exception: when the first
+    non-blank line is an HTML comment (`<!-- ... -->`) the contributor
+    is using the PR template's instructional comments and the leading
+    blanks are just visual padding around them. In that case we
+    delegate to ``check_non_empty`` to confirm there is *some* content
+    once the comments are stripped.
+    """
+    raw_lines = block.splitlines()
+    if not raw_lines:
+        return
+    # Find the first non-blank line in the raw (un-stripped) block.
+    first_idx = next(
+        (i for i, line in enumerate(raw_lines) if line.strip()),
+        None,
+    )
+    if first_idx is None:
+        # All-blank block — ``check_non_empty`` owns that error path.
+        return
+    # An HTML comment opener at the first non-blank position means the
+    # contributor is using the PR template's scaffolding; preceding
+    # blank lines are intentional padding around it.
+    if raw_lines[first_idx].lstrip().startswith("<!--"):
+        return
+    if first_idx > 0:
+        raise ValidationError(
+            f"`{MARKER}` block opens with {first_idx} blank line(s) "
+            "before the subject. The first content line must be the "
+            "commit subject so the bot's pasted body renders correctly "
+            "in `git log` — drop the leading blank line(s)."
+        )
+
+
+def check_first_line_not_subject_dup(lines: list[str], title: str | None) -> None:
+    """Reject a body whose first line duplicates the PR title.
+
+    The merge bot pastes the PR title as the squash-merge subject and
+    pastes the block as the body. If the contributor copies the title
+    into the first line of the block, the resulting commit has the
+    subject repeated as the first body line — visually noisy in
+    `git log`, and a sign the contributor didn't realise the title
+    *is* the subject.
+
+    `title` is the PR title (passed via `--title` / env var); a
+    ``None`` value means the validator was not given a title (e.g.
+    when invoked from the `validator-self-test` fixture loop), in
+    which case the check is a no-op.
+    """
+    if title is None or not lines:
+        return
+    title_summary = _strip_title_prefix(title).strip().rstrip(".")
+    first_line = lines[0].strip().rstrip(".")
+    if not title_summary or not first_line:
+        return
+    if first_line.lower() == title_summary.lower():
+        raise ValidationError(
+            f"`{MARKER}` block's first line duplicates the PR title "
+            f"({first_line!r}). The PR title becomes the squash-merge "
+            "subject; drop the duplicate from the body and lead with "
+            "the rationale."
+        )
+
+
+PR_TITLE_PREFIX_RE = re.compile(r"^[A-Za-z]+(?:\([^)]+\))?:\s+")
+
+
+def _strip_title_prefix(title: str) -> str:
+    """Return the post-prefix summary of a PR title for comparison."""
+    match = PR_TITLE_PREFIX_RE.match(title)
+    if match is None:
+        return title
+    return title[match.end() :]
+
+
+def check_fixes_trailer_shape(lines: list[str]) -> None:
+    """Validate `Fixes: <sha> ("subject")` shape when SHA-style is used.
+
+    `Fixes #N` and `Fixes owner/repo#N` (the GitHub-keyword form) are
+    accepted as-is — they're handled by the closing-keyword path in
+    ``parse_trailer_block`` and have nothing to validate beyond the
+    issue ref. The kernel-style `Fixes: <sha> ("subject")` form is
+    structurally distinct and easy to get wrong; the regex insists on
+    a ≥ 7-char hex SHA and a parenthesised double-quoted subject so
+    typos like `Fixes: 9c4f1` (too short) or `Fixes: 9c4f1a2 broken`
+    (no quoted subject) fail loudly.
+    """
+    trailers = parse_trailer_block(lines)
+    for idx, token, value in trailers:
+        if token.lower() != "fixes":
+            continue
+        # Skip the GitHub-keyword form (`Fixes #N` /
+        # `Fixes owner/repo#N`); both the no-colon form (matched by
+        # GITHUB_KEYWORD_RE in parse_trailer_block) and the
+        # `Fixes: #N` colon variant produce a value starting with `#`
+        # or containing `<owner>/<repo>#`. parse_trailer_block already
+        # validated those shapes.
+        if _is_github_issue_ref(value):
+            continue
+        if FIXES_SHA_TRAILER_RE.match(value) is None:
+            raise ValidationError(
+                f"Trailer on line {idx} (`Fixes: {value}`) does not "
+                'match the kernel-style `Fixes: <sha> ("subject")` '
+                "shape. Use a 7+ hex-char SHA followed by a "
+                "parenthesised double-quoted subject, e.g. "
+                '`Fixes: 9c4f1a2b3d5e ("subject of the broken commit")`.'
+            )
+
+
+def validate(body: str, title: str | None = None) -> None:
     block = extract_commit_msg_block(body)
+    check_first_line_non_blank(block)
     lines = block_lines(block)
     check_non_empty(lines)
     check_line_width(lines)
@@ -348,6 +503,68 @@ def validate(body: str) -> None:
     check_breaking_change_position(lines)
     check_trailers(lines)
     check_signoff_present(lines)
+    check_first_line_not_subject_dup(lines, title)
+    check_fixes_trailer_shape(lines)
+
+
+# Inline self-test cases for title-aware checks (currently only
+# subject-dup). Each tuple is (body, title, expect_pass, label).
+# A separate self-test entry point — rather than fixture files — is
+# used because these checks need both a body and a title and the
+# fixture-loop runs title-less.
+_TITLE_AWARE_SELF_TEST_CASES: tuple[tuple[str, str, bool, str], ...] = (
+    (
+        # Failing case: body's first line duplicates the PR title's
+        # post-prefix summary. Bot would paste a commit whose subject
+        # is followed by the same line as the first body line.
+        "==COMMIT_MSG==\n"
+        "Wire the foo into the bar.\n\n"
+        "More rationale.\n\n"
+        "Closes #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n",
+        "feature(foo): wire the foo into the bar",
+        False,
+        "failing-first-line-dup",
+    ),
+    (
+        # Passing case: same body, but the title's summary is genuinely
+        # different from the first body line.
+        "==COMMIT_MSG==\n"
+        "Wire the foo into the bar.\n\n"
+        "More rationale.\n\n"
+        "Closes #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n",
+        "chore(foo): refactor the foo helper",
+        True,
+        "passing-no-dup",
+    ),
+)
+
+
+def _run_title_aware_self_test() -> int:
+    fail = 0
+    for body, title, expect_pass, label in _TITLE_AWARE_SELF_TEST_CASES:
+        try:
+            validate(body, title=title)
+        except ValidationError as err:
+            if expect_pass:
+                print(f"FAIL: {label}: expected pass, got {err}", file=sys.stderr)
+                fail += 1
+            else:
+                print(f"ok: {label}: {err}")
+        else:
+            if expect_pass:
+                print(f"ok: {label}")
+            else:
+                print(f"FAIL: {label}: expected fail, got pass", file=sys.stderr)
+                fail += 1
+    if fail:
+        print(f"{fail} self-test case(s) failed", file=sys.stderr)
+        return 1
+    print(f"all {len(_TITLE_AWARE_SELF_TEST_CASES)} self-test cases passed")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -360,12 +577,38 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "body_path",
         type=Path,
+        nargs="?",
+        default=None,
         help="Path to a file containing the PR body markdown.",
     )
+    parser.add_argument(
+        "--title",
+        default=None,
+        help=(
+            "PR title (the squash-merge subject). When provided, the "
+            "first body line is also checked for duplication of the "
+            "title. Omit to skip that check (used by the fixture "
+            "self-test loop, which has no PR title to compare against)."
+        ),
+    )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help=(
+            "Run the inline title-aware self-test cases instead of "
+            "validating a body file. Covers the rules whose input "
+            "needs both a body and a title (subject-dup) so the "
+            "fixture-loop's title-less invocation does not have to."
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.self_test:
+        return _run_title_aware_self_test()
+    if args.body_path is None:
+        parser.error("body_path is required unless --self-test is given")
     body = args.body_path.read_text(encoding="utf-8")
     try:
-        validate(body)
+        validate(body, title=args.title)
     except ValidationError as err:
         print(f"pr-lint: {err}", file=sys.stderr)
         return 1

@@ -10,15 +10,20 @@ name: PR Lint
 #   1. PR title uses one of the Palantir-style prefixes
 #      (feature | improvement | fix | break | deprecation | migration |
 #      chore), with optional `(scope)`.
-#   2. The PR body contains exactly one well-formed `==COMMIT_MSG==`
+#   2. PR title obeys the prose-style rules from CONTRIBUTING.md
+#      § "Writing release-worthy commits" → "Subject (PR title)":
+#      72-char hard cap, no trailing period, no past-tense opener
+#      (the closed list of `Added` / `Fixed` / `Updated` / etc.).
+#   3. The PR body contains exactly one well-formed `==COMMIT_MSG==`
 #      block (line wrap, no markdown, BREAKING CHANGE positioning,
-#      trailer parsing).
+#      trailer parsing, leading non-blank, no first-line subject
+#      duplication, kernel-style `Fixes: <sha> ("subject")` shape).
 #
-# A separate `validator-self-test` job exercises the validator against
-# the fixtures under `.github/workflows/tests/pr-lint-fixtures/` on
-# every run, so a regression in the validator (e.g. one that exits 0
-# on every input) immediately fails CI rather than silently approving
-# every PR.
+# Separate self-test jobs (`validator-self-test`,
+# `pr-title-self-test`, `pr-body-title-aware-self-test`) exercise the
+# validators against fixtures and inline cases on every run, so a
+# regression in either validator (e.g. one that exits 0 on every
+# input) immediately fails CI rather than silently approving every PR.
 #
 # This workflow runs on `pull_request_target` so the validator
 # operates on the *base ref's* copy of the script — a fork can't
@@ -66,6 +71,32 @@ jobs:
           # keep-sorted end
           requireScope: false
 
+  pr-title-style:
+    name: PR title (subject style)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Pin to the base ref so a fork PR cannot weaken the
+          # validator in the same PR (see workflow-level comment).
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Validate PR title prose style
+        env:
+          # Read the title via env var instead of inlining
+          # ${{ github.event.pull_request.title }} into the run-block —
+          # the env-var path keeps shell expansion off the title and
+          # mirrors the injection-safety pattern of pr-body-commit-msg.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          python3 scripts/validate-pr-title.py "${TITLE:-}"
+
   pr-body-commit-msg:
     name: PR body (==COMMIT_MSG== block)
     runs-on: ubuntu-latest
@@ -84,13 +115,19 @@ jobs:
       - name: Validate ==COMMIT_MSG== block
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+          # Pass the PR title through to the validator so the
+          # subject-dup body rule (CONTRIBUTING.md → "Writing
+          # release-worthy commits") can run. Same env-var pattern as
+          # the body itself for shell-injection safety.
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
           tmp="$(mktemp)"
           # Write the PR body to disk via env var; piping through the
           # shell would let backticks / $(...) in the PR body execute.
           printf '%s' "${PR_BODY:-}" > "${tmp}"
-          python3 scripts/validate-commit-msg-block.py "${tmp}"
+          python3 scripts/validate-commit-msg-block.py "${tmp}" \
+            --title "${PR_TITLE:-}"
 
   validator-self-test:
     name: Validator self-test
@@ -142,3 +179,41 @@ jobs:
           if [[ ${fail} -ne 0 ]]; then
             exit 1
           fi
+
+  pr-title-self-test:
+    name: PR title validator self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Same base-ref pin as the live job: the self-test exercises
+          # the validator the live job will run against.
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Run inline self-test
+        run: |
+          set -euo pipefail
+          python3 scripts/validate-pr-title.py --self-test
+
+  pr-body-title-aware-self-test:
+    name: PR body title-aware validator self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Run inline title-aware self-test
+        run: |
+          set -euo pipefail
+          python3 scripts/validate-commit-msg-block.py --self-test
