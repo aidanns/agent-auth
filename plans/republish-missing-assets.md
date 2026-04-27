@@ -317,9 +317,15 @@ captured by the SECURITY.md notes and (for v0.16.0) by #408.
   semantics mean a malicious dispatch could re-upload assets
   against a tag, but the OIDC-bound cosign signatures and the
   SLSA-generator-runner identity continue to bind to the dispatch
-  run; downstream `cosign verify-blob` / `slsa-verifier` would
-  reject any artefact whose signature does not match the recipe's
-  pinned `--certificate-identity`. No new attack surface.
+  run, and any consumer that uses the re-published-tag recipe in
+  SECURITY.md (or the primary tag-bound recipe) detects the
+  mismatch on `cosign verify-blob` or `slsa-verifier`. Note that
+  re-published assets carry an identity bound to
+  `refs/heads/main`, not to the historical tag — path (a)
+  (closing the asset-count gap) is functional, but consumers must
+  use the `### Re-published tag applicability` recipe in
+  SECURITY.md to verify them; the primary tag-bound recipe will
+  fail closed at the signature check. No new attack surface.
 - **PIR** — N/A; not a vulnerability remediation.
 - **ADRs** — N/A; the trigger addition is a workflow surface
   change. ADR 0044 covers the asset shape; ADR 0026 covers the

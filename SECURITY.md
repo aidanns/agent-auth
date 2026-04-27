@@ -526,16 +526,116 @@ today. It will not match every historical release tag:
   release-publish pipeline silently produced incomplete asset sets
   before [#324](https://github.com/aidanns/agent-auth/issues/324)
   landed. Re-publish is being driven through
-  [#372](https://github.com/aidanns/agent-auth/issues/372); until
-  each affected release page enumerates the full per-package asset
-  set the recipe's `cosign verify-blob` and `slsa-verifier verify-artifact` steps will fail at the missing-asset-download
-  step.
+  [#372](https://github.com/aidanns/agent-auth/issues/372) by firing
+  `release-publish.yml` via `workflow_dispatch` from `main`. While
+  re-publish is in flight, an affected release page will not yet
+  enumerate the full per-package asset set, and the recipe above
+  fails at the missing-asset-download step. Once re-publish
+  completes, the asset set is present but the signature / provenance
+  identities are bound to `refs/heads/main` rather than
+  `refs/tags/<TAG>`; consumers must use the re-published-tag recipe
+  in [Re-published tag applicability](#re-published-tag-applicability)
+  below.
 - **`v0.16.0`** — wheels and sdists are present in the per-package
   layout but versioned `0.0.0+unknown` instead of `0.16.0` (tracked
   as [#408](https://github.com/aidanns/agent-auth/issues/408)). The
   recipe builds filenames like `agent_auth-0.16.0-py3-none-any.whl`,
   which do not exist on this release. Use the next non-affected
-  release (`v0.16.1` or later) once shipped.
+  release (`v0.16.1` or later) once shipped. If `v0.16.0` is later
+  re-published via `workflow_dispatch` to fix #408, the same
+  branch-bound identity caveats from the re-published-tag recipe
+  below apply.
+
+### Re-published tag applicability
+
+Tags re-published via `gh workflow run release-publish.yml -f tag=<TAG>` (the post-merge ops driven by
+[#372](https://github.com/aidanns/agent-auth/issues/372)) inherit
+their cosign keyless identity and their SLSA provenance source-ref
+from the **dispatch ref** — `refs/heads/main` — rather than from the
+historical tag the workflow checks out. This is a property of GitHub
+OIDC's `job_workflow_ref` claim and the SLSA generator's
+`external_parameters.workflow.ref` encoding for `workflow_dispatch`
+runs. Firing `--ref <TAG>` would re-bind both to the tag, but the
+12 affected tags (`v0.11.0..v0.15.3`) predate the addition of
+`workflow_dispatch:` to `release-publish.yml`, so the tag-ref
+dispatch path is not viable for them.
+
+For these re-published assets, the verification recipe above fails
+at the cosign / SLSA signature check. Use this alternate recipe
+instead — it is identical to the recipe above except for the
+identity / source-ref expressions:
+
+```bash
+: "${TAG:?set TAG=vX.Y.Z to the re-published release tag}"
+
+VERSION="${TAG#v}"
+# Re-published tags carry an identity bound to refs/heads/main, not
+# refs/tags/<TAG>. The match must be exact to avoid the regex /
+# unescaped-`.` widening risk that the primary recipe also avoids.
+IDENTITY="https://github.com/aidanns/agent-auth/.github/workflows/release-publish.yml@refs/heads/main"
+
+PACKAGES=(
+  agent_auth
+  agent_auth_common
+  gpg_bridge
+  gpg_cli
+  things_bridge
+  things_cli
+  things_client_cli_applescript
+)
+
+SDISTS=()
+WHEELS=()
+for pkg in "${PACKAGES[@]}"; do
+  SDISTS+=("${pkg}-${VERSION}.tar.gz")
+  WHEELS+=("${pkg}-${VERSION}-py3-none-any.whl")
+done
+
+# 1. cosign verify-blob with the main-bound identity.
+for f in "${SDISTS[@]}" "${WHEELS[@]}"; do
+  for target in "${f}" "${f}.spdx.json"; do
+    cosign verify-blob \
+      --bundle "${target}.sig.bundle" \
+      --certificate-identity "${IDENTITY}" \
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+      "${target}"
+  done
+done
+
+# 2. slsa-verifier with --source-branch main instead of
+#    --source-tag "${TAG}". The provenance encodes the dispatch ref
+#    (refs/heads/main), so a tag-pinned check fails closed.
+for f in "${SDISTS[@]}" "${WHEELS[@]}"; do
+  slsa-verifier verify-artifact \
+    --provenance-path multiple.intoto.jsonl \
+    --source-uri github.com/aidanns/agent-auth \
+    --source-branch main \
+    "${f}"
+done
+
+# 3. Verify each wheel matches the .sha256 sidecar (unchanged).
+for f in "${SDISTS[@]}" "${WHEELS[@]}"; do
+  sha256sum -c "${f}.sha256"
+done
+```
+
+**What this proves, and what it does not.** The branch-bound recipe
+proves that *some* maintainer-authorised `workflow_dispatch` of
+`release-publish.yml` from `main` produced the assets, executing the
+build / sign / SBOM / provenance chain on the GitHub-hosted runner.
+That is strictly weaker than the primary recipe: the primary recipe
+binds the signature and the provenance source-ref to a specific
+historical tag (`refs/tags/vX.Y.Z`), so a verifier can distinguish
+between, say, the `v0.13.0` and `v0.14.0` build runs by their
+identities alone. The re-published recipe cannot — every re-published
+tag in `v0.11.0..v0.15.3` shares the same `…@refs/heads/main`
+identity, and `slsa-verifier --source-branch main` accepts any
+provenance whose source-ref is `refs/heads/main`. Consumers who
+require per-tag-bound verification should source these versions from
+the original (pre-re-publish) signed tags instead, or wait for a
+fresh release cut against the current pipeline. The
+re-published-tag recipe is offered as a best-available verification
+path, not as an equivalent guarantee.
 
 ### Trust boundary and residual risks
 
