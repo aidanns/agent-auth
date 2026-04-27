@@ -81,12 +81,15 @@ on:
         type: number
 
 # `pull-requests: write` is needed to post the `Claude: ...` comment
-# and (via the App token) to call the merge endpoint. NO
-# `contents: write` — the bot does not push commits or tags. NO
-# `id-token: write` — the bot is not on the SLSA-attestation path.
+# and (via the App token) to call the merge endpoint. `contents: write`
+# is needed for the BEHIND-handling auto-update branch — the
+# `PUT /pulls/{n}/update-branch` endpoint requires write access to
+# the repo's contents to push the merge commit that fast-forwards
+# the PR head onto the latest `main`. NO `id-token: write` — the bot
+# is not on the SLSA-attestation path.
 permissions:
   pull-requests: write
-  contents: read
+  contents: write
   checks: read
 
 # Prevent two triggers (label + workflow_run) from racing on the same
@@ -490,9 +493,178 @@ jobs:
             echo "skip=false" >> "${GITHUB_OUTPUT}"
           fi
 
+      # The `main` ruleset enforces `strict_required_status_checks_policy`,
+      # so a PR whose head sits behind `main` cannot merge until its
+      # required checks have re-run on the post-rebase head SHA. The
+      # merge API surfaces this as a 405 the moment the head falls
+      # behind. Detect it here, call `PUT /pulls/{n}/update-branch` to
+      # fast-forward the PR head onto `main` (default merge-method;
+      # equivalent to clicking GitHub's "Update branch" button), and
+      # exit the job cleanly — the resulting new head SHA retriggers
+      # CI, and `workflow_run.completed` then re-fires merge-bot for
+      # the second-pass merge.
+      #
+      # `mergeStateStatus` is re-fetched here rather than reused from
+      # the earlier `meta` step because the value can become stale
+      # over the lifetime of the run (someone could push to `main`
+      # between steps). The fresh read is the source of truth for the
+      # BEHIND decision.
+      #
+      # `mergeStateStatus` UNKNOWN race: when `workflow_run.completed`
+      # fires before GitHub finishes computing the merge state, the
+      # status comes back UNKNOWN. Without polling, the step would
+      # fall through to the merge call and the API would reject a
+      # behind PR with a noisy "GitHub merge API rejected the call"
+      # comment that contradicts the auto-update story. Poll for up
+      # to ~30s (10 attempts × 3s) and bail out cleanly if the value
+      # never resolves — the next CI completion (or any state change
+      # on `main`) will retrigger merge-bot via
+      # `workflow_run.completed`.
+      #
+      # Loop guard: count prior auto-update comments authored by this
+      # App on the same PR *since the most recent push to the PR
+      # head*. If we have already auto-updated three times without
+      # merging, a flapping `main` (or a PR that keeps falling behind
+      # faster than CI completes) is the cause; refuse the fourth
+      # update so the bot stops burning CI cycles and surfaces the
+      # situation to a human. Anchoring the count on the head
+      # commit's `committer.date` makes "push a new commit to reset
+      # the count" the actual recovery path — without the timestamp
+      # filter, every auto-update comment ever posted on the PR
+      # keeps counting and the bot would refuse forever after the
+      # third update. Counting by author + prefix + `created_at`
+      # keeps the count tied to *this* App's auto-updates posted
+      # since the latest push, and ignores arbitrary `Claude: `
+      # comments from human / agent authors.
+      - name: Detect BEHIND and auto-update branch
+        id: behind
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          # `app-slug` is the App's slug (e.g. `agent-auth-merge-bot`);
+          # the matching bot user login is `<slug>[bot]`. Resolved
+          # from the token-mint step rather than at runtime so the
+          # filter doesn't depend on App identity endpoints that
+          # behave inconsistently with installation tokens.
+          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
+        run: |
+          set -euo pipefail
+          # Re-fetch mergeStateStatus + headRefOid so the BEHIND
+          # decision is based on current state, not state from the
+          # earlier `meta` step. Poll for up to ~30s while
+          # mergeStateStatus is UNKNOWN — that's GitHub's "still
+          # computing" sentinel and falling through to the merge
+          # call while it's UNKNOWN produces a misleading failure
+          # comment if the PR is in fact behind.
+          merge_state=""
+          head_sha=""
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            state_payload="$(gh pr view "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json mergeStateStatus,headRefOid)"
+            merge_state="$(jq -r '.mergeStateStatus' <<<"${state_payload}")"
+            head_sha="$(jq -r '.headRefOid' <<<"${state_payload}")"
+            if [[ "${merge_state}" != "UNKNOWN" ]]; then
+              break
+            fi
+            echo "merge-bot: mergeStateStatus=UNKNOWN on attempt ${attempt}; sleeping 3s before retry."
+            sleep 3
+          done
+          if [[ "${merge_state}" == "UNKNOWN" ]]; then
+            echo "merge-bot: mergeStateStatus stayed UNKNOWN after polling; exiting cleanly so workflow_run.completed retriggers."
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --body "Claude: GitHub is still computing merge state — will retry on next workflow_run.completed."
+            # Set behind=true so the merge step is skipped this run.
+            echo "behind=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [[ "${merge_state}" != "BEHIND" ]]; then
+            echo "merge-bot: mergeStateStatus=${merge_state}; not BEHIND, proceeding to merge."
+            echo "behind=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          # Count prior auto-update comments by this App posted
+          # since the most recent push to the PR head. The PR head
+          # commit's `committer.date` is the natural anchor: pushing
+          # a new commit advances it, which makes "push a new commit
+          # to reset the count" actually reset the count. Without
+          # the `created_at >= since` filter, every auto-update
+          # comment ever posted would count forever.
+          #
+          # `--paginate` alone (no `--slurp`) returns concatenated
+          # arrays from each page; piping into `jq -r '.[] | select(...) | .id'`
+          # flattens and filters in a single pass and `wc -l`
+          # counts. `--slurp` was avoided because it requires gh
+          # ≥ 2.50 — a stale gh on a self-hosted runner would
+          # silently flip the JSON shape and the count would always
+          # be 0, bypassing the loop guard. The marker, App login,
+          # and `since` cutoff are passed to jq via `--arg` rather
+          # than templated into the jq program so the embedded
+          # UTF-8 em dash, `;`, and ISO-8601 colons survive shell
+          # quoting verbatim.
+          head_pushed_at="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/commits" \
+            --paginate \
+            --jq '.[].commit.committer.date' \
+            | tail -n 1)"
+          if [[ -z "${head_pushed_at}" ]]; then
+            echo "::error::Could not determine head commit timestamp for PR #${PR_NUMBER}."
+            exit 1
+          fi
+          marker="Claude: Branch was behind main — updated;"
+          prior_updates="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --paginate \
+            | jq -r --arg login "${APP_LOGIN}" \
+                    --arg marker "${marker}" \
+                    --arg since "${head_pushed_at}" \
+                  '.[] | select(.user.login == $login) | select(.body | startswith($marker)) | select(.created_at >= $since) | .id' \
+            | wc -l)"
+          # Strip whitespace from `wc -l` output (some `wc` implementations left-pad).
+          prior_updates="${prior_updates//[[:space:]]/}"
+          echo "merge-bot: prior auto-update count since ${head_pushed_at} = ${prior_updates}"
+          if [[ "${prior_updates}" -ge 3 ]]; then
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --body "Claude: Auto-update loop exceeded — main is moving too fast or this PR keeps falling behind. Investigate manually."
+            echo "::error::Auto-update loop guard tripped after ${prior_updates} prior updates."
+            exit 1
+          fi
+          # Call `PUT /pulls/{n}/update-branch`. Pin `expected_head_sha`
+          # so a contributor push that races us produces a documented
+          # 422 (`expected_head_sha`) rather than us silently
+          # fast-forwarding past their commit. Treat 422 as a clean
+          # exit — the contributor's push will retrigger merge-bot
+          # via `workflow_run.completed` once CI runs against the new
+          # head.
+          if gh api --method PUT \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/update-branch" \
+            -f expected_head_sha="${head_sha}" \
+            > "${RUNNER_TEMP}/update.out" 2> "${RUNNER_TEMP}/update.err"; then
+            echo "merge-bot: branch updated; CI will retrigger and workflow_run.completed will re-fire merge-bot."
+          else
+            err="$(cat "${RUNNER_TEMP}/update.err")"
+            if grep -qi "expected_head_sha" <<<"${err}"; then
+              echo "merge-bot: head SHA advanced under us (contributor push); exiting cleanly."
+              echo "behind=true" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+            echo "::error::update-branch API call failed: ${err}"
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --body "Claude: Cannot merge — \`update-branch\` API rejected the call: ${err}"
+            exit 1
+          fi
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "Claude: Branch was behind main — updated; will retry merge after CI completes."
+          echo "behind=true" >> "${GITHUB_OUTPUT}"
+
       - name: Call PUT /pulls/{n}/merge
         id: merge_call
-        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true' && steps.behind.outputs.behind == 'false'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
