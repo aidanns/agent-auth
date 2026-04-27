@@ -106,30 +106,20 @@ KNOWN_TRAILER_TOKENS = frozenset(
     }
 )
 
-# Patterns that must NOT appear inside the block (rule 3).
+# Patterns that must NOT appear inside the block (rule 3). Each
+# pattern's presence reliably signals reviewer-surface content
+# leaking into the commit body — task checkboxes are the strongest
+# tell of a test plan / deploy checklist; markdown headings are
+# section dividers that belong in `## Review notes`; image embeds
+# are screenshots. Plain bullet / numbered lists used to live here
+# too but the kernel/cbea.ms enumerated-changes form reads better
+# in `git log` than the run-on prose paragraphs authors fell back
+# to under the stricter rule (see #345).
 #
-# The original "no markdown lists" ban (pre-#345) over-rejected:
-# kernel/cbea.ms style commit bodies routinely use plain `-` / `*`
-# bullets — and occasionally `1.` numbered lists — to enumerate
-# related changes, and those forms read better in `git log` than
-# the run-on prose paragraphs that authors fell back to under the
-# stricter rule. The relaxation keeps three narrower structural
-# bans whose presence reliably signals reviewer-surface content
-# (test plans, deploy checklists, screenshots) leaking into the
-# commit body:
-#
-#   - task checkboxes: strongest possible signal of a test plan;
-#   - markdown headings: section dividers belong in `## Review notes`;
-#   - image embeds: screenshots are reviewer-surface artefacts.
-#
-# The list checks (`bullet list item`, `numbered list item`) used
-# to live here too. They were removed in #345.
-#
-# `pattern.search` is used (not `pattern.match`) in `check_no_markdown`
-# so the `image embed` pattern catches a mid-line embed; the
-# heading/checkbox patterns are still anchored at start-of-line
-# (`^`) inside their own regex, so the search-vs-match distinction
-# does not weaken them.
+# `pattern.search` (not `pattern.match`) is used in
+# `check_no_markdown` so the `image embed` pattern catches a
+# mid-line embed; the heading/checkbox patterns are anchored at
+# start-of-line (`^`) inside their own regex regardless.
 DISALLOWED_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("markdown heading", re.compile(r"^#{1,6}\s")),
     ("task checkbox", re.compile(r"^\s*[-*+]\s+\[[ xX]\]\s")),
