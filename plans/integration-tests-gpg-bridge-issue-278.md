@@ -97,7 +97,7 @@ asserting a different fingerprint returns 403.
 
 ## Compose topology
 
-`docker/docker-compose.yaml` gains:
+`docker/docker-compose.yml` gains:
 
 ```yaml
 gpg-bridge:
@@ -211,7 +211,7 @@ on macOS where `gpg` may not be installed).
   `_resolve_test_image_tags` to cover them. Add `GpgBridgeStack`,
   `gpg_bridge_stack_factory`, `gpg_bridge_stack`, `GpgCliInvoker`
   helpers.
-- `docker/docker-compose.yaml` — add `gpg-bridge` and `gpg-cli`
+- `docker/docker-compose.yml` — add `gpg-bridge` and `gpg-cli`
   services + `gpg_bridge_config` block.
 - `docker/Dockerfile.gpg-bridge.test` — bridge + backend + gpg + key.
 - `docker/Dockerfile.gpg-cli.test` — gpg-cli only (no key material).
@@ -284,7 +284,7 @@ strategy and the single-image rationale.
 ## Implementation sequence
 
 1. Plan committed (this file).
-2. Add the two Dockerfiles and the `docker-compose.yaml` gpg
+2. Add the two Dockerfiles and the `docker-compose.yml` gpg
    service + config block.
 3. Extend `tests_support/integration` plugin and support to know
    about gpg images.

@@ -63,7 +63,7 @@ Document in ADR 0006.
 ## Files to change
 
 1. `src/agent_auth/server.py` — add 5 handler methods + route entries
-2. `design/functional_decomposition.yaml` — add 5 leaf functions under HTTP API
+2. `design/functional_decomposition.yml` — add 5 leaf functions under HTTP API
 3. `tests/test_server.py` — unit tests for each new endpoint (happy path + errors)
 4. `tests/integration/test_token_management.py` — Docker integration tests
 5. `scripts/verify-token-cli-http-parity.sh` — CLI→HTTP route mapping regression check (project-specific)

@@ -106,8 +106,8 @@ intentionally skipped (same rationale as
   formatting and sorted-block annotations are developer tooling, not a
   behavioural component of `agent-auth`, `things-bridge`, or the CLI
   clients. They do not appear in `design/DESIGN.md`,
-  `design/functional_decomposition.yaml`, or
-  `design/product_breakdown.yaml`, and do not need to.
+  `design/functional_decomposition.yml`, or
+  `design/product_breakdown.yml`, and do not need to.
 - *Threat model / cybersecurity standard compliance* — no change to
   any running service's attack surface, keys, or data flow. These
   tools run at developer-time and CI-time only.

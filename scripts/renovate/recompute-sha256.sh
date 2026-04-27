@@ -6,7 +6,7 @@
 
 # Renovate postUpgradeTask helper: fetch the linux x86_64 release asset
 # for a freshly-bumped tool and rewrite the sibling `sha256_linux_x86_64`
-# field in .github/tool-versions.yaml. Invoked as:
+# field in .github/tool-versions.yml. Invoked as:
 #
 #   bash scripts/renovate/recompute-sha256.sh <depName> <newVersion>
 #
@@ -14,7 +14,7 @@
 # the manifest key and the asset URL are derived from it per the case
 # statement below.
 #
-# Tools pinned in tool-versions.yaml that have no sha256 field
+# Tools pinned in tool-versions.yml that have no sha256 field
 # (go-task, uv, mdformat*) are no-ops — Renovate bumps the version
 # alone.
 #
@@ -32,7 +32,7 @@ fi
 
 dep_name="$1"
 new_version="$2"
-manifest=".github/tool-versions.yaml"
+manifest=".github/tool-versions.yml"
 
 # Map a Renovate depName / manifest key to:
 #   1. The manifest key to update.

@@ -17,5 +17,5 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 systems-engineering function verify \
-  "${REPO_ROOT}/design/functional_decomposition.yaml" \
+  "${REPO_ROOT}/design/functional_decomposition.yml" \
   --test-directory "${REPO_ROOT}"

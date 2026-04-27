@@ -31,7 +31,7 @@ services:
       - "127.0.0.1::9100"
     volumes:
       # Per-test tmpdir holding config.yaml. The fixture copies
-      # docker/config.test.yaml here and applies any per-test overrides
+      # docker/config.test.yml here and applies any per-test overrides
       # (TTLs, notifier URL) before starting the container.
       - ${AGENT_AUTH_TEST_CONFIG_DIR}:/home/agent-auth/.config/agent-auth:ro
     depends_on:

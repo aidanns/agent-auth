@@ -33,7 +33,7 @@ pre-commit:
       # Narrow to file types that currently carry keep-sorted annotations plus
       # common text formats. CI (scripts/lint.sh) scans every tracked file, so
       # new annotations in uncovered types are still caught there.
-      glob: "{*.toml,*.sh,*.yml,*.yaml,*.md,*.py,.gitignore}"
+      glob: "{*.toml,*.sh,*.yml,*.md,*.py,.gitignore}"
       run: keep-sorted --mode=lint {staged_files}
     ripsecrets:
       # Scan staged content for accidentally-committed secrets. Runs on every

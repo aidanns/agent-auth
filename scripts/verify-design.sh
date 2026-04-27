@@ -6,11 +6,11 @@
 
 # Verify the design directory:
 #
-#   1. Every leaf function in functional_decomposition.yaml is allocated
-#      within product_breakdown.yaml (systems-engineering product verify).
+#   1. Every leaf function in functional_decomposition.yml is allocated
+#      within product_breakdown.yml (systems-engineering product verify).
 #   2. The rendered variants (.md, .csv, .d2, .png, .svg) match what
-#      scripts/design-generate.sh produces from the yaml — catches the
-#      "yaml updated, sibling artefacts forgotten" class of drift flagged
+#      scripts/design-generate.sh produces from the yml — catches the
+#      "yml updated, sibling artefacts forgotten" class of drift flagged
 #      in issue #141.
 
 set -euo pipefail
@@ -19,8 +19,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 systems-engineering product verify \
-  -p "${REPO_ROOT}/design/product_breakdown.yaml" \
-  -f "${REPO_ROOT}/design/functional_decomposition.yaml"
+  -p "${REPO_ROOT}/design/product_breakdown.yml" \
+  -f "${REPO_ROOT}/design/functional_decomposition.yml"
 
 # Regenerate the rendered variants into the worktree and assert the
 # checked-in files match. `git diff --exit-code` exits 1 on any diff,
@@ -38,9 +38,9 @@ systems-engineering product verify \
 cd "${REPO_ROOT}"
 "${SCRIPT_DIR}/design-generate.sh" >/dev/null
 if ! git diff --exit-code -- design/ ':(exclude)design/*.png'; then
-  echo "verify-design: design/ artefacts are out of date with functional_decomposition.yaml / product_breakdown.yaml." >&2
+  echo "verify-design: design/ artefacts are out of date with functional_decomposition.yml / product_breakdown.yml." >&2
   echo "  Run 'task design:generate' and commit the result. See issue #141." >&2
   exit 1
 fi
 
-echo "verify-design: functional decomposition allocation checks pass and rendered design/ artefacts match the yaml (PNG excluded — see script comment)."
+echo "verify-design: functional decomposition allocation checks pass and rendered design/ artefacts match the yml (PNG excluded — see script comment)."

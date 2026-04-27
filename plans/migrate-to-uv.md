@@ -73,8 +73,8 @@ intentionally skipped:
 
 - *Verify implementation against design doc* — tooling migration;
   no behavioural change to the `agent-auth` service, no schema change,
-  no appearance in `design/DESIGN.md`, `functional_decomposition.yaml`,
-  or `product_breakdown.yaml`.
+  no appearance in `design/DESIGN.md`, `functional_decomposition.yml`,
+  or `product_breakdown.yml`.
 - *Threat model / cybersecurity standard compliance* — no change to
   the running service's attack surface. The resolver changes at
   developer-machine and CI time; no new code runs in-process for the

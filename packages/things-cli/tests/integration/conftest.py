@@ -22,7 +22,7 @@ test runner needs to read the rendered file back, but any secrets it
 contains were generated in-test and live and die with the fixture).
 
 Stack pinning: this fixture inherits its Compose topology from
-``docker/docker-compose.yaml`` via the imported ``ThingsBridgeStack`` —
+``docker/docker-compose.yml`` via the imported ``ThingsBridgeStack`` —
 the ``things-cli`` service is defined alongside ``agent-auth`` and
 ``things-bridge`` in that file and launched per-test via
 ``docker compose run --rm things-cli``. ``StartedCluster.file_args()``

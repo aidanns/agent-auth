@@ -14,7 +14,7 @@ runs:
   using: composite
   steps:
     # Single source of truth for every pinned tool version lives in
-    # .github/tool-versions.yaml. Emit one step output per value this
+    # .github/tool-versions.yml. Emit one step output per value this
     # composite action consumes so downstream install steps reference
     # the manifest rather than duplicating literals. yq is pre-installed
     # on GitHub-hosted runner images.
@@ -22,7 +22,7 @@ runs:
       id: versions
       shell: bash
       env:
-        MANIFEST: .github/tool-versions.yaml
+        MANIFEST: .github/tool-versions.yml
       run: |
         set -euo pipefail
         emit() {

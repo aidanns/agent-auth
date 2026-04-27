@@ -124,8 +124,8 @@ Per `.claude/instructions/plan-template.md`:
 - **Verify implementation against design doc** — mostly not
   applicable. This change is release-infrastructure, not a
   behavioural change to the agent-auth service. No updates to
-  `design/DESIGN.md`, `functional_decomposition.yaml`, or
-  `product_breakdown.yaml` are required. The ADR captures the
+  `design/DESIGN.md`, `functional_decomposition.yml`, or
+  `product_breakdown.yml` are required. The ADR captures the
   design rationale.
 - **Threat model** — SBOM + signatures *are* part of the supply-
   chain threat model. Add a short subsection to `SECURITY.md` on

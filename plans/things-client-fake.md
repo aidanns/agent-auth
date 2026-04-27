@@ -73,7 +73,7 @@ New module `src/things_bridge/fake.py`:
   module already uses) and builds the store. Tolerates missing optional
   dataclass fields.
 
-Fixtures YAML (`examples/fake-things.yaml`):
+Fixtures YAML (`examples/fake-things.yml`):
 
 ```yaml
 areas:
@@ -244,7 +244,7 @@ Two issues will be opened immediately after this change lands.
 
 - `src/things_bridge/fake.py` — `FakeThingsStore`, `FakeThingsClient`,
   `load_fake_store`.
-- `examples/fake-things.yaml` — seed fixtures for devcontainer use.
+- `examples/fake-things.yml` — seed fixtures for devcontainer use.
 - `tests/test_things_bridge_fake.py` — unit tests for the fake client.
 - `tests/test_things_bridge_e2e.py` — end-to-end through HTTP.
 - `design/decisions/0001-things-client-fake.md` — ADR.
@@ -266,7 +266,7 @@ Two issues will be opened immediately after this change lands.
 - `CLAUDE.md` — one-line mention of the flag under "Project-specific
   notes".
 - `design/DESIGN.md` — note the test-only fake and its scope.
-- `design/functional_decomposition.yaml` / `.md` / `.d2` — add a leaf
+- `design/functional_decomposition.yml` / `.md` / `.d2` — add a leaf
   under `things-bridge` for `Fake Things Client` so function-to-test
   traceability holds.
 - `tests/conftest.py` — promote agent-auth's existing `tmp_dir` /
@@ -312,7 +312,7 @@ pytest tests/test_things_bridge_fake.py tests/test_things_bridge_e2e.py -v
 
 # Full stack runs manually
 agent-auth serve &
-things-bridge serve --fake-things=examples/fake-things.yaml &
+things-bridge serve --fake-things=examples/fake-things.yml &
 things-cli login --bridge-url http://127.0.0.1:9200 \
     --auth-url http://127.0.0.1:9100 --family-id <id>
 things-cli todos list
@@ -323,5 +323,5 @@ things-cli areas list
 ```
 
 Each of the last five commands returns JSON/TTY output seeded from
-`examples/fake-things.yaml`, with no `osascript: command not found` or
+`examples/fake-things.yml`, with no `osascript: command not found` or
 `ThingsPermissionError` anywhere in the logs.

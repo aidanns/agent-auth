@@ -5,9 +5,9 @@
 """Contract tests for the published OpenAPI specs.
 
 Keeps the per-service OpenAPI specs
-(``packages/agent-auth/openapi/agent-auth.v1.yaml``,
-``packages/things-bridge/openapi/things-bridge.v1.yaml``,
-``packages/gpg-bridge/openapi/gpg-bridge.v1.yaml``) in lockstep with
+(``packages/agent-auth/openapi/agent-auth.v1.yml``,
+``packages/things-bridge/openapi/things-bridge.v1.yml``,
+``packages/gpg-bridge/openapi/gpg-bridge.v1.yml``) in lockstep with
 the server implementations:
 
 - Every route registered by ``AgentAuthHandler.do_GET`` /
@@ -33,11 +33,9 @@ from gpg_bridge import server as gpg_bridge_server
 from things_bridge import server as things_bridge_server
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_AGENT_AUTH_SPEC = _REPO_ROOT / "packages" / "agent-auth" / "openapi" / "agent-auth.v1.yaml"
-_THINGS_BRIDGE_SPEC = (
-    _REPO_ROOT / "packages" / "things-bridge" / "openapi" / "things-bridge.v1.yaml"
-)
-_GPG_BRIDGE_SPEC = _REPO_ROOT / "packages" / "gpg-bridge" / "openapi" / "gpg-bridge.v1.yaml"
+_AGENT_AUTH_SPEC = _REPO_ROOT / "packages" / "agent-auth" / "openapi" / "agent-auth.v1.yml"
+_THINGS_BRIDGE_SPEC = _REPO_ROOT / "packages" / "things-bridge" / "openapi" / "things-bridge.v1.yml"
+_GPG_BRIDGE_SPEC = _REPO_ROOT / "packages" / "gpg-bridge" / "openapi" / "gpg-bridge.v1.yml"
 
 # Pattern used to extract string literals from source — matches paths on
 # ``self.path == "..."``, ``path == "..."``, ``path.startswith("...")``,
@@ -115,11 +113,11 @@ def test_agent_auth_routes_match_spec():
     stale_in_spec = spec_paths - server_paths
 
     assert not missing_from_spec, (
-        "agent-auth routes missing from packages/agent-auth/openapi/agent-auth.v1.yaml: "
+        "agent-auth routes missing from packages/agent-auth/openapi/agent-auth.v1.yml: "
         f"{missing_from_spec}"
     )
     assert not stale_in_spec, (
-        "packages/agent-auth/openapi/agent-auth.v1.yaml has stale entries not served by "
+        "packages/agent-auth/openapi/agent-auth.v1.yml has stale entries not served by "
         f"agent-auth: {stale_in_spec}"
     )
 
@@ -136,11 +134,11 @@ def test_things_bridge_routes_match_spec():
     stale_in_spec = spec_paths - server_paths
 
     assert not missing_from_spec, (
-        "things-bridge routes missing from packages/things-bridge/openapi/things-bridge.v1.yaml: "
+        "things-bridge routes missing from packages/things-bridge/openapi/things-bridge.v1.yml: "
         f"{missing_from_spec}"
     )
     assert not stale_in_spec, (
-        "packages/things-bridge/openapi/things-bridge.v1.yaml has stale entries not served by "
+        "packages/things-bridge/openapi/things-bridge.v1.yml has stale entries not served by "
         f"things-bridge: {stale_in_spec}"
     )
 
@@ -155,11 +153,11 @@ def test_gpg_bridge_routes_match_spec():
     stale_in_spec = spec_paths - server_paths
 
     assert not missing_from_spec, (
-        "gpg-bridge routes missing from packages/gpg-bridge/openapi/gpg-bridge.v1.yaml: "
+        "gpg-bridge routes missing from packages/gpg-bridge/openapi/gpg-bridge.v1.yml: "
         f"{missing_from_spec}"
     )
     assert not stale_in_spec, (
-        "packages/gpg-bridge/openapi/gpg-bridge.v1.yaml has stale entries not served by "
+        "packages/gpg-bridge/openapi/gpg-bridge.v1.yml has stale entries not served by "
         f"gpg-bridge: {stale_in_spec}"
     )
 

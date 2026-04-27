@@ -80,9 +80,9 @@ The following artefacts are kept current as the system evolves:
 - `design/ASSURANCE.md` — this file.
 - `design/decisions/` — ADR per significant decision, indexed by
   `design/decisions/README.md`.
-- `design/functional_decomposition.yaml` — functions traceable to
+- `design/functional_decomposition.yml` — functions traceable to
   tests.
-- `design/product_breakdown.yaml` — components and deliverables.
+- `design/product_breakdown.yml` — components and deliverables.
 - `CHANGELOG.md` — keep-a-changelog entries per release.
 - `plans/<feature>.md` — implementation plans for every non-trivial
   change.

@@ -94,7 +94,7 @@ Response body (JSON):
 - `src/agent_auth/server.py` — drop `load_plugin` import; build an
   `ApprovalClient` from config and pass it to `ApprovalManager`.
 - `pyproject.toml` — add `agent-auth-notifier` script entry.
-- `docker/config.test.yaml` — use URL-based config.
+- `docker/config.test.yml` — use URL-based config.
 - `docker/docker-compose*.yaml`, `docker/Dockerfile*` — launch
   `tests_support.notifier` sidecar in the integration container.
 - `tests/integration/conftest.py` — switch `APPROVAL_PLUGINS` to

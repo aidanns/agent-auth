@@ -28,9 +28,9 @@ policy goes into `design/DESIGN.md`. The threat model is unaffected.
 **Files changed:**
 
 - `src/agent_auth/config.py`: switch to `yaml.safe_load("config.yaml")`, drop `import json`
-- `docker/config.test.json` → `docker/config.test.yaml`: rename + convert to YAML
+- `docker/config.test.json` → `docker/config.test.yml`: rename + convert to YAML
 - `tests/integration/conftest.py`: update `BASELINE_CONFIG`, `_write_test_config` to read/write YAML
-- `docker/docker-compose.yaml`: fix comment
+- `docker/docker-compose.yml`: fix comment
 - `tests/test_config.py`: ensure tests remain green
 - `README.md`, `CLAUDE.md`: update references from `config.json` → `config.yaml`
 

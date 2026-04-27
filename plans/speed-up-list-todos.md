@@ -241,7 +241,7 @@ regressions in the bridge HTTP layer, CLI, or server tests.
   a short bullet that says "prefer `<property> of every to do of <scope>`
   over `repeat with t in (every to do of <scope>)` to cut per-property
   round-trips by a factor of N".
-- `design/functional_decomposition.yaml` / `product_breakdown.yaml` —
+- `design/functional_decomposition.yml` / `product_breakdown.yml` —
   scan for a node documenting the Things read shape. Expected: none.
 
 ## Plan commit
