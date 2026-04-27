@@ -38,7 +38,9 @@ jobs:
           enable-cache: true
 
       - name: Build sdist and wheel
-        run: uv build
+        # Single source of truth shared with `release-dryrun.yml`. See
+        # `scripts/build-release-artifacts.sh` and issue #325.
+        run: scripts/build-release-artifacts.sh
 
       - name: Resolve artefact filenames
         id: artefacts
@@ -101,9 +103,21 @@ jobs:
           cd "$(dirname "${SDIST}")"
           echo "hashes=$(sha256sum "$(basename "${SDIST}")" "$(basename "${WHEEL}")" | base64 -w0)" >> "${GITHUB_OUTPUT}"
 
+      # Mint an App installation token so the asset-upload events show
+      # `agent-auth-release-bot[bot]` as the actor in the audit trail and
+      # release timeline, matching release-pr.yml and release-tag.yml.
+      # The App's `contents: write` installation permission covers the
+      # `gh release upload` call (no workflow-level perms change needed).
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
       - name: Upload artefacts to GitHub release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TAG: ${{ github.ref_name }}
           SDIST: ${{ steps.artefacts.outputs.sdist }}
           WHEEL: ${{ steps.artefacts.outputs.wheel }}
@@ -142,3 +156,82 @@ jobs:
     with:
       base64-subjects: ${{ needs.publish.outputs.hashes }}
       upload-assets: true
+
+  # Post-publish smoke test (#325). Enumerates the assets actually
+  # attached to the GitHub release and fails the workflow if any
+  # category is missing. Catches the silent-drop failure mode where
+  # the build succeeds but an upload step regresses (e.g. a
+  # `gh release upload` flag change, a permissions tightening, a typo
+  # in the asset list). The full asset set lives in `publish` and the
+  # SLSA `multiple.intoto.jsonl` lives in `provenance`, so this job
+  # gates on both.
+  #
+  # Today the expected set is one entry per category (one wheel + one
+  # sdist + their SBOMs + a cosign bundle for each signed file + one
+  # SLSA provenance file). Issue #324 multiplies the wheel/sdist/SBOM/
+  # cosign categories per workspace member; when that lands, tighten
+  # the asserts below to enumerate per-package names.
+  verify-assets:
+    needs: [publish, provenance]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Verify expected release assets are uploaded
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # `gh release view --json assets` returns one record per
+          # uploaded asset. The publish + provenance jobs upload in
+          # different steps; with both jobs in `needs:` GitHub blocks
+          # this job until they finish, so the asset set is final by
+          # the time we read it.
+          assets="$(gh release view "${TAG}" --json assets --jq '[.assets[].name]')"
+
+          # `count <jq-filter>` returns the number of asset names
+          # matching the filter. ``test`` lets us match by suffix;
+          # `endswith` is sufficient because every asset name ends in
+          # the category-defining suffix (`.whl`, `.tar.gz`,
+          # `.spdx.json`, `.sig.bundle`, `.intoto.jsonl`).
+          count() {
+            jq -r "[.[] | select($1)] | length" <<<"${assets}"
+          }
+
+          wheels="$(count 'endswith(".whl")')"
+          sdists="$(count 'endswith(".tar.gz")')"
+          # SBOM files end in `.spdx.json`; cosign bundles end in
+          # `.sig.bundle` and may sign either an artefact or its SBOM.
+          sboms="$(count 'endswith(".spdx.json")')"
+          cosign_bundles="$(count 'endswith(".sig.bundle")')"
+          # SLSA provenance comes from the reusable generator as a
+          # single `multiple.intoto.jsonl` file (one per release).
+          slsa="$(count 'endswith(".intoto.jsonl")')"
+
+          echo "Release ${TAG} assets:"
+          echo "  wheels=${wheels} sdists=${sdists} sboms=${sboms}"
+          echo "  cosign_bundles=${cosign_bundles} slsa=${slsa}"
+          echo "Asset list:"
+          jq -r '.[]' <<<"${assets}" | sed 's/^/  /'
+
+          fail=0
+          # Today (workspace-root build): 1 wheel + 1 sdist = 2 source
+          # artefacts; one SBOM each = 2; cosign signs all 4 of those
+          # = 4 bundles; SLSA = 1 file. The thresholds use `-ge` rather
+          # than `-eq` because issue #324's per-package build will
+          # multiply every count by the workspace-member count once it
+          # lands; tightening to `-eq` here would make this gate fail
+          # the moment that PR merges. The trade-off is that the gate
+          # won't catch a future regression that *over*-uploads (e.g.
+          # a flag change duplicates an asset). Revisit and tighten
+          # once #324 settles and the per-package count is stable.
+          [[ "${wheels}" -ge 1 ]] || { echo "::error::no .whl asset on release ${TAG}"; fail=1; }
+          [[ "${sdists}" -ge 1 ]] || { echo "::error::no .tar.gz sdist asset on release ${TAG}"; fail=1; }
+          [[ "${sboms}" -ge 2 ]] || { echo "::error::expected at least 2 .spdx.json SBOMs (sdist + wheel), got ${sboms}"; fail=1; }
+          [[ "${cosign_bundles}" -ge 4 ]] || { echo "::error::expected at least 4 .sig.bundle cosign signatures (sdist + wheel + 2 SBOMs), got ${cosign_bundles}"; fail=1; }
+          [[ "${slsa}" -ge 1 ]] || { echo "::error::missing SLSA provenance (multiple.intoto.jsonl) on release ${TAG}"; fail=1; }
+
+          exit "${fail}"

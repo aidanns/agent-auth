@@ -647,10 +647,96 @@ the `validator-self-test` job exercises the validator against
 fixtures so a regression in the validator can never silently approve
 PRs.
 
-#### Worked example
+#### Writing release-worthy commits
 
-A PR that adds a feature, references a tracking issue, and notes a
-breaking change for reviewer attention:
+The structural rules above (prefix allowlist, `==COMMIT_MSG==` block
+shape, trailer parsing) cover *what* may appear in the squash-merge
+commit. The prose rules below cover *how* to write it. They apply to
+every PR title and every `==COMMIT_MSG==` block, not just user-visible
+changes — `chore:` commits enter `git log` too and a future bisect
+will read them. The conventions are an explicit project codification
+of two well-established traditions: the
+[Tim Pope / Chris Beams seven rules](https://cbea.ms/git-commit/) and
+the [Linux kernel patch-submission guide](https://docs.kernel.org/process/submitting-patches.html).
+
+The rules sit alongside
+[ADR 0037](design/decisions/0037-palantir-commit-prefixes-and-commit-msg-block.md)
+rather than superseding it: ADR 0037 defines the prefix allowlist and
+the block structure, this section defines the prose inside.
+
+##### Subject (PR title)
+
+- **Imperative mood.** "Wire the gpg-bridge probe into health", not
+  "Wired …" / "Wires …" / "Wiring …". The convention reads as
+  "*if applied, this commit will <subject>*" — the test Pope's rules
+  use, and the form `git revert` and `git merge` already use when
+  generating subjects automatically.
+- **No trailing period.** The subject is a fragment, not a sentence;
+  the period adds a character without adding meaning.
+- **Lowercase summary after the colon.** This is a deliberate
+  deviation from cbea rule #3 (which says capitalize). The
+  conventional-commits ecosystem (and `semantic-release`,
+  `commitlint`, every Conventional Commits parser) treats the
+  post-colon summary as a single lowercase fragment — capitalizing it
+  produces inconsistent rendering downstream and reads oddly next to
+  the lowercase prefix.
+- **Length: 50-char soft target on the *summary*, 72-char hard cap
+  on the *full* subject.** The cbea 50-char limit on the full subject
+  line is impractical with `improvement(setup-devcontainer-signing):`
+  style prefixes — the prefix alone eats the budget. The 50-char soft
+  target is therefore measured on the post-prefix summary; the
+  72-char hard cap (CI-enforced separately) is on the full title
+  including the prefix and is the immutable line.
+
+##### Body (`==COMMIT_MSG==` block)
+
+- **One logical change per PR.** Linux kernel rule. If the body
+  needs more than three short paragraphs to justify itself, the diff
+  is probably doing more than one thing — split into separate PRs
+  unless the changes are genuinely inseparable. A future bisect
+  lands on a single commit; a commit that does five things forces
+  the bisecting reader to manually unpick which sub-change broke
+  the build.
+- **Lead with *why*, not *how*.** The diff already shows how. The
+  body's job is to justify the change to a reader six months from
+  now who's lost the immediate context: what observable behaviour
+  motivated this, what alternatives were considered, what
+  trade-offs were taken. A commit message that recapitulates the
+  diff in English adds nothing.
+- **`fix:` PRs include observable symptoms.** Log lines, stack
+  traces, error messages, repro steps — anything a future bisecting
+  engineer might paste into `git log --grep` while hunting the
+  same symptom. This is also what backport / distro maintainers
+  read when deciding whether a fix applies to their tree.
+- **Wrap at 72 characters.** Already enforced by
+  `scripts/validate-commit-msg-block.py`. `git log` and most
+  terminal viewers display 80-column commit bodies with a 4-space
+  indent, so 72 is the safe wrap.
+
+##### Trailers
+
+The `==COMMIT_MSG==` block accepts the following trailers (see
+`KNOWN_TRAILER_TOKENS` in
+[`scripts/validate-commit-msg-block.py`](scripts/validate-commit-msg-block.py)).
+Unknown tokens are rejected to fail closed on typos like
+`Singed-off-by:` or `Cosed: #1`.
+
+| Trailer                                  | Purpose                                                                                                                                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Signed-off-by: <name> <email>`          | DCO sign-off. Required on every PR — `git commit -s` adds it; the [DCO workflow](.github/workflows/dco.yml) enforces it.                                                              |
+| `Closes #N` / `Fixes #N` / `Resolves #N` | Link a GitHub issue. The merge bot pastes the block as the squash-merge body, so GitHub closes the linked issue when the PR merges. All three spellings work.                         |
+| `Fixes: <sha> ("subject")`               | Kernel-style: this commit fixes a previously merged commit. Use when a regression hunt has identified the introducing commit so a future bisect of the same regression finds the fix. |
+| `Reviewed-by: <name> <email>`            | Reviewer attribution. Useful when the review trail merits explicit credit (security review, external contributor with deep context).                                                  |
+| `Reported-by: <name> <email>`            | Bug reporter attribution. Useful for fixes that originated as an external bug report.                                                                                                 |
+| `Tested-by: <name> <email>`              | Testing attribution. Useful when someone other than the author validated the fix in their environment.                                                                                |
+| `Acked-by: <name> <email>`               | Maintainer / owner ack on a change that crosses ownership boundaries.                                                                                                                 |
+| `Co-authored-by: <name> <email>`         | Joint authorship. GitHub renders multiple authors on the squash-merge commit.                                                                                                         |
+| `BREAKING CHANGE: <text>`                | Footer that surfaces a backwards-incompatible change in the release notes; pair with the `break:` PR-title prefix. Must be the last non-`Signed-off-by:` line in the block.           |
+| `Refs: <ref>`                            | Generic forward / back reference (issue, ADR, RFC) when none of the above fit.                                                                                                        |
+
+#### Worked examples
+
+A PR that adds a feature and references a tracking issue:
 
 ```markdown
 ==COMMIT_MSG==
@@ -680,6 +766,44 @@ Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>
 ```
 
 PR title for that example: `feature(agent-auth): expose gpg-bridge probe in /health`.
+
+A `fix:` PR for a regression — note the symptoms paragraph (the log
+line a future searcher would paste into `git log --grep`) and the
+`Fixes: <sha>` trailer that points back at the introducing commit:
+
+```markdown
+==COMMIT_MSG==
+Constant-time the HMAC comparison in parse_token.
+
+The previous implementation used `==` to compare the candidate HMAC
+against the stored one, exposing a timing oracle that leaks bytes of
+the signing key under repeated probing. Switch to `hmac.compare_digest`
+so the comparison takes the same number of cycles regardless of
+which byte differs.
+
+Symptoms: tokens minted before the regression keep validating, but
+`agent-auth audit list` shows a burst of `signature_mismatch` rows
+with steadily increasing matching prefix length when run against a
+probing client.
+
+Repro: `task agent-auth -- token validate $(cat /tmp/probe-token)`
+in a tight loop with a candidate token whose first byte matches.
+
+Fixes: 9c4f1a2b3d5e ("improvement(tokens): inline parse_token hot path")
+Closes #456
+Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>
+==COMMIT_MSG==
+
+## Review notes
+
+### Test plan
+
+- [ ] `task test -- packages/agent-auth/tests/test_tokens.py`
+- [ ] `task mutation-test` — confirms the new comparison kills the
+      previously-surviving `==` -> `!=` mutant.
+```
+
+PR title for that example: `fix(tokens): use constant-time HMAC comparison`.
 
 A `chore:` PR (no release entry) follows the same shape — the
 `==COMMIT_MSG==` block still records the rationale even though no
@@ -734,7 +858,11 @@ label or hand-editing the block before the merge.
 
 Maintainer setup of the merge-bot GitHub App is documented in
 [`docs/release/merge-bot-setup.md`](docs/release/merge-bot-setup.md).
-The interim maintainer-paste mechanics that pre-dated the bot are
+The cross-cutting bring-up checklist for all three release-automation
+bots (changelog, merge, release) and the bypass-actor policy that
+applies to the `main` ruleset are documented in
+[`docs/release/bots-overview.md`](docs/release/bots-overview.md). The
+interim maintainer-paste mechanics that pre-dated the merge bot are
 preserved in
 [`docs/release/rollout-pr-template.md`](docs/release/rollout-pr-template.md)
 for historical reference.

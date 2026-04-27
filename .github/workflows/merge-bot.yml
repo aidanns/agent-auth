@@ -113,6 +113,44 @@ jobs:
       || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
       || github.event_name == 'workflow_dispatch'
     steps:
+      # Distinguish two configuration states before minting the App
+      # token, since `actions/create-github-app-token` throws an opaque
+      # `Parameter token or opts.auth is required` when either secret
+      # is missing. The decision tree:
+      #   - Neither secret set: treat as first-time setup (e.g. fork,
+      #     or the PR that initially adds this workflow). Emit a
+      #     `::notice::` pointing at the setup doc and skip the rest
+      #     of the job. Same shape as changelog-bot.yml's guard.
+      #   - Both set: proceed.
+      #   - Exactly one set: partial / broken configuration in a live
+      #     deployment (a secret was renamed or deleted). Emit a
+      #     `::error::` so the cause is obvious in the run log, and
+      #     fail the job non-zero so the misconfiguration is loud.
+      - name: Check secrets are configured
+        id: secrets-check
+        env:
+          APP_ID: ${{ secrets.MERGE_BOT_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APP_ID:-}" && -z "${PRIVATE_KEY:-}" ]]; then
+            echo "::notice::MERGE_BOT_APP_ID / MERGE_BOT_PRIVATE_KEY secrets are not set; skipping merge-bot run."
+            echo "::notice::See docs/release/merge-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+          elif [[ -n "${APP_ID:-}" && -n "${PRIVATE_KEY:-}" ]]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          else
+            if [[ -z "${APP_ID:-}" ]]; then
+              missing="MERGE_BOT_APP_ID"
+            else
+              missing="MERGE_BOT_PRIVATE_KEY"
+            fi
+            echo "::error::${missing} secret is not set but the other merge-bot secret is; this is a partial / broken configuration."
+            echo "::error::See docs/release/merge-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            exit 1
+          fi
+
       # The merge call needs to satisfy the `main` ruleset's
       # `required_status_checks` administration. The default
       # GITHUB_TOKEN is the workflow's ephemeral identity and cannot
@@ -120,6 +158,7 @@ jobs:
       # GitHub App can. Setup: docs/release/merge-bot-setup.md.
       - name: Mint merge-bot App token
         id: app-token
+        if: steps.secrets-check.outputs.configured == 'true'
         # Pinned by SHA per .claude/instructions/tooling-and-ci.md —
         # this workflow merges the squash commit that becomes a
         # release-bumping commit on `main`, so it is release-path-
@@ -138,6 +177,7 @@ jobs:
       # event payload.
       - name: Resolve target PR
         id: pr
+        if: steps.secrets-check.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           EVENT_NAME: ${{ github.event_name }}
@@ -181,13 +221,13 @@ jobs:
           esac
 
       - name: Exit early if no target PR
-        if: steps.pr.outputs.pr == ''
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr == ''
         run: |
           echo "merge-bot: no PR to act on; exiting cleanly."
           exit 0
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        if: steps.pr.outputs.pr != ''
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != ''
         with:
           # Always pin the extractor to `main` so a contributor cannot
           # ship a malicious extractor in the same PR they want merged
@@ -199,7 +239,7 @@ jobs:
           ref: main
 
       - name: Set up Python
-        if: steps.pr.outputs.pr != ''
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != ''
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
@@ -209,7 +249,7 @@ jobs:
       # gating decision. One `gh pr view` call covers all of it.
       - name: Fetch PR metadata
         id: meta
-        if: steps.pr.outputs.pr != ''
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != ''
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
@@ -241,7 +281,7 @@ jobs:
           echo "body_path=${RUNNER_TEMP}/pr-body.md" >> "${GITHUB_OUTPUT}"
 
       - name: Skip if PR is not in scope
-        if: steps.pr.outputs.pr != '' && (steps.meta.outputs.state != 'OPEN' || steps.meta.outputs.has_automerge_label != 'true')
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && (steps.meta.outputs.state != 'OPEN' || steps.meta.outputs.has_automerge_label != 'true')
         env:
           # Pass step outputs via env rather than `${{ }}` interpolation
           # into the shell. CodeQL js/actions/command-injection treats
@@ -270,7 +310,7 @@ jobs:
       # checks are included alongside Actions check-runs.
       - name: Inspect required checks
         id: checks
-        if: steps.pr.outputs.pr != '' && steps.meta.outputs.state == 'OPEN' && steps.meta.outputs.has_automerge_label == 'true'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.meta.outputs.state == 'OPEN' && steps.meta.outputs.has_automerge_label == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
@@ -345,7 +385,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Refuse to merge — required check failed
-        if: steps.pr.outputs.pr != '' && steps.checks.outputs.failed != ''
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.checks.outputs.failed != ''
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
@@ -361,7 +401,7 @@ jobs:
           exit 1
 
       - name: Wait for pending checks (clean exit)
-        if: steps.pr.outputs.pr != '' && steps.checks.outputs.failed == '' && steps.checks.outputs.pending != ''
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.checks.outputs.failed == '' && steps.checks.outputs.pending != ''
         env:
           PENDING_CHECKS: ${{ steps.checks.outputs.pending }}
         run: |
@@ -371,7 +411,7 @@ jobs:
 
       - name: Extract ==COMMIT_MSG== block
         id: extract
-        if: steps.pr.outputs.pr != '' && steps.checks.outputs.failed == '' && steps.checks.outputs.pending == ''
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.checks.outputs.failed == '' && steps.checks.outputs.pending == ''
         env:
           BODY_PATH: ${{ steps.meta.outputs.body_path }}
         run: |
@@ -390,7 +430,7 @@ jobs:
           echo "commit_message_path=${out}" >> "${GITHUB_OUTPUT}"
 
       - name: Refuse to merge — extraction failed
-        if: steps.pr.outputs.pr != '' && steps.extract.outputs.ok == 'false'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.extract.outputs.ok == 'false'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
@@ -408,7 +448,7 @@ jobs:
       # `main` DCO-noncompliant.
       - name: Verify Signed-off-by trailer
         id: signoff
-        if: steps.pr.outputs.pr != '' && steps.extract.outputs.ok == 'true'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.extract.outputs.ok == 'true'
         env:
           COMMIT_MESSAGE_PATH: ${{ steps.extract.outputs.commit_message_path }}
         run: |
@@ -420,7 +460,7 @@ jobs:
           fi
 
       - name: Refuse to merge — DCO trailer missing
-        if: steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'false'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'false'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
@@ -436,7 +476,7 @@ jobs:
       # the failure path would be confusing).
       - name: Re-check PR is still open
         id: recheck
-        if: steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
@@ -452,7 +492,7 @@ jobs:
 
       - name: Call PUT /pulls/{n}/merge
         id: merge_call
-        if: steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
@@ -492,7 +532,7 @@ jobs:
           fi
 
       - name: Comment on merge-API failure
-        if: steps.merge_call.outputs.merged == 'false'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.merge_call.outputs.merged == 'false'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
@@ -504,7 +544,7 @@ jobs:
           exit 1
 
       - name: Post success comment
-        if: steps.merge_call.outputs.merged == 'true'
+        if: steps.secrets-check.outputs.configured == 'true' && steps.merge_call.outputs.merged == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
