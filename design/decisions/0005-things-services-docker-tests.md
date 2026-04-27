@@ -78,7 +78,7 @@ test image across all of them:
   without an installed distribution. The exclusion of both
   `tests_support` and the `tests/` tree from the production wheel keeps
   the test-only modules out of any shipped artefact.
-- **Single shared Compose file at `docker/docker-compose.yaml`.** It
+- **Single shared Compose file at `docker/docker-compose.yml`.** It
   declares the `agent-auth` + `things-bridge` pair on an internal
   Compose network; both services publish loopback-only host ports. The
   bridge's runtime config ships inline via a Compose `configs:` block
@@ -128,7 +128,7 @@ test image across all of them:
 - **`scripts/verify-integration-isolation.sh` extended.** It now
   rejects raw loopback literals across every per-service subdirectory
   and requires each per-service `conftest.py` to reference either
-  `docker/docker-compose.yaml`, a `docker/compose.test.*.yaml` file, or
+  `docker/docker-compose.yml`, a `docker/compose.test.*.yml` file, or
   a `docker run` invocation. The build-call check accepts either the
   top-level conftest or the new `tests/integration/_support.py` helper
   module.
@@ -190,7 +190,7 @@ Concretely, the following sub-decisions change:
   whole project today; #105 swaps it to
   `pip install ./packages/<service>/` per Dockerfile.
 - **Compose services point at per-service images.** The
-  `docker-compose.yaml` template now carries one placeholder per image
+  `docker-compose.yml` template now carries one placeholder per image
   (`AGENT_AUTH_TEST_IMAGE`, `THINGS_BRIDGE_TEST_IMAGE`,
   `THINGS_CLI_TEST_IMAGE`) and drops the `agent-auth` / `things-bridge`
   `entrypoint` overrides (each image has its own default

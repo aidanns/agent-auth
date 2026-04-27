@@ -114,7 +114,7 @@ following the ADR 0005 / ADR 0034 pattern, and:
   string.
 - **Profile-gated services in the shared compose file.** The new
   `gpg-bridge` and `gpg-cli` services live in
-  `docker/docker-compose.yaml` under `profiles: [gpg]`; the gpg
+  `docker/docker-compose.yml` under `profiles: [gpg]`; the gpg
   fixture passes `COMPOSE_PROFILES=gpg` so existing agent-auth and
   things-bridge fixtures continue to start exactly the subset they
   did before. No harness change is needed — `COMPOSE_PROFILES` is the

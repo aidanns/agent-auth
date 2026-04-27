@@ -545,7 +545,7 @@ def test_compose_down_does_not_pass_explicit_timeout_flag(tmp_path, monkeypatch)
 
     Hard-coding ``-t 30`` pushed every per-test teardown to ~30 s by
     silently overriding the per-service grace period in
-    ``docker/docker-compose.yaml`` (and defeating the SIGTERM handlers
+    ``docker/docker-compose.yml`` (and defeating the SIGTERM handlers
     from #154). Anchoring the down argv shape here prevents a future
     refactor from re-introducing the regression unnoticed.
     """

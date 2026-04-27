@@ -13,7 +13,7 @@ Accepted — 2026-04-23.
 ## Context
 
 `.github/actions/setup-toolchain/action.yml` consumes a set of release
-binaries pinned by `version` + `sha256` in `.github/tool-versions.yaml`
+binaries pinned by `version` + `sha256` in `.github/tool-versions.yml`
 (shellcheck, shfmt, ruff, taplo, keep-sorted, ripsecrets, treefmt,
 go-task, d2). Dependabot's `github-actions` ecosystem only reads
 `uses:` refs — it has no way to track version literals sitting inside
@@ -43,7 +43,7 @@ or when a workflow breaks on an upstream API change).
 - There is no CVE alert channel: GitHub's Dependabot Alerts surface
   depends on the Dependency Graph recognising the package, which
   means the version literal has to be visible to a supported
-  ecosystem. `.github/tool-versions.yaml` is not.
+  ecosystem. `.github/tool-versions.yml` is not.
 
 ### A home-grown scheduled workflow
 
@@ -79,7 +79,7 @@ signal.
 - Config lives at `.github/renovate.json` — versioned in-repo so the
   behaviour is reviewable and auditable.
 - One custom manager per tool, each targeting
-  `.github/tool-versions.yaml` with a regex that captures the
+  `.github/tool-versions.yml` with a regex that captures the
   `version:` literal and points Renovate at the upstream datasource
   (`github-releases` for the GitHub-released tools, `pypi` for
   mdformat and friends).
@@ -114,7 +114,7 @@ a dropped config would silently regress the whole policy.
 
 **Positive:**
 
-- Every tool in `.github/tool-versions.yaml` gets automated bump PRs
+- Every tool in `.github/tool-versions.yml` gets automated bump PRs
   with a recomputed sha256; no more version/hash drift.
 - CVE alerts fire through the existing Dependabot Alerts surface.
 - d2 is on the same integrity and auto-bump footing as every other

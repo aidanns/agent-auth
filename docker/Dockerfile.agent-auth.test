@@ -17,7 +17,7 @@
 # Carries the ``tests_support`` package at ``/opt/tests-support/`` so
 # the out-of-process notifier sidecar (see ADR 0024, issue #6) can run
 # ``python -m tests_support.notifier`` against this image — the
-# notifier service in ``docker-compose.yaml`` reuses the agent-auth
+# notifier service in ``docker-compose.yml`` reuses the agent-auth
 # test image rather than maintaining a fifth notifier-only image.
 
 FROM python:3.12-slim-bookworm

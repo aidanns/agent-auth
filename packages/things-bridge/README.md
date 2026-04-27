@@ -24,7 +24,7 @@ stdout is parsed and returned to the caller.
 ### HTTP — `/things-bridge/v1/*`
 
 Read-only endpoints over Things `todos`, `projects`, `areas`. The full
-contract lives in [`openapi/things-bridge.v1.yaml`](./openapi/things-bridge.v1.yaml).
+contract lives in [`openapi/things-bridge.v1.yml`](./openapi/things-bridge.v1.yml).
 `/things-bridge/health` and `/things-bridge/metrics` are unversioned.
 
 ## Configuration
@@ -40,7 +40,7 @@ things_client_command:
   - -m
   - tests.things_client_fake
   - --fixtures
-  - tests/things_client_fake/fake-things.yaml
+  - tests/things_client_fake/fake-things.yml
 ```
 
 The bridge re-validates every request with `agent-auth` before

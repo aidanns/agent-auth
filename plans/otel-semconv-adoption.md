@@ -32,8 +32,8 @@ against it.
   equivalent; they remain as-is. HTTP-attribute fields are not emitted
   today — #20 (audit log schema pinning) introduces them using the
   semconv keys this plan pins.
-- Updating `design/functional_decomposition.yaml` and
-  `design/product_breakdown.yaml` with a new "Observability /
+- Updating `design/functional_decomposition.yml` and
+  `design/product_breakdown.yml` with a new "Observability /
   Telemetry" leaf. The decomposition describes the system's functions
   and components that *exist*; the metrics endpoint (#26) and the
   schema-pinned audit log (#20) do not exist yet, so their
@@ -164,8 +164,8 @@ Documented in the ADR:
 - **Design verification** — after writing, diff the DESIGN.md section
   against the ADR to ensure they agree on the mapping. The
   `design.md` "Keeping design docs current" step also requires
-  reviewing `design/functional_decomposition.yaml` and
-  `design/product_breakdown.yaml`. No new function or component is
+  reviewing `design/functional_decomposition.yml` and
+  `design/product_breakdown.yml`. No new function or component is
   introduced by this plan (the metrics endpoint and schema-pinned
   audit log ship with #26 / #20), so no YAML entries are added
   here; the existing `Audit Logging` entries remain accurate.

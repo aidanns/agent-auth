@@ -28,7 +28,7 @@
 #   2b. Every astral-sh/setup-uv invocation passes an explicit
 #      `with.version` so the uv binary can't silently upgrade between
 #      runs (see issue #84).
-#   2c. .github/tool-versions.yaml is the single source of truth for
+#   2c. .github/tool-versions.yml is the single source of truth for
 #      pinned tool versions — neither setup-toolchain/action.yml nor
 #      scripts/verify-dependencies.sh may hard-code a version literal
 #      that also appears in the manifest (see issue #87).
@@ -36,7 +36,7 @@
 #      pipes — every network-fetched install script must be
 #      sha256-checked before execution (see issue #157).
 #   2e. .github/renovate.json exists and targets
-#      .github/tool-versions.yaml via customManagers — the auto-bump
+#      .github/tool-versions.yml via customManagers — the auto-bump
 #      channel for every CI tool (see ADR 0031 and issue #205).
 #   2f. packages/agent-auth-common/src/things_models/models.py defines TodoId, ProjectId, AreaId
 #      via typing.NewType so Things entity ids aren't interchangeable
@@ -187,7 +187,7 @@ if [[ -f pyproject.toml ]] || [[ -f setup.py ]] || compgen -G 'requirements*.txt
   required_ecosystems+=(pip)
 fi
 
-if compgen -G '.github/workflows/*.yml' >/dev/null || compgen -G '.github/workflows/*.yaml' >/dev/null; then
+if compgen -G '.github/workflows/*.yml' >/dev/null; then
   required_ecosystems+=(github-actions)
 fi
 
@@ -325,13 +325,13 @@ fi
 # ---------------------------------------------------------------------------
 # Central tool-versions manifest is the only source of truth.
 # ---------------------------------------------------------------------------
-# .github/tool-versions.yaml is consumed by both
+# .github/tool-versions.yml is consumed by both
 # .github/actions/setup-toolchain/action.yml (CI) and
 # scripts/verify-dependencies.sh (local). Drift canary: assert no version
 # pinned in the manifest appears as a literal string in either consumer.
 # A bump to the manifest must propagate automatically; a literal slips
 # through this gate and surfaces on the next drift.
-TOOL_VERSIONS_MANIFEST=".github/tool-versions.yaml"
+TOOL_VERSIONS_MANIFEST=".github/tool-versions.yml"
 TOOL_VERSIONS_CONSUMERS=(
   ".github/actions/setup-toolchain/action.yml"
   "scripts/verify-dependencies.sh"
@@ -377,7 +377,7 @@ echo "verify-standards: ${TOOL_VERSIONS_MANIFEST} consumers contain no hard-code
 # executes whatever bytes the CDN returns — a content swap is silent.
 # Every install.sh fetch in setup-toolchain must go through the
 # download -> sha256-verify -> execute pattern gated by a pinned hash
-# in .github/tool-versions.yaml. See issue #157.
+# in .github/tool-versions.yml. See issue #157.
 SETUP_TOOLCHAIN=".github/actions/setup-toolchain/action.yml"
 if [[ -f "${SETUP_TOOLCHAIN}" ]]; then
   # strip_comments() isn't yet defined at this point in the file; the
@@ -395,7 +395,7 @@ fi
 # Renovate config exists and targets the tool-versions manifest.
 # ---------------------------------------------------------------------------
 # .github/renovate.json owns the automated bump channel for
-# .github/tool-versions.yaml (see ADR 0031 and issue #205). A dropped
+# .github/tool-versions.yml (see ADR 0031 and issue #205). A dropped
 # config would silently regress the whole policy: Dependabot has no
 # visibility into the manifest, and upstream releases (shellcheck,
 # shfmt, ruff, ...) would stop landing as PRs. The presence check is
@@ -410,12 +410,12 @@ if [[ ! -f "${RENOVATE_CONFIG}" ]]; then
 fi
 
 if ! grep -qF '"customManagers"' "${RENOVATE_CONFIG}"; then
-  echo "verify-standards: ${RENOVATE_CONFIG} has no 'customManagers' key — tool-versions.yaml bumps won't fire." >&2
+  echo "verify-standards: ${RENOVATE_CONFIG} has no 'customManagers' key — tool-versions.yml bumps won't fire." >&2
   exit 1
 fi
 
-if ! grep -qF ".github/tool-versions.yaml" "${RENOVATE_CONFIG}"; then
-  echo "verify-standards: ${RENOVATE_CONFIG} does not reference .github/tool-versions.yaml as a managed file." >&2
+if ! grep -qF ".github/tool-versions.yml" "${RENOVATE_CONFIG}"; then
+  echo "verify-standards: ${RENOVATE_CONFIG} does not reference .github/tool-versions.yml as a managed file." >&2
   exit 1
 fi
 
@@ -1874,16 +1874,16 @@ fi
 echo "verify-standards: ${error_taxonomy_file} exists and references all documented error codes."
 
 # OpenAPI specs live alongside the service that owns each surface
-# (packages/agent-auth/openapi/agent-auth.v1.yaml,
-# packages/things-bridge/openapi/things-bridge.v1.yaml, and
-# packages/gpg-bridge/openapi/gpg-bridge.v1.yaml), and
+# (packages/agent-auth/openapi/agent-auth.v1.yml,
+# packages/things-bridge/openapi/things-bridge.v1.yml, and
+# packages/gpg-bridge/openapi/gpg-bridge.v1.yml), and
 # tests/test_openapi_spec.py must reference all of them so route and
 # error-taxonomy parity are enforced on every PR (#117, #306).
 openapi_missing=0
 for spec in \
-  packages/agent-auth/openapi/agent-auth.v1.yaml \
-  packages/things-bridge/openapi/things-bridge.v1.yaml \
-  packages/gpg-bridge/openapi/gpg-bridge.v1.yaml; do
+  packages/agent-auth/openapi/agent-auth.v1.yml \
+  packages/things-bridge/openapi/things-bridge.v1.yml \
+  packages/gpg-bridge/openapi/gpg-bridge.v1.yml; do
   if [[ ! -f "${spec}" ]]; then
     echo "verify-standards: ${spec} is missing." >&2
     openapi_missing=1
@@ -1896,7 +1896,7 @@ if [[ ! -f "${openapi_contract_test}" ]]; then
   echo "  Add contract tests that diff spec paths against the server handlers." >&2
   openapi_missing=1
 else
-  for spec in agent-auth.v1.yaml things-bridge.v1.yaml gpg-bridge.v1.yaml; do
+  for spec in agent-auth.v1.yml things-bridge.v1.yml gpg-bridge.v1.yml; do
     if ! grep -q "${spec}" "${openapi_contract_test}"; then
       echo "verify-standards: ${openapi_contract_test} does not reference ${spec}." >&2
       openapi_missing=1
@@ -1908,7 +1908,7 @@ if [[ ${openapi_missing} -ne 0 ]]; then
   exit 1
 fi
 
-echo "verify-standards: packages/*/openapi/*.v1.yaml exist and ${openapi_contract_test} references all three."
+echo "verify-standards: packages/*/openapi/*.v1.yml exist and ${openapi_contract_test} references all three."
 
 # Health endpoints per .claude/instructions/service-design.md
 # ("Health endpoint") and the deterministic regression check from
@@ -2015,7 +2015,7 @@ echo "verify-standards: /agent-auth/health and /things-bridge/health are registe
 # Function-to-test coverage is gated in CI (no continue-on-error).
 # ---------------------------------------------------------------------------
 # The verify-function-tests workflow must fail CI when any leaf function in
-# design/functional_decomposition.yaml lacks a matching
+# design/functional_decomposition.yml lacks a matching
 # @pytest.mark.covers_function(...) annotation. A continue-on-error on the
 # verify step silently swallows regressions — enforce its absence here.
 function_tests_workflow=".github/workflows/verify-function-tests.yml"
@@ -2690,3 +2690,30 @@ if [[ ${vscode_missing} -ne 0 ]]; then
 fi
 
 echo "verify-standards: .vscode/ workspace provides extensions, settings, and launch configurations."
+
+# ---------------------------------------------------------------------------
+# .claude/instructions/tooling-and-ci.md § YAML pins every committed YAML
+# file to the `.yml` extension so contributors do not have to remember
+# which extension a given file wants. The check fails on any tracked
+# `*.yaml` file. The exclusion list mirrors the issue body's acceptance
+# `find` command (vendored / agent worktrees / git internals); add a new
+# entry here only with a CLAUDE.md note explaining the upstream tool that
+# requires the `.yaml` extension.
+yaml_files=()
+while IFS= read -r -d '' f; do
+  yaml_files+=("${f#./}")
+done < <(find . -name '*.yaml' \
+  -not -path './.venv*' \
+  -not -path './node_modules/*' \
+  -not -path './.claude/worktrees/*' \
+  -not -path './.git/*' \
+  -print0)
+
+if [[ ${#yaml_files[@]} -ne 0 ]]; then
+  echo "verify-standards: ${#yaml_files[@]} file(s) use the .yaml extension; rename to .yml." >&2
+  printf '  %s\n' "${yaml_files[@]}" >&2
+  echo "  See .claude/instructions/tooling-and-ci.md § YAML." >&2
+  exit 1
+fi
+
+echo "verify-standards: every committed YAML file uses the .yml extension."

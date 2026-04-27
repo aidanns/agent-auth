@@ -244,12 +244,12 @@ functions — deferred where the existing code has no markers either, but at min
 - `design/DESIGN.md`: add a "Things bridge" subsection under "Components" naming the bridge
   port (9200), the read-only endpoints, and the scope mapping. Note that write ops are
   deferred.
-- `design/functional_decomposition.yaml`: rename the generic `Example App Bridge` /
+- `design/functional_decomposition.yml`: rename the generic `Example App Bridge` /
   `Example App CLI` branches to read `Things Bridge` / `Things CLI` (keeping the same
   leaf-function names so product allocation stays valid). Do NOT add new leaf functions —
   the existing ones (`Delegate Token Validation`, `Execute External System Interaction`,
   `Serve Bridge HTTP API`, `Send Bridge Request`, `Auto Refresh Token`, `Store CLI Credentials`, `Handle App Commands`, `Display Results`) already describe this work.
-- `design/product_breakdown.yaml`: replace the `example-app-bridge` and `example-app-cli`
+- `design/product_breakdown.yml`: replace the `example-app-bridge` and `example-app-cli`
   component entries with `things-bridge` and `things-cli` respectively, keeping the same
   function allocation.
 - Regenerate `design/*.csv`/`*.md`/`*.d2`/`*.png`/`*.svg` from the YAMLs as a follow-up

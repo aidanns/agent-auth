@@ -4,9 +4,9 @@
 #
 # SPDX-License-Identifier: MIT
 
-# Regenerate the rendered variants of design/*.yaml in place.
+# Regenerate the rendered variants of design/*.yml in place.
 #
-# The yaml files are the source of truth (verified by
+# The yml files are the source of truth (verified by
 # `scripts/verify-design.sh`); the sibling .{md,csv,d2,png,svg}
 # variants are generated view renders that ship with the repo for
 # human browsing (GitHub renders the .md and .svg inline).
@@ -31,11 +31,11 @@ if ! command -v systems-engineering >/dev/null 2>&1; then
 fi
 
 systems-engineering function diagram \
-  "${REPO_ROOT}/design/functional_decomposition.yaml" \
+  "${REPO_ROOT}/design/functional_decomposition.yml" \
   -o "${REPO_ROOT}/design"
 
 systems-engineering product diagram \
-  "${REPO_ROOT}/design/product_breakdown.yaml" \
+  "${REPO_ROOT}/design/product_breakdown.yml" \
   -o "${REPO_ROOT}/design"
 
 # Post-process the rendered Markdown through mdformat so the generated

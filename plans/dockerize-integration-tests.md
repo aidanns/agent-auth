@@ -137,7 +137,7 @@ README.md                          # "Development" section with docker + DinD no
    surface).
 2. Unit test in `tests/test_server.py`.
 3. Update `design/DESIGN.md` to list the endpoint, and
-   `design/functional_decomposition.yaml` to add a leaf function
+   `design/functional_decomposition.yml` to add a leaf function
    *Serve Health Endpoint* allocated to a unit and an integration test.
 
 ### Phase 2 — Deterministic notification plugins
@@ -256,8 +256,8 @@ as unit-scope only.
    feedback, clean isolation).
 2. `design/DESIGN.md` — add health endpoint to API table; add a short
    "Testing" section describing the unit / integration split.
-3. `design/functional_decomposition.yaml` and
-   `design/product_breakdown.yaml` — allocate the new *Serve Health
+3. `design/functional_decomposition.yml` and
+   `design/product_breakdown.yml` — allocate the new *Serve Health
    Endpoint* function to product components and to a unit + integration
    test each.
 4. `README.md` — add a **Development** section covering:

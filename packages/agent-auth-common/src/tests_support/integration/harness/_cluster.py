@@ -471,7 +471,7 @@ class StartedCluster:
         # fix in hand, this can go back to a single ``down`` call.
         #
         # No ``-t`` on stop or down: the per-service ``stop_grace_period``
-        # in ``docker/docker-compose.yaml`` is the source of truth for the
+        # in ``docker/docker-compose.yml`` is the source of truth for the
         # SIGTERM→SIGKILL window, and a CLI ``-t`` would silently override
         # it (the original #288 regression). ``stop_timeout_seconds``
         # survives only as the subprocess-level safety budget on each

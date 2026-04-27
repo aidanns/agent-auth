@@ -14,7 +14,7 @@ real container-to-container ``gpg-cli → gpg-bridge`` HTTP path under
 each test's per-test compose project.
 
 Stack pinning: this fixture inherits its compose topology from
-``docker/docker-compose.yaml`` via the ``GpgBridgeStack`` returned by
+``docker/docker-compose.yml`` via the ``GpgBridgeStack`` returned by
 the shared plugin — the ``gpg-cli`` service is defined alongside
 ``gpg-bridge`` in that file (under the shared ``gpg`` profile) and
 launched per-test via ``docker compose run --rm gpg-cli``.

@@ -6,7 +6,7 @@
     ":semanticCommits",
     ":timezone(UTC)"
   ],
-  "description": "Automated bump channel for tool versions in .github/tool-versions.yaml. Complements Dependabot (which owns pip/github-actions/npm); see ADR 0031.",
+  "description": "Automated bump channel for tool versions in .github/tool-versions.yml. Complements Dependabot (which owns pip/github-actions/npm); see ADR 0031.",
   "schedule": ["before 4am on Monday"],
   "prHourlyLimit": 4,
   "prConcurrentLimit": 10,
@@ -18,14 +18,14 @@
     "commands": [
       "bash scripts/renovate/recompute-sha256.sh {{depName}} {{newVersion}}"
     ],
-    "fileFilters": [".github/tool-versions.yaml"],
+    "fileFilters": [".github/tool-versions.yml"],
     "executionMode": "update"
   },
   "packageRules": [
     {
-      "description": "Group all tool-versions.yaml bumps into one PR per cycle to minimise review churn; sha256 recomputation runs per-tool via postUpgradeTasks.",
+      "description": "Group all tool-versions.yml bumps into one PR per cycle to minimise review churn; sha256 recomputation runs per-tool via postUpgradeTasks.",
       "matchManagers": ["custom.regex"],
-      "matchFileNames": [".github/tool-versions.yaml"],
+      "matchFileNames": [".github/tool-versions.yml"],
       "groupName": "CI tool-versions manifest",
       "commitMessageTopic": "{{depName}}"
     }
@@ -34,7 +34,7 @@
     {
       "customType": "regex",
       "description": "shellcheck: koalaman/shellcheck GitHub releases tag-prefixed with 'v'.",
-      "fileMatch": ["^\\.github/tool-versions\\.yaml$"],
+      "fileMatch": ["^\\.github/tool-versions\\.yml$"],
       "matchStrings": [
         "shellcheck:\\s*\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
       ],
@@ -45,7 +45,7 @@
     {
       "customType": "regex",
       "description": "shfmt: mvdan/sh GitHub releases.",
-      "fileMatch": ["^\\.github/tool-versions\\.yaml$"],
+      "fileMatch": ["^\\.github/tool-versions\\.yml$"],
       "matchStrings": [
         "shfmt:\\s*\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
       ],
@@ -56,7 +56,7 @@
     {
       "customType": "regex",
       "description": "ruff: astral-sh/ruff GitHub releases (unprefixed tags).",
-      "fileMatch": ["^\\.github/tool-versions\\.yaml$"],
+      "fileMatch": ["^\\.github/tool-versions\\.yml$"],
       "matchStrings": [
         "ruff:\\s*\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
       ],
@@ -66,7 +66,7 @@
     {
       "customType": "regex",
       "description": "taplo: tamasfe/taplo GitHub releases (unprefixed tags).",
-      "fileMatch": ["^\\.github/tool-versions\\.yaml$"],
+      "fileMatch": ["^\\.github/tool-versions\\.yml$"],
       "matchStrings": [
         "taplo:\\s*\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
       ],
@@ -76,7 +76,7 @@
     {
       "customType": "regex",
       "description": "keep-sorted: google/keep-sorted GitHub releases.",
-      "fileMatch": ["^\\.github/tool-versions\\.yaml$"],
+      "fileMatch": ["^\\.github/tool-versions\\.yml$"],
       "matchStrings": [
         "keep-sorted:\\s*\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
       ],
@@ -87,7 +87,7 @@
     {
       "customType": "regex",
       "description": "ripsecrets: sirwart/ripsecrets GitHub releases.",
-      "fileMatch": ["^\\.github/tool-versions\\.yaml$"],
+      "fileMatch": ["^\\.github/tool-versions\\.yml$"],
       "matchStrings": [
         "ripsecrets:\\s*\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
       ],
@@ -98,7 +98,7 @@
     {
       "customType": "regex",
       "description": "treefmt: numtide/treefmt GitHub releases.",
-      "fileMatch": ["^\\.github/tool-versions\\.yaml$"],
+      "fileMatch": ["^\\.github/tool-versions\\.yml$"],
       "matchStrings": [
         "treefmt:\\s*\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
       ],
@@ -109,7 +109,7 @@
     {
       "customType": "regex",
       "description": "go-task: go-task/task GitHub releases.",
-      "fileMatch": ["^\\.github/tool-versions\\.yaml$"],
+      "fileMatch": ["^\\.github/tool-versions\\.yml$"],
       "matchStrings": [
         "go-task:\\s*\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
       ],
@@ -120,7 +120,7 @@
     {
       "customType": "regex",
       "description": "d2: terrastruct/d2 GitHub releases.",
-      "fileMatch": ["^\\.github/tool-versions\\.yaml$"],
+      "fileMatch": ["^\\.github/tool-versions\\.yml$"],
       "matchStrings": [
         "d2:\\s*\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
       ],
@@ -131,7 +131,7 @@
     {
       "customType": "regex",
       "description": "uv: astral-sh/uv GitHub releases.",
-      "fileMatch": ["^\\.github/tool-versions\\.yaml$"],
+      "fileMatch": ["^\\.github/tool-versions\\.yml$"],
       "matchStrings": [
         "^uv:\\s*\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
       ],
@@ -141,7 +141,7 @@
     {
       "customType": "regex",
       "description": "mdformat + plugins: PyPI.",
-      "fileMatch": ["^\\.github/tool-versions\\.yaml$"],
+      "fileMatch": ["^\\.github/tool-versions\\.yml$"],
       "matchStrings": [
         "(?<depName>mdformat(?:-gfm|-tables)?):\\s*\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
       ],

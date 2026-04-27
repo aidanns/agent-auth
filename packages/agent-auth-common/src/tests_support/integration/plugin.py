@@ -77,10 +77,10 @@ from tests_support.integration.support import (
 for _noisy_logger in ("docker", "urllib3", "asyncio"):
     logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 
-BASELINE_CONFIG = DOCKER_DIR / "config.test.yaml"
+BASELINE_CONFIG = DOCKER_DIR / "config.test.yml"
 
 # Maps the integration-test factory's human-readable ``approval`` knob
-# onto the sidecar notifier mode (see docker/docker-compose.yaml).
+# onto the sidecar notifier mode (see docker/docker-compose.yml).
 # Under #6 the notifier is a separate container the compose file
 # launches per-test; the URL the agent-auth container POSTs to is
 # the same regardless of mode.
@@ -256,7 +256,7 @@ def _test_image_tags(_docker_required):
 
 
 def _write_test_config(config_dir: Path, **overrides: object) -> None:
-    """Copy the baseline ``config.test.yaml`` into ``config_dir/config.yaml``
+    """Copy the baseline ``config.test.yml`` into ``config_dir/config.yaml``
     with ``overrides`` applied on top.
 
     The directory and file are chmod'd world-readable because the config
@@ -692,7 +692,7 @@ def things_bridge_stack(
 # ---------------------------------------------------------------------------
 # The gpg-bridge integration tests spin up the agent-auth + gpg-bridge
 # pair inside the shared compose file. ``gpg-bridge`` is profile-gated
-# (``profiles: [gpg]`` in docker-compose.yaml) so the existing
+# (``profiles: [gpg]`` in docker-compose.yml) so the existing
 # agent-auth and things-bridge fixtures continue to start only their
 # subset; the gpg fixtures opt in by passing ``COMPOSE_PROFILES=gpg``
 # to docker compose.
@@ -770,7 +770,7 @@ def _gpg_bridge_cluster(
     """Build the per-test cluster definition with both service waits wired up.
 
     Activates the ``gpg`` compose profile so ``gpg-bridge`` (profile-
-    gated in docker-compose.yaml) is brought up alongside agent-auth.
+    gated in docker-compose.yml) is brought up alongside agent-auth.
     The notifier sidecar and the empty things-bridge fixtures dir
     follow the same pattern as the agent-auth-only fixture: the
     compose file always wires those up, and a missing bind-mount

@@ -20,9 +20,9 @@ asserts parity with the spec.
 
 ## Deliverables
 
-1. `openapi/agent-auth.v1.yaml` — OAS 3.1 spec covering every
+1. `openapi/agent-auth.v1.yml` — OAS 3.1 spec covering every
    endpoint on `/agent-auth/v1/*` and `/agent-auth/health`.
-2. `openapi/things-bridge.v1.yaml` — OAS 3.1 spec covering every
+2. `openapi/things-bridge.v1.yml` — OAS 3.1 spec covering every
    endpoint on `/things-bridge/v1/*` and `/things-bridge/health`.
 3. `openapi/README.md` — short README describing the files, the
    Redocly-hosted rendered view (linked from `README.md`), and the
