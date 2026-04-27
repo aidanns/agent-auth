@@ -642,10 +642,13 @@ audiences**:
 
 The split is enforced by [`.github/workflows/pr-lint.yml`](.github/workflows/pr-lint.yml):
 the `pr-title` job validates the PR-title prefix, the
+`pr-title-style` job enforces the prose-style rules on the title
+(length cap, no trailing period, no past-tense opener), the
 `pr-body-commit-msg` job validates the `==COMMIT_MSG==` block, and
-the `validator-self-test` job exercises the validator against
-fixtures so a regression in the validator can never silently approve
-PRs.
+the `validator-self-test` / `pr-title-self-test` /
+`pr-body-title-aware-self-test` jobs exercise both validators against
+fixtures and inline cases so a regression in either validator can
+never silently approve PRs.
 
 #### Writing release-worthy commits
 
@@ -663,6 +666,30 @@ The rules sit alongside
 [ADR 0037](design/decisions/0037-palantir-commit-prefixes-and-commit-msg-block.md)
 rather than superseding it: ADR 0037 defines the prefix allowlist and
 the block structure, this section defines the prose inside.
+
+A subset of the rules below is **CI-enforced**; the rest are
+**convention only** (caught at human review). The split is:
+
+| Rule                                                                             | Enforced by                                                                                                                       |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Title prefix in the Palantir allowlist                                           | CI (`pr-title` job, `amannn/action-semantic-pull-request`)                                                                        |
+| Title ≤ 72 chars                                                                 | CI (`pr-title-style` job, `scripts/validate-pr-title.py`)                                                                         |
+| Title has no trailing period                                                     | CI (`pr-title-style` job)                                                                                                         |
+| Title does not open with a past-tense / participle verb in the closed list       | CI (`pr-title-style` job — list: `Added` / `Fixed` / `Updated` / `Changed` / `Removed` / `Refactored` / `Implemented` / `Bumped`) |
+| Title summary ≤ 50 chars (soft target on the post-prefix summary)                | Convention only                                                                                                                   |
+| Title summary capitalisation (project lowercases post-prefix)                    | Convention only                                                                                                                   |
+| Imperative mood beyond the past-tense closed list                                | Convention only (no clean regex without false positives)                                                                          |
+| Body wraps at ≤ 72 chars                                                         | CI (`pr-body-commit-msg` job, `scripts/validate-commit-msg-block.py`)                                                             |
+| Body has no markdown headings / bullet lists / numbered lists / task checkboxes  | CI (`pr-body-commit-msg` job)                                                                                                     |
+| Body opens non-blank (after PR-template scaffolding)                             | CI (`pr-body-commit-msg` job)                                                                                                     |
+| Body's first line does not duplicate the PR title                                | CI (`pr-body-commit-msg` job, with the title passed in via env var)                                                               |
+| `Fixes: <sha> ("subject")` follows the kernel-style shape when SHA-style is used | CI (`pr-body-commit-msg` job)                                                                                                     |
+| Trailers parse as `Token: value` and use a recognised token                      | CI (`pr-body-commit-msg` job)                                                                                                     |
+| `BREAKING CHANGE:` is the last non-`Signed-off-by:` line                         | CI (`pr-body-commit-msg` job)                                                                                                     |
+| At least one `Signed-off-by:` trailer is present                                 | CI (`pr-body-commit-msg` job; also enforced post-merge by `dco.yml`)                                                              |
+| One logical change per PR                                                        | Convention only (undecidable mechanically)                                                                                        |
+| Body leads with *why*, not *how*                                                 | Convention only (undecidable mechanically)                                                                                        |
+| `fix:` PRs include observable symptoms                                           | Convention only                                                                                                                   |
 
 ##### Subject (PR title)
 
