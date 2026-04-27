@@ -895,8 +895,15 @@ So the canonical shape is:
 <body paragraph>
 
 Closes #NNN
+Co-authored-by: <name> <email>
 Signed-off-by: <name> <email>
 ```
+
+`Co-authored-by:` is the canonical case (matching git's
+`interpret-trailers` and GitHub's co-author rendering), but token
+matching is case-insensitive — `Co-Authored-By:` from a pair-bot or
+copy-paste is recognised the same way and must stack contiguously
+with the other trailers.
 
 #### Worked examples
 
@@ -955,6 +962,7 @@ in a tight loop with a candidate token whose first byte matches.
 
 Fixes: 9c4f1a2b3d5e ("improvement(tokens): inline parse_token hot path")
 Closes #456
+Co-authored-by: A. Reviewer <reviewer@example.com>
 Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>
 ==COMMIT_MSG==
 
