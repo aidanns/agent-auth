@@ -217,3 +217,28 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/validate-commit-msg-block.py --self-test
+
+  pr-title-types-self-test:
+    name: PR title types match commit_taxonomy
+    runs-on: ubuntu-latest
+    # Asserts the explicit `types:` allowlist on the
+    # `amannn/action-semantic-pull-request` step above stays in lockstep
+    # with `scripts/lint/commit_taxonomy.py::ALLOWED_TYPES`. Without
+    # this self-test the YAML and the Python module could drift — a
+    # type added to one but not the other would silently change which
+    # PR titles the lint accepts vs. which the changelog tooling
+    # understands. See issue #405.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Assert pr-lint.yml types match commit_taxonomy.ALLOWED_TYPES
+        run: |
+          set -euo pipefail
+          python3 scripts/lint/commit_taxonomy.py check-pr-lint-yaml

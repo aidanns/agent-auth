@@ -210,7 +210,12 @@ PR titles use a Palantir-style prefix set (see
 [ADR 0037](design/decisions/0037-palantir-commit-prefixes-and-commit-msg-block.md)).
 The PR title becomes the squash-merge commit subject, and the
 `pr-title` job in [`.github/workflows/pr-lint.yml`](.github/workflows/pr-lint.yml)
-enforces the allowlist:
+enforces the allowlist. The canonical Python source for both the
+allowlist and the type-to-release-impact mapping below lives in
+[`scripts/lint/commit_taxonomy.py`](scripts/lint/commit_taxonomy.py)
+(`ALLOWED_TYPES`); the `pr-title-types-self-test` job in
+`pr-lint.yml` asserts the YAML's `types:` block stays in lockstep with
+that module so a one-sided edit fails CI.
 
 | Type           | Release impact | Use for                                                                                         |
 | -------------- | -------------- | ----------------------------------------------------------------------------------------------- |
@@ -300,7 +305,10 @@ calls:
 Scopes are drawn from a known set so `CHANGELOG.md` and `git log`
 stay browsable. Adding a new scope is a CONTRIBUTING edit, not an
 ad-hoc invention in a PR — if none of the scopes below fit, raise a
-PR to add one.
+PR to add one. The Python lint surface mirrors the lists below in
+[`scripts/lint/commit_taxonomy.py`](scripts/lint/commit_taxonomy.py)
+(`PACKAGE_SCOPES` is discovered from `packages/*/`; `AREA_SCOPES`
+is curated alongside this prose).
 
 - **Subsystem scopes** — the module or surface the commit touches.
   `agent-auth`, `things-bridge`, `things-cli`,
@@ -369,9 +377,10 @@ release-as: 1.0.0  # optional: force a specific next version (must be > inferred
 ### Picking a `type:`
 
 Mirrors the conventional-commit prefixes used in PR titles. The
-release-impact column is the source of truth in
-`scripts/changelog/version_logic.py` (the lint and the upcoming
-release workflow share it):
+release-impact column is derived from
+[`scripts/lint/commit_taxonomy.py`](scripts/lint/commit_taxonomy.py)
+(`ALLOWED_TYPES`); `scripts/changelog/version_logic.py` re-exposes it
+to the lint and the release workflow:
 
 | `type:`       | 0.x impact      | 1.x+ impact | Use for                                                            |
 | ------------- | --------------- | ----------- | ------------------------------------------------------------------ |
