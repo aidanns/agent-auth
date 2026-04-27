@@ -266,3 +266,283 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/lint/commit_taxonomy.py check-pr-lint-yaml
+
+  release-impact-comment:
+    name: Release impact comment
+    runs-on: ubuntu-latest
+    # Surface the predicted release-impact bump on every PR that
+    # touches `changelog/@unreleased/*.yml`, so a reviewer can catch a
+    # mislabelled YAML (e.g. a `feature` entry that should have been
+    # `improvement`) before the next release goes out and the version
+    # jumps unexpectedly. The matrix lint (#401) catches the worst
+    # category — `feature(ci):` and friends — but the YAML's `type:`
+    # field is still author-controlled and can drift past the matrix
+    # ("feature" applied to a small refactor that should be
+    # "improvement"). This job is the human-review complement: it
+    # posts the predicted `current -> next` version transition so the
+    # mislabel is visible at PR-review time. Origin: issue #406.
+    #
+    # Bot identity: posts as `github-actions[bot]` via the default
+    # `GITHUB_TOKEN`. The merge-bot / release-bot / changelog-bot path
+    # was considered for symmetry, but minting an App token requires
+    # provisioning new secrets and the comment surface here is purely
+    # informational (no protected-branch or contents writes). Using
+    # the default token keeps the bot fully operational on the PR
+    # that initially adds the workflow without depending on a separate
+    # one-time setup. The "Claude: " prefix per the project convention
+    # still identifies the comment as agent-authored.
+    #
+    # `pull_request_target` keeps the comment writeable on fork PRs
+    # (the workflow inherits the base repo's `pull-requests: write`
+    # grant, and `actions/checkout` is pinned to the base ref so the
+    # fork cannot ship a malicious predict script in the same PR).
+    # The PR head's `changelog/@unreleased/*.yml` files ARE fetched
+    # — they are pure data parsed by PyYAML, no code-execution
+    # surface. The base-ref script is what runs over them.
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Pin to the base ref so a fork PR cannot weaken the
+          # predict script in the same PR. The head's YAMLs are
+          # fetched into the workspace separately below.
+          ref: ${{ github.event.pull_request.base.sha }}
+          # Need full history so the base-ref `git describe --tags`
+          # below can locate the latest `v*.*.*` tag without the
+          # 1-commit shallow default actions/checkout uses.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install runtime deps (PyYAML)
+        # `predict_release_impact.py` depends on PyYAML transitively
+        # via `version_logic.parse_entry_file`. Avoid the full workspace
+        # `uv sync` here — this job only needs the changelog parser.
+        # Same shape as `release-pr.yml`'s "Install PyYAML" step.
+        run: pip install --no-cache-dir 'pyyaml>=6'
+
+      - name: List changed files
+        # Fan out the same `gh pr view --json files` pattern the
+        # `pr-title-style` job uses, for the same reason: the rest of
+        # this job needs to know whether the PR touches
+        # `changelog/@unreleased/*.yml` so it can early-exit cleanly
+        # on PRs that touched no entry (no noise comments on every PR).
+        # `gh` is preinstalled on `ubuntu-latest`. The output goes via
+        # `RUNNER_TEMP` rather than a shell variable so paths with
+        # spaces or shell metacharacters survive.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh pr view "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json files \
+            --jq '.files[].path' \
+            > "${RUNNER_TEMP}/changed-files.txt"
+
+      - name: Detect changelog/@unreleased/ touch
+        id: touched
+        # Early-exit when the PR touches no `@unreleased/*.yml` files
+        # so the bot doesn't post (or update) a noise comment on PRs
+        # that have no release impact to predict. The `grep` is fixed
+        # to the directory prefix so it doesn't match unrelated paths
+        # like `docs/changelog/...`.
+        run: |
+          set -euo pipefail
+          if grep -qE '^changelog/@unreleased/[^/]+\.yml$' "${RUNNER_TEMP}/changed-files.txt"; then
+            echo "touched=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "touched=false" >> "${GITHUB_OUTPUT}"
+            echo "release-impact-comment: no changelog/@unreleased/ files touched; nothing to predict."
+          fi
+
+      - name: Fetch PR head's @unreleased YAMLs
+        # Bring the head ref's `changelog/@unreleased/*.yml` files into
+        # the workspace WITHOUT checking out the head's code. The
+        # predict script + the `version_logic` parser both come from
+        # the base ref (pinned by the earlier `actions/checkout`); only
+        # the YAML data files come from the head. PyYAML's `safe_load`
+        # parses YAML as data — no code-execution surface — so this
+        # is safe even on a fork PR.
+        if: steps.touched.outputs.touched == 'true'
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # `pull_request_target` checkout pinned to the base SHA does
+          # not fetch the head SHA into the local clone. Fetch it
+          # explicitly, then materialise just the @unreleased dir from
+          # that commit. `--no-tags --depth=1` keeps the fetch tiny.
+          git fetch --no-tags --depth=1 origin "${HEAD_SHA}"
+          # Wipe whatever `@unreleased/` looks like at the base ref
+          # before overlaying the head's version, so files removed by
+          # the PR (e.g. the release-PR's mass rename) don't linger.
+          rm -rf changelog/@unreleased
+          mkdir -p changelog/@unreleased
+          # `git checkout <SHA> -- <path>` writes the path's contents
+          # at <SHA> into the working tree without changing HEAD. If
+          # the path doesn't exist at <SHA> (PR deletes the dir
+          # entirely), the `|| true` keeps the step exiting cleanly.
+          git checkout "${HEAD_SHA}" -- 'changelog/@unreleased/' || true
+
+      - name: Resolve current version
+        id: current
+        if: steps.touched.outputs.touched == 'true'
+        # Same approach as `release-pr.yml`'s "Resolve current version"
+        # step: `git describe --tags --abbrev=0 --match 'v*.*.*'` reads
+        # the latest published tag. Falls back to `0.0.0` when no tag
+        # exists yet (first-ever release) so the very first `feature`
+        # entry produces `0.1.0` rather than crashing the predict.
+        run: |
+          set -euo pipefail
+          if tag="$(git describe --tags --abbrev=0 --match 'v*.*.*' 2>/dev/null)"; then
+            echo "version=${tag#v}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "version=0.0.0" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Predict release impact
+        id: predict
+        if: steps.touched.outputs.touched == 'true'
+        env:
+          CURRENT_VERSION: ${{ steps.current.outputs.version }}
+        run: |
+          set -euo pipefail
+          envelope="$(python3 scripts/changelog/predict_release_impact.py \
+            --repo-root . \
+            --current-version "${CURRENT_VERSION}")"
+          echo "${envelope}" > "${RUNNER_TEMP}/predict.json"
+          # Surface a top-level `predict` boolean so the next step's
+          # `if:` can branch without re-parsing the JSON.
+          if jq -e '.predict == true' < "${RUNNER_TEMP}/predict.json" >/dev/null; then
+            echo "predict=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "predict=false" >> "${GITHUB_OUTPUT}"
+            echo "release-impact-comment: $(jq -r '.reason' < "${RUNNER_TEMP}/predict.json")"
+          fi
+
+      - name: Render comment body
+        id: render
+        if: steps.touched.outputs.touched == 'true' && steps.predict.outputs.predict == 'true'
+        # Render the comment body as Markdown. The first line is an
+        # HTML comment marker the next step uses for idempotent
+        # matching — invisible to humans on the rendered comment but
+        # greppable by the bot. The "Claude: " prefix marks the
+        # comment as agent-authored per the project convention.
+        run: |
+          set -euo pipefail
+          payload="${RUNNER_TEMP}/predict.json"
+          bump="$(jq -r '.bump' < "${payload}")"
+          current="$(jq -r '.current_version' < "${payload}")"
+          next="$(jq -r '.next_version' < "${payload}")"
+          # Render one bullet per driver so a multi-entry PR shows
+          # every contributing entry. Bullet text is built in a jq
+          # filter so the embedded paths / types survive shell
+          # quoting verbatim. Each line: `- type \`feature\` in
+          # \`changelog/@unreleased/pr-NNN-slug.yml\` (-> MINOR)`.
+          drivers="$(jq -r '
+            .drivers[]
+            | "- type `\(.type)` in `\(.path)` (-> \(.bump))"
+              + (if .package then " — package `\(.package)`" else "" end)
+          ' < "${payload}")"
+          body_path="${RUNNER_TEMP}/comment-body.md"
+          {
+            echo "<!-- claude-release-impact -->"
+            echo "Claude: **Release impact:** this PR will trigger a **${bump}** version bump."
+            echo ""
+            echo "Predicted next version: \`v${next}\` (current: \`v${current}\`)."
+            echo ""
+            echo "Drivers:"
+            echo ""
+            echo "${drivers}"
+            echo ""
+            echo "_If this bump is wrong, edit the \`type:\` field in the YAML._"
+          } > "${body_path}"
+          echo "body_path=${body_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Post or update PR comment
+        if: steps.touched.outputs.touched == 'true' && steps.predict.outputs.predict == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BODY_PATH: ${{ steps.render.outputs.body_path }}
+          # The marker the comment carries on its first line; the
+          # match is exact-prefix so an arbitrary user comment that
+          # happens to mention "claude-release-impact" doesn't get
+          # patched. Kept here (rather than hardcoded in the run-block)
+          # so a future renaming is a single-line edit.
+          MARKER: "<!-- claude-release-impact -->"
+        # Idempotent: list the PR's existing issue comments, find the
+        # one whose body starts with the marker (if any), and
+        # PATCH it with the freshly rendered body. PATCH (rather than
+        # delete + create) preserves the comment ID so subscribers
+        # don't get a fresh notification on every workflow re-run.
+        # If no matching comment exists, POST a new one.
+        run: |
+          set -euo pipefail
+          # `gh api --paginate` (without `--jq`) returns concatenated
+          # arrays from each page; piping into `jq -r` flattens and
+          # filters in a single pass so we don't depend on a particular
+          # gh version's output shape. `--arg` keeps the marker out of
+          # the jq program text so its `<`, `!`, `-` characters survive
+          # shell quoting verbatim.
+          existing_id="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --paginate \
+            | jq -r --arg marker "${MARKER}" \
+                '.[] | select((.body // "") | startswith($marker)) | .id' \
+            | head -n 1)"
+          # `-F body=@<file>` reads the body from disk as a JSON
+          # string field — identical semantics to inlining
+          # `body="$(cat <file>)"` but binary-safe and free of any
+          # shell-expansion of the file's contents (the comment body
+          # is rendered Markdown so it can carry backticks / `$(`,
+          # which would otherwise execute under bash's `$(...)`).
+          if [[ -n "${existing_id}" ]]; then
+            echo "release-impact-comment: updating existing comment ${existing_id}"
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_id}" \
+              -F "body=@${BODY_PATH}" \
+              > /dev/null
+          else
+            echo "release-impact-comment: posting new comment"
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              -F "body=@${BODY_PATH}" \
+              > /dev/null
+          fi
+
+  predict-release-impact-self-test:
+    name: predict_release_impact unit tests
+    runs-on: ubuntu-latest
+    # Exercise the predict script's bump matrix on every run so a
+    # regression in the prediction surface (e.g. the bump enum
+    # gaining a new variant whose label is not rendered) immediately
+    # fails CI rather than silently emitting a wrong comment. Same
+    # rationale as the existing `validator-self-test` job.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install runtime deps (PyYAML, pytest)
+        run: pip install --no-cache-dir 'pyyaml>=6' 'pytest>=8'
+
+      - name: Run predict_release_impact unit tests
+        run: |
+          set -euo pipefail
+          # `conftest.py` under scripts/changelog/tests/ puts
+          # scripts/changelog/ and scripts/lint/ on sys.path so the
+          # bare-name imports in the test file resolve.
+          python3 -m pytest scripts/changelog/tests/test_predict_release_impact.py -v
