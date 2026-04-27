@@ -36,6 +36,11 @@ below. Rules (enforced by .github/workflows/pr-lint.yml):
 - Trailers (`Closes`, `Co-authored-by`, `Signed-off-by`) follow the
   git-trailer format `Token: value`. `Closes #N` (no colon) is also
   accepted for compatibility with the existing CHANGELOG style.
+- The trailer block is contiguous: stack `Closes #N` and
+  `Signed-off-by:` with no blank line between them. One blank line
+  goes ABOVE the trailer block (between body and trailers), not
+  inside it — `git interpret-trailers --parse` treats a blank line
+  between trailers as the body/trailer boundary.
 
 The block below is intentionally empty — the lint will fail until
 you replace this comment with the body.
