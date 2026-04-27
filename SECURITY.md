@@ -525,17 +525,20 @@ today. It will not match every historical release tag:
 - **`v0.11.0..v0.15.3`** — post-workspace-split, but the
   release-publish pipeline silently produced incomplete asset sets
   before [#324](https://github.com/aidanns/agent-auth/issues/324)
-  landed. Re-publish is being driven through
-  [#372](https://github.com/aidanns/agent-auth/issues/372) by firing
-  `release-publish.yml` via `workflow_dispatch` from `main`. While
-  re-publish is in flight, an affected release page will not yet
-  enumerate the full per-package asset set, and the recipe above
-  fails at the missing-asset-download step. Once re-publish
-  completes, the asset set is present but the signature / provenance
-  identities are bound to `refs/heads/main` rather than
-  `refs/tags/<TAG>`; consumers must use the re-published-tag recipe
-  in [Re-published tag applicability](#re-published-tag-applicability)
-  below.
+  landed. Re-publish via the `workflow_dispatch` trigger added in
+  [#410](https://github.com/aidanns/agent-auth/pull/410) is **not
+  viable** for these tags: the dispatched run executes the post-fix
+  workflow against the pre-fix source tree, which fails at the build
+  step. The historical `pyproject.toml` carries the `setuptools`
+  flat-layout discovery bug that #324 fixed, and `v0.11.0..v0.14.1`
+  additionally lack `scripts/build-release-artifacts.sh` (added in
+  commit `166f55c` by
+  [#370](https://github.com/aidanns/agent-auth/pull/370)). These
+  releases will permanently have no per-package supply-chain assets;
+  consumers should source `v0.16.0` or later for the per-package
+  shape (and see the `v0.16.0` bullet below for the
+  [#408](https://github.com/aidanns/agent-auth/issues/408)
+  versioning bug).
 - **`v0.16.0`** — wheels and sdists are present in the per-package
   layout but versioned `0.0.0+unknown` instead of `0.16.0` (tracked
   as [#408](https://github.com/aidanns/agent-auth/issues/408)). The
@@ -548,22 +551,31 @@ today. It will not match every historical release tag:
 
 ### Re-published tag applicability
 
-Tags re-published via `gh workflow run release-publish.yml -f tag=<TAG>` (the post-merge ops driven by
-[#372](https://github.com/aidanns/agent-auth/issues/372)) inherit
-their cosign keyless identity and their SLSA provenance source-ref
-from the **dispatch ref** — `refs/heads/main` — rather than from the
-historical tag the workflow checks out. This is a property of GitHub
-OIDC's `job_workflow_ref` claim and the SLSA generator's
-`external_parameters.workflow.ref` encoding for `workflow_dispatch`
-runs. Firing `--ref <TAG>` would re-bind both to the tag, but the
-12 affected tags (`v0.11.0..v0.15.3`) predate the addition of
-`workflow_dispatch:` to `release-publish.yml`, so the tag-ref
-dispatch path is not viable for them.
+This section documents the verification recipe for any future tag
+re-published via `gh workflow run release-publish.yml -f tag=<TAG>`
+(the `workflow_dispatch` trigger landed in
+[#410](https://github.com/aidanns/agent-auth/pull/410)). As of
+2026-04-27, this recipe is **not in use for any historical tag**:
+the `v0.11.0..v0.15.3` re-publish that
+[#372](https://github.com/aidanns/agent-auth/issues/372) originally
+aimed for proved non-viable due to historical-source build failures
+(see the `v0.11.0..v0.15.3` entry under
+[Tag applicability](#tag-applicability) above).
 
-For these re-published assets, the verification recipe above fails
-at the cosign / SLSA signature check. Use this alternate recipe
-instead — it is identical to the recipe above except for the
-identity / source-ref expressions:
+A re-published tag inherits its cosign keyless identity and its
+SLSA provenance source-ref from the **dispatch ref** —
+`refs/heads/main` — rather than from the historical tag the workflow
+checks out. This is a property of GitHub OIDC's `job_workflow_ref`
+claim and the SLSA generator's `external_parameters.workflow.ref`
+encoding for `workflow_dispatch` runs. Firing `--ref <TAG>` would
+re-bind both to the tag, but a tag that predates the addition of
+`workflow_dispatch:` to `release-publish.yml` cannot be re-dispatched
+against its own ref.
+
+For re-published assets, the verification recipe above fails at the
+cosign / SLSA signature check. Use this alternate recipe instead —
+it is identical to the recipe above except for the identity /
+source-ref expressions:
 
 ```bash
 : "${TAG:?set TAG=vX.Y.Z to the re-published release tag}"
@@ -627,8 +639,8 @@ That is strictly weaker than the primary recipe: the primary recipe
 binds the signature and the provenance source-ref to a specific
 historical tag (`refs/tags/vX.Y.Z`), so a verifier can distinguish
 between, say, the `v0.13.0` and `v0.14.0` build runs by their
-identities alone. The re-published recipe cannot — every re-published
-tag in `v0.11.0..v0.15.3` shares the same `…@refs/heads/main`
+identities alone. The re-published recipe cannot — every tag
+re-published from `main` shares the same `…@refs/heads/main`
 identity, and `slsa-verifier --source-branch main` accepts any
 provenance whose source-ref is `refs/heads/main`. Consumers who
 require per-tag-bound verification should source these versions from

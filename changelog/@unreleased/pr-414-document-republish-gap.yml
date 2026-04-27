@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: |
+    SECURITY.md § Supply-chain artifacts now records that the
+    `workflow_dispatch` re-publish trigger added in #410 cannot
+    backfill the `v0.11.0..v0.15.3` tags — running the post-fix
+    workflow against the pre-fix source tree fails at the build step
+    (the historical `pyproject.toml` carries the `setuptools`
+    flat-layout discovery bug fixed in #324, and `v0.11.0..v0.14.1`
+    additionally lack `scripts/build-release-artifacts.sh` added in
+    commit 166f55c by #370). Those releases will permanently have no
+    per-package supply-chain assets; consumers should source `v0.16.0`
+    or later. The § Re-published tag applicability subsection is
+    reworded so its alternate cosign / slsa-verifier recipe covers
+    any future re-publish without claiming current use.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/372
