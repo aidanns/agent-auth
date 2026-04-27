@@ -16,13 +16,31 @@ name: Release Publish
 on:
   push:
     tags: ["v*"]
+  # Re-publish path for an existing tag whose original `push: tags:`
+  # run produced an incomplete asset set (issue #372). The dispatched
+  # run checks out the tag's commit, re-runs the full sign / SBOM /
+  # SLSA-provenance chain, and `gh release upload --clobber` overwrites
+  # any partial assets idempotently. `workflow_dispatch` only fires the
+  # workflow file present on the default branch, so this trigger
+  # becomes operational on the first merge that adds it.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to (re-)publish, e.g. v0.13.0. Must already exist on origin."
+        required: true
+        type: string
 
 permissions:
   contents: write
   id-token: write
 
+# Group key uses the tag name (not `github.ref`) so a `workflow_dispatch`
+# re-publish shares a queue with the original `push: tags` run for the
+# same tag — `github.ref` is `refs/heads/main` for dispatch and
+# `refs/tags/vX.Y.Z` for tag pushes, which would otherwise key
+# different groups.
 concurrency:
-  group: release-publish-${{ github.ref }}
+  group: release-publish-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -34,9 +52,14 @@ jobs:
       # bind the provenance attestation to those artefacts.
       hashes: ${{ steps.hashes.outputs.hashes }}
     steps:
+      # `ref:` lets `workflow_dispatch` runs check out the input tag's
+      # commit instead of the default branch's tip. For `push: tags:`,
+      # `inputs.tag` is empty and the fallback to `github.ref`
+      # (`refs/tags/vX.Y.Z`) preserves the original behaviour.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -137,7 +160,7 @@ jobs:
       - name: Upload artefacts to GitHub release
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         # One asset per artefact-derived file: wheel, sdist, sha256
         # sidecars, SBOMs, and every cosign bundle. ``--clobber`` lets
         # a rerun overwrite if a previous attempt half-uploaded.
@@ -201,12 +224,17 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           # Only need `packages/` to count workspace members; a shallow
-          # clone is enough.
+          # clone is enough. `ref:` matches the tag the publish job
+          # built against so the workspace member count read from
+          # `packages/<svc>/pyproject.toml` reflects the per-tag layout
+          # — re-publishing an old tag whose member count differs from
+          # `main`'s would otherwise mis-derive the expected counts.
           fetch-depth: 1
+          ref: ${{ inputs.tag || github.ref }}
       - name: Verify expected release assets are uploaded
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
