@@ -345,9 +345,11 @@ of:
   CI completes for this PR, or the PR keeps re-falling-behind for
   another reason (e.g. a conflict that `update-branch` can't
   resolve). Investigate manually; once the underlying cause is
-  fixed, push a new commit to reset the count (the prior
-  auto-update comments stay on the PR but the `automerge` label
-  retrigger will start a fresh attempt).
+  fixed, push a new commit to the PR — the loop guard only counts
+  auto-update comments posted since the most recent push to the PR
+  head (anchored on the head commit's `committer.date`), so a
+  fresh push resets the count. The prior auto-update comments stay
+  on the PR but no longer block subsequent attempts.
 - **GitHub merge API rejected the call**: surfaced as the literal
   API error string. The most common cause is the App not being a
   bypass actor on the `main` ruleset (returns
