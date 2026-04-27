@@ -184,6 +184,38 @@ def test_assert_pr_lint_yaml_detects_missing_block(tmp_path: Path) -> None:
         assert_pr_lint_yaml_in_sync(yaml)
 
 
+def test_assert_pr_lint_yaml_detects_extra_yaml_type(tmp_path: Path) -> None:
+    """A YAML with a type the module doesn't know about triggers ``AssertionError``.
+
+    Mirrors :func:`test_assert_pr_lint_yaml_detects_drift` but flips
+    the asymmetry: the YAML carries every member of ``ALLOWED_TYPES``
+    plus a phantom ``revert`` entry. A future refactor that loosened
+    the comparison to ``set(actual) >= set(expected)`` would silently
+    pass the existing missing-type drift test, so this one pins the
+    other direction (YAML wider than module) explicitly.
+    """
+    yaml = tmp_path / "pr-lint.yml"
+    yaml.write_text(
+        """jobs:
+  pr-title:
+    steps:
+      - with:
+          types: |
+            break
+            chore
+            deprecation
+            feature
+            fix
+            improvement
+            migration
+            revert
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(AssertionError, match="drift"):
+        assert_pr_lint_yaml_in_sync(yaml)
+
+
 # --- version_logic re-export contract ----------------------------------------
 
 

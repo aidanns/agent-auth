@@ -305,10 +305,15 @@ calls:
 Scopes are drawn from a known set so `CHANGELOG.md` and `git log`
 stay browsable. Adding a new scope is a CONTRIBUTING edit, not an
 ad-hoc invention in a PR — if none of the scopes below fit, raise a
-PR to add one. The Python lint surface mirrors the lists below in
-[`scripts/lint/commit_taxonomy.py`](scripts/lint/commit_taxonomy.py)
-(`PACKAGE_SCOPES` is discovered from `packages/*/`; `AREA_SCOPES`
-is curated alongside this prose).
+PR to add one. The Python lint surface mirrors these lists in
+[`scripts/lint/commit_taxonomy.py`](scripts/lint/commit_taxonomy.py):
+`PACKAGE_SCOPES` is discovered at import time from `packages/*/`, and
+`AREA_SCOPES` currently mirrors a conservative subset of the area
+scopes documented below (the scopes already pinned by existing tests
+and tooling). #401 (the type × scope matrix) and #402 (the two-tier
+internal-only scope rule) will refine the constant against the full
+prose set; until they land, expect the constant to be narrower than
+this section's enumeration.
 
 - **Subsystem scopes** — the module or surface the commit touches.
   `agent-auth`, `things-bridge`, `things-cli`,

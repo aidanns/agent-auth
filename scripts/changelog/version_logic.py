@@ -58,6 +58,7 @@ rather than a mix of ``ValueError``, ``KeyError``, ``TypeError``.
 from __future__ import annotations
 
 import enum
+import importlib.util
 import re
 import sys
 from collections.abc import Iterable, Sequence
@@ -74,15 +75,35 @@ import yaml
 # ``BumpType`` (the enum) and ``EntryType`` (the YAML ``type:`` enum
 # of release-bumping types). Adding a new PR-title prefix is therefore
 # a single-file edit in ``commit_taxonomy``.
-_LINT_DIR = Path(__file__).resolve().parent.parent / "lint"
-if str(_LINT_DIR) not in sys.path:
-    sys.path.insert(0, str(_LINT_DIR))
-
-from commit_taxonomy import (  # noqa: E402  -- after sys.path setup
-    ALLOWED_TYPES,
-    RELEASE_BUMPING_TYPES,
-    ReleaseImpact,
-)
+#
+# Loaded via ``importlib.util.spec_from_file_location`` rather than a
+# regular ``import`` so this production module never mutates
+# ``sys.path``. A ``sys.path.insert`` here would be inherited by every
+# caller that imports ``version_logic`` (lint, release workflow, CLI,
+# tests), and could shadow same-named modules in unrelated
+# environments. Same pattern that ``scripts/changelog/bot.py`` uses to
+# load ``validate-commit-msg-block.py`` without touching ``sys.path``.
+#
+# The loaded module is cached under ``sys.modules["commit_taxonomy"]``
+# so a subsequent bare-name ``import commit_taxonomy`` (used by tests
+# whose ``conftest.py`` puts ``scripts/lint/`` on the path) returns
+# *this* module instance — preserving identity contracts like
+# ``version_logic.BumpType is commit_taxonomy.ReleaseImpact``. The
+# inverse case (this module's load happens after a bare-name import
+# already populated ``sys.modules``) reuses the cached module instead
+# of re-executing the file, for the same reason.
+_COMMIT_TAXONOMY_PATH = Path(__file__).resolve().parent.parent / "lint" / "commit_taxonomy.py"
+_commit_taxonomy = sys.modules.get("commit_taxonomy")
+if _commit_taxonomy is None:
+    _spec = importlib.util.spec_from_file_location("commit_taxonomy", _COMMIT_TAXONOMY_PATH)
+    if _spec is None or _spec.loader is None:  # pragma: no cover - import-time guard
+        raise ImportError(f"cannot load commit_taxonomy from {_COMMIT_TAXONOMY_PATH}")
+    _commit_taxonomy = importlib.util.module_from_spec(_spec)
+    sys.modules["commit_taxonomy"] = _commit_taxonomy
+    _spec.loader.exec_module(_commit_taxonomy)
+ALLOWED_TYPES = _commit_taxonomy.ALLOWED_TYPES
+RELEASE_BUMPING_TYPES = _commit_taxonomy.RELEASE_BUMPING_TYPES
+ReleaseImpact = _commit_taxonomy.ReleaseImpact
 
 # Filename pattern used by both the schema parser and the lint's
 # file-presence/file-naming checks. Captures the PR number so the lint

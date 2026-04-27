@@ -32,6 +32,9 @@ derived from — or self-tested against — the constants here.
   drifts from the lint.
 - ``AREA_SCOPES`` — fixed list of cross-cutting concern scopes
   (release, ci, deps, deps-dev, docs, design, security, claude).
+  Conservative subset of the area scopes enumerated in
+  CONTRIBUTING.md § "Allowed scopes" — #401 / #402 widen and
+  partition it. CONTRIBUTING.md flags the divergence inline.
 - ``INTERNAL_ONLY_SCOPES`` — scopes that can only combine with
   ``chore`` / ``fix``. Initial value is the empty set; #401 (the
   type x scope matrix) lands the first restriction. Defined here so
@@ -132,7 +135,12 @@ PACKAGE_SCOPES: tuple[str, ...] = _discover_package_scopes()
 # Cross-cutting concern scopes. Curated rather than discovered: these
 # names refer to areas of the repo (CI, docs, design, security) rather
 # than packages, and the prose definition lives in CONTRIBUTING.md
-# § "Allowed scopes". Keep alphabetical so review diffs are easy to read.
+# § "Allowed scopes". The constant is intentionally a *conservative
+# subset* of that prose enumeration today — #401 (type x scope matrix)
+# and #402 (two-tier internal-only rule) widen and partition it; the
+# CONTRIBUTING paragraph notes the divergence so a future contributor
+# diffing the two surfaces is not misled. Keep alphabetical so review
+# diffs are easy to read.
 AREA_SCOPES: tuple[str, ...] = (
     "ci",
     "claude",
