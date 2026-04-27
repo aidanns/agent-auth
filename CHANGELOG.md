@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.16.0] - 2026-04-27
+
+### Features
+
+- Each `packages/<svc>/install.sh` no longer requires `uv` at install time — only Python 3.11+ with the stdlib `venv` module. The release pipeline now publishes one wheel + sdist + `.sha256` + SBOM + cosign bundle per workspace package (`uv build --all-packages`); install scripts download the service wheel + every workspace-dep wheel, verify sha256, install into `~/.local/share/<svc>/venv`, and symlink entrypoints into `~/.local/bin`. SLSA Build L3 provenance subjects now enumerate every wheel + sdist in the release. `--local <dir>` lets CI exercise the install path end-to-end without a published release. See ADR 0044.
+
+### Improvements
+
+- The `release-publish.yml` `verify-assets` post-publish gate and
+  the `release-dryrun.yml` PR-time gate now assert exact per-package
+  counts derived from the workspace member count, instead of the
+  pre-#324 "at least one" thresholds. With N workspace members the
+  gates expect N wheels, N sdists, 2N `.sha256` sidecars, 2N SBOMs
+  (one per artefact), and 4N cosign signature bundles (one per
+  artefact + one per SBOM). A regression that drops one package's
+  asset set (e.g. a `gh release upload` glob change that misses
+  `*.spdx.json.sig.bundle`, or a `uv build --all-packages` skip)
+  will now fail the gate; the previous `-ge 1` thresholds would
+  silently pass. Adds `.sha256` sidecar enumeration, which the
+  earlier check did not cover at all, and a `actions/checkout`
+  step on `verify-assets` so the workspace member count is read
+  from `packages/*/pyproject.toml` rather than hard-coded.
+
 ## [0.15.3] - 2026-04-27
 
 ### Improvements
