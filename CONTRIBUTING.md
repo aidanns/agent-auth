@@ -781,6 +781,8 @@ A subset of the rules below is **CI-enforced**; the rest are
 | Body's first line does not duplicate the PR title                                | CI (`pr-body-commit-msg` job, with the title passed in via env var)                                                               |
 | `Fixes: <sha> ("subject")` follows the kernel-style shape when SHA-style is used | CI (`pr-body-commit-msg` job)                                                                                                     |
 | Trailers parse as `Token: value` and use a recognised token                      | CI (`pr-body-commit-msg` job)                                                                                                     |
+| Trailer block is contiguous (no blank lines between trailers)                    | CI (`pr-body-commit-msg` job)                                                                                                     |
+| At least one blank line sits between the body and the trailer block              | CI (`pr-body-commit-msg` job)                                                                                                     |
 | `BREAKING CHANGE:` is the last non-`Signed-off-by:` line                         | CI (`pr-body-commit-msg` job)                                                                                                     |
 | At least one `Signed-off-by:` trailer is present                                 | CI (`pr-body-commit-msg` job; also enforced post-merge by `dco.yml`)                                                              |
 | One logical change per PR                                                        | Convention only (undecidable mechanically)                                                                                        |
@@ -856,6 +858,39 @@ Unknown tokens are rejected to fail closed on typos like
 | `Co-authored-by: <name> <email>`         | Joint authorship. GitHub renders multiple authors on the squash-merge commit.                                                                                                         |
 | `BREAKING CHANGE: <text>`                | Footer that surfaces a backwards-incompatible change in the release notes; pair with the `break:` PR-title prefix. Must be the last non-`Signed-off-by:` line in the block.           |
 | `Refs: <ref>`                            | Generic forward / back reference (issue, ADR, RFC) when none of the above fit.                                                                                                        |
+
+The trailer block also obeys two layout rules — both enforced by the
+`pr-body-commit-msg` job and rooted in
+[`git interpret-trailers --parse`](https://git-scm.com/docs/git-interpret-trailers)'s
+contract:
+
+1. **Trailer block contiguity.** No blank lines *between* trailers.
+   `Closes:`, `Co-authored-by:`, `Signed-off-by:` and friends stack
+   with no blanks. `git interpret-trailers --parse` treats the first
+   blank line above a candidate trailer as the body/trailer boundary,
+   so a `Closes #N` separated from `Signed-off-by:` by a blank line
+   silently drops out of the trailer set — release-note generators,
+   audit-trail extractors, and GitHub's "linked issues" inference
+   then lose the `Closes:` reference.
+
+2. **At least one blank line *before* the trailer block.** That's
+   where the visual separation goes — the body ends, blank line(s),
+   then the contiguous trailer stack. Without the blank, the last
+   body paragraph and the first trailer visually run together in
+   `git log`, and `git interpret-trailers --parse` falls back on the
+   fragile heuristic that 25%+ of the last paragraph's lines must be
+   trailer-shape. The rule accepts one or more blanks (matching
+   `git interpret-trailers --parse` semantics, which treats any run
+   of one or more blanks as the body/trailer boundary).
+
+So the canonical shape is:
+
+```
+<body paragraph>
+
+Closes #NNN
+Signed-off-by: <name> <email>
+```
 
 #### Worked examples
 

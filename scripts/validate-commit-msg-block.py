@@ -35,6 +35,20 @@
 #      kernel-style `Fixes: <sha> ("subject")` shape: a hex SHA of
 #      at least 7 characters followed by a parenthesised
 #      double-quoted subject.
+#   9. The trailer block at the tail of the body is contiguous: no
+#      blank lines between two consecutive trailers. RFC 5322 / kernel
+#      convention / cbea.ms all say trailers form one contiguous
+#      block, and `git interpret-trailers --parse` treats a blank line
+#      as the body/trailer boundary — a blank between `Closes #N` and
+#      `Signed-off-by:` makes it see only the latter as a trailer, so
+#      release-note generators and audit-trail extractors silently
+#      lose the `Closes:` reference.
+#  10. At least one blank line sits between the last body paragraph
+#      and the first trailer line. The body ends, blank line(s),
+#      then the contiguous trailer stack — that blank is where the
+#      visual separation lives, not between trailers. This matches
+#      `git interpret-trailers --parse` semantics, which treats any
+#      run of one or more blanks as the body/trailer boundary.
 #
 # The PR title (subject) has its own prose-style rules — length cap,
 # trailing period, past-tense imperative — enforced by the sibling
@@ -87,6 +101,22 @@ TRAILER_RE = re.compile(r"^([A-Za-z0-9-]+):[ \t]+\S.*$")
 GITHUB_KEYWORD_RE = re.compile(
     r"^(Closes|Fixes|Resolves)\s+(#\d+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)\.?$"
 )
+
+# Kernel-style `Fixes: <sha> ...` trailer line — the FULL line including
+# the `Fixes:` prefix and a 7-40 char hex SHA value (CONTRIBUTING.md →
+# "Trailers" documents this shape). This tighter check distinguishes a
+# real `Fixes:` trailer pointing at an introducing commit from a body
+# paragraph whose heading happens to be `Fixes:` — e.g. the release-PR
+# body's `Fixes: <prose description>.` section heading rendered by
+# `scripts/changelog/build_release.py:render_commit_msg_block`. Without
+# the value-shape distinction, `_is_trailer_shape_line` would absorb
+# the section heading into the trailer-block region and
+# `check_trailer_block_contiguity` / `check_blank_line_before_trailers`
+# would fire on an otherwise well-formed body. (Distinct from
+# ``FIXES_SHA_TRAILER_RE`` defined further below, which matches only
+# the value portion as part of `check_fixes_trailer_shape`'s shape
+# check on already-parsed trailer values.)
+FIXES_SHA_TRAILER_LINE_RE = re.compile(r"^Fixes:[ \t]+[0-9a-fA-F]{7,40}\b")
 
 # Recognised trailer tokens in this project. Other tokens parse as
 # trailers structurally but warrant a stricter check (we want to fail
@@ -276,6 +306,84 @@ def is_trailer_token(token: str) -> bool:
     return token.lower() in {t.lower() for t in KNOWN_TRAILER_TOKENS}
 
 
+def _is_trailer_shape_line(line: str) -> bool:
+    """Return True when ``line`` looks like a trailer-block line.
+
+    Three shapes count as trailer-shape:
+
+    * A ``Token: value`` line whose token is in
+      ``KNOWN_TRAILER_TOKENS`` — kernel/RFC-5322 form
+      (``Signed-off-by:``, ``Closes:``, ``Fixes:``, etc.). Restricting
+      to known tokens (rather than any ``[A-Za-z0-9-]+:`` shape)
+      keeps a stray body line like ``Bug-123: see ticket`` from
+      extending the trailer-block region across a body/trailer
+      blank, which would otherwise produce a misleading
+      "blank between trailers" error.
+    * ``GITHUB_KEYWORD_RE`` — the no-colon form (``Closes #N``,
+      ``Fixes owner/repo#N``) project convention has historically
+      accepted alongside true trailers.
+    * ``BREAKING CHANGE:`` (with a space, not a hyphen). The footer is
+      conventionally a trailer-block resident even though it doesn't
+      match ``TRAILER_RE``'s no-whitespace token; see
+      ``check_breaking_change_position`` which already treats it as a
+      trailer-area line.
+
+    Used by ``check_trailer_block_contiguity`` and
+    ``check_blank_line_before_trailers`` to identify the trailer-block
+    region without re-implementing the shape check at each call site.
+    """
+    trailer_match = TRAILER_RE.match(line)
+    if trailer_match is not None and is_trailer_token(trailer_match.group(1)):
+        # `Fixes:` only counts as a trailer when its value is a SHA
+        # (kernel `Fixes: <sha> ("subject")` form). When the value is
+        # prose, the line is a body paragraph whose heading happens to
+        # be `Fixes:` (e.g. release-PR body sections rendered by
+        # `build_release.render_commit_msg_block`); treating it as a
+        # trailer would absorb the body paragraph into the trailer-block
+        # region and trigger false-positive contiguity / blank-before
+        # failures. The `Fixes #N` GitHub-keyword form is unaffected —
+        # it falls through to the `GITHUB_KEYWORD_RE` branch below.
+        if trailer_match.group(1).lower() == "fixes":
+            return FIXES_SHA_TRAILER_LINE_RE.match(line) is not None
+        return True
+    if GITHUB_KEYWORD_RE.match(line) is not None:
+        return True
+    return line.startswith("BREAKING CHANGE:")
+
+
+def _trailer_block_start_index(lines: list[str]) -> int | None:
+    """Return the 0-based index of the first line of the trailer block.
+
+    Walks from the end of ``lines`` backward, allowing blank lines
+    between trailer-shape lines so the broken
+    ``Closes #N`` / blank / ``Signed-off-by:`` pattern is still
+    detected as a single (broken) trailer block. Stops at the first
+    non-blank line that is not trailer-shape — that line is the body
+    terminus, and everything after it is the trailer-block region.
+
+    Returns ``None`` when the block has no trailer-shape lines at all
+    (e.g. an all-prose body); the caller then has nothing to validate
+    for contiguity / blank-line-before. Returns the 0-based index of
+    the first trailer-shape line otherwise.
+    """
+    first_trailer_idx: int | None = None
+    for idx in range(len(lines) - 1, -1, -1):
+        line = lines[idx]
+        if not line.strip():
+            # Blank line — keep walking; we want to extend the trailer
+            # block region across the blank so the contiguity check
+            # can see it.
+            continue
+        if _is_trailer_shape_line(line):
+            first_trailer_idx = idx
+            continue
+        # First non-blank, non-trailer line walking back: that's the
+        # body terminus. Everything after it is the trailer-block
+        # region.
+        break
+    return first_trailer_idx
+
+
 def parse_trailer_block(lines: list[str]) -> list[tuple[int, str, str]]:
     """Identify the contiguous trailer block at the tail of `lines`.
 
@@ -306,6 +414,106 @@ def parse_trailer_block(lines: list[str]) -> list[tuple[int, str, str]]:
         break
     trailers.reverse()
     return trailers
+
+
+def check_trailer_block_contiguity(lines: list[str]) -> None:
+    """Reject blank lines between two consecutive trailers.
+
+    `git interpret-trailers --parse` treats the first blank line above
+    a candidate trailer as the body/trailer boundary — anything before
+    that blank is body. A `Closes #N` separated from `Signed-off-by:`
+    by a blank line therefore drops out of the trailer set, and the
+    release-note generator / audit-trail extractor / GitHub's "linked
+    issues" inference silently lose the `Closes:` reference.
+
+    The fix is to require the trailer block to be one contiguous run
+    of trailer-shape lines (RFC 5322 / kernel / cbea.ms convention).
+    The check walks from the end backward identifying the trailer
+    block region (any tail run of trailer-shape lines, *including*
+    blank lines between them so the broken pattern stays in scope),
+    then fails if any blank line sits inside that region.
+    """
+    first_trailer_idx = _trailer_block_start_index(lines)
+    if first_trailer_idx is None:
+        # No trailer-shape lines at all; nothing to validate. Other
+        # checks (e.g. ``check_signoff_present``) own the "block has
+        # no Signed-off-by:" failure path.
+        return
+    region = lines[first_trailer_idx:]
+    blank_offsets = [
+        first_trailer_idx + offset for offset, line in enumerate(region) if not line.strip()
+    ]
+    if not blank_offsets:
+        return
+    # 1-based line numbers for the error message, consistent with the
+    # rest of the validator's diagnostics. Name the trailer lines
+    # straddling each blank so the diagnostic is unambiguous regardless
+    # of which trailer tokens are involved (`Closes` /
+    # `Signed-off-by:`, `BREAKING CHANGE:` / `Signed-off-by:`, or any
+    # other pair).
+    split_descriptions: list[str] = []
+    for blank_idx in blank_offsets:
+        before = next(
+            (lines[i] for i in range(blank_idx - 1, first_trailer_idx - 1, -1) if lines[i].strip()),
+            None,
+        )
+        after = next(
+            (lines[i] for i in range(blank_idx + 1, len(lines)) if lines[i].strip()),
+            None,
+        )
+        if before is not None and after is not None:
+            split_descriptions.append(
+                f"line {blank_idx + 1} (between `{before.strip()}` " f"and `{after.strip()}`)"
+            )
+        else:
+            split_descriptions.append(f"line {blank_idx + 1}")
+    splits_summary = "; ".join(split_descriptions)
+    raise ValidationError(
+        f"`{MARKER}` block has blank line(s) between trailers "
+        f"({splits_summary}). The trailer block must be contiguous — "
+        "`git interpret-trailers --parse` treats a blank line as the "
+        "body/trailer boundary, so any two consecutive trailers (e.g. "
+        "`Closes #N` and `Signed-off-by:`, or `BREAKING CHANGE:` and "
+        "`Signed-off-by:`) separated by a blank cause the leading "
+        "trailer to drop out of the trailer set and downstream tooling "
+        "silently loses the reference. Stack the trailers with no "
+        "blanks between them."
+    )
+
+
+def check_blank_line_before_trailers(lines: list[str]) -> None:
+    """Require at least one blank line between body and the trailer block.
+
+    The body ends, then one or more blanks, then the contiguous
+    trailer stack. Without the blank, the last body paragraph and the
+    first trailer visually run together in `git log` and
+    `git interpret-trailers --parse` is forced to fall back on the
+    heuristic that 25%+ of the last paragraph's lines must be
+    trailer-shape — a fragile signal we'd rather not rely on.
+
+    `git interpret-trailers --parse` treats any run of one or more
+    blanks as the body/trailer boundary, so the rule deliberately
+    accepts ``>= 1`` blank rather than insisting on exactly one. This
+    is the visual-separation rule the issue (#400) carved out as the
+    *correct* place to put a blank line; the contiguity rule above
+    is what stops contributors putting it between trailers.
+    """
+    first_trailer_idx = _trailer_block_start_index(lines)
+    if first_trailer_idx is None or first_trailer_idx == 0:
+        # No trailer block, or trailer block starts at the very top of
+        # the body (a body-less commit — e.g. a one-line subject and
+        # nothing but trailers). Nothing to separate.
+        return
+    preceding_line = lines[first_trailer_idx - 1]
+    if preceding_line.strip():
+        raise ValidationError(
+            f"`{MARKER}` block has no blank line between the body "
+            f"and the trailer block (line {first_trailer_idx + 1} is "
+            "the first trailer; the line above it is non-blank). "
+            "Insert one blank line so the body and the trailer stack "
+            "are visually separated and `git interpret-trailers "
+            "--parse` sees the trailer block boundary."
+        )
 
 
 def check_breaking_change_position(lines: list[str]) -> None:
@@ -518,7 +726,15 @@ def validate(body: str, title: str | None = None) -> None:
     check_line_width(lines)
     check_no_markdown(lines)
     check_breaking_change_position(lines)
+    # `check_trailers` runs before the contiguity / blank-line-before
+    # checks so an unknown-token typo (`Cosed: #1` for `Closes: #1`)
+    # surfaces as the more actionable "unknown trailer token" error,
+    # rather than the misleading "no blank line before trailer block"
+    # the layout checks would emit if the typo line failed
+    # ``_is_trailer_shape_line``'s known-token gate.
     check_trailers(lines)
+    check_trailer_block_contiguity(lines)
+    check_blank_line_before_trailers(lines)
     check_signoff_present(lines)
     check_first_line_not_subject_dup(lines, title)
     check_fixes_trailer_shape(lines)
