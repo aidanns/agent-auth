@@ -43,10 +43,12 @@
 #      `Signed-off-by:` makes it see only the latter as a trailer, so
 #      release-note generators and audit-trail extractors silently
 #      lose the `Closes:` reference.
-#  10. Exactly one blank line sits between the last body paragraph and
-#      the first trailer line. The body ends, blank line, then the
-#      contiguous trailer stack — that blank is where the visual
-#      separation lives, not between trailers.
+#  10. At least one blank line sits between the last body paragraph
+#      and the first trailer line. The body ends, blank line(s),
+#      then the contiguous trailer stack — that blank is where the
+#      visual separation lives, not between trailers. This matches
+#      `git interpret-trailers --parse` semantics, which treats any
+#      run of one or more blanks as the body/trailer boundary.
 #
 # The PR title (subject) has its own prose-style rules — length cap,
 # trailing period, past-tense imperative — enforced by the sibling
@@ -417,31 +419,56 @@ def check_trailer_block_contiguity(lines: list[str]) -> None:
     if not blank_offsets:
         return
     # 1-based line numbers for the error message, consistent with the
-    # rest of the validator's diagnostics.
-    blank_line_numbers = [idx + 1 for idx in blank_offsets]
+    # rest of the validator's diagnostics. Name the trailer lines
+    # straddling each blank so the diagnostic is unambiguous regardless
+    # of which trailer tokens are involved (`Closes` /
+    # `Signed-off-by:`, `BREAKING CHANGE:` / `Signed-off-by:`, or any
+    # other pair).
+    split_descriptions: list[str] = []
+    for blank_idx in blank_offsets:
+        before = next(
+            (lines[i] for i in range(blank_idx - 1, first_trailer_idx - 1, -1) if lines[i].strip()),
+            None,
+        )
+        after = next(
+            (lines[i] for i in range(blank_idx + 1, len(lines)) if lines[i].strip()),
+            None,
+        )
+        if before is not None and after is not None:
+            split_descriptions.append(
+                f"line {blank_idx + 1} (between `{before.strip()}` " f"and `{after.strip()}`)"
+            )
+        else:
+            split_descriptions.append(f"line {blank_idx + 1}")
+    splits_summary = "; ".join(split_descriptions)
     raise ValidationError(
         f"`{MARKER}` block has blank line(s) between trailers "
-        f"(line(s) {blank_line_numbers}). The trailer block must be "
-        "contiguous — `git interpret-trailers --parse` treats a blank "
-        "line as the body/trailer boundary, so a `Closes #N` "
-        "separated from `Signed-off-by:` by a blank drops out of the "
-        "trailer set and downstream tooling silently loses the "
-        "reference. Stack the trailers with no blanks between them."
+        f"({splits_summary}). The trailer block must be contiguous — "
+        "`git interpret-trailers --parse` treats a blank line as the "
+        "body/trailer boundary, so any two consecutive trailers (e.g. "
+        "`Closes #N` and `Signed-off-by:`, or `BREAKING CHANGE:` and "
+        "`Signed-off-by:`) separated by a blank cause the leading "
+        "trailer to drop out of the trailer set and downstream tooling "
+        "silently loses the reference. Stack the trailers with no "
+        "blanks between them."
     )
 
 
 def check_blank_line_before_trailers(lines: list[str]) -> None:
-    """Require exactly one blank line between body and the trailer block.
+    """Require at least one blank line between body and the trailer block.
 
-    The body ends, then a blank, then the contiguous trailer stack.
-    Without the blank, the last body paragraph and the first trailer
-    visually run together in `git log` and `git interpret-trailers
-    --parse` is forced to fall back on the heuristic that 25%+ of the
-    last paragraph's lines must be trailer-shape — a fragile signal
-    we'd rather not rely on.
+    The body ends, then one or more blanks, then the contiguous
+    trailer stack. Without the blank, the last body paragraph and the
+    first trailer visually run together in `git log` and
+    `git interpret-trailers --parse` is forced to fall back on the
+    heuristic that 25%+ of the last paragraph's lines must be
+    trailer-shape — a fragile signal we'd rather not rely on.
 
-    This is the visual-separation rule the issue (#400) carved out as
-    the *correct* place to put a blank line; the contiguity rule above
+    `git interpret-trailers --parse` treats any run of one or more
+    blanks as the body/trailer boundary, so the rule deliberately
+    accepts ``>= 1`` blank rather than insisting on exactly one. This
+    is the visual-separation rule the issue (#400) carved out as the
+    *correct* place to put a blank line; the contiguity rule above
     is what stops contributors putting it between trailers.
     """
     first_trailer_idx = _trailer_block_start_index(lines)

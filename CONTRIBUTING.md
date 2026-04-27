@@ -782,7 +782,7 @@ A subset of the rules below is **CI-enforced**; the rest are
 | `Fixes: <sha> ("subject")` follows the kernel-style shape when SHA-style is used | CI (`pr-body-commit-msg` job)                                                                                                     |
 | Trailers parse as `Token: value` and use a recognised token                      | CI (`pr-body-commit-msg` job)                                                                                                     |
 | Trailer block is contiguous (no blank lines between trailers)                    | CI (`pr-body-commit-msg` job)                                                                                                     |
-| One blank line sits between the body and the trailer block                       | CI (`pr-body-commit-msg` job)                                                                                                     |
+| At least one blank line sits between the body and the trailer block              | CI (`pr-body-commit-msg` job)                                                                                                     |
 | `BREAKING CHANGE:` is the last non-`Signed-off-by:` line                         | CI (`pr-body-commit-msg` job)                                                                                                     |
 | At least one `Signed-off-by:` trailer is present                                 | CI (`pr-body-commit-msg` job; also enforced post-merge by `dco.yml`)                                                              |
 | One logical change per PR                                                        | Convention only (undecidable mechanically)                                                                                        |
@@ -873,13 +873,15 @@ contract:
    audit-trail extractors, and GitHub's "linked issues" inference
    then lose the `Closes:` reference.
 
-2. **One blank line *before* the trailer block.** That's where the
-   visual separation goes — the body ends, blank line, then the
-   contiguous trailer stack. Without the blank, the last body
-   paragraph and the first trailer visually run together in
+2. **At least one blank line *before* the trailer block.** That's
+   where the visual separation goes — the body ends, blank line(s),
+   then the contiguous trailer stack. Without the blank, the last
+   body paragraph and the first trailer visually run together in
    `git log`, and `git interpret-trailers --parse` falls back on the
    fragile heuristic that 25%+ of the last paragraph's lines must be
-   trailer-shape.
+   trailer-shape. The rule accepts one or more blanks (matching
+   `git interpret-trailers --parse` semantics, which treats any run
+   of one or more blanks as the body/trailer boundary).
 
 So the canonical shape is:
 
