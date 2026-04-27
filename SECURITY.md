@@ -512,6 +512,31 @@ enforce the same property for the SLSA provenance: an attestation
 produced by a different repo, or for a different tag, will not verify
 against the expected source.
 
+### Tag applicability
+
+The recipe enumerates the workspace packages that exist on `main`
+today. It will not match every historical release tag:
+
+- **`v0.6.0..v0.10.0`** — pre-workspace-split releases. These tags
+  ship a single `agent_auth-X.Y.Z-py3-none-any.whl` (no per-package
+  layout); the per-package `PACKAGES` loop in the recipe will not
+  find them. Install the legacy wheel directly if needed, or upgrade
+  to `v0.11.0` or later.
+- **`v0.11.0..v0.15.3`** — post-workspace-split, but the
+  release-publish pipeline silently produced incomplete asset sets
+  before [#324](https://github.com/aidanns/agent-auth/issues/324)
+  landed. Re-publish is being driven through
+  [#372](https://github.com/aidanns/agent-auth/issues/372); until
+  each affected release page enumerates the full per-package asset
+  set the recipe's `cosign verify-blob` and `slsa-verifier verify-artifact` steps will fail at the missing-asset-download
+  step.
+- **`v0.16.0`** — wheels and sdists are present in the per-package
+  layout but versioned `0.0.0+unknown` instead of `0.16.0` (tracked
+  as [#408](https://github.com/aidanns/agent-auth/issues/408)). The
+  recipe builds filenames like `agent_auth-0.16.0-py3-none-any.whl`,
+  which do not exist on this release. Use the next non-affected
+  release (`v0.16.1` or later) once shipped.
+
 ### Trust boundary and residual risks
 
 The supply-chain trust boundary ends at the GitHub-hosted runner:
