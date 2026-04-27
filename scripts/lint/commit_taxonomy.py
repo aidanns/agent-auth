@@ -36,9 +36,15 @@ derived from — or self-tested against — the constants here.
   CONTRIBUTING.md § "Allowed scopes" — #401 / #402 widen and
   partition it. CONTRIBUTING.md flags the divergence inline.
 - ``INTERNAL_ONLY_SCOPES`` — scopes that can only combine with
-  ``chore`` / ``fix``. Initial value is the empty set; #401 (the
-  type x scope matrix) lands the first restriction. Defined here so
-  #401 is a one-line edit rather than a fresh source of truth.
+  ``chore`` / ``fix``. These name internal plumbing surfaces (CI,
+  dev-dep bumps, type-checker config, editor settings, agent
+  instructions, design notes, docs) where a release-bumping
+  ``feature(...)`` / ``improvement(...)`` / ``break(...)`` etc. would
+  surface in CHANGELOG.md as user-facing churn and trigger an
+  incorrect public version bump. The validator in
+  ``scripts/validate-pr-title.py`` reads this set to reject
+  ``feature(ci):`` / ``improvement(deps-dev):`` etc. at PR-open time.
+  See #401.
 
 ## Stability
 
@@ -152,11 +158,46 @@ AREA_SCOPES: tuple[str, ...] = (
     "security",
 )
 
-# Scopes that can only combine with ``chore`` / ``fix``. Empty at the
-# time #405 landed — #401 (the type x scope matrix) populates it. Defined
-# here so #401 is a single-line edit and so other importers (CONTRIBUTING
-# doc-drift checks, lint helpers) can refer to a stable name.
-INTERNAL_ONLY_SCOPES: frozenset[str] = frozenset()
+# Scopes that can only combine with ``chore`` / ``fix``. Each name
+# below identifies an internal plumbing surface that must not
+# surface in CHANGELOG.md or trigger a public version bump:
+#
+# - ``ci`` — GitHub Actions workflows, composite actions, lint
+#   wiring. CI plumbing has no user-visible behaviour.
+# - ``deps-dev`` — dev-only dependency bumps (pytest, mypy, ruff).
+#   Runtime-dep bumps live under ``deps`` and remain release-worthy.
+# - ``typecheck`` — mypy / pyright config and stub fixes.
+# - ``verify-standards`` — ``scripts/verify-standards.sh`` and
+#   sibling sanity checks; never user-observable.
+# - ``python`` — ruff, pytest, project Python config.
+# - ``setup-toolchain`` — ``.github/actions/setup-toolchain``.
+# - ``vscode`` — ``.vscode/`` editor settings.
+# - ``claude`` — CLAUDE.md / ``.claude/instructions/`` agent prompts.
+# - ``design`` — ``design/**`` ADRs, threat models, decomposition.
+# - ``docs`` — README, CONTRIBUTING.md, SUPPORT.md, in-tree
+#   developer docs. User-facing API docs that ship with a release
+#   are different and should pick the matching user-visible type
+#   on the package scope (e.g. ``feature(agent-auth):``).
+#
+# The validator in ``scripts/validate-pr-title.py`` rejects
+# ``<release-bumping-type>(<internal-only-scope>):`` combinations
+# with a worked-example error message; ``commit_taxonomy`` is the
+# single source of truth so the matrix can't drift between the lint
+# and CONTRIBUTING.md. See #401.
+INTERNAL_ONLY_SCOPES: frozenset[str] = frozenset(
+    {
+        "ci",
+        "claude",
+        "deps-dev",
+        "design",
+        "docs",
+        "python",
+        "setup-toolchain",
+        "typecheck",
+        "verify-standards",
+        "vscode",
+    }
+)
 
 
 # --- pr-lint.yml self-test ----------------------------------------------------
