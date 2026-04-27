@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.15.1] - 2026-04-27
+
+### Improvements
+
+- `merge-bot` now auto-updates a PR whose head sits behind `main`
+  instead of treating the merge API's 405 as a hard failure. After
+  the green-check and DCO gates the bot re-fetches
+  `mergeStateStatus`; if the value is `BEHIND`, it calls
+  `PUT /pulls/{n}/update-branch` (with `expected_head_sha` pinned),
+  posts a one-line `Claude: Branch was behind main — updated; …`
+  comment, and exits 0. The new head SHA retriggers every PR-gating
+  CI workflow, and the existing `workflow_run.completed` trigger
+  re-fires merge-bot for the second-pass merge once those workflows
+  complete. A loop guard caps the worst case at three auto-updates
+  per PR — the fourth `BEHIND` state surfaces
+  `Claude: Auto-update loop exceeded — main is moving too fast or this PR keeps falling behind. Investigate manually.` and fails the
+  job rather than burning further CI cycles. Requires
+  `contents: write` on both the workflow's top-level `permissions:`
+  block and the App installation.
+
 ## [0.15.0] - 2026-04-27
 
 ### Features
