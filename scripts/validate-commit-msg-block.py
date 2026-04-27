@@ -102,6 +102,22 @@ GITHUB_KEYWORD_RE = re.compile(
     r"^(Closes|Fixes|Resolves)\s+(#\d+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)\.?$"
 )
 
+# Kernel-style `Fixes: <sha> ...` trailer line — the FULL line including
+# the `Fixes:` prefix and a 7-40 char hex SHA value (CONTRIBUTING.md →
+# "Trailers" documents this shape). This tighter check distinguishes a
+# real `Fixes:` trailer pointing at an introducing commit from a body
+# paragraph whose heading happens to be `Fixes:` — e.g. the release-PR
+# body's `Fixes: <prose description>.` section heading rendered by
+# `scripts/changelog/build_release.py:render_commit_msg_block`. Without
+# the value-shape distinction, `_is_trailer_shape_line` would absorb
+# the section heading into the trailer-block region and
+# `check_trailer_block_contiguity` / `check_blank_line_before_trailers`
+# would fire on an otherwise well-formed body. (Distinct from
+# ``FIXES_SHA_TRAILER_RE`` defined further below, which matches only
+# the value portion as part of `check_fixes_trailer_shape`'s shape
+# check on already-parsed trailer values.)
+FIXES_SHA_TRAILER_LINE_RE = re.compile(r"^Fixes:[ \t]+[0-9a-fA-F]{7,40}\b")
+
 # Recognised trailer tokens in this project. Other tokens parse as
 # trailers structurally but warrant a stricter check (we want to fail
 # closed on typos like `Cosed: #1` — see is_trailer_token).
@@ -318,6 +334,17 @@ def _is_trailer_shape_line(line: str) -> bool:
     """
     trailer_match = TRAILER_RE.match(line)
     if trailer_match is not None and is_trailer_token(trailer_match.group(1)):
+        # `Fixes:` only counts as a trailer when its value is a SHA
+        # (kernel `Fixes: <sha> ("subject")` form). When the value is
+        # prose, the line is a body paragraph whose heading happens to
+        # be `Fixes:` (e.g. release-PR body sections rendered by
+        # `build_release.render_commit_msg_block`); treating it as a
+        # trailer would absorb the body paragraph into the trailer-block
+        # region and trigger false-positive contiguity / blank-before
+        # failures. The `Fixes #N` GitHub-keyword form is unaffected —
+        # it falls through to the `GITHUB_KEYWORD_RE` branch below.
+        if trailer_match.group(1).lower() == "fixes":
+            return FIXES_SHA_TRAILER_LINE_RE.match(line) is not None
         return True
     if GITHUB_KEYWORD_RE.match(line) is not None:
         return True
