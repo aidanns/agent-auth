@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.15.3] - 2026-04-27
+
+### Improvements
+
+- `merge-bot` now fires on two additional event surfaces so
+  `automerge`-labeled PRs no longer wedge on state transitions
+  that produced no merge-bot trigger event before. New
+  `pull_request_review` trigger (types `submitted` and
+  `dismissed`) re-fires the bot when a review state changes,
+  closing the gap where `automerge` was applied before the
+  final approval landed and no `workflow_run.completed` was
+  tied to the review submission. New `push: branches: [main]`
+  trigger plus a `sweep` job lists every open `automerge` PR
+  whenever `main` advances and dispatches the existing per-PR
+  `merge` job via `gh workflow run merge-bot.yml -f pr_number=<N>`, closing the gap where a labeled PR was
+  up-to-date when the bot last fired and then `main` moved
+  with nothing else to re-trigger the bot. Sweep concurrency
+  (`merge-bot-sweep`, `cancel-in-progress: true`) collapses a
+  burst of merges to `main` into one sweep; per-PR concurrency
+  (`merge-bot-<n>`) is unchanged. The sweep uses the default
+  `GITHUB_TOKEN` (with `actions: write` added to the
+  workflow-level `permissions:` block) rather than the App
+  token, so no additional App permission grant is required.
+
 ## [0.15.2] - 2026-04-27
 
 ### Improvements
