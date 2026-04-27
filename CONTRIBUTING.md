@@ -310,10 +310,9 @@ PR to add one. The Python lint surface mirrors these lists in
 `PACKAGE_SCOPES` is discovered at import time from `packages/*/`, and
 `AREA_SCOPES` currently mirrors a conservative subset of the area
 scopes documented below (the scopes already pinned by existing tests
-and tooling). #401 (the type × scope matrix) and #402 (the two-tier
-internal-only scope rule) will refine the constant against the full
-prose set; until they land, expect the constant to be narrower than
-this section's enumeration.
+and tooling). #402 (the two-tier internal-only scope rule) will
+refine the constant against the full prose set; until it lands,
+expect the constant to be narrower than this section's enumeration.
 
 - **Subsystem scopes** — the module or surface the commit touches.
   `agent-auth`, `things-bridge`, `things-cli`,
@@ -335,6 +334,39 @@ this section's enumeration.
 Bare (no-scope) commits are reserved for changes that genuinely
 don't fit a single scope — a sweeping rename, a repo-wide lint pass.
 Prefer a scope when one applies.
+
+#### Type × scope matrix
+
+Not every type is allowed on every scope. The validator at
+[`scripts/validate-pr-title.py`](scripts/validate-pr-title.py) reads
+the canonical
+[`commit_taxonomy.INTERNAL_ONLY_SCOPES`](scripts/lint/commit_taxonomy.py)
+set and rejects release-bumping prefixes paired with internal
+plumbing scopes. Without this rule, a `feature(ci):` PR for a CI
+workflow tweak would surface in `CHANGELOG.md` as a feature and bump
+the minor version — internal plumbing isn't user-visible and
+shouldn't move the public version.
+
+| Scope class                                                                                                                                    | Allowed types                                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **Subsystem scopes** (the package / module surface list above)                                                                                 | `feature`, `improvement`, `fix`, `chore`, `deprecation`, `migration`, `break` |
+| `release`                                                                                                                                      | `feature`, `improvement`, `fix`, `chore`                                      |
+| `deps` (runtime dep bumps — a CVE patch on a reachable dep is release-worthy)                                                                  | `feature`, `improvement`, `fix`, `chore`                                      |
+| `security` (security controls, supply-chain — fixes are release-worthy)                                                                        | `feature`, `improvement`, `fix`, `chore`                                      |
+| **Internal-only scopes:** `ci`, `deps-dev`, `typecheck`, `verify-standards`, `python`, `setup-toolchain`, `vscode`, `claude`, `design`, `docs` | `chore`, `fix` only                                                           |
+
+A failing PR title produces:
+
+> `feature(ci):` is not allowed — the `(ci)` scope is internal-only
+> and must use `chore:` or `fix:`. Internal plumbing changes should
+> not bump the public version. See CONTRIBUTING.md → "Allowed
+> scopes".
+
+`fix` stays valid on internal scopes as the escape hatch for a real
+bug in plumbing surface (e.g. a CI workflow that silently swallows a
+non-zero exit). A genuine bug fix in CI is `fix(ci):` — the patch
+bump is the correct release impact for "the CI was wrong and is now
+right".
 
 Default branch is `main`; feature branches follow
 `<username>/<feature-name>`. See the project [CLAUDE.md](CLAUDE.md) for

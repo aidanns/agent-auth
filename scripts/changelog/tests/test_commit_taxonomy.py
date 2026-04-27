@@ -130,15 +130,43 @@ def test_area_scopes_match_contributing_md() -> None:
 # --- INTERNAL_ONLY_SCOPES -----------------------------------------------------
 
 
-def test_internal_only_scopes_starts_empty() -> None:
-    """#405 lands the constant; #401 lands the first restriction.
+def test_internal_only_scopes_matches_issue_401_matrix() -> None:
+    """#401 populates the constant from CONTRIBUTING.md § "Allowed scopes".
 
-    Defining the symbol upfront with an empty default lets #401 be a
-    one-line edit. This test makes the empty-by-default contract
-    explicit so a casual edit doesn't sneak in a half-implemented
-    restriction.
+    Pinning the exact set here catches a one-sided edit (e.g. dropping
+    ``vscode`` from the constant but leaving the prose row in
+    CONTRIBUTING.md) before it reaches CI. The names enumerate every
+    internal plumbing surface the matrix declares off-limits to
+    release-bumping prefixes.
     """
-    assert frozenset() == INTERNAL_ONLY_SCOPES
+    assert (
+        frozenset(
+            {
+                "ci",
+                "claude",
+                "deps-dev",
+                "design",
+                "docs",
+                "python",
+                "setup-toolchain",
+                "typecheck",
+                "verify-standards",
+                "vscode",
+            }
+        )
+        == INTERNAL_ONLY_SCOPES
+    )
+
+
+def test_internal_only_scopes_does_not_overlap_release_bumping_types() -> None:
+    """No internal-only scope name accidentally collides with a type prefix.
+
+    A scope that shares a name with a type would make the validator's
+    error message confusing (``feature(feature):``). The two namespaces
+    are disjoint by construction; this test pins the invariant so a
+    future scope addition can't accidentally re-use a type name.
+    """
+    assert not (INTERNAL_ONLY_SCOPES & frozenset(ALLOWED_TYPES))
 
 
 # --- assert_pr_lint_yaml_in_sync ---------------------------------------------
