@@ -144,6 +144,144 @@ jobs:
       - name: Run Darwin-gated AppleScript client tests
         run: uv run pytest packages/things-client-cli-applescript/tests/test_things_client_applescript_things.py --no-cov -v
 
+  # End-to-end exercise of the per-package install path that
+  # release-publish.yml ships (ADR 0044). Builds every workspace
+  # member's wheel + sdist, generates .sha256 sidecars, and runs
+  # ``packages/<svc>/install.sh --local dist/`` for a representative
+  # service surface. The job is matrixed across two services that
+  # together cover the install pattern's failure modes:
+  #
+  #   - ``things-cli`` — minimal closure (one workspace dep, three
+  #     PyPI deps). Validates the dep-first install ordering.
+  #   - ``gpg-bridge`` — server install with the same workspace dep
+  #     plus a richer transitive PyPI closure (cryptography via
+  #     keyring, pyyaml). Catches pip-resolver or platform-wheel
+  #     issues a pure-stdlib service would hide.
+  #
+  # The job deliberately does NOT use ``setup-toolchain``, which
+  # installs uv on PATH — the install scripts must work without uv
+  # (uv is the build-time dependency, not an install-time one).
+  install-from-wheels:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - {name: things-cli, entrypoint: things-cli}
+          - {name: gpg-bridge, entrypoint: gpg-bridge}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # Stdlib python provides the venv module the install scripts
+      # need. Pinning the minor version matches ``requires-python``
+      # in every package's pyproject.toml.
+      - name: Set up Python 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      # uv is only needed for the build step. Install it here, in
+      # this dedicated step, so the install.sh invocation below runs
+      # in a shell that doesn't see uv on PATH (we ``unset`` the uv
+      # env vars + scrub PATH before running install.sh).
+      - name: Install uv (build only)
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.7"
+          enable-cache: true
+
+      - name: Build all workspace wheels + sdists
+        run: |
+          rm -rf dist
+          uv build --all-packages --out-dir dist/
+
+      - name: Generate sha256 sidecar files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in *.whl *.tar.gz; do
+            sha256sum "${f}" > "${f}.sha256"
+          done
+
+      # Run install.sh in a clean shell with uv stripped from PATH and
+      # every UV_* env var unset, so a stray inheritance can't mask a
+      # uv-dependency regression in install.sh itself.
+      - name: Install ${{ matrix.service.name }} from local wheels
+        env:
+          DIST_DIR: ${{ github.workspace }}/dist
+          INSTALL_SCRIPT: ${{ github.workspace }}/packages/${{ matrix.service.name }}/install.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r var; do
+            [[ -n "${var}" ]] && unset "${var}"
+          done < <(env | awk -F= '/^UV_/ {print $1}')
+          # Strip every directory containing a uv binary from PATH.
+          uv_bins=$(command -v uv 2>/dev/null || true)
+          if [[ -n "${uv_bins}" ]]; then
+            uv_dir=$(dirname "${uv_bins}")
+            PATH=$(echo "${PATH}" | tr ':' '\n' | grep -v -F -x "${uv_dir}" | paste -sd: -)
+            export PATH
+          fi
+          if command -v uv >/dev/null 2>&1; then
+            echo "::error::uv is still on PATH after scrub; install.sh must run without it." >&2
+            exit 1
+          fi
+          bash "${INSTALL_SCRIPT}" --local "${DIST_DIR}"
+
+      - name: Verify entrypoint binary + venv contents
+        env:
+          ENTRY: ${{ matrix.service.entrypoint }}
+          SERVICE: ${{ matrix.service.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="${HOME}/.local/bin/${ENTRY}"
+          venv="${HOME}/.local/share/${SERVICE}/venv"
+          if [[ ! -L "${bin}" ]]; then
+            echo "::error::expected symlink at ${bin}, none found" >&2
+            exit 1
+          fi
+          if [[ ! -x "${bin}" ]]; then
+            echo "::error::${bin} is not executable" >&2
+            exit 1
+          fi
+          # ``--version`` exits 0 on every CLI in the workspace
+          # (issue #318 / PR #341). gpg-cli has its own gpg-shaped
+          # ``--version`` output; the only assertion here is exit 0.
+          "${bin}" --version
+          # The installed venv must hold both the service distribution
+          # and its workspace dep (``agent-auth-common``). pip list's
+          # tabular output is matched with grep so a future PEP 503
+          # rename of either package would still match.
+          installed=$("${venv}/bin/pip" list --format=columns)
+          for needed in "${SERVICE}" agent-auth-common; do
+            if ! grep -q -E "^${needed}([[:space:]]|$)" <<<"${installed}"; then
+              echo "::error::expected ${needed} installed in ${venv}; pip list output:" >&2
+              echo "${installed}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Verify --uninstall removes everything cleanly
+        env:
+          ENTRY: ${{ matrix.service.entrypoint }}
+          SERVICE: ${{ matrix.service.name }}
+          INSTALL_SCRIPT: ${{ github.workspace }}/packages/${{ matrix.service.name }}/install.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "${INSTALL_SCRIPT}" --uninstall
+          if [[ -e "${HOME}/.local/bin/${ENTRY}" ]]; then
+            echo "::error::${HOME}/.local/bin/${ENTRY} should be gone after --uninstall" >&2
+            exit 1
+          fi
+          if [[ -d "${HOME}/.local/share/${SERVICE}/venv" ]]; then
+            echo "::error::${HOME}/.local/share/${SERVICE}/venv should be gone after --uninstall" >&2
+            exit 1
+          fi
+
   tests:
     runs-on: ubuntu-latest
     needs:
@@ -153,6 +291,7 @@ jobs:
       - integration-things-bridge
       - integration-things-cli
       - integration-things-client-applescript
+      - install-from-wheels
       - macos-applescript
     if: always()
     steps:

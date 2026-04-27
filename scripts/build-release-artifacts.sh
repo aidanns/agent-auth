@@ -56,13 +56,14 @@ fi
 
 mkdir -p "${OUT_DIR}"
 
-# Today this is `uv build` at the workspace root, which matches what
-# `release-publish.yml` ran before this script was extracted. The
-# workspace-split regression that motivated #325 means this currently
-# fails on `main` (setuptools rejects the workspace-root pyproject) —
-# that failure is the intended PR-time signal. Issue #324 rewrites
-# this step to a per-package `uv build --package <name>` loop; once it
-# lands the dry-run will go green and the gate can move from
-# informational (`continue-on-error: true` on the dry-run job) to
+# ``--all-packages`` enumerates every workspace member in
+# ``[tool.uv.workspace].members`` and builds one wheel + one sdist per
+# member into ``${OUT_DIR}``. The repo-root pyproject.toml is a
+# workspace shell with no build target — running ``uv build`` against
+# it would have setuptools reject the multiple-top-level-packages
+# flat layout (the workspace-split regression that motivated #325).
+# Issue #324 took the build off ``uv build`` at the workspace root
+# and onto this per-package loop; with the dry-run gate green on main
+# it can move from informational (`continue-on-error: true`) to a
 # required-status-check.
-uv build --out-dir "${OUT_DIR}"
+uv build --all-packages --out-dir "${OUT_DIR}"

@@ -45,12 +45,16 @@ its design.
 Each service in this repository ships as its own installable Python
 package under [`packages/`](packages/). There is no top-level meta
 installer — install only the pieces you need via the per-service
-`install.sh` scripts below. Every installer is a `uv tool install`
-wrapper, so it writes into a uv-managed environment and adds the CLI
-to your PATH.
+`install.sh` scripts below. Each installer downloads the matching
+release wheel(s), verifies sha256 against the published checksum,
+installs into `~/.local/share/<service>/venv` via stdlib `venv`, and
+symlinks the entrypoint(s) into `~/.local/bin/`.
 
-Requires [uv](https://docs.astral.sh/uv/) (`brew install uv` on macOS,
-or `curl -LsSf https://astral.sh/uv/install.sh | sh`).
+Requires Python 3.11+ with the stdlib `venv` module on PATH (e.g.
+`brew install python@3.12` on macOS, `apt install python3 python3-venv`
+on Ubuntu/Debian). `uv` is not required at install time. See
+[ADR 0044](design/decisions/0044-per-package-release-asset-layout.md)
+for the per-package distribution model.
 
 ### Per-service installers
 
