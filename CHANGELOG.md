@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.16.2] - 2026-04-28
+
+### Improvements
+
+- Release-PR squash-merge commit bodies (rendered by
+  `render_commit_msg_block`) no longer open with a redundant
+  `Release vX.Y.Z.` paragraph — the version is already in the
+  `chore(release): X.Y.Z` subject, so the body now opens directly
+  with the first per-section paragraph (`Improvements: ...`,
+  `Fixes: ...`). `render_release_notes` (the GitHub Release surface)
+  keeps its `Release vX.Y.Z.` header where the version is
+  load-bearing.
+- The release-PR `==COMMIT_MSG==` block now emits one bullet per
+  changelog entry under each section heading, regardless of entry
+  count. The shape is identical for single-entry and multi-entry
+  sections, so `git log` and the GitHub release page scan
+  uniformly. Replaces the historical semicolon-joined prose
+  paragraph per section.
+
 ## [0.16.1] - 2026-04-27
 
 ### Improvements
