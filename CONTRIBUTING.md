@@ -776,6 +776,7 @@ A subset of the rules below is **CI-enforced**; the rest are
 | Title summary capitalisation (project lowercases post-prefix)                    | Convention only                                                                                                                   |
 | Imperative mood beyond the past-tense closed list                                | Convention only (no clean regex without false positives)                                                                          |
 | Body wraps at ≤ 72 chars                                                         | CI (`pr-body-commit-msg` job, `scripts/validate-commit-msg-block.py`)                                                             |
+| Body length (soft cap, warning only)                                             | CI (`pr-body-commit-msg` job; warning surfaced in workflow log, does not fail the job)                                            |
 | Body has no markdown headings / task checkboxes / image embeds                   | CI (`pr-body-commit-msg` job — plain `-` / `*` bullets and `1.` numbered lists are permitted)                                     |
 | Body opens non-blank (after PR-template scaffolding)                             | CI (`pr-body-commit-msg` job)                                                                                                     |
 | Body's first line does not duplicate the PR title                                | CI (`pr-body-commit-msg` job, with the title passed in via env var)                                                               |
@@ -828,17 +829,66 @@ A subset of the rules below is **CI-enforced**; the rest are
   lands on a single commit; a commit that does five things forces
   the bisecting reader to manually unpick which sub-change broke
   the build.
+
 - **Lead with *why*, not *how*.** The diff already shows how. The
   body's job is to justify the change to a reader six months from
   now who's lost the immediate context: what observable behaviour
   motivated this, what alternatives were considered, what
   trade-offs were taken. A commit message that recapitulates the
   diff in English adds nothing.
+
+- **Don't restate the diff.** A body that re-narrates renamed paths,
+  adjusted regex patterns, or new gates in prose is reachable from
+  `git show` already. Replace the prose-recap with a single sentence
+  on *why* the change exists. **Counter-example** — the body of
+  [`7ab4c6a`](https://github.com/aidanns/agent-auth/commit/7ab4c6a)
+  ("chore: standardise YAML extension on .yml") was ~360 words
+  across six paragraphs, most enumerating renamed files
+  (`.github/tool-versions`, `design/functional_decomposition`, …),
+  the dual-extension regex tightenings, and the new gate. The
+  rewrite worth keeping is one paragraph: *"Every consuming tool
+  (Taskfile, lefthook, GitHub Actions, Dependabot, the changelog
+  pipeline) already defaults to .yml — the dual-extension surface
+  was just an inconsistency tax on contributors. Closes #326."* —
+  the file list is in `git show`'s rename detection, not the
+  message.
+
+- **When a long body *is* warranted.** Three cases legitimately
+  need more than three short paragraphs and explicitly do not trip
+  the verbose-body warning:
+
+  1. **ADR-grade decisions.** Trade-off paragraphs, the
+     alternatives that were rejected, the constraints that drove
+     the choice. The body is the audit trail that future readers
+     reach for when they want to understand "why this and not
+     that".
+  2. **Non-obvious failure modes.** When the failure mode the fix
+     addresses is more subtle than the diff (timing oracle, race
+     window, fragile heuristic) — write the failure mode out so a
+     future bisector matching the symptoms finds the fix via
+     `git log --grep`.
+  3. **Supply-chain or release-pipeline changes.** Workflow rewrites
+     and signing-flow changes carry audit-trail value; the extra
+     paragraphs explain *why* a pipeline shape is what it is, which
+     is exactly what an incident response on the same pipeline will
+     need.
+
+  A soft-cap warning (warning only — does not fail CI) fires from
+  `scripts/validate-commit-msg-block.py` when the body region (the
+  block content with the subject and trailer block removed) goes
+  beyond `VERBOSE_BODY_MAX_WORDS` words OR
+  `VERBOSE_BODY_MAX_LINES` non-blank lines. The thresholds are
+  tuned so the legitimately-long bodies that fit one of the three
+  cases above stay under cap; if the warning fires, the reviewer
+  pushes back on the PR description rather than the contributor
+  relitigating after merge.
+
 - **`fix:` PRs include observable symptoms.** Log lines, stack
   traces, error messages, repro steps — anything a future bisecting
   engineer might paste into `git log --grep` while hunting the
   same symptom. This is also what backport / distro maintainers
   read when deciding whether a fix applies to their tree.
+
 - **Wrap at 72 characters.** Already enforced by
   `scripts/validate-commit-msg-block.py`. `git log` and most
   terminal viewers display 80-column commit bodies with a 4-space
