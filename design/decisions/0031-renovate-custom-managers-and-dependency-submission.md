@@ -102,8 +102,12 @@ signal.
 - Snapshot uses PURLs (`pkg:github/koalaman/shellcheck@v0.10.0`,
   `pkg:pypi/mdformat@0.7.22`, …) so Dependabot Alerts fire on the
   same advisory ingestion path as any first-class ecosystem.
-- Runs on each push to `main` and on a weekly cron so the snapshot
-  stays current between pushes.
+- Runs on each push to `main`, on every `pull_request` (so the
+  PR-time `dependency-review-action` has a head-SHA snapshot to diff
+  against — without it, dep-review prints "No snapshots were found for
+  the head SHA" and a `tool-versions.yml` bump to a CVE-bearing
+  version slips past the PR gate, issue #412), and on a weekly cron
+  so the snapshot stays current between pushes.
 
 ### Verification
 
@@ -135,9 +139,16 @@ a dropped config would silently regress the whole policy.
   captured in-repo. The config ships ready; enabling it is a
   checkbox in the Renovate dashboard.
 - The Dependency Submission workflow runs with
-  `contents: write, id-token: none` and is gated on the push/schedule
-  trigger — no pull-request path — so a malicious PR cannot poison
-  the snapshot.
+  `contents: write, id-token: none`. It now also runs on
+  `pull_request` (issue #412) so the PR-time `dependency-review-action`
+  has a head-SHA snapshot to diff against. A PR-triggered submission
+  is keyed by the PR's head SHA, so it cannot rewrite `main`'s
+  snapshot — nothing is poisoned. Fork PRs receive a read-only
+  `GITHUB_TOKEN` (the POST would 403); the job-level `if:` guard
+  skips submission cleanly on those, accepted as a coverage gap for
+  the solo-maintained repo. `pull_request_target` was rejected
+  because it would execute PR-author code with elevated token
+  permissions for marginal benefit at this scale.
 
 **Follow-up gaps (none blocking):**
 
