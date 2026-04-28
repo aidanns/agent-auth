@@ -276,6 +276,60 @@ def test_render_commit_msg_block_keeps_lines_under_72(repo: Path) -> None:
         assert len(line) <= 72, f"line too wide: {line!r}"
 
 
+# --- bullet shape (#397) ----------------------------------------------------
+#
+# The ==COMMIT_MSG== block historically joined entries with `; ` into
+# a single prose paragraph per section heading. That shape was hard
+# to scan once a release accumulated several entries, and the
+# inconsistency between single-entry sections (one prose sentence)
+# and multi-entry sections (semicolon-joined run-on) was the worst
+# of it. #397 switched the renderer to always emit a bulleted list
+# under each section heading, regardless of entry count.
+#
+# These tests pin the user-visible shape: bullets are present, the
+# semicolon-joined run-on is absent, and the same shape applies to
+# single-entry sections as to multi-entry ones.
+
+
+def test_render_commit_msg_block_emits_bullet_per_entry_in_multi_entry_section(
+    repo: Path,
+) -> None:
+    """Multi-entry sections render one ``- `` bullet per entry, not ``; ``."""
+    _seed_unreleased(
+        repo,
+        "pr-100-imp-a.yml",
+        "type: improvement\nimprovement:\n  description: First improvement.\n",
+    )
+    _seed_unreleased(
+        repo,
+        "pr-101-imp-b.yml",
+        "type: improvement\nimprovement:\n  description: Second improvement.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    block = render_commit_msg_block(plan.entries, plan.next_version)
+
+    assert "Improvements:\n- First improvement.\n- Second improvement." in block
+    # The historical semicolon-joined run-on must not reappear.
+    assert "; " not in block
+
+
+def test_render_commit_msg_block_emits_bullet_for_single_entry_section(
+    repo: Path,
+) -> None:
+    """Single-entry sections render the same bullet shape as multi-entry."""
+    _seed_unreleased(
+        repo,
+        "pr-100-fix.yml",
+        "type: fix\nfix:\n  description: Only fix.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    block = render_commit_msg_block(plan.entries, plan.next_version)
+
+    assert block == "Fixes:\n- Only fix."
+
+
 # --- numbered-reference wrap regressions ------------------------------------
 #
 # Greedy wrap on 72 chars used to land tokens like `0011.` (from
