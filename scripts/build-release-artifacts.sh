@@ -63,7 +63,5 @@ mkdir -p "${OUT_DIR}"
 # it would have setuptools reject the multiple-top-level-packages
 # flat layout (the workspace-split regression that motivated #325).
 # Issue #324 took the build off ``uv build`` at the workspace root
-# and onto this per-package loop; with the dry-run gate green on main
-# it can move from informational (`continue-on-error: true`) to a
-# required-status-check.
+# and onto this per-package loop.
 uv build --all-packages --out-dir "${OUT_DIR}"
