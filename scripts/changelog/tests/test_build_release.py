@@ -410,6 +410,137 @@ def test_render_commit_msg_block_wraps_normally_around_hyphen_joined_id(
     assert "CVE-2024-12345" in block
 
 
+# --- PR-link suffix (#411) --------------------------------------------------
+#
+# The audience-link-back convention: every rendered release-note entry
+# carries a trailing `(#N)` that GitHub auto-renders to a clickable PR
+# link, restoring the path to the verbose context that the terse
+# `description:` field deliberately omits (#407). The PR number is
+# derived from the YAML filename, not the human-authored `links:`
+# field. Tests exercise the public renderer surfaces — a regression
+# would change the bytes published to CHANGELOG.md, the GitHub
+# release body, or the release-PR `==COMMIT_MSG==` block.
+
+
+def test_render_changelog_section_appends_pr_link_suffix(repo: Path) -> None:
+    """A CHANGELOG.md bullet ends with `(#NNN)` taken from the YAML filename."""
+    _seed_unreleased(
+        repo,
+        "pr-411-example.yml",
+        "type: improvement\nimprovement:\n  description: A short user-facing fix.\n",
+    )
+    plan = compute_release(repo, "0.4.0", today=_dt.date(2026, 4, 27))
+    assert plan is not None
+    bullet_lines = [line for line in plan.changelog_section.splitlines() if line.startswith("- ")]
+    assert bullet_lines, "expected at least one bullet in the rendered section"
+    assert bullet_lines[0].endswith(" (#411)")
+
+
+def test_render_release_notes_appends_pr_link_suffix(repo: Path) -> None:
+    """The shared GitHub-release body inherits the same `(#N)` suffix."""
+    _seed_unreleased(
+        repo,
+        "pr-411-example.yml",
+        "type: improvement\nimprovement:\n  description: A short user-facing fix.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    bullet_lines = [line for line in plan.release_notes.splitlines() if line.startswith("- ")]
+    assert bullet_lines and bullet_lines[0].endswith(" (#411)")
+
+
+def test_render_commit_msg_block_appends_pr_link_suffix_per_entry(repo: Path) -> None:
+    """Each entry inside the semicolon-joined paragraph keeps its own `(#N)`."""
+    _seed_unreleased(
+        repo,
+        "pr-411-a.yml",
+        "type: improvement\nimprovement:\n  description: First short improvement.\n",
+    )
+    _seed_unreleased(
+        repo,
+        "pr-412-b.yml",
+        "type: improvement\nimprovement:\n  description: Second short improvement.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    block = render_commit_msg_block(plan.entries, plan.next_version)
+    assert "(#411)" in block
+    assert "(#412)" in block
+    # Both suffixes should sit inside the same Improvements paragraph,
+    # joined by `;` — i.e. neither should have leaked onto its own line.
+    improvements_paragraph = next(
+        para for para in block.split("\n\n") if para.startswith("Improvements:")
+    )
+    assert "(#411);" in improvements_paragraph
+    assert "(#412)." in improvements_paragraph
+
+
+def test_render_commit_msg_block_does_not_wrap_before_pr_link_suffix(
+    repo: Path,
+) -> None:
+    """A long-bullet description must keep `(#N)` bound to the preceding token.
+
+    Reproduces the wrap-boundary failure mode the issue calls out: a
+    description long enough that the greedy wrapper would otherwise
+    drop ``(#411)`` alone onto a wrapped line. The suffix being
+    visually divorced from the entry it links to defeats the
+    audience-link-back motive (#411). The fixture's prose is sized so
+    the buggy wrapper would land the suffix at the start of the
+    second wrapped line of the Improvements paragraph; the fix moves
+    the preceding token down with it.
+    """
+    # Crafted so the Improvements paragraph header + this prose pushes
+    # `(#411)` past the 72-char limit: forcing the wrap algorithm to
+    # decide where the suffix belongs.
+    description = (
+        "Auto-update a PR whose head sits behind main instead of "
+        "treating the merge API's 405 as a hard failure"
+    )
+    _seed_unreleased(
+        repo,
+        "pr-411-merge-bot.yml",
+        f"type: improvement\nimprovement:\n  description: {description}.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    block = render_commit_msg_block(plan.entries, plan.next_version)
+    _assert_block_satisfies_validator(block)
+    # No wrapped line opens with `(#NNN)` (alone or with trailing
+    # punctuation): the suffix must always sit after a token from the
+    # entry's prose, never at line start.
+    pr_suffix_opener = re.compile(r"^\s*\(#\d+\)")
+    offenders = [line for line in block.splitlines() if pr_suffix_opener.match(line)]
+    assert not offenders, "PR-link suffix orphaned at line start: " + repr(offenders)
+    # And the suffix must still appear in the rendered block.
+    assert "(#411)" in block
+
+
+def test_render_changelog_bullet_skips_suffix_when_filename_unconventional() -> None:
+    """Fail-soft: an entry whose filename doesn't match the pattern gets no suffix.
+
+    The PR-time lint (`check_present_file_naming`) blocks new
+    offenders, but the renderer must still degrade gracefully if a
+    legacy or hand-edited file slips through — better to drop the
+    link than crash on a release-PR that's already past CI.
+    """
+    from version_logic import ChangelogEntry, EntryType
+
+    entries = [
+        ChangelogEntry(
+            entry_type=EntryType.IMPROVEMENT,
+            description="A change without a conventional filename.",
+            links=(),
+            packages=None,
+            release_as=None,
+            source_path=Path("changelog/@unreleased/legacy-handauthored.yml"),
+        ),
+    ]
+    section = render_changelog_section(entries, "0.5.0", _dt.date(2026, 4, 27))
+    assert "A change without a conventional filename." in section
+    # No `(#…)` suffix anywhere (no PR number to derive).
+    assert "(#" not in section
+
+
 # --- render_release_notes ---------------------------------------------------
 
 

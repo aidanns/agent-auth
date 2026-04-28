@@ -433,6 +433,14 @@ dashes, underscores). Example: `pr-295-yaml-schema.yml`. Multiple
 files per PR are allowed when the change has more than one logically
 distinct user-visible effect.
 
+The release renderer derives a per-entry `(#N)` PR-link suffix from the
+filename and appends it to every rendered entry (CHANGELOG.md, the
+GitHub release body, and the release-PR `==COMMIT_MSG==` block). Don't
+hand-author the suffix in the YAML `description:` field — it's added at
+render time. Filenames that don't match the pattern fail the
+changelog lint at PR-time so the release renderer can always find the
+PR number.
+
 Schema (the lint rejects unknown keys, so this is the full surface):
 
 ```yaml
