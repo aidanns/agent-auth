@@ -264,6 +264,87 @@ def test_run_lint_fails_when_filename_does_not_match_pattern(repo: Path):
     assert "filename must match" in report.render()
 
 
+def test_run_lint_emits_single_filename_error_when_added_file_is_non_conforming(
+    repo: Path,
+):
+    """A non-conforming filename added in this PR yields one error, not two.
+
+    Both ``check_file_naming`` (added files) and
+    ``check_present_file_naming`` (every file currently in
+    ``@unreleased/``) inspect the filename pattern; without explicit
+    deduplication a single non-conforming filename added in one PR
+    produces two near-duplicate "filename must match" lines in the
+    rendered report. The contributor sees the same path twice with
+    slightly different remediation prose, which is noisy and obscures
+    the real action: rename the file. This regression guard pins the
+    behaviour at exactly one "filename must match" line per offending
+    path so the report stays terse.
+    """
+    base = _git(repo, "rev-parse", "HEAD")
+    head = _commit_added(
+        repo,
+        "changelog/@unreleased/wrong-name.yml",
+        "type: fix\nfix:\n  description: x.\n",
+        "add",
+    )
+    report = run_lint(
+        pr_number=12,
+        base_sha=base,
+        head_sha=head,
+        labels=set(),
+        current_version="0.4.2",
+        repo_root=repo,
+    )
+    rendered = report.render()
+    matching_lines = [
+        line
+        for line in rendered.splitlines()
+        if "wrong-name.yml" in line and "filename must match" in line
+    ]
+    assert len(matching_lines) == 1, (
+        "expected exactly one `filename must match` line for "
+        "wrong-name.yml; got:\n" + "\n".join(matching_lines)
+    )
+
+
+def test_run_lint_fails_when_unreleased_file_lacks_pr_prefix(repo: Path):
+    """Files already on `main` must also match `pr-<N>-<slug>.yml` (#411).
+
+    The release-PR renderer derives the per-entry `(#N)` PR-link
+    suffix from the filename; an unreleased entry that doesn't match
+    the pattern would silently lose its link in the published
+    release notes. The lint catches it at PR-time so the offender is
+    renamed before it reaches the release.
+    """
+    # Pre-existing entry on `main` that doesn't conform: committed
+    # before the PR branch is opened so it shows up in
+    # ``list_present_changelog_files`` but not ``list_added_…``.
+    legacy = repo / "changelog" / "@unreleased" / "legacy-no-prefix.yml"
+    legacy.write_text(
+        "type: fix\nfix:\n  description: legacy.\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", str(legacy))
+    _git(repo, "commit", "-m", "land legacy entry")
+
+    base = _git(repo, "rev-parse", "HEAD")
+    # Add an unrelated file to give the PR a non-empty diff.
+    head = _commit_added(repo, "scripts/random.txt", "x", "unrelated")
+
+    report = run_lint(
+        pr_number=12,
+        base_sha=base,
+        head_sha=head,
+        labels={NO_CHANGELOG_LABEL},
+        current_version="0.4.2",
+        repo_root=repo,
+    )
+    assert report.has_errors
+    rendered = report.render()
+    assert "legacy-no-prefix.yml" in rendered
+    assert "filename must match" in rendered
+
+
 def test_run_lint_fails_on_schema_error_with_path_in_message(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
     head = _commit_added(

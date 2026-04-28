@@ -212,6 +212,43 @@ def check_file_naming(
             )
 
 
+def check_present_file_naming(
+    present_files: Sequence[Path],
+    added_files: Sequence[Path],
+    report: LintReport,
+) -> None:
+    """Enforce: every YAML *currently* under ``@unreleased/`` matches the pattern.
+
+    ``check_file_naming`` only sees files added in the current PR;
+    this sibling covers files already on ``main``. The release-PR
+    renderer derives a per-entry ``(#N)`` PR-link suffix (#411) from
+    the filename via :data:`ENTRY_FILENAME_PATTERN`, and
+    ``scripts/changelog/add.py`` already produces conformant
+    filenames, so a non-conforming entry indicates a bypass that
+    shouldn't have happened — failing PR-time gives a clear pointer
+    at the offender rather than fail-soft skipping the suffix at
+    release time and silently dropping the link from the published
+    entry.
+
+    Files added in the current PR are skipped here because
+    ``check_file_naming`` already flags them with a (more specific)
+    "embedded PR number" / pattern message. Without this filter a
+    single non-conforming filename added in one PR produced two
+    near-duplicate "filename must match" lines in the rendered
+    report.
+    """
+    added_paths = set(added_files)
+    for path in present_files:
+        if path in added_paths:
+            continue
+        if ENTRY_FILENAME_PATTERN.match(path.name) is None:
+            report.fail(
+                f"{path}: filename must match `pr-<N>-<slug>.yml` so the "
+                f"release renderer can append the `(#N)` PR-link suffix. "
+                f"Rename the file or recreate it via `task changelog:add`."
+            )
+
+
 def _filename_matches_pr(name: str, pr_number: int) -> bool:
     match = ENTRY_FILENAME_PATTERN.match(name)
     if match is None:
@@ -289,6 +326,7 @@ def run_lint(
     workspace_packages = list_workspace_packages(repo_root)
 
     added_files = list_added_changelog_files(base_sha, head_sha, repo_root=repo_root)
+    present_files = list_present_changelog_files(repo_root)
 
     # Check 1: file presence (skipped under the bypass label).
     check_file_presence(pr_number, added_files, labels, report)
@@ -296,12 +334,20 @@ def run_lint(
     # Check 2: file naming on every added file.
     check_file_naming(pr_number, added_files, report)
 
+    # Check 2b: filename pattern on every file already present in
+    # `@unreleased/`. Guards the release renderer's `(#N)` PR-link
+    # suffix derivation (#411) against legacy / hand-edited entries
+    # that bypass `task changelog:add`. Excludes files added in this
+    # PR (covered by Check 2 above) so a single non-conforming
+    # filename produces a single error.
+    check_present_file_naming(present_files, added_files, report)
+
     # Check 3: schema over the union of (added in this PR) plus
     # (already present in the directory). The release-as invariant
     # needs every entry; the schema check catches bad files even
     # under the `no changelog` label so a bypass PR can't sneak in
     # malformed YAML.
-    union_files = sorted({*added_files, *list_present_changelog_files(repo_root)})
+    union_files = sorted({*added_files, *present_files})
     parsed_entries = check_schema(union_files, workspace_packages, report)
 
     # Check 4: release-as invariant.
