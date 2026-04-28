@@ -71,6 +71,7 @@ EXPECTED_WORKFLOWS: frozenset[str] = frozenset(
         "Verify Standards",
         "Verify Token CLI / HTTP Parity",
         "Changelog Bot",
+        "Release Dryrun",
     }
 )
 
