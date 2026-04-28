@@ -214,6 +214,7 @@ def check_file_naming(
 
 def check_present_file_naming(
     present_files: Sequence[Path],
+    added_files: Sequence[Path],
     report: LintReport,
 ) -> None:
     """Enforce: every YAML *currently* under ``@unreleased/`` matches the pattern.
@@ -228,8 +229,18 @@ def check_present_file_naming(
     at the offender rather than fail-soft skipping the suffix at
     release time and silently dropping the link from the published
     entry.
+
+    Files added in the current PR are skipped here because
+    ``check_file_naming`` already flags them with a (more specific)
+    "embedded PR number" / pattern message. Without this filter a
+    single non-conforming filename added in one PR produced two
+    near-duplicate "filename must match" lines in the rendered
+    report.
     """
+    added_paths = set(added_files)
     for path in present_files:
+        if path in added_paths:
+            continue
         if ENTRY_FILENAME_PATTERN.match(path.name) is None:
             report.fail(
                 f"{path}: filename must match `pr-<N>-<slug>.yml` so the "
@@ -326,8 +337,10 @@ def run_lint(
     # Check 2b: filename pattern on every file already present in
     # `@unreleased/`. Guards the release renderer's `(#N)` PR-link
     # suffix derivation (#411) against legacy / hand-edited entries
-    # that bypass `task changelog:add`.
-    check_present_file_naming(present_files, report)
+    # that bypass `task changelog:add`. Excludes files added in this
+    # PR (covered by Check 2 above) so a single non-conforming
+    # filename produces a single error.
+    check_present_file_naming(present_files, added_files, report)
 
     # Check 3: schema over the union of (added in this PR) plus
     # (already present in the directory). The release-as invariant

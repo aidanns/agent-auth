@@ -264,6 +264,49 @@ def test_run_lint_fails_when_filename_does_not_match_pattern(repo: Path):
     assert "filename must match" in report.render()
 
 
+def test_run_lint_emits_single_filename_error_when_added_file_is_non_conforming(
+    repo: Path,
+):
+    """A non-conforming filename added in this PR yields one error, not two.
+
+    Both ``check_file_naming`` (added files) and
+    ``check_present_file_naming`` (every file currently in
+    ``@unreleased/``) inspect the filename pattern; without explicit
+    deduplication a single non-conforming filename added in one PR
+    produces two near-duplicate "filename must match" lines in the
+    rendered report. The contributor sees the same path twice with
+    slightly different remediation prose, which is noisy and obscures
+    the real action: rename the file. This regression guard pins the
+    behaviour at exactly one "filename must match" line per offending
+    path so the report stays terse.
+    """
+    base = _git(repo, "rev-parse", "HEAD")
+    head = _commit_added(
+        repo,
+        "changelog/@unreleased/wrong-name.yml",
+        "type: fix\nfix:\n  description: x.\n",
+        "add",
+    )
+    report = run_lint(
+        pr_number=12,
+        base_sha=base,
+        head_sha=head,
+        labels=set(),
+        current_version="0.4.2",
+        repo_root=repo,
+    )
+    rendered = report.render()
+    matching_lines = [
+        line
+        for line in rendered.splitlines()
+        if "wrong-name.yml" in line and "filename must match" in line
+    ]
+    assert len(matching_lines) == 1, (
+        "expected exactly one `filename must match` line for "
+        "wrong-name.yml; got:\n" + "\n".join(matching_lines)
+    )
+
+
 def test_run_lint_fails_when_unreleased_file_lacks_pr_prefix(repo: Path):
     """Files already on `main` must also match `pr-<N>-<slug>.yml` (#411).
 
