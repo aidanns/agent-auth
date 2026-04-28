@@ -79,8 +79,13 @@ on:
   # the bot. Adding a new required-check workflow requires updating
   # this list — that's intentional. Excludes:
   #   - Merge Bot itself (anti-recursion).
-  #   - Release / publish / scorecard / dependency-submission /
-  #     mutation / benchmark workflows that don't run on PRs.
+  #   - Release / publish / scorecard / mutation / benchmark workflows
+  #     that don't run on PRs.
+  #   - Dependency Submission, which now runs on PRs (issue #412) but
+  #     intentionally skips on fork PRs (read-only GITHUB_TOKEN), so
+  #     it can't be a required gate without blocking external
+  #     contributions; PR-time CVE gating is enforced by Dependency
+  #     Review against the head-SHA snapshot it produces.
   #   - Release Tag (only fires on PR `closed`, well after merge).
   workflow_run:
     workflows:
