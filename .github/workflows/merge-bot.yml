@@ -115,6 +115,7 @@ on:
       - Verify Standards
       - Verify Token CLI / HTTP Parity
       - Changelog Bot
+      - Release Dryrun
     types: [completed]
   pull_request_review:
     types: [submitted, dismissed]

@@ -157,9 +157,11 @@ end-to-end signal is one full release cycle attributed to
   with `agent-auth-release-bot[bot]` as the PR author and as the
   pusher of the release branch. The release commit on the branch
   is also attributed to `agent-auth-release-bot[bot]` as
-  author/committer (DCO auto-bypasses the bot's
-  `[bot]@users.noreply.github.com` email — see
-  [What the bot does](#what-the-bot-does)).
+  author/committer, AND the `Signed-off-by:` trailer rendered
+  inside the ==COMMIT_MSG== block (which becomes the squash-merge
+  body verbatim) names the same bot identity (#398). DCO
+  auto-bypasses the bot's `[bot]@users.noreply.github.com` email —
+  see [What the bot does](#what-the-bot-does).
 - `release-tag.yml` pushes the `vX.Y.Z` tag on the release-PR
   merge under `agent-auth-release-bot[bot]`. The tag push fires
   `release-publish.yml` because the App-minted token (unlike the

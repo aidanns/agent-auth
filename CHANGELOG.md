@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.16.5] - 2026-04-28
+
+### Improvements
+
+- Release-PR Signed-off-by trailer now identifies the agent-auth-release-bot App. (#433)
+
+## [0.16.4] - 2026-04-28
+
+### Improvements
+
+- Release-note entries now end with `(#N)` so a reader of
+  `CHANGELOG.md`, the GitHub release body, or the release-PR
+  `==COMMIT_MSG==` block can click straight through to the
+  originating PR for the verbose context that the terse YAML
+  `description:` field omits. The PR number is derived from the
+  YAML filename via `pr-<N>-<slug>.yml`; a new PR-time lint check
+  fails non-conforming filenames so the renderer always has a
+  number to derive. The wrap algorithm also keeps `(#N)` bound to
+  the preceding token so a soft-wrap never visually divorces the
+  link from the entry it belongs to. (#426)
+
+## [0.16.3] - 2026-04-28
+
+### Fixes
+
+- Per-package wheel and sdist filenames once again carry the
+  release-tag's version (e.g. `agent_auth-0.16.1-py3-none-any.whl`)
+  instead of setuptools-scm's `0.0.0+unknown` fallback. `v0.16.0`
+  shipped 70 supply-chain assets versioned `0.0.0+unknown` because
+  each `packages/<svc>/pyproject.toml`'s `[tool.setuptools_scm]`
+  block did not set `root`, so `uv build --all-packages` ran
+  setuptools-scm from a per-package directory that is not a git
+  root and quietly fell back. Pinning `root = "../.."` in every
+  package points setuptools-scm at the workspace's `.git`. The
+  `cosign verify` recipe in `SECURITY.md` § Supply-chain artifacts
+  matches the next release tag's assets again.
+
+  Two regression gates ride the fix: a `task test`-time check
+  (also exercised by `release-dryrun.yml`) that asserts every
+  workspace package pins `root = "../.."` and that built wheels
+  don't carry the fallback string, and a fail-fast step in
+  `release-publish.yml` between `uv build` and `cosign sign`
+  that aborts the publish path if any artefact filename does
+  not contain the release-tag's version.
+
+## [0.16.2] - 2026-04-28
+
+### Improvements
+
+- Release-PR squash-merge commit bodies (rendered by
+  `render_commit_msg_block`) no longer open with a redundant
+  `Release vX.Y.Z.` paragraph — the version is already in the
+  `chore(release): X.Y.Z` subject, so the body now opens directly
+  with the first per-section paragraph (`Improvements: ...`,
+  `Fixes: ...`). `render_release_notes` (the GitHub Release surface)
+  keeps its `Release vX.Y.Z.` header where the version is
+  load-bearing.
+- The release-PR `==COMMIT_MSG==` block now emits one bullet per
+  changelog entry under each section heading, regardless of entry
+  count. The shape is identical for single-entry and multi-entry
+  sections, so `git log` and the GitHub release page scan
+  uniformly. Replaces the historical semicolon-joined prose
+  paragraph per section.
+
 ## [0.16.1] - 2026-04-27
 
 ### Improvements

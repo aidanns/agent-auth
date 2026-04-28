@@ -433,12 +433,20 @@ dashes, underscores). Example: `pr-295-yaml-schema.yml`. Multiple
 files per PR are allowed when the change has more than one logically
 distinct user-visible effect.
 
+The release renderer derives a per-entry `(#N)` PR-link suffix from the
+filename and appends it to every rendered entry (CHANGELOG.md, the
+GitHub release body, and the release-PR `==COMMIT_MSG==` block). Don't
+hand-author the suffix in the YAML `description:` field — it's added at
+render time. Filenames that don't match the pattern fail the
+changelog lint at PR-time so the release renderer can always find the
+PR number.
+
 Schema (the lint rejects unknown keys, so this is the full surface):
 
 ```yaml
 type: feature      # required: feature | improvement | fix | break | deprecation | migration
 feature:           # required: nested key matches `type:` for parser disambiguation
-  description: |   # required: free-text release note. Markdown allowed.
+  description: |   # required: ≤ 25-word, single-sentence release note. Markdown allowed.
     First-class line that becomes the bullet in CHANGELOG.md.
   links:           # optional: extra URLs surfaced in the release notes
     - https://github.com/aidanns/agent-auth/issues/295
@@ -476,6 +484,61 @@ posts an idempotent `Claude:` comment on every PR that touches
 `current → next` version transition so a mislabelled `type:` (e.g.
 `feature` for what should have been `improvement`) is caught at
 review time rather than after release.
+
+### Writing the `description:`
+
+The `description:` field feeds two user-facing audiences:
+`CHANGELOG.md` and the GitHub release page (via
+`render_release_notes`), and the release-PR squash commit body's
+`==COMMIT_MSG==` block (via `render_commit_msg_block`, one bullet per
+entry per section). Both want a one-liner — a user reading the
+release page wants to know *what changed that might affect them*,
+not the implementation details.
+
+The PR-time `changelog-lint` workflow enforces (#407):
+
+- **≤ 25 words** after whitespace normalisation. Block-scalar
+  newlines from `description: |` collapse to single spaces, so
+  multi-line YAML and a single long line count the same.
+- **Single sentence**: exactly one terminal `.`, `!`, or `?` at the
+  end, with no embedded `. ` outside a small abbreviation allowlist
+  (`e.g.`, `i.e.`, `etc.`, `cf.`, `vs.`, `ca.`, `approx.`, plus
+  single-letter initials like `J. Doe`).
+
+Verbose archaeology — mergeStateStatus polling, allowlist mechanics,
+permissions requirements, etc. — belongs in the originating PR's
+hand-authored `==COMMIT_MSG==` block. That block becomes the squash
+commit body on `main` and is reachable via `git show`; the YAML's
+`links:` array points back to the PR for anyone who wants the full
+detail.
+
+The lint is **forward-only**: existing entries on `main` (under
+`changelog/@unreleased/` or under `<version>/`) that pre-date this
+rule are not retroactively re-validated. Only files added in the
+PR being scanned are checked.
+
+#### Example: terse vs. verbose
+
+The historical `pr-383` entry on `main`
+([`changelog/0.15.1/pr-383-merge-bot-auto-update-behind.yml`](changelog/0.15.1/pr-383-merge-bot-auto-update-behind.yml))
+runs to ~120 words across 5 sentences (mergeStateStatus polling,
+loop guard mechanics, permissions requirements). Under the new lint
+the user-facing form is a single sentence:
+
+```yaml
+type: improvement
+improvement:
+  description: |
+    `merge-bot` now auto-updates a PR whose head sits behind `main`
+    instead of treating the merge API's 405 as a hard failure.
+  links:
+    - https://github.com/aidanns/agent-auth/pull/383
+```
+
+The dropped detail is not lost — PR #383's `==COMMIT_MSG==` block
+(and therefore the squash commit body on `main`) carries it, and
+the `links:` entry points anyone who wants the full archaeology
+back to the PR.
 
 ### `packages:` and `release-as:`
 

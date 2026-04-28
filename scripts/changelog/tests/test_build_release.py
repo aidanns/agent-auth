@@ -40,6 +40,20 @@ from version_logic import ChangelogValidationError
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
+# Synthetic release-bot identity used to drive the `Signed-off-by:`
+# trailer rendered inside the ==COMMIT_MSG== block. Hard-coded here
+# so tests don't depend on the real `agent-auth-release-bot` App
+# secrets being provisioned in CI; the renderer treats both values
+# as opaque strings.
+_TEST_BOT_APP_SLUG = "agent-auth-release-bot"
+_TEST_BOT_USER_ID = "123456"
+_TEST_BOT_CLI_FLAGS = [
+    "--bot-app-slug",
+    _TEST_BOT_APP_SLUG,
+    "--bot-user-id",
+    _TEST_BOT_USER_ID,
+]
+
 
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -254,11 +268,100 @@ def test_render_pr_body_passes_validate_commit_msg_block(repo: Path) -> None:
     )
     plan = compute_release(repo, "0.4.0")
     assert plan is not None
-    body = render_pr_body(plan)
+    body = render_pr_body(
+        plan,
+        bot_app_slug="agent-auth-release-bot",
+        bot_user_id="123456",
+    )
 
     validator = _load_commit_msg_validator()
     # Should not raise.
     validator.validate(body)
+
+
+def test_render_pr_body_embeds_release_bot_signoff(repo: Path) -> None:
+    """The ==COMMIT_MSG== block's signoff matches the bot identity (#398).
+
+    Pre-fix the trailer was hard-coded to
+    ``github-actions[bot]``, so a release commit's
+    author/committer (``agent-auth-release-bot[bot]``) and its
+    DCO ``Signed-off-by:`` trailer disagreed in ``git log``. The
+    renderer now derives the trailer from the same App identity the
+    workflow uses for the commit author, threaded through as
+    ``bot_app_slug`` / ``bot_user_id``.
+    """
+    _seed_unreleased(
+        repo,
+        "pr-100-feat.yml",
+        "type: feature\nfeature:\n  description: New thing.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    body = render_pr_body(
+        plan,
+        bot_app_slug="agent-auth-release-bot",
+        bot_user_id="987654",
+    )
+    assert (
+        "Signed-off-by: agent-auth-release-bot[bot] "
+        "<987654+agent-auth-release-bot[bot]@users.noreply.github.com>"
+    ) in body
+    # Pre-fix hardcoded value must not survive in the rendered body.
+    assert "github-actions[bot]" not in body
+
+
+def test_render_pr_body_accepts_integer_user_id(repo: Path) -> None:
+    """Numeric ids passed as ``int`` render the same as their string form.
+
+    The workflow sources the id from a ``gh api`` call and stuffs it
+    into a step output verbatim (always a string), but Python callers
+    would naturally pass an ``int``. Treat both as equivalent so a
+    future internal caller can't accidentally produce a body that
+    embeds the literal ``987654`` vs ``"987654"`` differently.
+    """
+    _seed_unreleased(
+        repo,
+        "pr-100-feat.yml",
+        "type: feature\nfeature:\n  description: New thing.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    body = render_pr_body(
+        plan,
+        bot_app_slug="agent-auth-release-bot",
+        bot_user_id=987654,
+    )
+    assert "<987654+agent-auth-release-bot[bot]@users.noreply.github.com>" in body
+
+
+@pytest.mark.parametrize(
+    ("slug", "user_id"),
+    [
+        ("", "123"),
+        ("agent-auth-release-bot", ""),
+        ("agent-auth-release-bot", "   "),
+    ],
+)
+def test_render_pr_body_rejects_missing_bot_identity(repo: Path, slug: str, user_id: str) -> None:
+    """Empty slug or user-id must raise rather than fall back silently.
+
+    Mirrors the workflow-level fail-loudly contract from ``61aa0d7``
+    (``Check secrets are configured``): a missing piece of release-bot
+    identity is operator-attention-required, not a soft fall-through.
+    Without this, removing the App secrets would produce release
+    commits whose trailer reads ``[bot] <+[bot]@users.noreply.github.com>``
+    — DCO might still pass via the suffix bypass, but the audit trail
+    would be wrong and silently so.
+    """
+    _seed_unreleased(
+        repo,
+        "pr-100-feat.yml",
+        "type: feature\nfeature:\n  description: New thing.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    with pytest.raises(ValueError):
+        render_pr_body(plan, bot_app_slug=slug, bot_user_id=user_id)
 
 
 def test_render_commit_msg_block_keeps_lines_under_72(repo: Path) -> None:
@@ -309,7 +412,10 @@ def test_render_commit_msg_block_emits_bullet_per_entry_in_multi_entry_section(
     assert plan is not None
     block = render_commit_msg_block(plan.entries, plan.next_version)
 
-    assert "Improvements:\n- First improvement.\n- Second improvement." in block
+    # Each bullet ends with the per-entry `(#N)` PR-link suffix (#411)
+    # taken from the YAML filename — no trailing period, matching the
+    # changelog and release-notes renderers.
+    assert "Improvements:\n- First improvement (#100)\n- Second improvement (#101)" in block
     # The historical semicolon-joined run-on must not reappear.
     assert "; " not in block
 
@@ -327,7 +433,9 @@ def test_render_commit_msg_block_emits_bullet_for_single_entry_section(
     assert plan is not None
     block = render_commit_msg_block(plan.entries, plan.next_version)
 
-    assert block == "Fixes:\n- Only fix."
+    # Single-entry sections render the same bullet shape, including
+    # the per-entry `(#N)` PR-link suffix (#411).
+    assert block == "Fixes:\n- Only fix (#100)"
 
 
 # --- numbered-reference wrap regressions ------------------------------------
@@ -464,6 +572,197 @@ def test_render_commit_msg_block_wraps_normally_around_hyphen_joined_id(
     assert "CVE-2024-12345" in block
 
 
+# --- PR-link suffix (#411) --------------------------------------------------
+#
+# The audience-link-back convention: every rendered release-note entry
+# carries a trailing `(#N)` that GitHub auto-renders to a clickable PR
+# link, restoring the path to the verbose context that the terse
+# `description:` field deliberately omits (#407). The PR number is
+# derived from the YAML filename, not the human-authored `links:`
+# field. Tests exercise the public renderer surfaces — a regression
+# would change the bytes published to CHANGELOG.md, the GitHub
+# release body, or the release-PR `==COMMIT_MSG==` block.
+
+
+def test_render_changelog_section_appends_pr_link_suffix(repo: Path) -> None:
+    """A CHANGELOG.md bullet ends with `(#NNN)` taken from the YAML filename."""
+    _seed_unreleased(
+        repo,
+        "pr-411-example.yml",
+        "type: improvement\nimprovement:\n  description: A short user-facing fix.\n",
+    )
+    plan = compute_release(repo, "0.4.0", today=_dt.date(2026, 4, 27))
+    assert plan is not None
+    bullet_lines = [line for line in plan.changelog_section.splitlines() if line.startswith("- ")]
+    assert bullet_lines, "expected at least one bullet in the rendered section"
+    assert bullet_lines[0].endswith(" (#411)")
+
+
+def test_render_release_notes_appends_pr_link_suffix(repo: Path) -> None:
+    """The shared GitHub-release body inherits the same `(#N)` suffix."""
+    _seed_unreleased(
+        repo,
+        "pr-411-example.yml",
+        "type: improvement\nimprovement:\n  description: A short user-facing fix.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    bullet_lines = [line for line in plan.release_notes.splitlines() if line.startswith("- ")]
+    assert bullet_lines and bullet_lines[0].endswith(" (#411)")
+
+
+def test_render_commit_msg_block_appends_pr_link_suffix_per_entry(repo: Path) -> None:
+    """Each bullet under a section heading keeps its own `(#N)` suffix."""
+    _seed_unreleased(
+        repo,
+        "pr-411-a.yml",
+        "type: improvement\nimprovement:\n  description: First short improvement.\n",
+    )
+    _seed_unreleased(
+        repo,
+        "pr-412-b.yml",
+        "type: improvement\nimprovement:\n  description: Second short improvement.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    block = render_commit_msg_block(plan.entries, plan.next_version)
+    assert "(#411)" in block
+    assert "(#412)" in block
+    # Each bullet line under the Improvements heading must carry its
+    # own suffix at the visible end of the entry — the eye should find
+    # the link where the bullet finishes, not orphaned on a wrap line.
+    improvements_section = next(
+        para for para in block.split("\n\n") if para.startswith("Improvements:")
+    )
+    bullet_lines = [line for line in improvements_section.splitlines() if line.startswith("- ")]
+    assert any(line.endswith(" (#411)") for line in bullet_lines)
+    assert any(line.endswith(" (#412)") for line in bullet_lines)
+
+
+def test_render_commit_msg_block_does_not_wrap_before_pr_link_suffix(
+    repo: Path,
+) -> None:
+    """A long-bullet description must keep `(#N)` bound to the preceding token.
+
+    Reproduces the wrap-boundary failure mode the issue calls out: a
+    description long enough that a naive greedy wrapper would drop
+    ``(#411)`` alone onto a wrapped line. The suffix being visually
+    divorced from the entry it links to defeats the audience-link-back
+    motive (#411). The fixture's prose is sized so the buggy wrapper
+    would land the suffix on its own wrapped line under the Improvements
+    bullet; the fix moves the preceding token down with it.
+
+    Sanity-checked against an unbound wrapper: monkey-patching
+    ``PR_SUFFIX_RE`` to never match yields a wrapped line opening with
+    ``(#411)``, which is exactly the failure mode the assertions
+    here forbid. The fixture would not detect a missing suffix-binding
+    branch otherwise.
+    """
+    # Crafted so the bullet body's wrap leaves ``(#411)`` orphaned on
+    # its own line under the unbound wrapper: the prose fills the
+    # second wrapped continuation line right up to the 70-char bullet
+    # width, so the 7-char suffix overflows and lands on a third line
+    # with nothing else next to it.
+    description = (
+        "Auto-update a PR whose head sits behind main instead of "
+        "treating the merge API's 405 as a hard failure mode that "
+        "we previously skipped over"
+    )
+    _seed_unreleased(
+        repo,
+        "pr-411-merge-bot.yml",
+        f"type: improvement\nimprovement:\n  description: {description}.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    block = render_commit_msg_block(plan.entries, plan.next_version)
+    _assert_block_satisfies_validator(block)
+    # No wrapped line opens with `(#NNN)` (alone or with trailing
+    # punctuation): the suffix must always sit after a token from the
+    # entry's prose, never at line start.
+    pr_suffix_opener = re.compile(r"^\s*\(#\d+\)")
+    offenders = [line for line in block.splitlines() if pr_suffix_opener.match(line)]
+    assert not offenders, "PR-link suffix orphaned at line start: " + repr(offenders)
+    # And the suffix must still appear in the rendered block.
+    assert "(#411)" in block
+
+
+def test_pr_link_suffix_binding_fixture_actually_exercises_binding_rule(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Meta-guard: the long-description fixture must depend on the binding rule.
+
+    Earlier wording of the long-description regression test happened
+    to wrap such that ``(#411).`` already fit on the second line by
+    accident — monkey-patching ``PR_SUFFIX_RE`` produced byte-identical
+    output, so the test passed even with the suffix-binding branch of
+    ``_wrap_paragraph`` removed. This meta-test pins the fixture sized
+    so disabling ``PR_SUFFIX_RE`` orphans ``(#NNN)`` at the start of a
+    wrapped line, restoring the regression test's teeth. If a future
+    edit shortens the prose below the threshold this assertion will
+    fail loudly rather than the regression test silently degrading
+    into a smoke test.
+    """
+    import build_release
+
+    description = (
+        "Auto-update a PR whose head sits behind main instead of "
+        "treating the merge API's 405 as a hard failure mode that "
+        "we previously skipped over"
+    )
+    _seed_unreleased(
+        repo,
+        "pr-411-merge-bot.yml",
+        f"type: improvement\nimprovement:\n  description: {description}.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    # Disable the suffix-binding rule and confirm the resulting block
+    # *would* orphan `(#411)` at line start — proving the fixture
+    # actually depends on the binding logic for its assertions.
+    monkeypatch.setattr(build_release, "PR_SUFFIX_RE", re.compile("a^"))
+    unbound_block = render_commit_msg_block(plan.entries, plan.next_version)
+    pr_suffix_opener = re.compile(r"^\s*\(#\d+\)")
+    unbound_offenders = [
+        line for line in unbound_block.splitlines() if pr_suffix_opener.match(line)
+    ]
+    assert unbound_offenders, (
+        "Long-description fixture no longer exercises the PR_SUFFIX_RE "
+        "binding rule — disabling the regex still produced bound output. "
+        "Adjust the fixture so the unbound wrapper would orphan `(#NNN)` "
+        "at line start, otherwise "
+        "test_render_commit_msg_block_does_not_wrap_before_pr_link_suffix "
+        "is a smoke test rather than a regression guard."
+    )
+
+
+def test_render_changelog_bullet_skips_suffix_when_filename_unconventional() -> None:
+    """Fail-soft: an entry whose filename doesn't match the pattern gets no suffix.
+
+    The PR-time lint (`check_present_file_naming`) blocks new
+    offenders, but the renderer must still degrade gracefully if a
+    legacy or hand-edited file slips through — better to drop the
+    link than crash on a release-PR that's already past CI.
+    """
+    from version_logic import ChangelogEntry, EntryType
+
+    entries = [
+        ChangelogEntry(
+            entry_type=EntryType.IMPROVEMENT,
+            description="A change without a conventional filename.",
+            links=(),
+            packages=None,
+            release_as=None,
+            source_path=Path("changelog/@unreleased/legacy-handauthored.yml"),
+        ),
+    ]
+    section = render_changelog_section(entries, "0.5.0", _dt.date(2026, 4, 27))
+    assert "A change without a conventional filename." in section
+    # No `(#…)` suffix anywhere (no PR number to derive).
+    assert "(#" not in section
+
+
 # --- render_release_notes ---------------------------------------------------
 
 
@@ -561,7 +860,16 @@ def test_apply_release_creates_changelog_when_absent(repo: Path) -> None:
 
 
 def test_cli_compute_emits_skip_when_empty(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    rc = build_release_main(["compute", "--repo-root", str(repo), "--current-version", "0.4.0"])
+    rc = build_release_main(
+        [
+            "compute",
+            "--repo-root",
+            str(repo),
+            "--current-version",
+            "0.4.0",
+            *_TEST_BOT_CLI_FLAGS,
+        ]
+    )
     assert rc == 0
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -574,7 +882,16 @@ def test_cli_compute_emits_plan(repo: Path, capsys: pytest.CaptureFixture[str]) 
         "pr-100-feat.yml",
         "type: feature\nfeature:\n  description: New thing.\n",
     )
-    rc = build_release_main(["compute", "--repo-root", str(repo), "--current-version", "0.4.0"])
+    rc = build_release_main(
+        [
+            "compute",
+            "--repo-root",
+            str(repo),
+            "--current-version",
+            "0.4.0",
+            *_TEST_BOT_CLI_FLAGS,
+        ]
+    )
     assert rc == 0
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -582,6 +899,43 @@ def test_cli_compute_emits_plan(repo: Path, capsys: pytest.CaptureFixture[str]) 
     assert payload["branch"] == "release/0.5.0"
     assert payload["title"] == "chore(release): 0.5.0"
     assert "==COMMIT_MSG==" in payload["pr_body"]
+    # Issue #398: the ==COMMIT_MSG== block's `Signed-off-by:` trailer
+    # must attribute to the release-bot App identity passed via
+    # `--bot-app-slug` / `--bot-user-id`, not the hardcoded
+    # `github-actions[bot]` the renderer used pre-fix. Released
+    # commits whose trailer disagrees with the author identity show
+    # up as a confused audit trail in `git log`.
+    expected_signoff = (
+        f"Signed-off-by: {_TEST_BOT_APP_SLUG}[bot] "
+        f"<{_TEST_BOT_USER_ID}+{_TEST_BOT_APP_SLUG}[bot]@users.noreply.github.com>"
+    )
+    assert expected_signoff in payload["pr_body"]
+    assert "github-actions[bot]" not in payload["pr_body"]
+
+
+def test_cli_compute_requires_bot_identity_flags(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`compute` without `--bot-app-slug` / `--bot-user-id` must fail loud.
+
+    Issue #398: silently falling back to a hard-coded
+    ``github-actions[bot]`` signoff was the original regression. The
+    fail-loudly contract here mirrors the workflow-level guard added
+    in ``61aa0d7`` for the bot App secrets — a missing piece of bot
+    identity is operator-attention-required state, not a state the
+    renderer should paper over.
+    """
+    _seed_unreleased(
+        repo,
+        "pr-100-feat.yml",
+        "type: feature\nfeature:\n  description: New thing.\n",
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        build_release_main(["compute", "--repo-root", str(repo), "--current-version", "0.4.0"])
+    # argparse exits with status 2 on missing required args.
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "--bot-app-slug" in captured.err
 
 
 def test_cli_apply_writes_to_disk(repo: Path) -> None:
@@ -645,6 +999,7 @@ def test_script_mode_executes_via_python(repo: Path) -> None:
             str(repo),
             "--current-version",
             "0.4.0",
+            *_TEST_BOT_CLI_FLAGS,
         ],
         check=True,
         capture_output=True,
