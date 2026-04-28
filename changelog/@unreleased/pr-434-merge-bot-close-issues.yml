@@ -5,14 +5,7 @@
 type: improvement
 improvement:
   description: |
-    Merge-bot now closes issues referenced via auto-close keywords
-    (`Closes #N`, `Fixes #N`, `Resolves #N` and the inflections
-    GitHub's UI accepts) in the squash commit body, with a closing
-    comment of the form `Closed by merge of PR #<P> (squash commit
-    <sha>).`. Compensates for GitHub's auto-close-on-`Closes #N`
-    not firing for App-token-mediated merges. Requires
-    `issues: write` on the merge-bot App's installation; see
-    `docs/release/merge-bot-setup.md` Step 1.
+    `merge-bot` now closes linked issues referenced in the squash commit body, working around GitHub's App-token auto-close gap.
   links:
     - https://github.com/aidanns/agent-auth/issues/429
     - https://github.com/aidanns/agent-auth/pull/434
