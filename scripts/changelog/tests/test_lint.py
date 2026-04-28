@@ -535,6 +535,32 @@ def test_run_lint_fails_when_description_exceeds_word_cap(repo: Path):
     assert "==COMMIT_MSG==" in rendered
 
 
+def test_run_lint_passes_when_description_is_exactly_word_cap(repo: Path):
+    """The cap is inclusive: exactly ``MAX_DESCRIPTION_WORDS`` words must pass.
+
+    Pinned so that a future regression flipping the comparison from
+    ``>`` to ``>=`` (silently rejecting descriptions at the boundary)
+    fails this test rather than slipping into CI.
+    """
+    base = _git(repo, "rev-parse", "HEAD")
+    boundary_words = " ".join(["word"] * MAX_DESCRIPTION_WORDS)
+    head = _commit_added(
+        repo,
+        "changelog/@unreleased/pr-12-boundary.yml",
+        _make_description_yaml(f"{boundary_words}."),
+        "add",
+    )
+    report = run_lint(
+        pr_number=12,
+        base_sha=base,
+        head_sha=head,
+        labels=set(),
+        current_version="0.4.2",
+        repo_root=repo,
+    )
+    assert not report.has_errors
+
+
 def test_run_lint_fails_when_description_has_multiple_sentences(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
     head = _commit_added(
@@ -555,6 +581,87 @@ def test_run_lint_fails_when_description_has_multiple_sentences(repo: Path):
     rendered = report.render()
     assert "single sentence" in rendered
     assert "==COMMIT_MSG==" in rendered
+
+
+def test_run_lint_fails_when_quoted_sentence_hides_a_boundary(repo: Path):
+    """Embedded boundary detection must look past a closing quote.
+
+    Pattern: a sentence-terminator immediately followed by a closing
+    quote (``."``) and then whitespace. Without quote-aware handling
+    the regex only matches `terminator + space` so the multi-sentence
+    description below would slip past the lint despite clearly
+    breaking the single-sentence rule.
+    """
+    base = _git(repo, "rev-parse", "HEAD")
+    head = _commit_added(
+        repo,
+        "changelog/@unreleased/pr-12-quoted.yml",
+        _make_description_yaml('He said "Hello world." Then exited.'),
+        "add",
+    )
+    report = run_lint(
+        pr_number=12,
+        base_sha=base,
+        head_sha=head,
+        labels=set(),
+        current_version="0.4.2",
+        repo_root=repo,
+    )
+    assert report.has_errors
+    assert "single sentence" in report.render()
+
+
+def test_run_lint_passes_when_single_sentence_contains_embedded_quote(repo: Path):
+    """A single sentence with an inline quoted phrase must still pass.
+
+    Guards against an over-eager fix to the quote-aware boundary
+    detection that would treat any embedded quote as a sentence break.
+    The description below has exactly one terminal `.` and no embedded
+    terminator-then-whitespace sequence.
+    """
+    base = _git(repo, "rev-parse", "HEAD")
+    head = _commit_added(
+        repo,
+        "changelog/@unreleased/pr-12-inline-quote.yml",
+        _make_description_yaml('Adds support for "scoped" tokens.'),
+        "add",
+    )
+    report = run_lint(
+        pr_number=12,
+        base_sha=base,
+        head_sha=head,
+        labels=set(),
+        current_version="0.4.2",
+        repo_root=repo,
+    )
+    assert not report.has_errors
+
+
+def test_run_lint_passes_when_abbreviation_is_parenthesised(repo: Path):
+    """Parenthesised abbreviations must still match the allowlist.
+
+    Authors writing natural release-note asides like
+    ``Adds X (e.g. Y) here.`` would otherwise be falsely flagged: the
+    abbreviation tokeniser walks back to the most recent space and
+    captures ``(e.g.``, which is not in the allowlist. The fix strips
+    leading opening-bracket characters before the membership check.
+    """
+    base = _git(repo, "rev-parse", "HEAD")
+    head = _commit_added(
+        repo,
+        "changelog/@unreleased/pr-12-paren-eg.yml",
+        _make_description_yaml("Adds X (e.g. Y) here."),
+        "add",
+    )
+    report = run_lint(
+        pr_number=12,
+        base_sha=base,
+        head_sha=head,
+        labels=set(),
+        current_version="0.4.2",
+        repo_root=repo,
+    )
+    assert not report.has_errors
 
 
 def test_run_lint_fails_when_description_lacks_terminal_punctuation(repo: Path):

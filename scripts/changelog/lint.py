@@ -310,9 +310,13 @@ def _normalise_description(description: str) -> str:
 def _embedded_sentence_boundary(normalised: str) -> int | None:
     """Return the index of an embedded sentence boundary in ``normalised``, or ``None``.
 
-    A "boundary" is a `.`, `!`, or `?` followed by a space — i.e. any
+    A "boundary" is a `.`, `!`, or `?` followed by an optional closing
+    quote / paren / bracket and then whitespace — i.e. any
     sentence-terminator that is *not* the final character of the
-    string. Periods that belong to a known abbreviation (member of
+    string. The optional closing-bracket allowance covers the
+    quoted-sentence pattern (`He said "Hello world." Then …`) where the
+    period is followed by a quote rather than a bare space. Periods
+    that belong to a known abbreviation (member of
     ``_DESCRIPTION_ABBREVIATIONS`` or matching
     ``_DESCRIPTION_INITIAL_PATTERN``) are skipped so common shorthands
     in user-facing release-note copy don't trip the lint.
@@ -320,7 +324,7 @@ def _embedded_sentence_boundary(normalised: str) -> int | None:
     The returned index points at the terminator character so callers
     can quote a snippet of the surrounding text in error messages.
     """
-    for match in re.finditer(r"[.!?] ", normalised):
+    for match in re.finditer(r"""[.!?]["')\]]?\s""", normalised):
         terminator_index = match.start()
         # Look at the token (trailing-period-included) ending here so
         # the abbreviation check is exact: "e.g." matches but
@@ -330,6 +334,11 @@ def _embedded_sentence_boundary(normalised: str) -> int | None:
         # isolate the trailing token.
         space_at = prefix.rfind(" ")
         last_token = prefix[space_at + 1 :]
+        # Strip leading opening-bracket characters so a parenthesised
+        # abbreviation (`(e.g.`, `["i.e.`, `'cf.`) still matches the
+        # allowlist. Without this, authors writing natural release-note
+        # asides like `Adds X (e.g. Y) here.` would be falsely flagged.
+        last_token = last_token.lstrip("([\"'")
         token_lower = last_token.lower()
         if token_lower in _DESCRIPTION_ABBREVIATIONS:
             continue
@@ -460,7 +469,7 @@ def run_lint(
     current_version: str,
     repo_root: Path,
 ) -> LintReport:
-    """Run all four checks. Returns the report; caller decides exit code."""
+    """Run all configured checks. Returns the report; caller decides exit code."""
     report = LintReport()
     workspace_packages = list_workspace_packages(repo_root)
 
