@@ -24,6 +24,9 @@ things-client-cli-applescript = "things_client_applescript.cli:main"
 where = ["src"]
 
 [tool.setuptools_scm]
+# See ``packages/agent-auth/pyproject.toml`` for the rationale on
+# ``root = "../.."`` (issue #408).
+root = "../.."
 fallback_version = "0.0.0+unknown"
 
 [tool.uv.sources]

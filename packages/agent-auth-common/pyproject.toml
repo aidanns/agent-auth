@@ -43,6 +43,12 @@ exclude = ["tests_support*"]
 # then every workspace package tracks the same root version, which is
 # fine because everything is developed in lockstep and nothing is yet
 # published independently.
+#
+# ``root = "../.."`` points setuptools-scm at the workspace git root
+# (relative to this pyproject.toml). See
+# ``packages/agent-auth/pyproject.toml`` for the full rationale and
+# issue #408 for the v0.16.0 regression this prevents.
+root = "../.."
 fallback_version = "0.0.0+unknown"
 
 [tool.pytest.ini_options]

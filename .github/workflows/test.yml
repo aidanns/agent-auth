@@ -21,7 +21,16 @@ jobs:
   unit:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 makes the workspace's git tags reachable so
+      # setuptools-scm can derive a real PEP 440 version when the
+      # release-wheel-version regression test
+      # (tests/test_release_wheel_version.py) builds a wheel. The
+      # default shallow clone (fetch-depth: 1, no tags) makes
+      # setuptools-scm fall back to a "0.0.1.dev1+unknown.gsha"
+      # placeholder that the test correctly rejects.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-toolchain
         with:
