@@ -30,6 +30,15 @@ agent-auth-notifier = "agent_auth_notifier.cli:main"
 where = ["src"]
 
 [tool.setuptools_scm]
+# ``root`` is relative to this pyproject.toml; ``../..`` resolves to
+# the workspace root which IS the git root. Without this,
+# ``setuptools-scm`` treats the per-package directory as the SCM root,
+# fails to find ``.git`` two levels up, and silently falls back to
+# ``fallback_version`` — which is how ``v0.16.0`` shipped wheels
+# named ``0.0.0+unknown`` (issue #408). The
+# ``tests/test_release_wheel_version.py`` regression test asserts the
+# built wheel filenames match the current ``git describe`` output.
+root = "../.."
 fallback_version = "0.0.0+unknown"
 
 [tool.uv.sources]
