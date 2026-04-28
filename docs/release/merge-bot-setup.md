@@ -48,6 +48,20 @@ workflow:
    `Claude: Cannot merge — <reason>` on any pre-merge failure
    (label stays applied so the next green run retriggers the
    merge).
+6. After a successful merge, parses the squash commit body for
+   GitHub auto-close keyword references
+   (`closes` / `fixes` / `resolves` and their inflections, case-
+   insensitive) and closes each same-repo issue with a
+   `Closed by merge of PR #<P> (squash commit <sha>).` comment.
+   GitHub's UI auto-close-on-`Closes #N` does not fire for App-
+   token-mediated merges; this step compensates. Cross-repo
+   references (`other-org/other-repo#N`) are logged via
+   `::notice::` and skipped — the App's installation token is
+   scoped to this repo. Already-closed issues are skipped. Per-
+   issue close failures (404, 5xx) surface as `::warning::`
+   lines and do not fail the merge job; the merge has already
+   landed by this point. See [Closing linked issues](#closing-linked-issues)
+   below.
 
 The bot authors no commits — it only calls the merge endpoint. This
 is why the squash commit body's `Signed-off-by:` trailer must
@@ -72,6 +86,13 @@ trailer at PR-author time.
        was sufficient before that path existed).
      - *Metadata*: **Read-only** (mandatory when any other repo
        permission is granted).
+     - *Issues*: **Read & write** (call
+       `PATCH /repos/.../issues/{N}` to close issues referenced via
+       `Closes #N` / `Fixes #N` / `Resolves #N` in the squash commit
+       body, and post the closing-comment audit-trail line.
+       GitHub's UI auto-close-on-`Closes #N` does not fire for App-
+       token-mediated `PUT /pulls/{n}/merge` calls — issue #429 — so
+       the bot does the closure itself).
      - *Pull requests*: **Read & write** (call `PUT /pulls/{n}/merge`,
        post comments, read body and labels).
      - *Checks*: **Read-only** (inspect required-check status via
@@ -266,7 +287,13 @@ should produce:
 - The `dco` workflow staying green on `main` because the
   `Signed-off-by:` trailer round-trips into the squash commit.
 - The `Closes #N` trailer in the block closing the linked issue
-  on merge.
+  on merge, with a
+  `Closed by merge of PR #<P> (squash commit <sha>).` comment
+  posted by the `agent-auth-merge-bot` App identity. (Until the
+  `Issues: Read & write` permission lands on the App
+  installation, this signal is missing — the merge succeeds but
+  the linked issue stays open. See
+  [Closing linked issues](#closing-linked-issues) below.)
 
 If any of those signals is wrong, the most likely cause is a setup
 gap: missing secret, App not installed on the repo, or the App not
@@ -325,6 +352,72 @@ Operational notes:
   installation is what lets the merge call land for PRs that
   touch any file under `.github/workflows/` — including
   workflow-only PRs that never trigger the auto-update path.
+
+## Closing linked issues
+
+GitHub's UI auto-close-on-`Closes #N` does not fire for App-token-
+mediated `PUT /pulls/{n}/merge` calls. Confirmed deterministic
+across PRs #350 / #354 / #423 (issue #429). Without compensation,
+linked issues stay OPEN after a bot-mediated merge unless an
+orchestrator runs `gh issue close` separately — which is fragile
+(every shepherding workflow has to remember the step) and
+unobservable (an issue staying open looks the same as an
+in-progress issue).
+
+The bot now closes linked issues itself after the merge call
+returns 200:
+
+1. Reads the squash commit body the bot just pasted (the same file
+   the merge call used as `commit_message`, so what was merged and
+   what is parsed for issue refs are byte-identical).
+2. Calls
+   [`scripts/parse-close-keywords.py`](../../scripts/parse-close-keywords.py)
+   to extract auto-close issue references. Recognised keywords
+   match what GitHub's UI auto-closer accepts:
+   `closes` / `closed` / `closing` / `close`, `fix` / `fixes` /
+   `fixed` / `fixing`, `resolve` / `resolves` / `resolved` /
+   `resolving`. Case-insensitive. Same-repo (`#N`) and cross-repo
+   (`other-org/other-repo#N`) reference shapes are both
+   recognised; the helper splits them into separate streams.
+3. For each same-repo issue number:
+   - Skips already-closed issues (with a `::notice::` log line)
+     so a re-run of the merge step doesn't post a duplicate
+     `Closed by merge of PR ...` comment.
+   - Otherwise calls
+     `PATCH /repos/aidanns/agent-auth/issues/{N}` with
+     `state: closed`, then posts a comment of the form
+     `Closed by merge of PR #<P> (squash commit <sha>).` on the
+     issue.
+4. Cross-repo references are logged via `::notice::` and skipped
+   — the App's installation token is scoped to this repo. A
+   maintainer who wants the cross-repo issue closed has to do it
+   by hand (or via a token scoped to the other repo).
+
+Failure handling for this step is best-effort: a 404 (typo'd
+`Closes #99999`), 5xx, or any other API error on a per-issue close
+call surfaces as a `::warning::` and the loop continues. The merge
+has already landed; failing the workflow at this point would
+generate a red merge-bot run on a PR that merged successfully —
+without rolling back the merge — which is a worse signal than a
+warning-only log line on the same run. The merge call itself
+remains the gating step.
+
+**Required permission.** `Issues: Read & write` on the App
+installation (Step 1). The PATCH and the comment POST both
+require it. The closing comment includes the squash commit SHA
+read from the merge response (`PUT /pulls/{n}/merge` returns
+`{ "sha": "<squash sha>", ... }`); if that field is absent (a
+response-shape change) the bot omits the parenthesised SHA
+reference and the comment becomes `Closed by merge of PR #<P>.`.
+
+**Why no orchestrator-side `gh issue close` step.** Once the
+permissions update is rolled out, the bot is the single source of
+truth for issue closure. The manual `gh issue close` calls in
+`/workflow:implement` Phase 6 step 2 (and the equivalent in
+`/work-issues`) become redundant — the bot's closure happens
+first; any subsequent manual call is a no-op. Removing the manual
+step is a follow-up tracked outside this repo (the workflows live
+in the `claude-skills` repo).
 
 ## Failure modes the bot surfaces
 
