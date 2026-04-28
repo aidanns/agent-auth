@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.16.4] - 2026-04-28
+
+### Improvements
+
+- Release-note entries now end with `(#N)` so a reader of
+  `CHANGELOG.md`, the GitHub release body, or the release-PR
+  `==COMMIT_MSG==` block can click straight through to the
+  originating PR for the verbose context that the terse YAML
+  `description:` field omits. The PR number is derived from the
+  YAML filename via `pr-<N>-<slug>.yml`; a new PR-time lint check
+  fails non-conforming filenames so the renderer always has a
+  number to derive. The wrap algorithm also keeps `(#N)` bound to
+  the preceding token so a soft-wrap never visually divorces the
+  link from the entry it belongs to. (#426)
+
 ## [0.16.3] - 2026-04-28
 
 ### Fixes
