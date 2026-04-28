@@ -30,6 +30,18 @@
 # `GITHUB_KEYWORD_RE` is anchored at line start for *validation*; this
 # script's concern is *auto-close matching* — a different question.
 #
+# GitHub-UI-parity nuances pinned by the test suite (intentional):
+#   * Comma-separated `Closes #1, #2, and #3` matches `#1` only — the
+#     matcher requires a keyword before each `#N`. Contributors who
+#     want all of #1/#2/#3 closed must repeat the keyword
+#     (`Closes #1\nCloses #2\nCloses #3`). GitHub's UI behaves the
+#     same way.
+#   * Any in-body `Closes #N` mention closes the issue, regardless of
+#     leading context. `Will close #100 once we ship` does close #100;
+#     `did not close #100` also closes #100. GitHub's UI behaves the
+#     same way. Authors should therefore avoid placing future-work
+#     `Closes #N` references inside the `==COMMIT_MSG==` block.
+#
 # CLI surface:
 #   python3 scripts/parse-close-keywords.py <body-file>
 #

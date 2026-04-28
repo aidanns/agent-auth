@@ -183,6 +183,43 @@ def test_body_with_no_auto_close_references_returns_empty_list() -> None:
     assert parser.find_same_repo_issue_numbers(body) == []
 
 
+def test_comma_separated_multi_issue_form_only_matches_first() -> None:
+    """`Closes #1, #2, and #3` resolves to `[1]` only — by design.
+
+    The matcher requires a keyword before each `#N`. Comma-separated
+    multi-issue prose like `Closes #1, #2, and #3` therefore only
+    captures `#1`; `#2` and `#3` look like bare issue references
+    without a leading keyword. This matches GitHub's UI auto-closer
+    behaviour exactly (the UI also only closes #1 in that body), so
+    contributors who want all three to close on merge must repeat the
+    keyword (`Closes #1\\nCloses #2\\nCloses #3`). This test pins
+    that intentional behaviour so a well-meaning future change to
+    "also catch comma-separated forms" doesn't silently diverge from
+    GitHub UI parity.
+    """
+    body = "Closes #1, #2, and #3"
+    assert parser.find_same_repo_issue_numbers(body) == [1]
+
+
+def test_in_body_close_reference_with_leading_context_still_matches() -> None:
+    """`Will close #100 once we ship` resolves to `[100]` — by design.
+
+    The keyword anchors on `\\b<keyword>\\b` plus a `#N` follow-on,
+    regardless of preceding context. So `Will close #100`,
+    `If we close #100`, and `did not close #100` all match. This
+    matches GitHub's UI auto-closer behaviour (the UI also closes
+    #100 for `Will close #100`), so the parser is correct. The
+    practical risk is that a PR body discussing future work
+    (e.g. `Notes: future patches will close #500`) would close #500
+    on merge — contributors should avoid placing future-work
+    `Closes #N` mentions inside the `==COMMIT_MSG==` block. Pin the
+    behaviour so a defensive "require beginning-of-line" tightening
+    doesn't ship without an explicit decision to diverge from GitHub.
+    """
+    body = "Will close #100 once we ship the migration."
+    assert parser.find_same_repo_issue_numbers(body) == [100]
+
+
 def test_keyword_inside_word_boundary_does_not_match() -> None:
     """`prefix-closes #N` must not match — keyword needs a word boundary.
 

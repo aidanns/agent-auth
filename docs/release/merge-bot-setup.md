@@ -393,6 +393,24 @@ returns 200:
    maintainer who wants the cross-repo issue closed has to do it
    by hand (or via a token scoped to the other repo).
 
+The parser mirrors GitHub UI auto-closer behaviour exactly, which
+implies two nuances PR authors should know about:
+
+- **Comma-separated multi-issue forms close only the first.**
+  `Closes #1, #2, and #3` closes #1 only — the matcher requires a
+  keyword before each `#N`, and #2 / #3 in that body look like bare
+  issue references. To close several issues from one PR, repeat the
+  keyword (`Closes #1`, then `Closes #2`, then `Closes #3` on
+  separate lines). This matches what GitHub's UI auto-closer would
+  do for the same body.
+- **Any `Closes #N` mention closes the issue, regardless of context.**
+  `Will close #100 once we ship`, `If we close #100`, and
+  `did not close #100` all close #100 on merge. GitHub's UI behaves
+  the same way. Avoid putting future-work or hypothetical
+  `Closes #N` mentions inside the `==COMMIT_MSG==` block — move
+  them to `## Review notes` (which never enters git history) if you
+  need to reference an issue without closing it.
+
 Failure handling for this step is best-effort: a 404 (typo'd
 `Closes #99999`), 5xx, or any other API error on a per-issue close
 call surfaces as a `::warning::` and the loop continues. The merge
