@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.16.6] - 2026-04-28
+
+### Improvements
+
+- `merge-bot` now closes linked issues referenced in the squash commit body, working around GitHub's App-token auto-close gap. (#434)
+
 ## [0.16.5] - 2026-04-28
 
 ### Improvements
