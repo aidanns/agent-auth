@@ -593,7 +593,35 @@ def _wrap_paragraph(text: str, width: int) -> str:
     return "\n".join(out_lines)
 
 
-def render_pr_body(plan: ReleasePlan) -> str:
+def _build_signoff(app_slug: str, user_id: str | int) -> str:
+    """Render the DCO ``Signed-off-by:`` trailer for the release commit.
+
+    The release-PR workflow runs as the ``agent-auth-release-bot``
+    GitHub App (#398). The squash-merge commit body comes verbatim
+    from the ==COMMIT_MSG== block this renderer emits, so the
+    trailer must already match the App's bot identity — otherwise
+    the released commit shows an author/committer of the App but a
+    sign-off of ``github-actions[bot]``, which both reads wrong in
+    ``git log`` and undermines the audit trail wiring done in
+    ``b07fe58`` and ``d9225a4``.
+
+    Shape: ``Signed-off-by: <slug>[bot] <<id>+<slug>[bot]@users.noreply.github.com>``.
+    The numeric-id-prefixed no-reply form is the canonical
+    ``[bot]`` email DCO auto-bypasses on
+    (``.github/workflows/dco.yml``).
+    """
+    if not app_slug:
+        raise ValueError("app_slug is required to render the release-bot signoff trailer")
+    user_id_str = str(user_id).strip()
+    if not user_id_str:
+        raise ValueError("user_id is required to render the release-bot signoff trailer")
+    return (
+        f"Signed-off-by: {app_slug}[bot] "
+        f"<{user_id_str}+{app_slug}[bot]@users.noreply.github.com>"
+    )
+
+
+def render_pr_body(plan: ReleasePlan, *, bot_app_slug: str, bot_user_id: str | int) -> str:
     """Render the full release-PR description (==COMMIT_MSG== + Review notes).
 
     The body MUST satisfy `pr-lint.yml`:
@@ -601,9 +629,16 @@ def render_pr_body(plan: ReleasePlan) -> str:
       formatting inside the block.
     - The standard ``## Review notes`` section sits outside the block
       (it is dropped at squash-merge time).
+
+    ``bot_app_slug`` / ``bot_user_id`` identify the GitHub App
+    whose token authors the release commit; they're threaded into
+    the embedded ``Signed-off-by:`` trailer via :func:`_build_signoff`.
+    Required (no fallback) so a missing-secret state surfaces as a
+    loud error rather than silently signing off as
+    ``github-actions[bot]`` (#398).
     """
     commit_msg_body = render_commit_msg_block(plan.entries, plan.next_version)
-    signoff = "Signed-off-by: github-actions[bot] <noreply@github.com>"
+    signoff = _build_signoff(bot_app_slug, bot_user_id)
     block = f"==COMMIT_MSG==\n{commit_msg_body}\n\n{signoff}\n==COMMIT_MSG=="
     review = (
         "## Review notes\n\n"
@@ -700,7 +735,7 @@ def _rewrite_changelog(path: Path, new_section: str, next_version: str) -> None:
 # --- CLI ----------------------------------------------------------------------
 
 
-def _plan_to_json(plan: ReleasePlan) -> str:
+def _plan_to_json(plan: ReleasePlan, *, bot_app_slug: str, bot_user_id: str) -> str:
     return json.dumps(
         {
             "current_version": plan.current_version,
@@ -710,7 +745,7 @@ def _plan_to_json(plan: ReleasePlan) -> str:
             "moves": [{"src": str(m.src), "dst": str(m.dst)} for m in plan.moves],
             "changelog_section": plan.changelog_section,
             "release_notes": plan.release_notes,
-            "pr_body": render_pr_body(plan),
+            "pr_body": render_pr_body(plan, bot_app_slug=bot_app_slug, bot_user_id=bot_user_id),
         },
         indent=2,
     )
@@ -722,7 +757,7 @@ def _cmd_compute(args: argparse.Namespace) -> int:
     if plan is None:
         print(json.dumps({"skip": True, "reason": "no unreleased entries"}))
         return 0
-    print(_plan_to_json(plan))
+    print(_plan_to_json(plan, bot_app_slug=args.bot_app_slug, bot_user_id=args.bot_user_id))
     return 0
 
 
@@ -774,6 +809,29 @@ def _build_parser() -> argparse.ArgumentParser:
         "--current-version",
         required=True,
         help="Current released version (X.Y.Z, no leading v).",
+    )
+    # The release commit's `Signed-off-by:` trailer must match the
+    # GitHub App identity that authors the release commit (#398).
+    # Both flags are required: a missing value would otherwise silently
+    # render an unsigned-off or mis-attributed trailer, the exact
+    # regression the issue surfaced.
+    compute.add_argument(
+        "--bot-app-slug",
+        required=True,
+        help=(
+            "GitHub App slug for the release-bot identity (e.g. "
+            "`agent-auth-release-bot`). Used to render the "
+            "`Signed-off-by:` trailer inside the ==COMMIT_MSG== block."
+        ),
+    )
+    compute.add_argument(
+        "--bot-user-id",
+        required=True,
+        help=(
+            "Numeric GitHub user-id for `<slug>[bot]`. Combined with "
+            "`--bot-app-slug` to form the `<id>+<slug>[bot]@users."
+            "noreply.github.com` no-reply email DCO auto-bypasses on."
+        ),
     )
     compute.set_defaults(func=_cmd_compute)
 

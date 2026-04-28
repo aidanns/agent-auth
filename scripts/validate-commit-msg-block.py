@@ -289,7 +289,22 @@ def check_non_empty(lines: Iterable[str]) -> None:
 
 
 def check_line_width(lines: Iterable[str]) -> None:
-    over = [(idx, line) for idx, line in enumerate(lines, start=1) if len(line) > MAX_LINE_WIDTH]
+    # Body prose wraps at 72; trailer lines are exempt. Trailer values
+    # are routinely longer than the body wrap (a numeric-id-prefixed
+    # GitHub no-reply email like
+    # `<123456+agent-auth-release-bot[bot]@users.noreply.github.com>`
+    # alone is 60 chars, before the trailer token + value separator),
+    # and the kernel/git convention treats trailers as
+    # one-line-per-trailer regardless of width — wrapping a
+    # ``Signed-off-by:`` line breaks ``git interpret-trailers --parse``.
+    # The PR-rendered release-bot signoff (#398) is the concrete case.
+    line_list = list(lines)
+    trailer_start = _trailer_block_start_index(line_list)
+    over = [
+        (idx, line)
+        for idx, line in enumerate(line_list, start=1)
+        if len(line) > MAX_LINE_WIDTH and (trailer_start is None or idx - 1 < trailer_start)
+    ]
     if over:
         details = "\n".join(f"  line {idx} ({len(line)} chars): {line!r}" for idx, line in over)
         raise ValidationError(
