@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.16.5] - 2026-04-28
+
+### Improvements
+
+- Release-PR Signed-off-by trailer now identifies the agent-auth-release-bot App. (#433)
+
 ## [0.16.4] - 2026-04-28
 
 ### Improvements
