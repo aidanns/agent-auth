@@ -74,6 +74,54 @@ jobs:
         # workspace member produces one wheel + one sdist.
         run: scripts/build-release-artifacts.sh
 
+      - name: Verify built artefact versions match the release tag
+        # Guards the v0.16.0 regression (#408): every wheel + sdist
+        # filename must include the tag's version string. Fails fast
+        # before signing / SBOM / upload would otherwise pin
+        # ``0.0.0+unknown`` artefacts to the release. The test in
+        # ``tests/test_release_wheel_version.py`` covers the same
+        # invariant at PR time (via ``release-dryrun.yml``); this
+        # step is the belt-and-braces gate on the publish path
+        # itself, so a regression that slips past the dry-run
+        # (broken checkout config, tag-resolution mismatch, …)
+        # cannot still produce a signed release with the wrong
+        # filenames.
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ``nullglob`` makes an unmatched glob expand to nothing
+          # instead of the literal pattern. Without it, an empty
+          # ``dist/`` would expand ``dist/*.whl`` to itself and the
+          # loop body would run once with a bogus filename — the
+          # ``[[ ... ]]`` check would silently fail-pass through the
+          # comparison or trip on a missing file. The explicit
+          # empty-dist guard below then turns "build produced zero
+          # artefacts" into a loud workflow failure rather than a
+          # vacuous "all 0 artefacts carry the expected version".
+          shopt -s nullglob
+          # Strip the leading ``v`` from the tag (``v0.16.1`` -> ``0.16.1``)
+          # so the comparison matches setuptools-scm's PEP-440 output.
+          expected_version="${TAG#v}"
+          artefacts=(dist/*.whl dist/*.tar.gz)
+          if (( ${#artefacts[@]} == 0 )); then
+            echo "::error::dist/ is empty — build produced no artefacts (regression of #408 or upstream build failure)"
+            exit 1
+          fi
+          fail=0
+          for f in "${artefacts[@]}"; do
+            base="$(basename "${f}")"
+            if [[ "${base}" != *"-${expected_version}-"* && "${base}" != *"-${expected_version}.tar.gz" ]]; then
+              echo "::error::artefact ${base} does not carry expected version ${expected_version} (regression of #408)"
+              fail=1
+            fi
+          done
+          if [[ "${fail}" -eq 0 ]]; then
+            echo "All ${#artefacts[@]} built artefacts carry version ${expected_version}."
+          fi
+          exit "${fail}"
+
       - name: Generate sha256 sidecar files
         # One ``<artefact>.sha256`` per wheel + sdist for the install
         # scripts to verify against without round-tripping the
