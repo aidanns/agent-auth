@@ -378,9 +378,14 @@ def render_commit_msg_block(entries: Sequence[ChangelogEntry], next_version: str
     ``DISALLOWED_PATTERNS`` (markdown headings, task checkboxes,
     image embeds) still pass trivially — the renderer emits none
     of those.
+
+    The body opens directly with the first per-section paragraph
+    (e.g. ``Improvements: ...``); the ``chore(release): X.Y.Z``
+    subject already conveys the version, so a leading
+    ``Release vX.Y.Z.`` paragraph would only duplicate it (#396).
     """
     grouped = _grouped(entries)
-    paragraphs: list[str] = [f"Release v{next_version}."]
+    paragraphs: list[str] = []
     for entry_type in SECTION_ORDER:
         bucket = grouped[entry_type]
         if not bucket:
