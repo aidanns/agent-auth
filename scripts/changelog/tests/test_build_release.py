@@ -481,20 +481,28 @@ def test_render_commit_msg_block_does_not_wrap_before_pr_link_suffix(
     """A long-bullet description must keep `(#N)` bound to the preceding token.
 
     Reproduces the wrap-boundary failure mode the issue calls out: a
-    description long enough that the greedy wrapper would otherwise
-    drop ``(#411)`` alone onto a wrapped line. The suffix being
-    visually divorced from the entry it links to defeats the
-    audience-link-back motive (#411). The fixture's prose is sized so
-    the buggy wrapper would land the suffix at the start of the
-    second wrapped line of the Improvements paragraph; the fix moves
-    the preceding token down with it.
+    description long enough that a naive greedy wrapper would drop
+    ``(#411).`` alone onto a wrapped line. The suffix being visually
+    divorced from the entry it links to defeats the audience-link-back
+    motive (#411). The fixture's prose is sized so the buggy wrapper
+    would land the suffix at the start of a third wrapped line of the
+    Improvements paragraph; the fix moves the preceding token down
+    with it.
+
+    Sanity-checked against an unbound wrapper: monkey-patching
+    ``PR_SUFFIX_RE`` to never match yields a third line opening with
+    ``(#411).``, which is exactly the failure mode the assertions
+    here forbid. The fixture would not detect a missing suffix-binding
+    branch otherwise.
     """
-    # Crafted so the Improvements paragraph header + this prose pushes
-    # `(#411)` past the 72-char limit: forcing the wrap algorithm to
-    # decide where the suffix belongs.
+    # Crafted so the Improvements paragraph header + this prose forces
+    # the wrap algorithm to decide where `(#411).` belongs: the second
+    # naive-wrapped line ends with `previously`, leaving no room for
+    # the 7-char suffix and pushing it to a third line on its own.
     description = (
         "Auto-update a PR whose head sits behind main instead of "
-        "treating the merge API's 405 as a hard failure"
+        "treating the merge API's 405 as a hard failure mode that we "
+        "previously"
     )
     _seed_unreleased(
         repo,
@@ -513,6 +521,56 @@ def test_render_commit_msg_block_does_not_wrap_before_pr_link_suffix(
     assert not offenders, "PR-link suffix orphaned at line start: " + repr(offenders)
     # And the suffix must still appear in the rendered block.
     assert "(#411)" in block
+
+
+def test_pr_link_suffix_binding_fixture_actually_exercises_binding_rule(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Meta-guard: the long-description fixture must depend on the binding rule.
+
+    Earlier wording of the long-description regression test happened
+    to wrap such that ``(#411).`` already fit on the second line by
+    accident — monkey-patching ``PR_SUFFIX_RE`` produced byte-identical
+    output, so the test passed even with the suffix-binding branch of
+    ``_wrap_paragraph`` removed. This meta-test pins the fixture sized
+    so disabling ``PR_SUFFIX_RE`` orphans ``(#NNN)`` at the start of a
+    wrapped line, restoring the regression test's teeth. If a future
+    edit shortens the prose below the threshold this assertion will
+    fail loudly rather than the regression test silently degrading
+    into a smoke test.
+    """
+    import build_release
+
+    description = (
+        "Auto-update a PR whose head sits behind main instead of "
+        "treating the merge API's 405 as a hard failure mode that we "
+        "previously"
+    )
+    _seed_unreleased(
+        repo,
+        "pr-411-merge-bot.yml",
+        f"type: improvement\nimprovement:\n  description: {description}.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    # Disable the suffix-binding rule and confirm the resulting block
+    # *would* orphan `(#411)` at line start — proving the fixture
+    # actually depends on the binding logic for its assertions.
+    monkeypatch.setattr(build_release, "PR_SUFFIX_RE", re.compile("a^"))
+    unbound_block = render_commit_msg_block(plan.entries, plan.next_version)
+    pr_suffix_opener = re.compile(r"^\s*\(#\d+\)")
+    unbound_offenders = [
+        line for line in unbound_block.splitlines() if pr_suffix_opener.match(line)
+    ]
+    assert unbound_offenders, (
+        "Long-description fixture no longer exercises the PR_SUFFIX_RE "
+        "binding rule — disabling the regex still produced bound output. "
+        "Adjust the fixture so the unbound wrapper would orphan `(#NNN)` "
+        "at line start, otherwise "
+        "test_render_commit_msg_block_does_not_wrap_before_pr_link_suffix "
+        "is a smoke test rather than a regression guard."
+    )
 
 
 def test_render_changelog_bullet_skips_suffix_when_filename_unconventional() -> None:
