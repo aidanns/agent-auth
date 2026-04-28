@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 type: improvement
 improvement:
   description: |
@@ -10,4 +14,5 @@ improvement:
     `Signed-off-by:` line is one-line-per-trailer regardless of
     width.
   links:
+    - https://github.com/aidanns/agent-auth/issues/398
     - https://github.com/aidanns/agent-auth/pull/433
