@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: |
+    The release-PR `==COMMIT_MSG==` block now emits one bullet per
+    changelog entry under each section heading, regardless of entry
+    count. The shape is identical for single-entry and multi-entry
+    sections, so `git log` and the GitHub release page scan
+    uniformly. Replaces the historical semicolon-joined prose
+    paragraph per section.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/397
+    - https://github.com/aidanns/agent-auth/pull/430

@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: |
+    Release-PR squash-merge commit bodies (rendered by
+    `render_commit_msg_block`) no longer open with a redundant
+    `Release vX.Y.Z.` paragraph — the version is already in the
+    `chore(release): X.Y.Z` subject, so the body now opens directly
+    with the first per-section paragraph (`Improvements: ...`,
+    `Fixes: ...`). `render_release_notes` (the GitHub Release surface)
+    keeps its `Release vX.Y.Z.` header where the version is
+    load-bearing.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/396
+    - https://github.com/aidanns/agent-auth/pull/425

@@ -276,6 +276,65 @@ def test_render_commit_msg_block_keeps_lines_under_72(repo: Path) -> None:
         assert len(line) <= 72, f"line too wide: {line!r}"
 
 
+# --- bullet shape (#397) ----------------------------------------------------
+#
+# The ==COMMIT_MSG== block historically joined entries with `; ` into
+# a single prose paragraph per section heading. That shape was hard
+# to scan once a release accumulated several entries, and the
+# inconsistency between single-entry sections (one prose sentence)
+# and multi-entry sections (semicolon-joined run-on) was the worst
+# of it. #397 switched the renderer to always emit a bulleted list
+# under each section heading, regardless of entry count.
+#
+# These tests pin the user-visible shape: bullets are present, the
+# semicolon-joined run-on is absent, and the same shape applies to
+# single-entry sections as to multi-entry ones.
+
+
+def test_render_commit_msg_block_emits_bullet_per_entry_in_multi_entry_section(
+    repo: Path,
+) -> None:
+    """Multi-entry sections render one ``- `` bullet per entry, not ``; ``."""
+    _seed_unreleased(
+        repo,
+        "pr-100-imp-a.yml",
+        "type: improvement\nimprovement:\n  description: First improvement.\n",
+    )
+    _seed_unreleased(
+        repo,
+        "pr-101-imp-b.yml",
+        "type: improvement\nimprovement:\n  description: Second improvement.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    block = render_commit_msg_block(plan.entries, plan.next_version)
+
+    # Each bullet ends with the per-entry `(#N)` PR-link suffix (#411)
+    # taken from the YAML filename — no trailing period, matching the
+    # changelog and release-notes renderers.
+    assert "Improvements:\n- First improvement (#100)\n- Second improvement (#101)" in block
+    # The historical semicolon-joined run-on must not reappear.
+    assert "; " not in block
+
+
+def test_render_commit_msg_block_emits_bullet_for_single_entry_section(
+    repo: Path,
+) -> None:
+    """Single-entry sections render the same bullet shape as multi-entry."""
+    _seed_unreleased(
+        repo,
+        "pr-100-fix.yml",
+        "type: fix\nfix:\n  description: Only fix.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    block = render_commit_msg_block(plan.entries, plan.next_version)
+
+    # Single-entry sections render the same bullet shape, including
+    # the per-entry `(#N)` PR-link suffix (#411).
+    assert block == "Fixes:\n- Only fix (#100)"
+
+
 # --- numbered-reference wrap regressions ------------------------------------
 #
 # Greedy wrap on 72 chars used to land tokens like `0011.` (from
@@ -450,7 +509,7 @@ def test_render_release_notes_appends_pr_link_suffix(repo: Path) -> None:
 
 
 def test_render_commit_msg_block_appends_pr_link_suffix_per_entry(repo: Path) -> None:
-    """Each entry inside the semicolon-joined paragraph keeps its own `(#N)`."""
+    """Each bullet under a section heading keeps its own `(#N)` suffix."""
     _seed_unreleased(
         repo,
         "pr-411-a.yml",
@@ -466,13 +525,15 @@ def test_render_commit_msg_block_appends_pr_link_suffix_per_entry(repo: Path) ->
     block = render_commit_msg_block(plan.entries, plan.next_version)
     assert "(#411)" in block
     assert "(#412)" in block
-    # Both suffixes should sit inside the same Improvements paragraph,
-    # joined by `;` — i.e. neither should have leaked onto its own line.
-    improvements_paragraph = next(
+    # Each bullet line under the Improvements heading must carry its
+    # own suffix at the visible end of the entry — the eye should find
+    # the link where the bullet finishes, not orphaned on a wrap line.
+    improvements_section = next(
         para for para in block.split("\n\n") if para.startswith("Improvements:")
     )
-    assert "(#411);" in improvements_paragraph
-    assert "(#412)." in improvements_paragraph
+    bullet_lines = [line for line in improvements_section.splitlines() if line.startswith("- ")]
+    assert any(line.endswith(" (#411)") for line in bullet_lines)
+    assert any(line.endswith(" (#412)") for line in bullet_lines)
 
 
 def test_render_commit_msg_block_does_not_wrap_before_pr_link_suffix(
@@ -482,27 +543,27 @@ def test_render_commit_msg_block_does_not_wrap_before_pr_link_suffix(
 
     Reproduces the wrap-boundary failure mode the issue calls out: a
     description long enough that a naive greedy wrapper would drop
-    ``(#411).`` alone onto a wrapped line. The suffix being visually
+    ``(#411)`` alone onto a wrapped line. The suffix being visually
     divorced from the entry it links to defeats the audience-link-back
     motive (#411). The fixture's prose is sized so the buggy wrapper
-    would land the suffix at the start of a third wrapped line of the
-    Improvements paragraph; the fix moves the preceding token down
-    with it.
+    would land the suffix on its own wrapped line under the Improvements
+    bullet; the fix moves the preceding token down with it.
 
     Sanity-checked against an unbound wrapper: monkey-patching
-    ``PR_SUFFIX_RE`` to never match yields a third line opening with
-    ``(#411).``, which is exactly the failure mode the assertions
+    ``PR_SUFFIX_RE`` to never match yields a wrapped line opening with
+    ``(#411)``, which is exactly the failure mode the assertions
     here forbid. The fixture would not detect a missing suffix-binding
     branch otherwise.
     """
-    # Crafted so the Improvements paragraph header + this prose forces
-    # the wrap algorithm to decide where `(#411).` belongs: the second
-    # naive-wrapped line ends with `previously`, leaving no room for
-    # the 7-char suffix and pushing it to a third line on its own.
+    # Crafted so the bullet body's wrap leaves ``(#411)`` orphaned on
+    # its own line under the unbound wrapper: the prose fills the
+    # second wrapped continuation line right up to the 70-char bullet
+    # width, so the 7-char suffix overflows and lands on a third line
+    # with nothing else next to it.
     description = (
         "Auto-update a PR whose head sits behind main instead of "
-        "treating the merge API's 405 as a hard failure mode that we "
-        "previously"
+        "treating the merge API's 405 as a hard failure mode that "
+        "we previously skipped over"
     )
     _seed_unreleased(
         repo,
@@ -544,8 +605,8 @@ def test_pr_link_suffix_binding_fixture_actually_exercises_binding_rule(
 
     description = (
         "Auto-update a PR whose head sits behind main instead of "
-        "treating the merge API's 405 as a hard failure mode that we "
-        "previously"
+        "treating the merge API's 405 as a hard failure mode that "
+        "we previously skipped over"
     )
     _seed_unreleased(
         repo,

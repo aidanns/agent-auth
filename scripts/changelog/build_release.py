@@ -368,10 +368,13 @@ def render_release_notes(entries: Sequence[ChangelogEntry], next_version: str) -
     :data:`COMMIT_MSG_WRAP` characters.
 
     The release-PR ``==COMMIT_MSG==`` block has its own renderer
-    (``render_commit_msg_block``) that emits prose-only — bullets
-    here are fine for the GitHub Release surface but the per-PR
-    commit body deliberately collapses them to semicolon-joined
-    sentences, see that function's docstring.
+    (``render_commit_msg_block``) that emits the same
+    heading-plus-bullets shape (#397). The GitHub Release body
+    accepts arbitrary markdown either way; this renderer keeps
+    its leading ``Release vX.Y.Z.`` header where the version is
+    load-bearing, while the commit-msg renderer omits it because
+    the ``chore(release): X.Y.Z`` subject already carries the
+    version.
 
     The shape:
 
@@ -387,12 +390,6 @@ def render_release_notes(entries: Sequence[ChangelogEntry], next_version: str) -
         ...
 
     The leading bullets here are emitted with a single ``- `` prefix.
-    Bullets are valid in the *==COMMIT_MSG== block* too post-#345,
-    but ``render_commit_msg_block`` historically emits semicolon-
-    joined prose and there is no reason to change that purely on
-    the back of the validator relaxation. ``render_release_notes``
-    is the GitHub Release body; that surface accepts arbitrary
-    markdown either way.
     """
     grouped = _grouped(entries)
     parts: list[str] = [f"Release v{next_version}.", ""]
@@ -429,53 +426,91 @@ def render_commit_msg_block(entries: Sequence[ChangelogEntry], next_version: str
 
     Differs from ``render_release_notes`` in that:
 
-    - No markdown bullets — prose is grouped by type and joined
-      with semicolons.
+    - No ``Release vX.Y.Z.`` header — the
+      ``chore(release): X.Y.Z`` subject already conveys the
+      version (#396).
     - Lines wrap at :data:`COMMIT_MSG_WRAP` chars.
 
-    The bullet ban here is a *historical* shape, not a hard
-    requirement: pre-#345 the validator's ``DISALLOWED_PATTERNS``
-    rejected bullets in the block, and this renderer was written
-    around that. Post-#345 plain bullets are valid in the block,
-    but the semicolon-joined prose form remains the renderer's
-    output because it predates the relaxation and there is no
-    behavioural reason to churn it. The validator's remaining
-    ``DISALLOWED_PATTERNS`` (markdown headings, task checkboxes,
-    image embeds) still pass trivially — the renderer emits none
-    of those.
+    The shape per section is a heading line followed by one
+    bullet per entry, regardless of how many entries land in the
+    section. Single-entry sections render the same way as
+    multi-entry ones so the body is uniformly scannable in
+    ``git log`` and on the GitHub release page (#397):
+
+        Improvements:
+        - <description 1>
+        - <description 2>
+
+    Pre-#345 the validator's ``DISALLOWED_PATTERNS`` rejected
+    bullets in the block, so this renderer originally emitted
+    semicolon-joined prose. Post-#345 plain bullets are valid in
+    the block; #397 switched to bullets because they scan more
+    cleanly than a giant prose paragraph per heading. The
+    validator's remaining ``DISALLOWED_PATTERNS`` (markdown
+    headings, task checkboxes, image embeds) still pass trivially
+    — the renderer emits none of those.
     """
     grouped = _grouped(entries)
-    paragraphs: list[str] = [f"Release v{next_version}."]
+    sections: list[str] = []
     for entry_type in SECTION_ORDER:
         bucket = grouped[entry_type]
         if not bucket:
             continue
-        # One paragraph per group: "<heading>: <desc1> (#N1); <desc2> (#N2); …".
-        # Per-entry `(#N)` PR-link suffix (#411) survives the
-        # semicolon-join so each collapsed description keeps its own
-        # link back to the originating PR. Empty-suffix entries (legacy
-        # filenames) join cleanly because the helper returns "".
-        sentences = [
-            f"{_flatten_description(entry.description)}{_pr_link_suffix(entry)}" for entry in bucket
-        ]
-        paragraph = f"{SECTION_HEADINGS[entry_type]}: " + "; ".join(sentences)
-        if not paragraph.endswith("."):
-            paragraph += "."
-        paragraphs.append(_wrap_paragraph(paragraph, COMMIT_MSG_WRAP))
-    return "\n\n".join(paragraphs)
+        # One section per group: a heading line followed by one
+        # bullet per entry. Each bullet is wrapped to
+        # COMMIT_MSG_WRAP with continuation lines indented two
+        # spaces so wrapped prose visually nests under its bullet.
+        # Per-entry `(#N)` PR-link suffix (#411) is appended to the
+        # bullet text before wrapping so ``_wrap_paragraph`` 's
+        # ``PR_SUFFIX_RE`` binding rule keeps the suffix glued to the
+        # preceding token across the wrap boundary.
+        section_lines: list[str] = [f"{SECTION_HEADINGS[entry_type]}:"]
+        for entry in bucket:
+            sentence = _flatten_description(entry.description)
+            if not sentence.endswith("."):
+                sentence += "."
+            suffix = _pr_link_suffix(entry)
+            if suffix:
+                # Suffix already carries a leading space (" (#N)") and
+                # no trailing punctuation. Drop the sentence-ending
+                # period before appending so the final bullet reads
+                # ``…tail (#NNN)``, matching the changelog and release-
+                # notes renderers (``_render_changelog_bullet``,
+                # ``_render_notes_bullet`` — both delegate to
+                # ``_append_pr_link_suffix``).
+                sentence = f"{sentence.rstrip('.')}{suffix}"
+            section_lines.append(_wrap_bullet(sentence, COMMIT_MSG_WRAP))
+        sections.append("\n".join(section_lines))
+    return "\n\n".join(sections)
+
+
+def _wrap_bullet(text: str, width: int) -> str:
+    """Render ``text`` as a ``- ``-prefixed bullet wrapped at ``width``.
+
+    Continuation lines are indented two spaces so the wrapped
+    prose visually nests under the bullet marker. Reuses
+    :func:`_wrap_paragraph` for the underlying width / numeric-
+    token handling, then prepends the marker / continuation
+    indent line by line.
+    """
+    wrapped = _wrap_paragraph(text, width - 2)
+    lines = wrapped.splitlines() or [""]
+    out = [f"- {lines[0]}"]
+    for line in lines[1:]:
+        out.append(f"  {line}")
+    return "\n".join(out)
 
 
 def _flatten_description(text: str) -> str:
     """Collapse a multi-line YAML description into a single sentence.
 
     YAML `description: |` block scalars routinely span multiple lines
-    (the schema encourages prose). The renderer historically emits
-    semicolon-joined prose into the ==COMMIT_MSG== block (the
-    pre-#345 bullet ban shaped this; the shape is kept post-#345
-    for stability — see ``render_commit_msg_block``). Each entry
-    is therefore collapsed to a single semicolon-separated phrase.
-    Trailing periods are trimmed so the final paragraph period
-    (added by the caller) doesn't double up.
+    (the schema encourages prose). The ==COMMIT_MSG== block renders
+    one bullet per entry (#397), and a bullet body wraps cleaner if
+    the source prose is one logical sentence rather than a sequence
+    of hard-wrapped fragments — so the renderer collapses internal
+    newlines to spaces here. Trailing periods are trimmed so the
+    final period (re-added by the caller) doesn't double up.
     """
     flat = " ".join(line.strip() for line in text.splitlines() if line.strip())
     return flat.rstrip(".")
