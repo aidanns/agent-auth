@@ -112,11 +112,14 @@ workflow that handles tag + GitHub-Release creation lives in
   implementation in shell or workflow YAML to drift.
 - **`==COMMIT_MSG==` block in the release PR.** The PR body is
   auto-rendered to satisfy `pr-lint.yml`'s commit-msg-block
-  validator: prose-only paragraphs (no markdown bullets, no
-  headings), wrapped at 72 chars, single `Signed-off-by:` trailer.
-  The release notes (the human-friendly view) live below the block
-  in the `## Review notes` section, alongside the file-move list and
-  the rendered CHANGELOG section preview.
+  validator: each section heading (`Improvements:`, `Fixes:`,
+  ...) is followed by one bullet per entry (#397, replacing the
+  pre-#397 semicolon-joined prose paragraph), wrapped at 72
+  chars, single `Signed-off-by:` trailer. Markdown headings,
+  task checkboxes, and image embeds remain banned. The release
+  notes (the human-friendly view) live below the block in the
+  `## Review notes` section, alongside the file-move list and the
+  rendered CHANGELOG section preview.
 - **Bypass for `changelog-lint.yml` on `release/*` branches.** A
   release PR DELETES every `@unreleased/*.yml` (renaming them under
   `<X.Y.Z>/`) rather than adding one, so the file-presence check
