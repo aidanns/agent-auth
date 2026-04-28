@@ -44,6 +44,7 @@ if str(_MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(_MODULE_DIR))
 
 from version_logic import (  # noqa: E402  -- after sys.path setup
+    ENTRY_FILENAME_PATTERN,
     ChangelogEntry,
     EntryType,
     apply_release_as,
@@ -100,6 +101,25 @@ COMMIT_MSG_WRAP = 72
 # ``tests/test_build_release.py::_assert_block_satisfies_validator``
 # keeps the invariant honest.
 NUMERIC_PERIOD_RE = re.compile(r"^\d+[.)]")
+
+# `(#NNN)` PR-link suffix appended to every rendered release-note entry
+# (#411). The PR number is derived from the YAML filename via
+# ``ENTRY_FILENAME_PATTERN``; the suffix is auto-rendered by GitHub as
+# a clickable PR link in commit bodies, CHANGELOG.md viewed on
+# github.com, and release pages.
+#
+# `_wrap_paragraph` treats this token shape the same way it treats
+# ``<digits>[.)]``: never let it open a wrapped line. A line break
+# immediately before `(#383)` would visually divorce the link from
+# the entry it points at, defeating the audience-link-back motive.
+# The optional trailing-punctuation class covers the three places the
+# suffix actually lands in rendered prose:
+#   - bare `(#411)` — end of a CHANGELOG bullet line.
+#   - `(#411).` — end of a sentence-terminated paragraph in the
+#     ==COMMIT_MSG== block.
+#   - `(#411);` — joining adjacent entries inside a single
+#     semicolon-joined paragraph.
+PR_SUFFIX_RE = re.compile(r"^\(#\d+\)[.;,:]?$")
 
 
 @dataclass(frozen=True)
@@ -244,6 +264,29 @@ def _grouped(entries: Sequence[ChangelogEntry]) -> dict[EntryType, list[Changelo
     return buckets
 
 
+def _pr_link_suffix(entry: ChangelogEntry) -> str:
+    """Return ``" (#N)"`` for an entry, derived from its filename.
+
+    Single-point append for the audience-link-back convention (#411):
+    every rendered entry across CHANGELOG.md, the GitHub release body,
+    and the release-PR ``==COMMIT_MSG==`` block carries the suffix so a
+    reader can click straight through to the originating PR for the
+    verbose context that the terse ``description:`` field omits.
+
+    Sources the PR number from the YAML filename via
+    :data:`ENTRY_FILENAME_PATTERN` rather than the human-authored
+    ``links:`` array — the filename convention is single-PR and
+    machine-readable; ``links:`` may carry multiple URLs (or none).
+    Returns ``""`` when the filename doesn't match (fail-soft for
+    legacy entries; ``check_present_file_naming`` in
+    ``scripts/changelog/lint.py`` blocks new offenders at PR-time).
+    """
+    match = ENTRY_FILENAME_PATTERN.match(entry.source_path.name)
+    if match is None:
+        return ""
+    return f" (#{match['pr_number']})"
+
+
 def render_changelog_section(
     entries: Sequence[ChangelogEntry],
     next_version: str,
@@ -278,7 +321,10 @@ def _render_changelog_bullet(entry: ChangelogEntry) -> list[str]:
     The first non-empty description line becomes the bullet text
     (`- ...`). Subsequent lines are emitted indented under it so a
     multi-paragraph YAML description renders as a single coherent
-    bullet rather than fragmenting into separate ones.
+    bullet rather than fragmenting into separate ones. The PR-link
+    suffix (#411) attaches to the *last* non-empty body line so it
+    sits at the visible end of the entry — the eye finds the link
+    where the entry finishes, not awkwardly mid-paragraph.
     """
     description_lines = [line.rstrip() for line in entry.description.splitlines()]
     # Drop leading blank lines so the first bullet line is text.
@@ -292,7 +338,25 @@ def _render_changelog_bullet(entry: ChangelogEntry) -> list[str]:
             out.append(f"  {line}")
         else:
             out.append("")
+    _append_pr_link_suffix(out, _pr_link_suffix(entry))
     return out
+
+
+def _append_pr_link_suffix(lines: list[str], suffix: str) -> None:
+    """Mutate ``lines`` so ``suffix`` lands at the end of the last text line.
+
+    The renderers may have padded `lines` with trailing blank entries
+    (preserving paragraph spacing inside a multi-line description).
+    Appending to ``lines[-1]`` blindly would push the suffix onto a
+    blank padding row; walk backwards to the last non-empty line
+    instead.
+    """
+    if not suffix:
+        return
+    for idx in range(len(lines) - 1, -1, -1):
+        if lines[idx]:
+            lines[idx] = f"{lines[idx]}{suffix}"
+            return
 
 
 def render_release_notes(entries: Sequence[ChangelogEntry], next_version: str) -> str:
@@ -353,6 +417,7 @@ def _render_notes_bullet(entry: ChangelogEntry) -> list[str]:
             out.append(f"  {line}")
         else:
             out.append("")
+    _append_pr_link_suffix(out, _pr_link_suffix(entry))
     return out
 
 
@@ -395,11 +460,25 @@ def render_commit_msg_block(entries: Sequence[ChangelogEntry], next_version: str
         # bullet per entry. Each bullet is wrapped to
         # COMMIT_MSG_WRAP with continuation lines indented two
         # spaces so wrapped prose visually nests under its bullet.
+        # Per-entry `(#N)` PR-link suffix (#411) is appended to the
+        # bullet text before wrapping so ``_wrap_paragraph`` 's
+        # ``PR_SUFFIX_RE`` binding rule keeps the suffix glued to the
+        # preceding token across the wrap boundary.
         section_lines: list[str] = [f"{SECTION_HEADINGS[entry_type]}:"]
         for entry in bucket:
             sentence = _flatten_description(entry.description)
             if not sentence.endswith("."):
                 sentence += "."
+            suffix = _pr_link_suffix(entry)
+            if suffix:
+                # Suffix already carries a leading space (" (#N)") and
+                # no trailing punctuation. Drop the sentence-ending
+                # period before appending so the final bullet reads
+                # ``…tail (#NNN)``, matching the changelog and release-
+                # notes renderers (``_render_changelog_bullet``,
+                # ``_render_notes_bullet`` — both delegate to
+                # ``_append_pr_link_suffix``).
+                sentence = f"{sentence.rstrip('.')}{suffix}"
             section_lines.append(_wrap_bullet(sentence, COMMIT_MSG_WRAP))
         sections.append("\n".join(section_lines))
     return "\n\n".join(sections)
@@ -444,21 +523,27 @@ def _wrap_paragraph(text: str, width: int) -> str:
     greedy wrapper instead keeps each whitespace-separated token
     intact so the rendered notes never split a link.
 
-    Also refuses to leave a `<digits>.` or `<digits>)` token at the
-    start of a wrapped line: such a token would look like an ordered
-    list item at a glance even though it's actually a wrapped
-    numbered reference (`ADR 0011.`, `issue 1234)`, common in
-    changelog prose). Pre-#345 this was a hard validator
-    requirement; post-#345 it's a readability invariant the
-    renderer keeps because numbered-reference openers read as
-    list bullets and confuse the eye. When a numeric token would
-    otherwise overflow the current line, the previous token is
-    moved down to the next line *with* it — preserving both the
-    72-char width rule and the no-numbered-reference-opener
-    invariant. The fallback (when the previous-token-plus-numeric
-    pair still overflows on its own line, or the line has no
-    spare token to move) is to soft-overflow the current line
-    rather than emit a line that opens with `<digits>[.)]`.
+    Also refuses to leave certain tokens alone at the start of a
+    wrapped line, treating them as bound to the previous token:
+
+    - **Numbered references** (``<digits>.`` / ``<digits>)``) — would
+      look like an ordered list item even though they're actually a
+      wrapped reference like ``ADR 0011.`` or ``issue 1234)``.
+      Pre-#345 this was a hard validator requirement; post-#345 it's
+      a readability invariant the renderer keeps because numbered-
+      reference openers read as list bullets and confuse the eye.
+    - **PR-link suffix** (``(#NNN)``) — the per-entry suffix appended
+      by ``_pr_link_suffix`` (#411). Letting the wrap break before
+      this token visually divorces the link from the entry it points
+      at, defeating the audience-link-back motive.
+
+    For both cases, when the bound token would otherwise overflow the
+    current line, the previous token is moved down with it — preserving
+    both the 72-char width rule and the bind-to-previous invariant.
+    The fallback (the previous-token-plus-bound pair still overflows on
+    its own line, or the line has no spare token to move) is to
+    soft-overflow the current line rather than emit a line that opens
+    with the bound token.
     """
     out_lines: list[str] = []
     current_tokens: list[str] = []
@@ -472,31 +557,34 @@ def _wrap_paragraph(text: str, width: int) -> str:
             out_lines.append(" ".join(current_tokens))
             current_tokens.clear()
 
+    def is_bound_to_previous(token: str) -> bool:
+        return bool(NUMERIC_PERIOD_RE.match(token)) or bool(PR_SUFFIX_RE.match(token))
+
     for token in text.split():
         if not current_tokens:
             current_tokens.append(token)
             continue
-        is_numeric = bool(NUMERIC_PERIOD_RE.match(token))
+        bound = is_bound_to_previous(token)
         fits = current_width() + 1 + len(token) <= width
         if fits:
             current_tokens.append(token)
             continue
-        if is_numeric and len(current_tokens) >= 2:
+        if bound and len(current_tokens) >= 2:
             # Move the last token of the current line down with the
-            # numeric token so the wrap point sits between two
-            # ordinary tokens. Preserves both the width rule and the
-            # no-numbered-list rule when the moved pair fits on its
-            # own line; the rare case where it still overflows is
+            # bound token so the wrap point sits between two ordinary
+            # tokens. Preserves both the width rule and the
+            # bind-to-previous invariant when the moved pair fits on
+            # its own line; the rare case where it still overflows is
             # accepted as a soft overflow rather than re-introducing a
-            # numbered-list-shaped line start.
+            # bound-token-shaped line start.
             last = current_tokens.pop()
             flush()
             current_tokens.extend([last, token])
             continue
-        if is_numeric:
+        if bound:
             # Only one token on the line — moving it down would just
-            # restart the same situation. Soft-overflow instead so
-            # the numeric token does not land at line start.
+            # restart the same situation. Soft-overflow instead so the
+            # bound token does not land at line start.
             current_tokens.append(token)
             continue
         flush()
