@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: |
+    `merge-bot` now closes linked issues referenced in the squash commit body, working around GitHub's App-token auto-close gap.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/429
+    - https://github.com/aidanns/agent-auth/pull/434

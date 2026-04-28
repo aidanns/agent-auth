@@ -162,6 +162,26 @@ Three orthogonal questions fall out of that:
    fallback). This ADR documents the option in the setup doc but
    doesn't apply it in code.
 
+6. **Close linked issues after a successful merge.** Amended
+   2026-04-28 (issue #429). GitHub's UI auto-close-on-`Closes #N`
+   does not fire for App-token-mediated `PUT /pulls/{n}/merge`
+   calls — confirmed deterministically across PRs #350 / #354 /
+   #423 — so the bot does the closure itself: it parses the
+   squash commit body for auto-close keyword references
+   (`closes` / `fixes` / `resolves` and their inflections, the
+   set GitHub's UI accepts), then calls
+   `PATCH /repos/.../issues/{N}` with `state: closed` and posts a
+   `Closed by merge of PR #<P> (squash commit <sha>).` comment on
+   each same-repo issue. Cross-repo references are skipped (the
+   App's installation token is not scoped to other repos) and
+   logged via `::notice::`. Per-issue close failures (404, 5xx)
+   surface as `::warning::` lines rather than failing the merge
+   job — the merge has already landed by the time this step
+   runs. This expands the App's installation permissions to
+   include `issues: write`; the App's other permissions are
+   unchanged. See `docs/release/merge-bot-setup.md` →
+   "Closing linked issues" for the operational details.
+
 ## Consequences
 
 - The merge mechanic moves from "maintainer pastes the block" to

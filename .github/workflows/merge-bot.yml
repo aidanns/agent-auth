@@ -61,6 +61,18 @@ name: Merge Bot
 # `pr-lint.yml` enforces that at PR-author time and the bot
 # spot-checks it again here as defence-in-depth.
 #
+# After a successful merge, the bot also closes any same-repo issues
+# referenced via GitHub's auto-close keywords (`Closes #N`,
+# `Fixes #N`, `Resolves #N`, plus the inflections GitHub's UI
+# accepts) in the squash commit body, and posts a closing comment
+# of the form `Closed by merge of PR #<P> (squash commit <sha>).`.
+# This compensates for GitHub's auto-close-on-`Closes #N` not
+# firing for App-token-mediated merges (issue #429). Cross-repo
+# references (`other-org/other-repo#N`) are logged via `::notice::`
+# and skipped — the App's installation token is not scoped to
+# other repos. Issue closure failures are warning-only; the merge
+# itself has already landed by that point.
+#
 # Failure modes (ALL surface as a `Claude: Cannot merge — <reason>`
 # comment so the PR author sees the block):
 #   - Required check is FAILURE / TIMED_OUT / CANCELLED.
@@ -754,6 +766,16 @@ jobs:
             -f sha="${HEAD_SHA}" \
             > "${RUNNER_TEMP}/merge.out" 2> "${RUNNER_TEMP}/merge.err"; then
             echo "merged=true" >> "${GITHUB_OUTPUT}"
+            # `PUT /pulls/{n}/merge` returns
+            # `{ "sha": "<squash commit sha>", "merged": true, ... }`
+            # on success; capture the squash commit SHA so the
+            # `Close linked issues` step can reference it in the
+            # closing comment posted on each linked issue. Falls
+            # back to the empty string if the response shape ever
+            # changes — the close step tolerates an empty SHA by
+            # omitting the parenthesised reference from the comment.
+            squash_sha="$(jq -r '.sha // ""' < "${RUNNER_TEMP}/merge.out")"
+            echo "squash_sha=${squash_sha}" >> "${GITHUB_OUTPUT}"
           else
             err="$(cat "${RUNNER_TEMP}/merge.err")"
             # Treat "Pull Request has already been merged" as a
@@ -792,6 +814,94 @@ jobs:
           gh pr comment "${PR_NUMBER}" \
             --repo "${GITHUB_REPOSITORY}" \
             --body "Claude: Merged via bot."
+
+      # Close linked issues referenced via auto-close keywords in the
+      # squash commit body. GitHub's UI auto-close-on-`Closes #N` does
+      # not fire for App-token-mediated `PUT /pulls/{n}/merge` calls
+      # (deterministic across PRs #350 / #354 / #423; see issue #429),
+      # so the bot does it itself. The body parsed here is the same
+      # file the merge call pasted as `commit_message`, so what the
+      # bot merged and what it parses for issue refs are byte-identical.
+      #
+      # The step is gated on `merged == 'true'` (NOT `'already'`):
+      # the prior trigger that did the actual merge is responsible
+      # for closing the linked issues; the `already` path is a
+      # successful no-op that should not double-close.
+      #
+      # Best-effort: a 404 (typo'd `Closes #99999`), 5xx, or any
+      # other API error on a per-issue close call surfaces as a
+      # `::warning::` and the loop continues. The merge has already
+      # landed; failing the workflow at this point would generate a
+      # red merge-bot run on a PR that merged successfully without
+      # rolling back the merge — a worse signal than a warning-only
+      # log line. The merge call itself remains the gating step.
+      - name: Close linked issues
+        if: steps.secrets-check.outputs.configured == 'true' && steps.merge_call.outputs.merged == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          COMMIT_MESSAGE_PATH: ${{ steps.extract.outputs.commit_message_path }}
+          SQUASH_SHA: ${{ steps.merge_call.outputs.squash_sha }}
+        run: |
+          set -euo pipefail
+          # Parse the squash commit body for auto-close keyword
+          # references. Same-repo issue numbers come back on stdout
+          # one per line; cross-repo references go to stderr as
+          # `::notice::` lines (forwarded to the workflow log
+          # verbatim). The script reads the body via Path.read_text
+          # so backticks / `$(...)` / shell metacharacters in the
+          # body cannot be evaluated — the same defensive shape the
+          # rest of this workflow uses for tainted inputs.
+          mapfile -t issues < <(python3 scripts/parse-close-keywords.py "${COMMIT_MESSAGE_PATH}")
+          if [[ "${#issues[@]}" -eq 0 ]]; then
+            echo "merge-bot: no same-repo auto-close references in squash body; nothing to close."
+            exit 0
+          fi
+          # Build the closing-comment body. The squash SHA pins the
+          # closure to a specific commit on `main`; the PR number
+          # alone wouldn't tell a reader which commit on `main`
+          # carries the change. If the SHA capture failed (response
+          # shape drift), omit the parenthesised reference rather
+          # than emitting an empty `(squash commit ).`.
+          if [[ -n "${SQUASH_SHA}" ]]; then
+            comment_body="Closed by merge of PR #${PR_NUMBER} (squash commit ${SQUASH_SHA})."
+          else
+            comment_body="Closed by merge of PR #${PR_NUMBER}."
+          fi
+          for issue in "${issues[@]}"; do
+            # Skip issues that are already closed — re-PATCHing
+            # `state: closed` is harmless, but a duplicate `Closed
+            # by merge of ...` comment on an already-closed issue
+            # is observable noise. The state read uses the same
+            # App-token GH_TOKEN as the close call.
+            state="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" --jq .state 2>/dev/null || echo "")"
+            if [[ "${state}" == "closed" ]]; then
+              echo "::notice::Issue #${issue} is already closed; skipping."
+              continue
+            fi
+            if [[ -z "${state}" ]]; then
+              # 404 / not found — most often a typo'd `Closes #N`
+              # in the squash body. Warn and continue; do not
+              # fail the workflow.
+              echo "::warning::Could not look up issue #${issue} (404 or other API error); skipping."
+              continue
+            fi
+            if ! gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/${issue}" \
+              -f state=closed \
+              > /dev/null 2> "${RUNNER_TEMP}/close-${issue}.err"; then
+              err="$(cat "${RUNNER_TEMP}/close-${issue}.err")"
+              echo "::warning::Failed to close issue #${issue}: ${err}"
+              continue
+            fi
+            if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${issue}/comments" \
+              -f body="${comment_body}" \
+              > /dev/null 2> "${RUNNER_TEMP}/comment-${issue}.err"; then
+              err="$(cat "${RUNNER_TEMP}/comment-${issue}.err")"
+              echo "::warning::Closed issue #${issue} but failed to post comment: ${err}"
+              continue
+            fi
+            echo "merge-bot: closed issue #${issue} with comment."
+          done
 
   # `push:main` sweep. Whenever `main` advances, list every open
   # PR carrying the `automerge` label and re-process each by
