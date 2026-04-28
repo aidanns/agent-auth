@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.16.3] - 2026-04-28
+
+### Fixes
+
+- Per-package wheel and sdist filenames once again carry the
+  release-tag's version (e.g. `agent_auth-0.16.1-py3-none-any.whl`)
+  instead of setuptools-scm's `0.0.0+unknown` fallback. `v0.16.0`
+  shipped 70 supply-chain assets versioned `0.0.0+unknown` because
+  each `packages/<svc>/pyproject.toml`'s `[tool.setuptools_scm]`
+  block did not set `root`, so `uv build --all-packages` ran
+  setuptools-scm from a per-package directory that is not a git
+  root and quietly fell back. Pinning `root = "../.."` in every
+  package points setuptools-scm at the workspace's `.git`. The
+  `cosign verify` recipe in `SECURITY.md` § Supply-chain artifacts
+  matches the next release tag's assets again.
+
+  Two regression gates ride the fix: a `task test`-time check
+  (also exercised by `release-dryrun.yml`) that asserts every
+  workspace package pins `root = "../.."` and that built wheels
+  don't carry the fallback string, and a fail-fast step in
+  `release-publish.yml` between `uv build` and `cosign sign`
+  that aborts the publish path if any artefact filename does
+  not contain the release-tag's version.
+
 ## [0.16.2] - 2026-04-28
 
 ### Improvements
