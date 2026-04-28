@@ -40,6 +40,20 @@ from version_logic import ChangelogValidationError
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
+# Synthetic release-bot identity used to drive the `Signed-off-by:`
+# trailer rendered inside the ==COMMIT_MSG== block. Hard-coded here
+# so tests don't depend on the real `agent-auth-release-bot` App
+# secrets being provisioned in CI; the renderer treats both values
+# as opaque strings.
+_TEST_BOT_APP_SLUG = "agent-auth-release-bot"
+_TEST_BOT_USER_ID = "123456"
+_TEST_BOT_CLI_FLAGS = [
+    "--bot-app-slug",
+    _TEST_BOT_APP_SLUG,
+    "--bot-user-id",
+    _TEST_BOT_USER_ID,
+]
+
 
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -254,11 +268,100 @@ def test_render_pr_body_passes_validate_commit_msg_block(repo: Path) -> None:
     )
     plan = compute_release(repo, "0.4.0")
     assert plan is not None
-    body = render_pr_body(plan)
+    body = render_pr_body(
+        plan,
+        bot_app_slug="agent-auth-release-bot",
+        bot_user_id="123456",
+    )
 
     validator = _load_commit_msg_validator()
     # Should not raise.
     validator.validate(body)
+
+
+def test_render_pr_body_embeds_release_bot_signoff(repo: Path) -> None:
+    """The ==COMMIT_MSG== block's signoff matches the bot identity (#398).
+
+    Pre-fix the trailer was hard-coded to
+    ``github-actions[bot]``, so a release commit's
+    author/committer (``agent-auth-release-bot[bot]``) and its
+    DCO ``Signed-off-by:`` trailer disagreed in ``git log``. The
+    renderer now derives the trailer from the same App identity the
+    workflow uses for the commit author, threaded through as
+    ``bot_app_slug`` / ``bot_user_id``.
+    """
+    _seed_unreleased(
+        repo,
+        "pr-100-feat.yml",
+        "type: feature\nfeature:\n  description: New thing.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    body = render_pr_body(
+        plan,
+        bot_app_slug="agent-auth-release-bot",
+        bot_user_id="987654",
+    )
+    assert (
+        "Signed-off-by: agent-auth-release-bot[bot] "
+        "<987654+agent-auth-release-bot[bot]@users.noreply.github.com>"
+    ) in body
+    # Pre-fix hardcoded value must not survive in the rendered body.
+    assert "github-actions[bot]" not in body
+
+
+def test_render_pr_body_accepts_integer_user_id(repo: Path) -> None:
+    """Numeric ids passed as ``int`` render the same as their string form.
+
+    The workflow sources the id from a ``gh api`` call and stuffs it
+    into a step output verbatim (always a string), but Python callers
+    would naturally pass an ``int``. Treat both as equivalent so a
+    future internal caller can't accidentally produce a body that
+    embeds the literal ``987654`` vs ``"987654"`` differently.
+    """
+    _seed_unreleased(
+        repo,
+        "pr-100-feat.yml",
+        "type: feature\nfeature:\n  description: New thing.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    body = render_pr_body(
+        plan,
+        bot_app_slug="agent-auth-release-bot",
+        bot_user_id=987654,
+    )
+    assert "<987654+agent-auth-release-bot[bot]@users.noreply.github.com>" in body
+
+
+@pytest.mark.parametrize(
+    ("slug", "user_id"),
+    [
+        ("", "123"),
+        ("agent-auth-release-bot", ""),
+        ("agent-auth-release-bot", "   "),
+    ],
+)
+def test_render_pr_body_rejects_missing_bot_identity(repo: Path, slug: str, user_id: str) -> None:
+    """Empty slug or user-id must raise rather than fall back silently.
+
+    Mirrors the workflow-level fail-loudly contract from ``61aa0d7``
+    (``Check secrets are configured``): a missing piece of release-bot
+    identity is operator-attention-required, not a soft fall-through.
+    Without this, removing the App secrets would produce release
+    commits whose trailer reads ``[bot] <+[bot]@users.noreply.github.com>``
+    — DCO might still pass via the suffix bypass, but the audit trail
+    would be wrong and silently so.
+    """
+    _seed_unreleased(
+        repo,
+        "pr-100-feat.yml",
+        "type: feature\nfeature:\n  description: New thing.\n",
+    )
+    plan = compute_release(repo, "0.4.0")
+    assert plan is not None
+    with pytest.raises(ValueError):
+        render_pr_body(plan, bot_app_slug=slug, bot_user_id=user_id)
 
 
 def test_render_commit_msg_block_keeps_lines_under_72(repo: Path) -> None:
@@ -757,7 +860,16 @@ def test_apply_release_creates_changelog_when_absent(repo: Path) -> None:
 
 
 def test_cli_compute_emits_skip_when_empty(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    rc = build_release_main(["compute", "--repo-root", str(repo), "--current-version", "0.4.0"])
+    rc = build_release_main(
+        [
+            "compute",
+            "--repo-root",
+            str(repo),
+            "--current-version",
+            "0.4.0",
+            *_TEST_BOT_CLI_FLAGS,
+        ]
+    )
     assert rc == 0
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -770,7 +882,16 @@ def test_cli_compute_emits_plan(repo: Path, capsys: pytest.CaptureFixture[str]) 
         "pr-100-feat.yml",
         "type: feature\nfeature:\n  description: New thing.\n",
     )
-    rc = build_release_main(["compute", "--repo-root", str(repo), "--current-version", "0.4.0"])
+    rc = build_release_main(
+        [
+            "compute",
+            "--repo-root",
+            str(repo),
+            "--current-version",
+            "0.4.0",
+            *_TEST_BOT_CLI_FLAGS,
+        ]
+    )
     assert rc == 0
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -778,6 +899,43 @@ def test_cli_compute_emits_plan(repo: Path, capsys: pytest.CaptureFixture[str]) 
     assert payload["branch"] == "release/0.5.0"
     assert payload["title"] == "chore(release): 0.5.0"
     assert "==COMMIT_MSG==" in payload["pr_body"]
+    # Issue #398: the ==COMMIT_MSG== block's `Signed-off-by:` trailer
+    # must attribute to the release-bot App identity passed via
+    # `--bot-app-slug` / `--bot-user-id`, not the hardcoded
+    # `github-actions[bot]` the renderer used pre-fix. Released
+    # commits whose trailer disagrees with the author identity show
+    # up as a confused audit trail in `git log`.
+    expected_signoff = (
+        f"Signed-off-by: {_TEST_BOT_APP_SLUG}[bot] "
+        f"<{_TEST_BOT_USER_ID}+{_TEST_BOT_APP_SLUG}[bot]@users.noreply.github.com>"
+    )
+    assert expected_signoff in payload["pr_body"]
+    assert "github-actions[bot]" not in payload["pr_body"]
+
+
+def test_cli_compute_requires_bot_identity_flags(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`compute` without `--bot-app-slug` / `--bot-user-id` must fail loud.
+
+    Issue #398: silently falling back to a hard-coded
+    ``github-actions[bot]`` signoff was the original regression. The
+    fail-loudly contract here mirrors the workflow-level guard added
+    in ``61aa0d7`` for the bot App secrets — a missing piece of bot
+    identity is operator-attention-required state, not a state the
+    renderer should paper over.
+    """
+    _seed_unreleased(
+        repo,
+        "pr-100-feat.yml",
+        "type: feature\nfeature:\n  description: New thing.\n",
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        build_release_main(["compute", "--repo-root", str(repo), "--current-version", "0.4.0"])
+    # argparse exits with status 2 on missing required args.
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "--bot-app-slug" in captured.err
 
 
 def test_cli_apply_writes_to_disk(repo: Path) -> None:
@@ -841,6 +999,7 @@ def test_script_mode_executes_via_python(repo: Path) -> None:
             str(repo),
             "--current-version",
             "0.4.0",
+            *_TEST_BOT_CLI_FLAGS,
         ],
         check=True,
         capture_output=True,
