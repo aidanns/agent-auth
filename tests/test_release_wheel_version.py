@@ -27,16 +27,20 @@ These tests guard both halves of the fix:
   fails here without needing to run ``uv build``.
 - ``test_uv_build_derives_version_from_git`` actually shells out to
   ``scripts/build-release-artifacts.sh`` and asserts every produced
-  wheel + sdist filename shares one non-fallback version segment. The
+  wheel + sdist filename shares one non-fallback version segment.
+  This test runs in ``task test`` (which the ``unit`` CI job
+  invokes); ``release-dryrun.yml`` only invokes the build script
+  and a count gate, so it does NOT exercise this assertion. The
   ``release-publish.yml`` workflow gate cross-checks the version
   against the release tag at publish time; this PR-time smoke test
-  only needs to assert the build is reading git, not falling back to
-  ``0.0.0+unknown`` — which is what would have caught the v0.16.0
-  regression at PR time.
+  only needs to assert the build is reading git, not falling back
+  to ``0.0.0+unknown`` — which is what would have caught the
+  v0.16.0 regression at PR time.
 """
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -48,6 +52,17 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PACKAGES_DIR = REPO_ROOT / "packages"
 BUILD_SCRIPT = REPO_ROOT / "scripts" / "build-release-artifacts.sh"
+
+# A real git-derived setuptools-scm version: ``X.Y.Z`` on a tagged
+# commit, optionally followed by ``.devN`` for post-tag commits, an
+# optional ``+g<sha>`` local-version segment for the abbreviated
+# commit hash, and an optional ``.dYYYYMMDD`` "dirty" date marker.
+# This pattern intentionally rejects ANY ``unknown`` substring (the
+# v0.16.0 fallback signature) and requires a real numeric core, so
+# fallback strings like ``0.0.1.dev1+unknown.gsha`` cannot satisfy
+# it. ``$`` (not ``\Z``) is fine here because filenames cannot
+# contain newlines.
+_GIT_DERIVED_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(\.dev\d+)?(\+g[0-9a-f]+(\.d\d+)?)?$")
 
 
 def _every_package_pyproject() -> list[Path]:
@@ -108,14 +123,24 @@ def test_uv_build_derives_version_from_git(tmp_path: Path) -> None:
         len(versions) == 1
     ), f"expected all artefacts to share one version; got {sorted(versions)}"
     (version,) = versions
-    # Reject the setuptools-scm fallback verbatim — that string is the
-    # signature of the regression this test exists to catch. The
-    # ``release-publish.yml`` guard cross-checks the version against
-    # the release tag at publish time; this PR-time test only needs
-    # to assert the build is reading git, not falling back.
-    assert "0.0.0+unknown" not in version, (
-        f"artefacts versioned as setuptools-scm fallback ({version!r}); "
-        "[tool.setuptools_scm].root is not pointing at the workspace git root"
+    # Match against the real-git-derived shape rather than reject the
+    # fallback substring verbatim. CI's ``unit`` job uses
+    # ``fetch-depth: 1`` (no tags reachable), where setuptools-scm
+    # produces fallback variants like ``0.0.1.dev1+unknown.gsha`` —
+    # those bypass a literal ``"0.0.0+unknown"`` substring check and
+    # would let the test pass vacuously without exercising the
+    # tags-reach-the-build invariant. The regex requires a real PEP
+    # 440 numeric core AND rejects any ``unknown`` substring, so
+    # both the historical regression and any new "fallback sneaks
+    # through" variant fail loudly. The ``release-publish.yml``
+    # guard cross-checks the version against the release tag at
+    # publish time; this PR-time test only needs to assert the
+    # build is reading git, not falling back.
+    assert _GIT_DERIVED_VERSION_RE.match(version), (
+        f"artefacts versioned with a non-git-derived string ({version!r}); "
+        "[tool.setuptools_scm].root is not pointing at the workspace "
+        "git root, or the build context cannot reach the workspace's "
+        "git tags (e.g. shallow clone with no fetched tags)"
     )
 
 
