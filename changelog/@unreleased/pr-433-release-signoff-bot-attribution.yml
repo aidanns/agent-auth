@@ -1,0 +1,13 @@
+type: improvement
+improvement:
+  description: |
+    Render the release-PR `Signed-off-by:` trailer with the
+    `agent-auth-release-bot` GitHub App identity instead of the
+    hardcoded `github-actions[bot]`. Released commits now show a
+    consistent author / committer / sign-off triple. The
+    `==COMMIT_MSG==` validator's 72-char width rule now skips
+    trailer lines, matching the kernel/git convention that a
+    `Signed-off-by:` line is one-line-per-trailer regardless of
+    width.
+  links:
+    - https://github.com/aidanns/agent-auth/pull/433
