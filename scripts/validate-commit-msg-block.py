@@ -960,6 +960,33 @@ _VERBOSE_BODY_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         True,
         "boundary-one-over-max-words",
     ),
+    (
+        # Boundary: non-blank body line count exactly at
+        # VERBOSE_BODY_MAX_LINES, word count well under the word cap.
+        # ``words_per_line=1`` makes line count == word count, so the
+        # body has 32 non-blank lines / 32 words — at the line
+        # threshold, well under the word threshold. The line check
+        # uses strict `>` so "exactly at the threshold" must NOT fire.
+        # Pairs with ``boundary-one-over-max-lines`` to lock the
+        # strict-greater-than contract on the line cap (the line cap
+        # is the active separator for the worst offender flagged in
+        # #395, so it deserves its own boundary coverage parallel to
+        # the word-cap pair above).
+        _build_verbose_body(VERBOSE_BODY_MAX_LINES, words_per_line=1),
+        False,
+        "boundary-exact-max-lines",
+    ),
+    (
+        # Boundary: one non-blank body line over VERBOSE_BODY_MAX_LINES,
+        # word count well under the word cap. 33 lines / 33 words
+        # isolates the line check from the word check, so a regression
+        # in the line check (off-by-one on the strict `>`, miscounting
+        # blank lines, slicing the body region wrong) would surface
+        # here even if the word check still works.
+        _build_verbose_body(VERBOSE_BODY_MAX_LINES + 1, words_per_line=1),
+        True,
+        "boundary-one-over-max-lines",
+    ),
 )
 
 
