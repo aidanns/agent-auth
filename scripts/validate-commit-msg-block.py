@@ -49,6 +49,18 @@
 #      visual separation lives, not between trailers. This matches
 #      `git interpret-trailers --parse` semantics, which treats any
 #      run of one or more blanks as the body/trailer boundary.
+#  11. (Soft, warning-only — issue #395.) The body region (block
+#      content with the subject line and trailer block removed) is
+#      not unusually long. A body that exceeds either of the soft
+#      thresholds in `VERBOSE_BODY_MAX_LINES` /
+#      `VERBOSE_BODY_MAX_WORDS` prompts a stderr `Warning:` line
+#      pointing at CONTRIBUTING.md → "Writing release-worthy
+#      commits" → "Body" → "Lead with why, not what". This rule
+#      does NOT fail CI — bodies whose length is justified
+#      (ADR-grade decisions, non-obvious failure modes, supply-chain
+#      or release-pipeline changes with audit-trail value) are
+#      legitimately long and the project would rather surface the
+#      warning than block the PR.
 #
 # The PR title (subject) has its own prose-style rules — length cap,
 # trailing period, past-tense imperative — enforced by the sibling
@@ -88,6 +100,25 @@ from pathlib import Path
 COMMIT_MSG_MARKER_NAME = "COMMIT_MSG"
 MARKER = f"=={COMMIT_MSG_MARKER_NAME}=="
 MAX_LINE_WIDTH = 72
+
+# Soft thresholds for the "why, not what" verbose-body warning (#395).
+# Tuned against the historical commit log so the worst diff-restating
+# offender (`7ab4c6a` — 34 non-blank body lines, 216 words) trips the
+# warning while the legitimately-long bodies that the issue listed as
+# must-not-trip (`b07fe58` — 14 lines / 122 words; `c3c7136` — 28 lines
+# / 240 words; `166f55c` — 17 lines / 149 words) all stay under both
+# thresholds. The line cap is the active separator here: `7ab4c6a`
+# (216 words) sits beneath `c3c7136` (240 words) on word count, so a
+# pure word threshold cannot tell them apart. Counting non-blank lines
+# in the body region (subject and trailer block excluded) catches the
+# offender's six diff-restating paragraphs while leaving the
+# 4-paragraph ADR-grade bodies under cap. The word threshold is set
+# above the worst offender so it only fires on bodies even more
+# verbose than `7ab4c6a` — a defensive ceiling rather than a primary
+# trigger. Either threshold being exceeded fires the warning (OR
+# semantics), and the warning is informational; CI does not fail.
+VERBOSE_BODY_MAX_LINES = 32
+VERBOSE_BODY_MAX_WORDS = 250
 
 # A git-trailer line is `Token: value` where the token is RFC 5322-ish:
 # letters, digits, hyphens (no whitespace).
@@ -718,6 +749,75 @@ def check_fixes_trailer_shape(lines: list[str]) -> None:
             )
 
 
+def _body_region(lines: list[str]) -> list[str]:
+    """Return the body region of a commit-msg block.
+
+    The body region is the block content with the subject line
+    (``lines[0]``) and the trailer block (identified by
+    ``_trailer_block_start_index``) removed. Trailing blank lines
+    inside the resulting region are stripped so a body whose last
+    paragraph is followed by the canonical blank-then-trailers tail
+    contributes only its content lines to the region.
+
+    Used by ``check_verbose_body`` to size the body alone, separately
+    from the subject (which has its own length cap in
+    ``validate-pr-title.py``) and from the trailer block (which is
+    structurally bounded — every trailer is one line).
+    """
+    if not lines:
+        return []
+    body = lines[1:]
+    first_trailer_idx = _trailer_block_start_index(body)
+    if first_trailer_idx is not None:
+        body = body[:first_trailer_idx]
+    while body and not body[-1].strip():
+        body.pop()
+    return body
+
+
+def check_verbose_body(lines: list[str]) -> int:
+    """Warn (don't error) when the body region is unusually long.
+
+    The ``==COMMIT_MSG==`` rules in CONTRIBUTING.md → "Writing
+    release-worthy commits" → "Body" say to lead with *why*, not
+    *how* — the diff already shows how. Bodies that re-narrate the
+    diff in prose tend to be both long and structurally wide (many
+    paragraphs across many non-blank lines). The two soft thresholds
+    catch that shape without false-positiving the bodies whose length
+    is justified (ADR-grade decisions, non-obvious failure modes,
+    supply-chain or release-pipeline changes whose audit trail
+    benefits from the extra paragraphs).
+
+    Returns the number of warnings emitted (0 or 1). Prints the
+    warning to stderr; does not raise. The caller's exit code is
+    unchanged — this is informational, surfaced in the workflow log
+    so a reviewer can push back on the PR description before merge,
+    and explicitly NOT a CI failure: the cost of a false positive on
+    a legitimate-but-long body is forcing the contributor to
+    relitigate after merge.
+    """
+    body = _body_region(lines)
+    non_blank_count = sum(1 for line in body if line.strip())
+    word_count = sum(len(line.split()) for line in body if line.strip())
+    over_words = word_count > VERBOSE_BODY_MAX_WORDS
+    over_lines = non_blank_count > VERBOSE_BODY_MAX_LINES
+    if not (over_words or over_lines):
+        return 0
+    print(
+        f"Warning: `{MARKER}` block body is verbose "
+        f"({word_count} words, {non_blank_count} non-blank lines; "
+        f"soft thresholds {VERBOSE_BODY_MAX_WORDS}/{VERBOSE_BODY_MAX_LINES}). "
+        'Re-read CONTRIBUTING.md → "Writing release-worthy commits" '
+        '→ "Body" → "Lead with why, not what". If this commit '
+        "legitimately needs the length (ADR-grade decision, "
+        "non-obvious failure mode, supply-chain or release-pipeline "
+        "change with audit-trail value), this warning is "
+        "informational; the CI job does not fail.",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def validate(body: str, title: str | None = None) -> None:
     block = extract_commit_msg_block(body)
     check_first_line_non_blank(block)
@@ -738,6 +838,14 @@ def validate(body: str, title: str | None = None) -> None:
     check_signoff_present(lines)
     check_first_line_not_subject_dup(lines, title)
     check_fixes_trailer_shape(lines)
+    # Soft warning — runs last so a body that fails any structural
+    # rule above surfaces the actionable error first; the verbose-body
+    # warning is advisory and only useful once the block is otherwise
+    # well-formed. Does NOT raise; returns a count, which the caller's
+    # exit code ignores by design (see CONTRIBUTING.md → "Writing
+    # release-worthy commits" → "Body" → "Lead with why, not what" for
+    # the warning-not-failure rationale).
+    check_verbose_body(lines)
 
 
 # Inline self-test cases for title-aware checks (currently only
@@ -776,6 +884,112 @@ _TITLE_AWARE_SELF_TEST_CASES: tuple[tuple[str, str, bool, str], ...] = (
 )
 
 
+def _build_verbose_body(word_count: int, words_per_line: int = 20) -> str:
+    """Synthesize a ``==COMMIT_MSG==`` block whose body has ``word_count`` words.
+
+    Each body line carries ``words_per_line`` 1-char placeholder words
+    (``w w w …``) so the body stays under the 72-char line cap as long
+    as ``words_per_line`` ≤ 36 (a 36-word `w` line is 71 chars). The
+    default of 20 words/line keeps the line count well below
+    ``VERBOSE_BODY_MAX_LINES`` for word counts at and around the word
+    threshold, so the word-boundary self-test cases below can exercise
+    the word check in isolation from the line check. The
+    ``verbose-body-trips`` case overrides ``words_per_line`` to a
+    smaller value to also exceed the line cap, mirroring the real
+    diff-restating shape that motivated the warning.
+    """
+    full_lines = word_count // words_per_line
+    leftover = word_count % words_per_line
+    body_lines = [" ".join(["w"] * words_per_line) for _ in range(full_lines)]
+    if leftover:
+        body_lines.append(" ".join(["w"] * leftover))
+    body_block = "\n".join(body_lines)
+    return (
+        "==COMMIT_MSG==\n"
+        "Subject summary placeholder.\n\n"
+        f"{body_block}\n\n"
+        "Closes #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n"
+    )
+
+
+# Inline self-test cases for the verbose-body warning. Each tuple is
+# (body, expect_warning, label). Run separately from the title-aware
+# self-test because ``check_verbose_body`` returns a warning count
+# (not a raise/no-raise outcome), so the validate-raises-vs-passes
+# loop above cannot exercise it.
+_VERBOSE_BODY_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
+    (
+        # Verbose body — well over both thresholds. Mirrors the worst
+        # offender from the issue body (#395, commit 7ab4c6a) which
+        # had ~216 words / 34 non-blank body lines. 5 words per line
+        # so the line count (60) also clears VERBOSE_BODY_MAX_LINES.
+        _build_verbose_body(300, words_per_line=5),
+        True,
+        "verbose-body-trips",
+    ),
+    (
+        # Short, focused body — the canonical "lead with why" shape.
+        # Should not trip the warning under any threshold.
+        "==COMMIT_MSG==\n"
+        "Subject summary placeholder.\n\n"
+        "One paragraph of why this change exists. Two short lines is\n"
+        "all the body needs because the diff is self-evident.\n\n"
+        "Closes #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n",
+        False,
+        "short-body-passes",
+    ),
+    (
+        # Boundary: word count exactly at VERBOSE_BODY_MAX_WORDS, line
+        # count under the line cap. The check uses strict `>` so
+        # "exactly at the threshold" must NOT fire — the threshold is
+        # the ceiling of acceptable verbosity, not the first verbose
+        # value.
+        _build_verbose_body(VERBOSE_BODY_MAX_WORDS),
+        False,
+        "boundary-exact-max-words",
+    ),
+    (
+        # Boundary: one word over VERBOSE_BODY_MAX_WORDS — must fire.
+        # Pairs with the case above to lock the strict-greater-than
+        # contract: anything past the threshold trips the warning.
+        _build_verbose_body(VERBOSE_BODY_MAX_WORDS + 1),
+        True,
+        "boundary-one-over-max-words",
+    ),
+    (
+        # Boundary: non-blank body line count exactly at
+        # VERBOSE_BODY_MAX_LINES, word count well under the word cap.
+        # ``words_per_line=1`` makes line count == word count, so the
+        # body has 32 non-blank lines / 32 words — at the line
+        # threshold, well under the word threshold. The line check
+        # uses strict `>` so "exactly at the threshold" must NOT fire.
+        # Pairs with ``boundary-one-over-max-lines`` to lock the
+        # strict-greater-than contract on the line cap (the line cap
+        # is the active separator for the worst offender flagged in
+        # #395, so it deserves its own boundary coverage parallel to
+        # the word-cap pair above).
+        _build_verbose_body(VERBOSE_BODY_MAX_LINES, words_per_line=1),
+        False,
+        "boundary-exact-max-lines",
+    ),
+    (
+        # Boundary: one non-blank body line over VERBOSE_BODY_MAX_LINES,
+        # word count well under the word cap. 33 lines / 33 words
+        # isolates the line check from the word check, so a regression
+        # in the line check (off-by-one on the strict `>`, miscounting
+        # blank lines, slicing the body region wrong) would surface
+        # here even if the word check still works.
+        _build_verbose_body(VERBOSE_BODY_MAX_LINES + 1, words_per_line=1),
+        True,
+        "boundary-one-over-max-lines",
+    ),
+)
+
+
 def _run_title_aware_self_test() -> int:
     fail = 0
     for body, title, expect_pass, label in _TITLE_AWARE_SELF_TEST_CASES:
@@ -793,10 +1007,23 @@ def _run_title_aware_self_test() -> int:
             else:
                 print(f"FAIL: {label}: expected fail, got pass", file=sys.stderr)
                 fail += 1
+    for body, expect_warning, label in _VERBOSE_BODY_SELF_TEST_CASES:
+        block = extract_commit_msg_block(body)
+        lines = block_lines(block)
+        warning_count = check_verbose_body(lines)
+        actually_warned = warning_count > 0
+        if actually_warned == expect_warning:
+            print(f"ok: {label} (warning={'yes' if actually_warned else 'no'})")
+        else:
+            expected = "warning" if expect_warning else "no warning"
+            actual = "warning" if actually_warned else "no warning"
+            print(f"FAIL: {label}: expected {expected}, got {actual}", file=sys.stderr)
+            fail += 1
+    total = len(_TITLE_AWARE_SELF_TEST_CASES) + len(_VERBOSE_BODY_SELF_TEST_CASES)
     if fail:
         print(f"{fail} self-test case(s) failed", file=sys.stderr)
         return 1
-    print(f"all {len(_TITLE_AWARE_SELF_TEST_CASES)} self-test cases passed")
+    print(f"all {total} self-test cases passed")
     return 0
 
 
