@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Nightly
+
+# Orchestrator shell for daily-cadence checks under the uv-style
+# nested workflow_call CI structure (parent issue #440). Daily-cadence
+# checks (e.g. mutation testing, ADR 0021) migrate underneath this
+# orchestrator in follow-up issues; for now the aggregator runs alone
+# and trivially passes so the empty shell can land independently.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *" # 04:00 UTC nightly
+
+# Don't cancel an in-flight scheduled run when a manual dispatch arrives:
+# nightly checks are expensive and the in-flight result is still useful.
+# No PR keying needed since no PR triggers exist on this workflow.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  required-checks-passed:
+    name: Required checks passed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate required-checks result
+        run: echo "all required checks passed"
