@@ -20,7 +20,11 @@ on:
   pull_request:
     # Default activity types — `opened`, `synchronize`, `reopened`,
     # `ready_for_review`. The aggregator surfaces as a status check
-    # on every PR, including draft → ready transitions.
+    # on every PR, including draft → ready transitions. Restricted
+    # to PRs targeting `main` to match the convention every other
+    # PR-time workflow in this repo (`test.yml`, `check.yml`,
+    # `typecheck.yml`, ...) uses.
+    branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
@@ -46,15 +50,17 @@ jobs:
     # Outputs are surfaced for downstream child workflows so they can
     # gate on label decisions (`label_no_changelog` for the changelog
     # bypass, `label_automerge` for merge-eligible PRs) and changed-file
-    # areas. Names are kept stable across the migration so child
-    # workflows added in later issues can reference them without
-    # churning this file.
+    # areas. Only the two labels that existing workflows in this repo
+    # consume today (`automerge` — merge-bot, dependabot-adapter,
+    # release-pr; `no changelog` — changelog-lint, dependabot-adapter,
+    # release-pr) are emitted; further label outputs will be added as
+    # subsequent migration issues land child workflows that need them.
+    # Names are kept stable across the migration so child workflows
+    # added in later issues can reference them without churning this
+    # file.
     outputs:
       label_no_changelog: ${{ steps.labels.outputs.label_no_changelog }}
       label_automerge: ${{ steps.labels.outputs.label_automerge }}
-      label_documentation: ${{ steps.labels.outputs.label_documentation }}
-      label_dependencies: ${{ steps.labels.outputs.label_dependencies }}
-      label_github_actions: ${{ steps.labels.outputs.label_github_actions }}
       code_changed: ${{ steps.filter.outputs.code }}
       python_changed: ${{ steps.filter.outputs.python }}
       bash_changed: ${{ steps.filter.outputs.bash }}
@@ -87,9 +93,6 @@ jobs:
           }
           # keep-sorted start
           emit_label automerge "automerge"
-          emit_label dependencies "dependencies"
-          emit_label documentation "documentation"
-          emit_label github_actions "github_actions"
           emit_label no_changelog "no changelog"
           # keep-sorted end
 
@@ -108,7 +111,6 @@ jobs:
           filters: |
             code:
               - 'packages/**'
-              - 'src/**'
             python:
               - '**/*.py'
               - 'pyproject.toml'
@@ -144,13 +146,17 @@ jobs:
         # quotes would otherwise break the inline expansion. `jq -e`
         # exits non-zero on a `false` boolean, so the step fails
         # whenever any upstream `needs.*.result` is anything other
-        # than `success` (a passed child) or `skipped` (an opted-out
-        # child whose conditional `if:` evaluated false).
-        # `failure`, `cancelled`, and `timed_out` all flunk the check.
+        # than `success`. Per issue #441 ("fails on any
+        # failed/skipped/timed-out result"), `skipped` is treated as
+        # a failure alongside `failure`, `cancelled`, and `timed_out`
+        # — a child workflow that legitimately opts out via `if:`
+        # will need to surface a `success` result (e.g. via a
+        # short-circuit step) rather than skipping the job
+        # altogether.
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
           echo "${NEEDS}" \
-            | jq -e 'to_entries | all(.value.result == "success" or .value.result == "skipped")' \
+            | jq -e 'to_entries | all(.value.result == "success")' \
             > /dev/null
