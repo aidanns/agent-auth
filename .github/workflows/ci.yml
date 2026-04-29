@@ -1,0 +1,156 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: CI
+
+# Parent orchestrator for the uv-style nested `workflow_call` CI structure
+# (issue #440). Today this workflow only carries the foundational shell:
+# a `plan` job that emits label and changed-files gating booleans, and a
+# `required-checks-passed` aggregator that consolidates upstream results
+# into a single PR status check. Subsequent migration issues will move
+# each existing PR-time `check-*` / `test-*` workflow under here as a
+# `workflow_call` child and add it to the aggregator's `needs:` list.
+#
+# Until those children migrate, this workflow runs alongside (not in
+# place of) the existing top-level workflows in `.github/workflows/`.
+# It does not modify or remove any of them.
+
+on:
+  pull_request:
+    # Default activity types — `opened`, `synchronize`, `reopened`,
+    # `ready_for_review`. The aggregator surfaces as a status check
+    # on every PR, including draft → ready transitions.
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+
+# Cancel only on `pull_request` runs: a fresh push to a PR branch
+# obsoletes the in-flight run, but `push (main)`, `merge_group`, and
+# `workflow_dispatch` runs each represent a discrete event whose
+# completion (success or failure) we want recorded against that ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    # Outputs are surfaced for downstream child workflows so they can
+    # gate on label decisions (`label_no_changelog` for the changelog
+    # bypass, `label_automerge` for merge-eligible PRs) and changed-file
+    # areas. Names are kept stable across the migration so child
+    # workflows added in later issues can reference them without
+    # churning this file.
+    outputs:
+      label_no_changelog: ${{ steps.labels.outputs.label_no_changelog }}
+      label_automerge: ${{ steps.labels.outputs.label_automerge }}
+      label_documentation: ${{ steps.labels.outputs.label_documentation }}
+      label_dependencies: ${{ steps.labels.outputs.label_dependencies }}
+      label_github_actions: ${{ steps.labels.outputs.label_github_actions }}
+      code_changed: ${{ steps.filter.outputs.code }}
+      python_changed: ${{ steps.filter.outputs.python }}
+      bash_changed: ${{ steps.filter.outputs.bash }}
+      docs_changed: ${{ steps.filter.outputs.docs }}
+      design_changed: ${{ steps.filter.outputs.design }}
+      workflows_changed: ${{ steps.filter.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Compute label-driven gating booleans
+        id: labels
+        # Read the PR's labels via the event payload (joined into a
+        # single comma-separated string) and emit a `label_<slug>`
+        # output for each of the gating labels this repo actually uses.
+        # The labels are routed through env vars rather than inlined
+        # `${{ ... }}` expressions inside `run:` so user-controlled
+        # label names cannot inject shell syntax.
+        env:
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          emit_label() {
+            local slug="$1"
+            local needle="$2"
+            if [[ ",${PR_LABELS}," == *",${needle},"* ]]; then
+              echo "label_${slug}=true" >> "${GITHUB_OUTPUT}"
+            else
+              echo "label_${slug}=false" >> "${GITHUB_OUTPUT}"
+            fi
+          }
+          # keep-sorted start
+          emit_label automerge "automerge"
+          emit_label dependencies "dependencies"
+          emit_label documentation "documentation"
+          emit_label github_actions "github_actions"
+          emit_label no_changelog "no changelog"
+          # keep-sorted end
+
+      - name: Compute changed-files gating booleans
+        id: filter
+        # `dorny/paths-filter` produces one `<filter-name>` output per
+        # group, set to `'true'` when any path in the PR's diff matches
+        # the listed globs. Pinned by SHA per
+        # `.claude/instructions/tooling-and-ci.md` § "Pin
+        # release-affecting GitHub Actions to commit SHAs"; this
+        # workflow is read-only today, but the pin matches the repo
+        # convention (every other `uses:` in `.github/workflows/` is
+        # SHA-pinned) and keeps Dependabot's bump channel reviewable.
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+        with:
+          filters: |
+            code:
+              - 'packages/**'
+              - 'src/**'
+            python:
+              - '**/*.py'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            bash:
+              - '**/*.sh'
+              - 'scripts/**'
+            docs:
+              - 'docs/**'
+              - 'README.md'
+              - 'CONTRIBUTING.md'
+            design:
+              - 'design/**'
+            workflows:
+              - '.github/workflows/**'
+              - '.github/actions/**'
+
+  required-checks-passed:
+    # Repo-wide aggregator (#440 "Decisions (locked in)"): a single
+    # `Required checks passed` status check sits at the top of `ci.yml`
+    # and gates every PR. Subsequent migration issues add each
+    # `workflow_call` child workflow's job name to `needs:` here. The
+    # branch-protection ruleset switch from per-workflow required
+    # checks to this one aggregator is tracked under #5.2.
+    name: Required checks passed
+    needs: [plan]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all required checks passed
+        # Pass `needs` through `env:` so the JSON survives shell
+        # quoting verbatim — child job names that contain colons or
+        # quotes would otherwise break the inline expansion. `jq -e`
+        # exits non-zero on a `false` boolean, so the step fails
+        # whenever any upstream `needs.*.result` is anything other
+        # than `success` (a passed child) or `skipped` (an opted-out
+        # child whose conditional `if:` evaluated false).
+        # `failure`, `cancelled`, and `timed_out` all flunk the check.
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "${NEEDS}" \
+            | jq -e 'to_entries | all(.value.result == "success" or .value.result == "skipped")' \
+            > /dev/null
