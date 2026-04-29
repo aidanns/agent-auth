@@ -7,15 +7,20 @@ name: Weekly
 # Orchestrator shell for weekly-cadence checks (OSSF Scorecard, bench)
 # under the uv-style nested workflow_call CI structure (issue #440).
 # Currently an empty shell — the `required-checks-passed` aggregator
-# has no children yet. Scorecard and bench migrate under here in
-# follow-up issues. Triggers on a 05:00 UTC Sunday cron so weekly
-# results land early in the week, and on workflow_dispatch so a
-# maintainer can trigger an on-demand run.
+# runs alone and trivially passes so the empty shell can land
+# independently. Scorecard and bench migrate under here in follow-up
+# issues; the forward-looking `if: always()` + `needs.*.result`
+# aggregator pattern lands when the first child does. Triggers on a
+# 05:00 UTC Sunday cron so weekly results land early in the week, and
+# on workflow_dispatch so a maintainer can trigger an on-demand run.
 on:
+  workflow_dispatch:
   schedule:
     - cron: "0 5 * * 0" # 05:00 UTC every Sunday
-  workflow_dispatch:
 
+# Don't cancel an in-flight scheduled run when a manual dispatch arrives:
+# weekly checks are expensive and the in-flight result is still useful.
+# No PR keying needed since no PR triggers exist on this workflow.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -24,24 +29,6 @@ jobs:
   required-checks-passed:
     name: Required checks passed
     runs-on: ubuntu-latest
-    # `if: always()` + `needs.*.result` is the pattern future child
-    # jobs will use; encoded now (with `needs: []`) so adding the
-    # first child is a one-line change to `needs:` rather than a
-    # restructuring of the aggregator.
-    if: always()
-    needs: []
     steps:
-      - name: Aggregate child results
-        env:
-          NEEDS_JSON: ${{ toJSON(needs) }}
-        run: |
-          set -euo pipefail
-          echo "needs context: ${NEEDS_JSON}"
-          # No children yet — trivially passes. Once child jobs are
-          # added, fail if any child reports a non-success result.
-          failed=$(jq -r '[to_entries[] | select(.value.result != "success")] | length' <<<"${NEEDS_JSON}")
-          if [[ "${failed}" != "0" ]]; then
-            echo "One or more required checks did not succeed."
-            exit 1
-          fi
-          echo "all required checks passed"
+      - name: Aggregate required-checks result
+        run: echo "all required checks passed"
