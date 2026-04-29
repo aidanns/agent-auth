@@ -16,8 +16,9 @@ on:
   pull_request:
     # `labeled` / `unlabeled` are included so the `no changelog`
     # bypass label takes effect immediately. Without them, applying
-    # the label after the initial run (e.g. by the dependabot-adapter
-    # workflow) leaves the lint stuck red until the next push.
+    # the label after the initial run (e.g. by the
+    # dependabot-adaptor-bot workflow) leaves the lint stuck red until
+    # the next push.
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
