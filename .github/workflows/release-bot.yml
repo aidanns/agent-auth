@@ -1,0 +1,904 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Event-driven bot workflow for the release pipeline (parent #440).
+# Consolidates the three previously-separate release workflows
+# (release-pr.yml + release-tag.yml + release-publish.yml) into a
+# single file with three trigger-gated jobs. Behaviour is preserved
+# byte-for-byte; this is a structural rename, not a logic change.
+#
+# Job-to-trigger mapping:
+#
+#   open-release-pr   <- push: branches:[main] OR workflow_dispatch
+#                        Opens / refreshes the `release/X.Y.Z` PR via
+#                        `scripts/changelog/build_release.py`. See the
+#                        per-job header comment below for the bot
+#                        identity rationale (App-token vs default
+#                        GITHUB_TOKEN, single-source-of-truth for
+#                        committer + Signed-off-by trailer).
+#
+#   tag-and-release   <- pull_request: types:[closed] branches:[main]
+#                        Tags the merge commit and creates the GitHub
+#                        Release atomically (gh release create with
+#                        --target). Only fires when the merged PR's
+#                        head ref AND title both match the release
+#                        shape; the App-minted tag push is what fires
+#                        publish-assets downstream (default
+#                        GITHUB_TOKEN tag pushes don't trigger
+#                        `on: push: tags:` workflows).
+#
+#   publish-assets    <- push: tags:[v*] OR workflow_dispatch (tag:)
+#                        Builds per-package wheels + sdists, signs
+#                        them with cosign, generates SPDX SBOMs, and
+#                        uploads everything to the GitHub Release.
+#                        Feeds artefact hashes to the SLSA generator
+#                        reusable workflow (`provenance` job) which
+#                        runs on GitHub's isolated generator runners.
+#                        The `verify-assets` job gates the workflow
+#                        on the asset set actually attached to the
+#                        release matching the per-workspace-member
+#                        layout from ADR 0044.
+#
+# Workflow-level `permissions:` is minimal (read); each job
+# re-declares its own write surface. Concurrency groups are per-job
+# so the three trigger paths don't fight one another.
+
+name: Release Bot
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    types: [closed]
+    branches: [main]
+  # Re-publish path for an existing tag whose original `push: tags:`
+  # run produced an incomplete asset set (issue #372). The dispatched
+  # run checks out the tag's commit, re-runs the full sign / SBOM /
+  # SLSA-provenance chain, and `gh release upload --clobber` overwrites
+  # any partial assets idempotently. `workflow_dispatch` only fires the
+  # workflow file present on the default branch, so this trigger
+  # becomes operational on the first merge that adds it. The `tag`
+  # input is consumed by `publish-assets` only; the other jobs have
+  # `if:` gates that exclude `workflow_dispatch` runs without a tag,
+  # except for `open-release-pr` which uses workflow_dispatch as a
+  # manual re-run hook for the release-PR opener.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to (re-)publish, e.g. v0.13.0. Must already exist on origin. Leave blank to re-run the release-PR opener instead."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Open or update the release PR on every push to main.
+  #
+  # The job reads `changelog/@unreleased/pr-*.yml` and uses the
+  # shared `version_logic` library (#295) to compute the next version,
+  # then renders the new CHANGELOG section and the release-PR body via
+  # `scripts/changelog/build_release.py`. The branch name is
+  # `release/<X.Y.Z>` so the `tag-and-release` job can filter by head ref
+  # without parsing the title. Idempotent on re-run within the same
+  # release window — subsequent pushes refresh the same branch + PR.
+  #
+  # When the *next computed version* changes (e.g. a new YAML lifts the
+  # bump from patch to minor, or a `release-as` override is added), the
+  # job closes the previous `release/*` PR and opens a new one
+  # under the new version, so a stale PR never lingers ahead of an
+  # updated plan.
+  #
+  # Bot identity: PR creation, the release-branch push, the release
+  # commit's author/committer, AND the `Signed-off-by:` trailer
+  # embedded inside the ==COMMIT_MSG== block (which becomes the
+  # squash-merge body verbatim) all attribute to the
+  # `agent-auth-release-bot` GitHub App (secrets `RELEASE_BOT_APP_ID`
+  # and `RELEASE_BOT_PRIVATE_KEY`) via `actions/create-github-app-token`.
+  # The default `GITHUB_TOKEN` cannot open PRs unless the org/repo
+  # setting "Allow GitHub Actions to create and approve pull requests"
+  # is on, and enabling that flag would also let every workflow
+  # auto-approve PRs — too broad for a repo with DCO/signing rigour. The
+  # release branch push also runs under the App token so a future ruleset
+  # tightening on `release/*` does not silently break the release flow.
+  # DCO auto-bypasses the bot's `[bot]@users.noreply.github.com` email
+  # (`.github/workflows/dco.yml`) so unifying the committer identity does
+  # not affect the sign-off check.
+  open-release-pr:
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.tag == '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: release-pr
+      cancel-in-progress: false
+    steps:
+      # Distinguish two configuration states before minting the App
+      # token, since `actions/create-github-app-token` throws an opaque
+      # `Parameter token or opts.auth is required` when either secret
+      # is missing. The decision tree:
+      #   - Neither secret set: treat as first-time setup (e.g. fork,
+      #     or the PR that initially adds this workflow). Emit a
+      #     `::notice::` pointing at the setup doc and skip the rest
+      #     of the job. Same shape as changelog-bot.yml's guard.
+      #   - Both set: proceed.
+      #   - Exactly one set: partial / broken configuration in a live
+      #     deployment (a secret was renamed or deleted). Emit a
+      #     `::error::` so the cause is obvious in the run log, and
+      #     fail the job non-zero so the misconfiguration is loud.
+      - name: Check secrets are configured
+        id: secrets-check
+        env:
+          APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APP_ID:-}" && -z "${PRIVATE_KEY:-}" ]]; then
+            echo "::notice::RELEASE_BOT_APP_ID / RELEASE_BOT_PRIVATE_KEY secrets are not set; skipping release-pr run."
+            echo "::notice::See docs/release/release-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+          elif [[ -n "${APP_ID:-}" && -n "${PRIVATE_KEY:-}" ]]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          else
+            if [[ -z "${APP_ID:-}" ]]; then
+              missing="RELEASE_BOT_APP_ID"
+            else
+              missing="RELEASE_BOT_PRIVATE_KEY"
+            fi
+            echo "::error::${missing} secret is not set but the other release-bot secret is; this is a partial / broken configuration."
+            echo "::error::See docs/release/release-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            exit 1
+          fi
+
+      # Mint a short-lived installation token from the
+      # `agent-auth-release-bot` App. Used for the release-branch push
+      # (so checkout persists it as the origin credential) and for the
+      # `gh pr` steps below — the default `GITHUB_TOKEN` cannot open
+      # PRs without globally widening workflow permissions.
+      - name: Create GitHub App token
+        id: app-token
+        if: steps.secrets-check.outputs.configured == 'true'
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: steps.secrets-check.outputs.configured == 'true'
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Python
+        if: steps.secrets-check.outputs.configured == 'true'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML
+        if: steps.secrets-check.outputs.configured == 'true'
+        # The build_release script depends on PyYAML (re-exported via
+        # version_logic). Avoid the full workspace `uv sync` here —
+        # this workflow only needs the changelog tooling.
+        run: pip install --no-cache-dir 'pyyaml>=6'
+
+      # mdformat (and uv, which provisions it) lives behind the shared
+      # toolchain action. Needed for the post-apply CHANGELOG.md format
+      # step below — without it the rendered CHANGELOG drifts from the
+      # repo's mdformat conventions and the next-push `Check` job fails
+      # `scripts/format.sh --check` on the release PR. See issue #356.
+      - uses: ./.github/actions/setup-toolchain
+        if: steps.secrets-check.outputs.configured == 'true'
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+
+      - name: Resolve current version
+        id: current
+        if: steps.secrets-check.outputs.configured == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if tag="$(git describe --tags --abbrev=0 --match 'v*.*.*' 2>/dev/null)"; then
+            echo "version=${tag#v}" >> "${GITHUB_OUTPUT}"
+          else
+            # First release ever — fall back to 0.0.0 so the very first
+            # `feature` entry produces 0.1.0.
+            echo "version=0.0.0" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Resolve release-bot identity
+        # Resolve the App's bot slug + numeric user-id once and reuse
+        # the values for both the `Compute release plan` step (which
+        # threads them into the `Signed-off-by:` trailer rendered
+        # inside the ==COMMIT_MSG== block, #398) and the
+        # `Configure git identity` step below (author/committer on
+        # the release commit). Single source of truth — the trailer
+        # and the commit author can never disagree.
+        id: bot
+        if: steps.secrets-check.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          user_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
+          echo "app_slug=${APP_SLUG}" >> "${GITHUB_OUTPUT}"
+          echo "user_id=${user_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Compute release plan
+        id: plan
+        if: steps.secrets-check.outputs.configured == 'true'
+        env:
+          CURRENT_VERSION: ${{ steps.current.outputs.version }}
+          BOT_APP_SLUG: ${{ steps.bot.outputs.app_slug }}
+          BOT_USER_ID: ${{ steps.bot.outputs.user_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          plan_json="$(python3 scripts/changelog/build_release.py compute \
+            --repo-root . \
+            --current-version "${CURRENT_VERSION}" \
+            --bot-app-slug "${BOT_APP_SLUG}" \
+            --bot-user-id "${BOT_USER_ID}")"
+          # Persist the plan to a file (multiline JSON survives env
+          # encoding via the file path; outputs would also work but
+          # the body and changelog section are large).
+          printf '%s' "${plan_json}" > /tmp/release-plan.json
+          if jq -er '.skip == true' < /tmp/release-plan.json >/dev/null 2>&1; then
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            echo "build_release: no unreleased entries; skipping release PR."
+          else
+            next="$(jq -r '.next_version' /tmp/release-plan.json)"
+            branch="$(jq -r '.branch' /tmp/release-plan.json)"
+            title="$(jq -r '.title' /tmp/release-plan.json)"
+            echo "skip=false" >> "${GITHUB_OUTPUT}"
+            echo "next_version=${next}" >> "${GITHUB_OUTPUT}"
+            echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+            echo "title=${title}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Apply moves and rewrite CHANGELOG.md
+        if: steps.secrets-check.outputs.configured == 'true' && steps.plan.outputs.skip == 'false'
+        env:
+          CURRENT_VERSION: ${{ steps.current.outputs.version }}
+        run: |
+          python3 scripts/changelog/build_release.py apply \
+            --repo-root . \
+            --current-version "${CURRENT_VERSION}"
+
+      - name: Format generated CHANGELOG.md
+        # The apply step's renderer doesn't match the repo's mdformat
+        # conventions (wrap, list-numbering, blank-line rules) byte for
+        # byte, so without this step the next-push `Check` job fails
+        # `scripts/format.sh --check` on the release PR and the maintainer
+        # has to hand-reformat. Keep this narrowly scoped to CHANGELOG.md
+        # rather than running `task format` over the full tree — only
+        # CHANGELOG.md was just rewritten, and the subsequent
+        # `git add changelog CHANGELOG.md` would drop any other rewrites
+        # anyway. mdformat picks up `.mdformat.toml` automatically. See
+        # issue #356.
+        if: steps.secrets-check.outputs.configured == 'true' && steps.plan.outputs.skip == 'false'
+        run: mdformat CHANGELOG.md
+
+      - name: Configure git identity
+        # Reuse the slug + numeric user-id resolved earlier in
+        # `Resolve release-bot identity` so the author/committer on
+        # the release commit, the `Signed-off-by:` trailer rendered
+        # inside the ==COMMIT_MSG== block (#398), and the App
+        # identity that opens the PR all attribute to the same
+        # `agent-auth-release-bot[bot]`. DCO auto-bypasses because
+        # `[bot]@users.noreply.github.com` is the suffix the check
+        # matches on.
+        if: steps.secrets-check.outputs.configured == 'true' && steps.plan.outputs.skip == 'false'
+        env:
+          BOT_APP_SLUG: ${{ steps.bot.outputs.app_slug }}
+          BOT_USER_ID: ${{ steps.bot.outputs.user_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "${BOT_APP_SLUG}[bot]"
+          git config user.email "${BOT_USER_ID}+${BOT_APP_SLUG}[bot]@users.noreply.github.com"
+
+      - name: Create or refresh release branch
+        if: steps.secrets-check.outputs.configured == 'true' && steps.plan.outputs.skip == 'false'
+        env:
+          BRANCH: ${{ steps.plan.outputs.branch }}
+          NEXT: ${{ steps.plan.outputs.next_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Stage the apply step's changes onto a fresh branch named
+          # after the next version. force-push so a previous attempt
+          # at the same version cleanly overwrites.
+          git checkout -B "${BRANCH}"
+          git add changelog CHANGELOG.md
+          # If nothing actually changed (re-run with no new entries),
+          # exit cleanly rather than commit an empty diff.
+          if git diff --cached --quiet; then
+            echo "release-pr: no diff to commit; release branch already up to date."
+            exit 0
+          fi
+          git commit -s -m "chore(release): ${NEXT}"
+          git push --force-with-lease origin "${BRANCH}"
+
+      - name: Close superseded release PRs
+        if: steps.secrets-check.outputs.configured == 'true' && steps.plan.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          KEEP_BRANCH: ${{ steps.plan.outputs.branch }}
+          NEXT: ${{ steps.plan.outputs.next_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # List open PRs whose head ref starts with `release/`. Close
+          # any whose ref doesn't match the freshly-computed branch
+          # (e.g. a stale `release/0.5.0` when the plan now wants
+          # `release/1.0.0`). Delete the stale branch so the next
+          # iteration doesn't see it.
+          mapfile -t stale < <(
+            gh pr list --state open --json number,headRefName \
+              --jq '.[] | select(.headRefName | startswith("release/")) | "\(.number) \(.headRefName)"'
+          )
+          for entry in "${stale[@]:-}"; do
+            [[ -n "${entry}" ]] || continue
+            number="${entry%% *}"
+            ref="${entry#* }"
+            if [[ "${ref}" == "${KEEP_BRANCH}" ]]; then
+              continue
+            fi
+            echo "release-pr: superseding stale release PR #${number} (${ref}) -> ${KEEP_BRANCH}"
+            gh pr close "${number}" --comment "Superseded by release \`v${NEXT}\` (\`${KEEP_BRANCH}\`)." --delete-branch || true
+          done
+
+      - name: Open or update release PR
+        if: steps.secrets-check.outputs.configured == 'true' && steps.plan.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: ${{ steps.plan.outputs.branch }}
+          TITLE: ${{ steps.plan.outputs.title }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(jq -r '.pr_body' /tmp/release-plan.json)"
+          existing="$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')"
+          # Apply `automerge` and `no changelog` on both create and update
+          # paths so the merge-bot lands the release once required checks
+          # pass. The release PR body is auto-rendered prose and carries
+          # no hand-authored changelog YAML, so `no changelog` keeps
+          # changelog-lint happy. Both labels are idempotent on re-run.
+          # See ADR 0041 § Consequences ("Fully automated releases") and
+          # issue #359.
+          if [[ -n "${existing}" ]]; then
+            echo "release-pr: updating existing PR #${existing}"
+            gh pr edit "${existing}" --title "${TITLE}" --body "${body}" \
+              --add-label automerge,'no changelog'
+          else
+            echo "release-pr: opening new PR for ${BRANCH}"
+            gh pr create \
+              --base main \
+              --head "${BRANCH}" \
+              --title "${TITLE}" \
+              --body "${body}" \
+              --label automerge,'no changelog'
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Tag the merge commit and create the GitHub Release when a release
+  # PR merges into main.
+  #
+  # A release PR is identified by both its head ref (`release/X.Y.Z`)
+  # AND its title (`chore(release): X.Y.Z`). Requiring both prevents
+  # this job firing on any unrelated PR whose head or title happens
+  # to match one of the patterns in isolation.
+  #
+  # Tag identity: the job uses an installation token from the release
+  # App so the `push: tags` event fires the `publish-assets` job
+  # (the default GITHUB_TOKEN's tag pushes do NOT trigger downstream
+  # `on: push: tags:` workflows, which would silently break the SLSA
+  # chain). This is the same constraint that drove ADR 0026's
+  # App-token requirement.
+  tag-and-release:
+    # Strict filter: PR must be merged AND its head ref must match
+    # `release/X.Y.Z` AND its title must match `chore(release): X.Y.Z`.
+    # The title check is the secondary defence — a contributor could
+    # technically open a non-release PR from a `release/...` branch,
+    # but they cannot also satisfy the title regex by accident.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/') &&
+      startsWith(github.event.pull_request.title, 'chore(release): ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # The actual tag + release creation runs via the App token; this
+      # job-permissions block only governs the workflow's own scope
+      # before the App token is minted. Keep it read so a leak before
+      # the App-token step has no write surface.
+      contents: read
+    concurrency:
+      group: release-tag
+      cancel-in-progress: false
+    steps:
+      # Distinguish two configuration states before minting the App
+      # token, since `actions/create-github-app-token` throws an opaque
+      # `Parameter token or opts.auth is required` when either secret
+      # is missing. The decision tree:
+      #   - Neither secret set: treat as first-time setup (e.g. fork,
+      #     or the PR that initially adds this workflow). Emit a
+      #     `::notice::` pointing at the setup doc and skip the rest
+      #     of the job. Same shape as changelog-bot.yml's guard.
+      #   - Both set: proceed.
+      #   - Exactly one set: partial / broken configuration in a live
+      #     deployment (a secret was renamed or deleted). Emit a
+      #     `::error::` so the cause is obvious in the run log, and
+      #     fail the job non-zero so the misconfiguration is loud.
+      - name: Check secrets are configured
+        id: secrets-check
+        env:
+          APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APP_ID:-}" && -z "${PRIVATE_KEY:-}" ]]; then
+            echo "::notice::RELEASE_BOT_APP_ID / RELEASE_BOT_PRIVATE_KEY secrets are not set; skipping release-tag run."
+            echo "::notice::See docs/release/release-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+          elif [[ -n "${APP_ID:-}" && -n "${PRIVATE_KEY:-}" ]]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          else
+            if [[ -z "${APP_ID:-}" ]]; then
+              missing="RELEASE_BOT_APP_ID"
+            else
+              missing="RELEASE_BOT_PRIVATE_KEY"
+            fi
+            echo "::error::${missing} secret is not set but the other release-bot secret is; this is a partial / broken configuration."
+            echo "::error::See docs/release/release-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            exit 1
+          fi
+
+      - name: Validate release-PR shape
+        id: shape
+        if: steps.secrets-check.outputs.configured == 'true'
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Re-validate with strict regex (the workflow `if:` only
+          # supports `startsWith`/`contains`, not regex).
+          if [[ ! "${HEAD_REF}" =~ ^release/([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::head ref ${HEAD_REF} is not in `release/X.Y.Z` form"
+            exit 1
+          fi
+          ref_version="${BASH_REMATCH[1]}"
+          if [[ ! "${PR_TITLE}" =~ ^chore\(release\):\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::title ${PR_TITLE} is not in `chore(release): X.Y.Z` form"
+            exit 1
+          fi
+          title_version="${BASH_REMATCH[1]}"
+          if [[ "${ref_version}" != "${title_version}" ]]; then
+            echo "::error::ref version ${ref_version} != title version ${title_version}"
+            exit 1
+          fi
+          echo "version=${ref_version}" >> "${GITHUB_OUTPUT}"
+
+      # Mint an App installation token so the tag push fires the
+      # `publish-assets` job. See job-level comment.
+      - name: Create GitHub App token
+        id: app-token
+        if: steps.secrets-check.outputs.configured == 'true'
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: steps.secrets-check.outputs.configured == 'true'
+        with:
+          # Check out the merge commit (the squash-merge commit is the
+          # one we tag — it carries the moved YAMLs under
+          # changelog/<X.Y.Z>/).
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Python
+        if: steps.secrets-check.outputs.configured == 'true'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML
+        if: steps.secrets-check.outputs.configured == 'true'
+        run: pip install --no-cache-dir 'pyyaml>=6'
+
+      - name: Render release notes from moved YAMLs
+        id: notes
+        if: steps.secrets-check.outputs.configured == 'true'
+        env:
+          VERSION: ${{ steps.shape.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes_file=/tmp/release-notes.md
+          python3 scripts/changelog/build_release.py render-notes \
+            --repo-root . \
+            --version "${VERSION}" > "${notes_file}"
+          echo "path=${notes_file}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create GitHub Release (creates the tag too)
+        if: steps.secrets-check.outputs.configured == 'true'
+        # `gh release create` with --target creates the tag at the
+        # specified commit AND the GitHub Release atomically. This
+        # avoids a race where the `publish-assets` job (triggered by
+        # the tag push) reaches its `gh release upload` step before
+        # the Release exists. Using the App token means the
+        # tag-creation event fires downstream `on: push: tags:`
+        # workflows (this same file's `publish-assets` job + the SLSA
+        # / SBOM / cosign chain it owns).
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ steps.shape.outputs.version }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          NOTES_PATH: ${{ steps.notes.outputs.path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "release-tag: GitHub Release ${tag} already exists; updating notes."
+            gh release edit "${tag}" --notes-file "${NOTES_PATH}"
+            exit 0
+          fi
+          gh release create "${tag}" \
+            --target "${MERGE_SHA}" \
+            --title "${tag}" \
+            --notes-file "${NOTES_PATH}"
+
+  # ---------------------------------------------------------------------------
+  # Build, sign, and publish per-package release assets on tag push.
+  #
+  # Verification recipe: see SECURITY.md § Supply-chain artifacts.
+  #
+  # Per-package distribution model: see ADR 0044. ``uv build
+  # --all-packages`` produces one wheel + one sdist per workspace
+  # member; this job signs and uploads every artefact as its own
+  # release asset (each gets its own SBOM, its own cosign bundle, and
+  # its own .sha256). The SLSA provenance subject set covers every
+  # wheel + sdist in the release.
+  publish-assets:
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    # Group key uses the tag name (not `github.ref`) so a `workflow_dispatch`
+    # re-publish shares a queue with the original `push: tags` run for the
+    # same tag — `github.ref` is `refs/heads/main` for dispatch and
+    # `refs/tags/vX.Y.Z` for tag pushes, which would otherwise key
+    # different groups.
+    concurrency:
+      group: release-publish-${{ inputs.tag || github.ref_name }}
+      cancel-in-progress: false
+    outputs:
+      # base64-encoded sha256 digests of every wheel + sdist subject
+      # in the release, fed to the SLSA generator reusable workflow to
+      # bind the provenance attestation to those artefacts.
+      hashes: ${{ steps.hashes.outputs.hashes }}
+    steps:
+      # `ref:` lets `workflow_dispatch` runs check out the input tag's
+      # commit instead of the default branch's tip. For `push: tags:`,
+      # `inputs.tag` is empty and the fallback to `github.ref`
+      # (`refs/tags/vX.Y.Z`) preserves the original behaviour.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.7"
+          enable-cache: true
+
+      - name: Build per-package sdists and wheels
+        # Single source of truth shared with `release-dryrun.yml`. See
+        # `scripts/build-release-artifacts.sh` and issues #324 / #325.
+        # The script invokes ``uv build --all-packages`` so every
+        # workspace member produces one wheel + one sdist.
+        run: scripts/build-release-artifacts.sh
+
+      - name: Verify built artefact versions match the release tag
+        # Guards the v0.16.0 regression (#408): every wheel + sdist
+        # filename must include the tag's version string. Fails fast
+        # before signing / SBOM / upload would otherwise pin
+        # ``0.0.0+unknown`` artefacts to the release. The test in
+        # ``tests/test_release_wheel_version.py`` covers the same
+        # invariant at PR time (via ``release-dryrun.yml``); this
+        # step is the belt-and-braces gate on the publish path
+        # itself, so a regression that slips past the dry-run
+        # (broken checkout config, tag-resolution mismatch, …)
+        # cannot still produce a signed release with the wrong
+        # filenames.
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ``nullglob`` makes an unmatched glob expand to nothing
+          # instead of the literal pattern. Without it, an empty
+          # ``dist/`` would expand ``dist/*.whl`` to itself and the
+          # loop body would run once with a bogus filename — the
+          # ``[[ ... ]]`` check would silently fail-pass through the
+          # comparison or trip on a missing file. The explicit
+          # empty-dist guard below then turns "build produced zero
+          # artefacts" into a loud workflow failure rather than a
+          # vacuous "all 0 artefacts carry the expected version".
+          shopt -s nullglob
+          # Strip the leading ``v`` from the tag (``v0.16.1`` -> ``0.16.1``)
+          # so the comparison matches setuptools-scm's PEP-440 output.
+          expected_version="${TAG#v}"
+          artefacts=(dist/*.whl dist/*.tar.gz)
+          if (( ${#artefacts[@]} == 0 )); then
+            echo "::error::dist/ is empty — build produced no artefacts (regression of #408 or upstream build failure)"
+            exit 1
+          fi
+          fail=0
+          for f in "${artefacts[@]}"; do
+            base="$(basename "${f}")"
+            if [[ "${base}" != *"-${expected_version}-"* && "${base}" != *"-${expected_version}.tar.gz" ]]; then
+              echo "::error::artefact ${base} does not carry expected version ${expected_version} (regression of #408)"
+              fail=1
+            fi
+          done
+          if [[ "${fail}" -eq 0 ]]; then
+            echo "All ${#artefacts[@]} built artefacts carry version ${expected_version}."
+          fi
+          exit "${fail}"
+
+      - name: Generate sha256 sidecar files
+        # One ``<artefact>.sha256`` per wheel + sdist for the install
+        # scripts to verify against without round-tripping the
+        # GitHub-API release-asset metadata. Filenames are basename-
+        # only so the sidecar's ``sha256sum -c`` works in any cwd.
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in *.whl *.tar.gz; do
+            sha256sum "${f}" > "${f}.sha256"
+          done
+
+      - name: Install Syft
+        # Pre-install syft so the per-artefact SBOM loop below can
+        # invoke it directly. ``anchore/sbom-action`` wraps a single
+        # syft call per step invocation, which would mean N action
+        # invocations for N artefacts; the ``download-syft``
+        # sub-action installs the binary once and lets us loop in a
+        # single ``run:`` block.
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+
+      - name: Emit per-artefact SPDX SBOMs
+        # One ``<artefact>.spdx.json`` per wheel + sdist so each
+        # consumer can read the SBOM matching the wheel they
+        # downloaded.
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in *.whl *.tar.gz; do
+            echo "::group::SBOM for ${f}"
+            syft scan "file:${f}" -o "spdx-json=${f}.spdx.json"
+            echo "::endgroup::"
+          done
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+      - name: Sign every artefact and SBOM (keyless)
+        # Cosign signs each wheel, each sdist, and each SBOM with the
+        # runner's ephemeral OIDC identity. Bundle layout:
+        # ``<artefact>.sig.bundle`` — sig of the artefact;
+        # ``<artefact>.spdx.json.sig.bundle`` — sig of its SBOM.
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in *.whl *.tar.gz *.spdx.json; do
+            echo "::group::cosign sign ${f}"
+            cosign sign-blob --yes --bundle "${f}.sig.bundle" "${f}"
+            echo "::endgroup::"
+          done
+
+      - name: Compute artefact hashes for SLSA provenance
+        id: hashes
+        # The SLSA generator expects ``base64(sha256sum file1 file2 ...)``.
+        # The subject set is every wheel + sdist (NOT the SBOMs or
+        # signatures — the provenance attests the *built artefacts*,
+        # and those alone are what consumers verify with
+        # slsa-verifier). Use basenames so the provenance subjects
+        # match the names visible on the release page. Sorting by name
+        # makes the subject order deterministic across re-runs.
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          mapfile -t subjects < <(printf '%s\n' *.whl *.tar.gz | sort)
+          digest=$(sha256sum "${subjects[@]}" | base64 -w0)
+          echo "hashes=${digest}" >> "${GITHUB_OUTPUT}"
+
+      # Mint an App installation token so the asset-upload events show
+      # `agent-auth-release-bot[bot]` as the actor in the audit trail
+      # and release timeline, matching the `open-release-pr` and
+      # `tag-and-release` jobs above. The App's `contents: write`
+      # installation permission covers the `gh release upload` call
+      # (no job-level perms change needed).
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - name: Upload artefacts to GitHub release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        # One asset per artefact-derived file: wheel, sdist, sha256
+        # sidecars, SBOMs, and every cosign bundle. ``--clobber`` lets
+        # a rerun overwrite if a previous attempt half-uploaded.
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          # Glob expansions are deterministic enough for ``gh release
+          # upload`` to pick them up in one call.
+          gh release upload "${TAG}" \
+            *.whl *.whl.sha256 *.whl.sig.bundle \
+            *.tar.gz *.tar.gz.sha256 *.tar.gz.sig.bundle \
+            *.spdx.json *.spdx.json.sig.bundle \
+            --clobber
+
+  # SLSA Level 3 build provenance attestation. The reusable workflow runs
+  # on GitHub's isolated generator runners (not our `publish-assets` runner)
+  # so the provenance cannot be forged by a malicious step in
+  # `publish-assets`. The generator uploads `multiple.intoto.jsonl` to the
+  # release alongside the signed artefacts; verification uses
+  # `slsa-verifier verify-artifact` (see SECURITY.md § Supply-chain artifacts).
+  #
+  # Exception to the SHA-pin policy in
+  # `.claude/instructions/tooling-and-ci.md`: slsa-github-generator's
+  # reusable workflow MUST be referenced by tag, not commit SHA — the
+  # workflow introspects its own `@ref` to certify the builder identity in
+  # the emitted provenance. See
+  # https://github.com/slsa-framework/slsa-github-generator/blob/main/internal/builders/generic/README.md#referencing-the-slsa-generator.
+  provenance:
+    needs: [publish-assets]
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.publish-assets.outputs.hashes }}
+      upload-assets: true
+
+  # Post-publish smoke test (#325). Enumerates the assets actually
+  # attached to the GitHub release and fails the workflow if any
+  # category is missing. Catches the silent-drop failure mode where
+  # the build succeeds but an upload step regresses (e.g. a
+  # `gh release upload` flag change, a permissions tightening, a typo
+  # in the asset list). The full asset set lives in `publish-assets`
+  # and the SLSA `multiple.intoto.jsonl` lives in `provenance`, so
+  # this job gates on both.
+  #
+  # Per-package release-asset layout (ADR 0044): one wheel + one sdist
+  # per workspace member, one SBOM per artefact (so 2N SBOMs), one
+  # cosign bundle per signed file (each artefact + each SBOM, so 4N
+  # bundles), and one SLSA provenance file per release. The expected
+  # member count is derived from `packages/<svc>/pyproject.toml` so a
+  # new workspace member tightens the gate automatically.
+  verify-assets:
+    needs: [publish-assets, provenance]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Only need `packages/` to count workspace members; a shallow
+          # clone is enough. `ref:` matches the tag the publish job
+          # built against so the workspace member count read from
+          # `packages/<svc>/pyproject.toml` reflects the per-tag layout
+          # — re-publishing an old tag whose member count differs from
+          # `main`'s would otherwise mis-derive the expected counts.
+          fetch-depth: 1
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Verify expected release assets are uploaded
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Workspace member count (matches `[tool.uv.workspace].members
+          # = ["packages/*"]` in the root pyproject.toml). Drives every
+          # per-package count below.
+          members=$(find packages -mindepth 2 -maxdepth 2 -name pyproject.toml | wc -l)
+          if [[ "${members}" -lt 1 ]]; then
+            echo "::error::no workspace members found under packages/* — release-asset count derivation is broken"
+            exit 1
+          fi
+
+          # `gh release view --json assets` returns one record per
+          # uploaded asset. The publish + provenance jobs upload in
+          # different steps; with both jobs in `needs:` GitHub blocks
+          # this job until they finish, so the asset set is final by
+          # the time we read it.
+          assets="$(gh release view "${TAG}" --json assets --jq '[.assets[].name]')"
+
+          # `count <jq-filter>` returns the number of asset names
+          # matching the filter. ``test`` lets us match by suffix;
+          # `endswith` is sufficient because every asset name ends in
+          # the category-defining suffix (`.whl`, `.tar.gz`,
+          # `.spdx.json`, `.sig.bundle`, `.intoto.jsonl`).
+          count() {
+            jq -r "[.[] | select($1)] | length" <<<"${assets}"
+          }
+
+          wheels="$(count 'endswith(".whl")')"
+          sdists="$(count 'endswith(".tar.gz")')"
+          # `.sha256` sidecars are uploaded for every wheel + sdist
+          # (the install scripts read them for tamper-evident
+          # verification). `endswith(".sha256")` matches both
+          # `<wheel>.sha256` and `<sdist>.sha256`.
+          sha256_sidecars="$(count 'endswith(".sha256")')"
+          # SBOM files end in `.spdx.json`; cosign bundles end in
+          # `.sig.bundle` and may sign either an artefact or its SBOM.
+          sboms="$(count 'endswith(".spdx.json")')"
+          cosign_bundles="$(count 'endswith(".sig.bundle")')"
+          # SLSA provenance comes from the reusable generator as a
+          # single `multiple.intoto.jsonl` file (one per release).
+          slsa="$(count 'endswith(".intoto.jsonl")')"
+
+          expected_wheels="${members}"
+          expected_sdists="${members}"
+          expected_sha256_sidecars=$((members * 2))
+          expected_sboms=$((members * 2))
+          expected_cosign_bundles=$((members * 4))
+
+          echo "Release ${TAG} assets (workspace members=${members}):"
+          echo "  wheels=${wheels} (expected ${expected_wheels})"
+          echo "  sdists=${sdists} (expected ${expected_sdists})"
+          echo "  sha256_sidecars=${sha256_sidecars} (expected ${expected_sha256_sidecars})"
+          echo "  sboms=${sboms} (expected ${expected_sboms})"
+          echo "  cosign_bundles=${cosign_bundles} (expected ${expected_cosign_bundles})"
+          echo "  slsa=${slsa} (expected 1)"
+          echo "Asset list:"
+          jq -r '.[]' <<<"${assets}" | sed 's/^/  /'
+
+          fail=0
+          [[ "${wheels}" -eq "${expected_wheels}" ]] || { echo "::error::expected ${expected_wheels} .whl assets (one per workspace member), got ${wheels}"; fail=1; }
+          [[ "${sdists}" -eq "${expected_sdists}" ]] || { echo "::error::expected ${expected_sdists} .tar.gz sdist assets (one per workspace member), got ${sdists}"; fail=1; }
+          [[ "${sha256_sidecars}" -eq "${expected_sha256_sidecars}" ]] || { echo "::error::expected ${expected_sha256_sidecars} .sha256 sidecars (one per wheel + one per sdist), got ${sha256_sidecars}"; fail=1; }
+          [[ "${sboms}" -eq "${expected_sboms}" ]] || { echo "::error::expected ${expected_sboms} .spdx.json SBOMs (one per wheel + one per sdist), got ${sboms}"; fail=1; }
+          [[ "${cosign_bundles}" -eq "${expected_cosign_bundles}" ]] || { echo "::error::expected ${expected_cosign_bundles} .sig.bundle cosign signatures (one per artefact + one per SBOM), got ${cosign_bundles}"; fail=1; }
+          [[ "${slsa}" -eq 1 ]] || { echo "::error::expected exactly 1 SLSA provenance file (multiple.intoto.jsonl) on release ${TAG}, got ${slsa}"; fail=1; }
+
+          exit "${fail}"
