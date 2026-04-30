@@ -1133,8 +1133,8 @@ the block; if you ran `git commit -s` on the PR commits, copy the
 same `Signed-off-by:` line into the block.
 
 Dependabot PRs are adapted to this flow automatically by
-[`.github/workflows/dependabot-adapter.yml`](.github/workflows/dependabot-adapter.yml):
-on every `dependabot[bot]` PR the adapter prepends a synthesized
+[`.github/workflows/dependabot-adaptor-bot.yml`](.github/workflows/dependabot-adaptor-bot.yml):
+on every `dependabot[bot]` PR the adaptor prepends a synthesized
 `==COMMIT_MSG==` block (with a Dependabot `Signed-off-by:` trailer)
 and applies the `no changelog` and `automerge` labels, so routine
 `chore(deps):` upgrades flow through pr-lint, changelog-lint, and
