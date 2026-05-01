@@ -139,6 +139,14 @@ jobs:
     needs: [plan]
     uses: ./.github/workflows/check-lint.yml
     secrets: inherit
+  check-docs:
+    # Placeholder docs-build slot (issue #464). The slot is reserved
+    # so the migration structure stays uniform; the child workflow is
+    # always-passing until agent-auth gains a docs site. See
+    # `.github/workflows/check-docs.yml` for the TODO marker.
+    name: check-docs
+    needs: [plan]
+    uses: ./.github/workflows/check-docs.yml
 
   required-checks-passed:
     # Repo-wide aggregator (#440 "Decisions (locked in)"): a single
@@ -148,7 +156,7 @@ jobs:
     # branch-protection ruleset switch from per-workflow required
     # checks to this one aggregator is tracked under #5.2.
     name: Required checks passed
-    needs: [plan, check-lint]
+    needs: [plan, check-lint, check-docs]
     if: always()
     runs-on: ubuntu-latest
     steps:
