@@ -8,16 +8,22 @@ name: Weekly
 # under the uv-style nested workflow_call CI structure (issue #440).
 # Triggers on a 05:00 UTC Sunday cron so weekly results land early in
 # the week, and on workflow_dispatch so a maintainer can trigger an
-# on-demand run (e.g. when refreshing the bench baseline). Scorecard
-# migrates under here in a follow-up issue; the `required-checks-passed`
-# aggregator's `needs:` list grows with each child.
+# on-demand run (e.g. when refreshing the bench baseline). The
+# `required-checks-passed` aggregator's `needs:` list grows with each
+# child as migrations land.
 #
 # Sunday 05:00 UTC is also offset from the Mutation workflow's Mon
 # 04:00 UTC slot to avoid sharing a runner window on a single queue
 # day. Since this header now governs the cadence for every weekly
-# child (bench today, Scorecard soon), preserve that cross-workflow
-# scheduling constraint here so a future maintainer doesn't move the
-# cron without noticing the Mutation collision risk.
+# child (bench, Scorecard), preserve that cross-workflow scheduling
+# constraint here so a future maintainer doesn't move the cron without
+# noticing the Mutation collision risk.
+#
+# Strategy C (#440 Phase 5): the standalone `scorecard.yml` keeps
+# running in parallel until a sweep PR retires it. This orchestrator
+# adds a second (weekly Sunday) Scorecard run on top of the existing
+# (weekly Monday + push: main) standalone runs; the duplication is
+# intentional and short-lived.
 on:
   workflow_dispatch:
   schedule:
@@ -31,8 +37,11 @@ concurrency:
   cancel-in-progress: false
 
 # Permissions union over every child called below. The `bench` child
-# only needs `contents: read` (checkout + upload-artifact); future
-# children (Scorecard) will widen this block at minimum-privilege.
+# only needs `contents: read` (checkout + upload-artifact); the
+# `open-ssf-scorecard` child widens this with `security-events: write`,
+# `id-token: write`, and `actions: read` for SARIF upload, signed
+# publication, and the Token-Permissions check respectively. Future
+# children will widen this block at minimum-privilege.
 permissions:
   contents: read
 
@@ -41,13 +50,35 @@ jobs:
     name: Bench
     uses: ./.github/workflows/bench.yml
 
+  open-ssf-scorecard:
+    # OpenSSF Scorecard child workflow (#458). The child holds the
+    # full publish + gate split; this slot in `weekly.yml` only wires
+    # it into the aggregator below. Action SHAs, permissions
+    # (`security-events: write`, `id-token: write`), and the
+    # SCORECARD_MIN_SCORE floor are preserved byte-for-byte from the
+    # standalone `scorecard.yml`. See
+    # `.github/workflows/open-ssf-scorecard.yml`.
+    name: open-ssf-scorecard
+    permissions:
+      # Permissions for `workflow_call` children are capped by the
+      # caller job's permission set, so we re-declare the union of
+      # the child's per-job permissions here. The child's `publish`
+      # job needs `security-events: write` + `id-token: write` for
+      # SARIF upload and signed publication; both jobs need
+      # `actions: read` for the Token-Permissions check.
+      security-events: write
+      id-token: write
+      actions: read
+      contents: read
+    uses: ./.github/workflows/open-ssf-scorecard.yml
+
   required-checks-passed:
     # Mirrors the forward-looking aggregator pattern in `ci.yml`: a
     # single status check that consolidates every child's result.
     # Subsequent migration issues add each new `workflow_call` child's
     # job name to `needs:` here.
     name: Required checks passed
-    needs: [bench]
+    needs: [bench, open-ssf-scorecard]
     if: always()
     runs-on: ubuntu-latest
     steps:
