@@ -11,6 +11,13 @@ name: Weekly
 # on-demand run (e.g. when refreshing the bench baseline). Scorecard
 # migrates under here in a follow-up issue; the `required-checks-passed`
 # aggregator's `needs:` list grows with each child.
+#
+# Sunday 05:00 UTC is also offset from the Mutation workflow's Mon
+# 04:00 UTC slot to avoid sharing a runner window on a single queue
+# day. Since this header now governs the cadence for every weekly
+# child (bench today, Scorecard soon), preserve that cross-workflow
+# scheduling constraint here so a future maintainer doesn't move the
+# cron without noticing the Mutation collision risk.
 on:
   workflow_dispatch:
   schedule:
