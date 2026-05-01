@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# Per-package tasks for packages/pr-lint-validator. Included as the
+# `pr-lint-validator` namespace from the workspace-root Taskfile.yml.
+# pr-lint-validator is a CLI; the `default` task forwards to the
+# console script entry point so `task pr-lint-validator -- title
+# --self-test` works as a drop-in dev-loop invocation alongside the
+# wheel-installed `pr-lint-validator` binary.
+
+version: "3"
+
+tasks:
+  default:
+    desc: Run the pr-lint-validator CLI (e.g. `task pr-lint-validator -- title --self-test`).
+    cmds:
+      - uv run pr-lint-validator {{.CLI_ARGS}}
+
+  test:
+    desc: Run the pr-lint-validator package's pytest suite in isolation.
+    cmds:
+      - scripts/pkg-test.sh pr-lint-validator {{.CLI_ARGS}}
+
+  lint:
+    desc: Lint shell and Python files under packages/pr-lint-validator/.
+    cmds:
+      - scripts/pkg-lint.sh pr-lint-validator
+
+  typecheck:
+    desc: Run mypy + pyright against packages/pr-lint-validator/src.
+    cmds:
+      - scripts/pkg-typecheck.sh pr-lint-validator
+
+  format:
+    desc: Format files under packages/pr-lint-validator/. Pass `-- --check` for diff-only mode.
+    cmds:
+      - scripts/pkg-format.sh pr-lint-validator {{.CLI_ARGS}}
+
+  check:
+    desc: Lint and assert formatting for packages/pr-lint-validator/.
+    cmds:
+      - scripts/pkg-lint.sh pr-lint-validator
+      - scripts/pkg-format.sh pr-lint-validator --check

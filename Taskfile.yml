@@ -29,6 +29,7 @@ includes:
   agent-auth: ./packages/agent-auth/Taskfile.yml
   gpg-bridge: ./packages/gpg-bridge/Taskfile.yml
   gpg-cli: ./packages/gpg-cli/Taskfile.yml
+  pr-lint-validator: ./packages/pr-lint-validator/Taskfile.yml
   things-bridge: ./packages/things-bridge/Taskfile.yml
   things-cli: ./packages/things-cli/Taskfile.yml
   things-client-applescript: ./packages/things-client-cli-applescript/Taskfile.yml
