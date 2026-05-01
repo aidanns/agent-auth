@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Check Pull Request
+
+# PR-metadata child workflow for the uv-style nested `workflow_call` CI
+# structure (parent issue #440). Houses jobs that validate the
+# pull-request envelope itself — Developer Certificate of Origin
+# sign-off today; pr-lint validators (title, body, commit-message
+# block) follow under #4.18 — rather than the working tree's contents.
+#
+# The aggregator in `ci.yml` treats `skipped` as a failure alongside
+# `failure` / `cancelled` / `timed_out`, so every job under here must
+# actually run and report `success`. Do not gate any job behind an
+# `if:` that could resolve to `skipped`.
+#
+# Strategy C (issue #450): the original top-level `dco.yml` workflow is
+# kept in place and runs in parallel with this new chain until the
+# branch-protection ruleset switches to the `Required checks passed`
+# aggregator (tracked under #5.2). Both surfaces must stay green; the
+# DCO logic here is a byte-for-byte port of `dco.yml`.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  developer-certificate-of-origin:
+    # Developer Certificate of Origin (https://developercertificate.org)
+    # sign-off check. Every non-bot commit on a pull request must carry
+    # a `Signed-off-by:` trailer so contributors assert the right to
+    # submit the change under the project licence.
+    #
+    # DCO is distinct from GPG / SSH commit signing:
+    #   - Signing (handled by git's commit.gpgsign / tag.gpgsign) proves
+    #     authorship cryptographically.
+    #   - Sign-off (this job) is the legal-provenance declaration.
+    #
+    # Bot-authored commits (Dependabot, Release Please, ...) are skipped
+    # — their service account's submission implicitly carries the
+    # upstream project's consent to the licence.
+    name: developer-certificate-of-origin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Need full PR history so `git rev-list base..head` resolves.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check Signed-off-by trailer on each PR commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+          while read -r sha; do
+            author_email=$(git log -1 --pretty=%ae "${sha}")
+            # Skip bot-authored commits. GitHub bots write their
+            # commits with a `[bot]@users.noreply.github.com` address
+            # so a simple suffix match covers Dependabot, Release Please,
+            # and the GitHub web-flow signer.
+            if [[ ${author_email} == *"[bot]@users.noreply.github.com" ]]; then
+              continue
+            fi
+            if ! git log -1 --pretty=%B "${sha}" |
+              grep -qE "^Signed-off-by: .+ <.+@.+>$"; then
+              missing+=("${sha}")
+            fi
+          done < <(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}")
+
+          if ((${#missing[@]} > 0)); then
+            {
+              echo "::error::Commits missing Signed-off-by trailer:"
+              for sha in "${missing[@]}"; do
+                echo "  $(git log -1 --oneline "${sha}")"
+              done
+              echo
+              echo "Add the trailer with 'git commit -s', or rebase the branch:"
+              echo "  git rebase origin/main --signoff && git push --force-with-lease"
+            } >&2
+            exit 1
+          fi
+          echo "All non-bot PR commits carry a Signed-off-by trailer."
+
+  required-checks-passed:
+    # Per-child aggregator: collapses every sibling job in this
+    # workflow into a single `success` / `failure` outcome the parent
+    # `ci.yml` aggregator can consume. Mirrors the parent's policy —
+    # `skipped` is treated as a failure alongside `failure`,
+    # `cancelled`, and `timed_out` (issue #441) — so a sibling job that
+    # legitimately opts out via `if:` must surface a `success` result
+    # rather than skipping. As pr-lint validator jobs are migrated under
+    # #4.18 they get added to `needs:` here.
+    name: Required checks passed
+    needs: [developer-certificate-of-origin]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all required checks passed
+        # Pass `needs` through `env:` so the JSON survives shell
+        # quoting verbatim — child job names that contain colons or
+        # quotes would otherwise break the inline expansion. `jq -e`
+        # exits non-zero on a `false` boolean, so the step fails
+        # whenever any upstream `needs.*.result` is anything other
+        # than `success`.
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "${NEEDS}" \
+            | jq -e 'to_entries | all(.value.result == "success")' \
+            > /dev/null
