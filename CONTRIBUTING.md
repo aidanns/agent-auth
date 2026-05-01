@@ -166,7 +166,7 @@ immediately. Rationale in
 (`parse_token`, `sign_token`, `verify_token`, `create_token_pair`)
 and the SQLite store (`get_family` for a family with 200 scopes,
 `get_token`, `create_token`). The suite is scheduled weekly via
-`.github/workflows/benchmark.yml` — too noisy on shared runners to
+`.github/workflows/bench.yml` (called from `.github/workflows/weekly.yml`) — too noisy on shared runners to
 gate every PR. Rationale and baseline-refresh procedure in
 [`packages/agent-auth/benchmarks/README.md`](packages/agent-auth/benchmarks/README.md)
 and [ADR 0029](design/decisions/0029-benchmark-suite.md).
