@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    Extract the PR-title and `==COMMIT_MSG==` block validators into a
+    new workspace package, `pr-lint-validator`. The package ships as
+    a per-tag `py3-none-any` wheel + sdist on every workspace
+    release, alongside a `pr-lint-validator` console script with
+    `title` and `commit-msg` subcommands. Downstream consumers
+    (initially `pr-lint.yml`, via the upcoming #477 cutover; then
+    sibling repos that today copy-paste the validator scripts) can
+    pin a specific tag and `pip install` the wheel instead of
+    invoking the source scripts at HEAD. The originals under
+    `scripts/validate-*.py` remain in place until #477 swaps the
+    workflow over to consume the released artifact.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/446
+    - https://github.com/aidanns/agent-auth/pull/489
+  packages:
+    - pr-lint-validator
