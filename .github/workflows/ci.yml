@@ -146,6 +146,17 @@ jobs:
     needs: [plan]
     uses: ./.github/workflows/check-docs.yml
 
+  check-publish:
+    # Publish-readiness slot (issue #462). Builds the release-asset
+    # set with `scripts/build-release-artifacts.sh` and runs
+    # `uv publish --dry-run` (against TestPyPI) plus `twine check`
+    # against the built wheels and sdists. Net-new check — there is
+    # no original top-level workflow for Strategy C (#440 Phase 5)
+    # to retire later. The branch-protection ruleset is untouched
+    # in this PR.
+    name: check-publish
+    needs: [plan]
+    uses: ./.github/workflows/check-publish.yml
   check-changelog:
     # Changelog gating slot (issue #451). Splits the legacy
     # `changelog-lint.yml` into two named jobs (`exists`, `format`) so
@@ -164,7 +175,7 @@ jobs:
     # branch-protection ruleset switch from per-workflow required
     # checks to this one aggregator is tracked under #5.2.
     name: Required checks passed
-    needs: [plan, check-fmt, check-docs, check-changelog]
+    needs: [plan, check-fmt, check-docs, check-changelog, check-publish]
     if: always()
     runs-on: ubuntu-latest
     steps:
