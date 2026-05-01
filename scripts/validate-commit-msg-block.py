@@ -712,7 +712,7 @@ def check_first_line_non_blank(block: str) -> None:
 # squash commit's `commit_title`), not the body. Matched on the first
 # non-blank content line of the block.
 LEADING_SUBJECT_RE = re.compile(
-    r"^(feature|improvement|fix|deprecation|migration|break|chore)" r"(\([^)]+\))?: .+$"
+    r"^(feature|improvement|fix|deprecation|migration|break|chore)(\([^)]+\))?: .+$"
 )
 
 
