@@ -94,9 +94,11 @@ Shorter import path and fewer directories.
    the JSON artifact from a scheduled run, renames, commits.
 7. **Standards gate**: `scripts/verify-standards.sh` asserts the
    `packages/agent-auth/benchmarks/` directory contains at least one
-   `test_*.py` and the `benchmark.yml` workflow exists and triggers
-   on `schedule:`, so later drift (someone deleting the benchmarks
-   while leaving the workflow, or vice versa) fails verify-standards.
+   `test_*.py`, the `bench.yml` worker workflow invokes the suite,
+   and `weekly.yml` schedules it via `uses: ./.github/workflows/bench.yml`
+   on a `schedule:` trigger, so later drift (someone deleting the
+   benchmarks while leaving the workflow, unwiring bench from
+   weekly, or removing the cron) fails verify-standards.
 
 ## Consequences
 
