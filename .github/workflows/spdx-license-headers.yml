@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: SPDX License Headers
+
+# REUSE lint migrated under the `ci / check-fmt` orchestrator shell
+# (issue #452, parent #440). Carries the `task reuse-lint` invocation
+# and `setup-toolchain` action wiring from `reuse.yml` byte-for-byte.
+#
+# The original `reuse.yml` remains in place during Phase 1-4 of the
+# migration (Strategy C, see #440) — both workflows fire in parallel
+# until Phase 5 makes `Required checks passed` the sole required status
+# check on `main` and the originals are swept.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  reuse:
+    name: reuse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run reuse lint
+        run: task reuse-lint
