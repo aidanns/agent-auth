@@ -81,8 +81,10 @@
 #      mark the verify step continue-on-error, so regressions in
 #      function-to-test allocation fail CI.
 #  12. A mutation-testing tool is configured (e.g. [tool.mutmut] in
-#      pyproject.toml) and a scheduled CI workflow invokes it with a
-#      documented score threshold, per
+#      pyproject.toml) with a documented score threshold, the
+#      `.github/workflows/mutation.yml` worker invokes it, and the
+#      parent `.github/workflows/nightly.yml` calls mutation.yml on
+#      a `schedule:` trigger, per
 #      .claude/instructions/testing-standards.md "Mutation testing on
 #      security-critical paths".
 #  13. A tests/fault/ directory exists and contains test files covering
@@ -2041,10 +2043,18 @@ fi
 # Mutation testing on security-critical paths.
 # ---------------------------------------------------------------------------
 # .claude/instructions/testing-standards.md (Coverage — "Mutation testing
-# on security-critical paths") requires:
+# on security-critical paths") requires every link in the chain
+# (config → mutation.yml worker → nightly.yml scheduler) to stay
+# wired so the gate cannot silently drift apart:
 #   1. A mutation-testing tool configured in pyproject.toml.
-#   2. A scheduled CI workflow that invokes it.
-#   3. A documented score threshold.
+#   2. .github/workflows/mutation.yml exists and invokes the tool
+#      (`task mutation-test` or `mutmut run`), so deleting the worker
+#      workflow fails the gate.
+#   3. .github/workflows/nightly.yml exists, has an `on: schedule:`
+#      trigger, and calls mutation.yml via
+#      `uses: ./.github/workflows/mutation.yml`, so removing the
+#      cadence (or unwiring mutation from nightly) fails the gate.
+#   4. A documented score threshold.
 #
 # The check is deliberately agnostic between mutmut / cosmic-ray — it
 # only asserts that one of the two config sections exists. The threshold
@@ -2068,29 +2078,65 @@ if threshold is None:
 fi
 rm -f /tmp/verify-standards-mutation.err
 
-# Require at least one workflow file under .github/workflows/ that
-# both has a `schedule:` trigger AND runs `task mutation-test` or calls
-# mutmut directly. Matching on the Taskfile shim keeps us robust if
-# the workflow ever inlines the commands.
-mutation_workflow_found=0
-for wf in .github/workflows/*.yml; do
-  [[ -f "${wf}" ]] || continue
-  if yq eval '.on | has("schedule")' "${wf}" 2>/dev/null | grep -qx true \
-    && grep -qE "task[[:space:]]+mutation-test|mutmut[[:space:]]+run" "${wf}"; then
-    mutation_workflow_found=1
-    mutation_workflow="${wf}"
-    break
-  fi
-done
+mutation_missing=0
 
-if [[ "${mutation_workflow_found}" -eq 0 ]]; then
-  echo "verify-standards: no scheduled workflow invokes the mutation-testing gate." >&2
-  echo "  Add a .github/workflows/*.yml that triggers on 'schedule:' and runs" >&2
-  echo "  'task mutation-test' (or 'mutmut run')." >&2
+fail_mutation_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  mutation_missing=1
+}
+
+# Worker workflow `mutation.yml` must exist and invoke the
+# mutation-testing tool. Matching on the Taskfile shim keeps us robust
+# if the workflow ever inlines the commands. The schedule lives on the
+# parent (`nightly.yml`) — see the chain check below.
+mutation_workflow=".github/workflows/mutation.yml"
+if [[ ! -f "${mutation_workflow}" ]]; then
+  fail_mutation_check \
+    "${mutation_workflow} is missing." \
+    "Add a workflow_call worker that runs the mutation gate (called from nightly.yml)."
+else
+  # Strip comments so a disabled sample does not satisfy the gate.
+  mutation_stripped="$(sed -E 's/(^|[[:space:]])#.*$//' "${mutation_workflow}")"
+  if ! grep -qE "task[[:space:]]+mutation-test|mutmut[[:space:]]+run" <<<"${mutation_stripped}"; then
+    fail_mutation_check \
+      "${mutation_workflow} does not invoke the mutation-testing gate." \
+      "Call 'task mutation-test' (or 'mutmut run') in the workflow steps."
+  fi
+fi
+
+# Scheduler workflow `nightly.yml` must exist, trigger on `schedule:`,
+# and call mutation.yml via `uses: ./.github/workflows/mutation.yml`,
+# so removing the cadence (or unwiring mutation from nightly) fails
+# the gate.
+nightly_workflow=".github/workflows/nightly.yml"
+if [[ ! -f "${nightly_workflow}" ]]; then
+  fail_mutation_check \
+    "${nightly_workflow} is missing." \
+    "Add the nightly orchestrator that schedules mutation.yml on a cron trigger."
+else
+  nightly_stripped="$(sed -E 's/(^|[[:space:]])#.*$//' "${nightly_workflow}")"
+  if ! grep -qE "^on:" <<<"${nightly_stripped}"; then
+    fail_mutation_check \
+      "${nightly_workflow} has no 'on:' trigger block." \
+      "Add 'on:' with a 'schedule:' entry."
+  elif ! grep -qE "^[[:space:]]*schedule:" <<<"${nightly_stripped}"; then
+    fail_mutation_check \
+      "${nightly_workflow} does not trigger on 'schedule:'." \
+      "Add a 'schedule:' cron entry inside the 'on:' block."
+  fi
+  if ! grep -qE "uses:[[:space:]]*\./\.github/workflows/mutation\.yml" <<<"${nightly_stripped}"; then
+    fail_mutation_check \
+      "${nightly_workflow} does not call mutation.yml." \
+      "Add a job with 'uses: ./.github/workflows/mutation.yml' so the nightly cron runs the mutation gate."
+  fi
+fi
+
+if [[ "${mutation_missing}" -ne 0 ]]; then
   exit 1
 fi
 
-echo "verify-standards: mutation testing configured ([tool.mutmut] / [tool.mutation_score]) and scheduled via ${mutation_workflow}."
+echo "verify-standards: mutation testing configured ([tool.mutmut] / [tool.mutation_score]); ${mutation_workflow} invokes it, and ${nightly_workflow} schedules it."
 
 # Metrics endpoints per .claude/instructions/service-design.md
 # ("Metrics endpoint") and the deterministic regression check from
