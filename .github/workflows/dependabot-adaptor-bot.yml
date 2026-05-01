@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Dependabot Adapter
+name: Dependabot Adaptor Bot
 
 # Adapt Dependabot PRs to the project's PR conventions so they pass
 # the required `pr-lint` and `changelog-lint` checks without manual
@@ -45,13 +45,13 @@ name: Dependabot Adapter
 
 on:
   pull_request:
-    # `synchronize` is included so the adapter picks up Dependabot
+    # `synchronize` is included so the adaptor picks up Dependabot
     # PRs that were opened before the workflow shipped (their next
     # rebase / `@dependabot recreate` push fires `synchronize`).
     # Idempotency is enforced by the body-block check below — if a
     # `==COMMIT_MSG==` marker is already in the body, the whole step
     # is a no-op, which means a maintainer who removes the
-    # `automerge` label mid-flight is not fought by the adapter.
+    # `automerge` label mid-flight is not fought by the adaptor.
     types: [opened, reopened, synchronize]
 
 permissions:
@@ -63,7 +63,7 @@ permissions:
 
 jobs:
   adapt:
-    name: dependabot-adapter
+    name: dependabot-adaptor-bot
     runs-on: ubuntu-latest
     # `dependabot[bot]` is the GitHub-assigned login for the
     # Dependabot App; a fork PR's `user.login` is always the fork
@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${APP_ID:-}" ]]; then
-            echo "::notice::CHANGELOG_BOT_APP_ID secret is not set; skipping adapter run."
+            echo "::notice::CHANGELOG_BOT_APP_ID secret is not set; skipping adaptor run."
             echo "::notice::See docs/release/changelog-bot-setup.md for setup instructions."
             echo "configured=false" >> "${GITHUB_OUTPUT}"
           else
@@ -110,7 +110,7 @@ jobs:
             --json body --jq .body)
 
           if printf '%s' "${existing_body}" | grep -Fq '==COMMIT_MSG=='; then
-            echo "::notice::PR #${PR_NUMBER} already has a ==COMMIT_MSG== block; adapter is a no-op."
+            echo "::notice::PR #${PR_NUMBER} already has a ==COMMIT_MSG== block; adaptor is a no-op."
             exit 0
           fi
 

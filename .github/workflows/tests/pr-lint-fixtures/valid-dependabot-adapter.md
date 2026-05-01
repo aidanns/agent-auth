@@ -5,10 +5,11 @@ SPDX-License-Identifier: MIT
 -->
 
 <!--
-The body the dependabot-adapter workflow synthesizes for Dependabot
-PRs (.github/workflows/dependabot-adapter.yml). The block content is
-literal — keep this fixture in sync with the printf invocation in
-that workflow so a regression in either side fails the self-test.
+The body the dependabot-adaptor-bot workflow synthesizes for
+Dependabot PRs (.github/workflows/dependabot-adaptor-bot.yml). The
+block content is literal — keep this fixture in sync with the printf
+invocation in that workflow so a regression in either side fails the
+self-test.
 -->
 
 ==COMMIT_MSG==
