@@ -182,6 +182,26 @@ Three orthogonal questions fall out of that:
    unchanged. See `docs/release/merge-bot-setup.md` →
    "Closing linked issues" for the operational details.
 
+7. **`==COMMIT_MSG==` block is body + trailers only.** Amended
+   2026-05-01 (issue #478). The block was originally authored as
+   "subject + blank + body + trailers" so a maintainer-paste into
+   the squash-merge dialog produced a single concatenated message.
+   With the bot in place, the merge API takes `commit_title` and
+   `commit_message` as separate fields and GitHub renders the
+   squash commit by joining `commit_title + blank + commit_message`.
+   Carrying the subject in both places duplicated it on every
+   bot-mediated merge (e.g. `b69f7e2`, `d033861`, `bca4070` on
+   `main` all show the subject twice). The narrowed convention is:
+   the PR title is the source of the squash subject; the block is
+   body + trailers only. The validator
+   (`scripts/validate-commit-msg-block.py`) gained a
+   no-leading-subject check that rejects a body whose first line
+   matches the project's PR-title prefix allowlist
+   (`feature|improvement|fix|deprecation|migration|break|chore`).
+   Hard cutover — no dual-shape support — because the open-PR set
+   is small and the validator's error message tells the author
+   exactly what to do.
+
 ## Consequences
 
 - The merge mechanic moves from "maintainer pastes the block" to
