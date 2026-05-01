@@ -135,7 +135,7 @@ tasks:
       - scripts/build.sh
 
   build-release-artifacts:
-    desc: "Run the same build commands `release-publish.yml` will run on a tag push. Shared between the publish workflow and the PR-time dry-run (`release-dryrun.yml`) so the two cannot drift; use this locally to reproduce the exact CI build before tagging. See issue #325."
+    desc: "Run the same build commands `release-bot.yml` will run on a tag push. Shared between the publish workflow and the PR-time dry-run (`release-dryrun.yml`) so the two cannot drift; use this locally to reproduce the exact CI build before tagging. See issue #325."
     cmds:
       - scripts/build-release-artifacts.sh {{.CLI_ARGS}}
 
@@ -150,6 +150,6 @@ tasks:
       - scripts/setup-devcontainer-signing.sh {{.CLI_ARGS}}
 
   release:
-    desc: "Force a refresh of the YAML-driven release PR by dispatching .github/workflows/release-pr.yml on main. The default flow runs that workflow automatically on every push to main; use this task as a manual escape hatch (e.g. after editing a changelog/@unreleased/*.yml directly via the GitHub UI). The release tag itself is cut by .github/workflows/release-tag.yml when the release PR merges. See CONTRIBUTING.md § Release process and ADR 0041."
+    desc: "Force a refresh of the YAML-driven release PR by dispatching .github/workflows/release-bot.yml on main. The default flow runs that workflow automatically on every push to main; use this task as a manual escape hatch (e.g. after editing a changelog/@unreleased/*.yml directly via the GitHub UI). The release tag itself is cut by .github/workflows/release-bot.yml when the release PR merges. See CONTRIBUTING.md § Release process and ADR 0041."
     cmds:
       - scripts/release.sh {{.CLI_ARGS}}

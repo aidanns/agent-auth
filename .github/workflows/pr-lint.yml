@@ -332,7 +332,7 @@ jobs:
         # `predict_release_impact.py` depends on PyYAML transitively
         # via `version_logic.parse_entry_file`. Avoid the full workspace
         # `uv sync` here — this job only needs the changelog parser.
-        # Same shape as `release-pr.yml`'s "Install PyYAML" step.
+        # Same shape as `release-bot.yml`'s "Install PyYAML" step.
         run: pip install --no-cache-dir 'pyyaml>=6'
 
       - name: List changed files
@@ -420,7 +420,7 @@ jobs:
 
       - name: Resolve current version
         if: steps.touched.outputs.touched == 'true'
-        # Same approach as `release-pr.yml`'s "Resolve current version"
+        # Same approach as `release-bot.yml`'s "Resolve current version"
         # step: `git describe --tags --abbrev=0 --match 'v*.*.*'` reads
         # the latest published tag. Falls back to `0.0.0` when no tag
         # exists yet (first-ever release) so the very first `feature`

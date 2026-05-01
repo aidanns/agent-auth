@@ -154,7 +154,7 @@ jobs:
         run: uv run pytest packages/things-client-cli-applescript/tests/test_things_client_applescript_things.py --no-cov -v
 
   # End-to-end exercise of the per-package install path that
-  # release-publish.yml ships (ADR 0044). Builds every workspace
+  # release-bot.yml ships (ADR 0044). Builds every workspace
   # member's wheel + sdist, generates .sha256 sidecars, and runs
   # ``packages/<svc>/install.sh --local dist/`` for a representative
   # service surface. The job is matrixed across two services that
