@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Build
+
+# Production-artifact build child workflow for the uv-style nested
+# `workflow_call` CI structure (parent issue #440). Runs
+# `scripts/build-release-artifacts.sh` — the same script
+# `release-bot.yml` invokes on tag push — into a temp `dist/` dir, then
+# asserts the expected per-package artefact set is present. No signing,
+# no SBOM generation, no upload. The job exists to catch the
+# workspace-split-style regression where the build silently breaks but
+# the release pipeline keeps tagging + writing CHANGELOG entries (the
+# release "looks" successful from the outside).
+#
+# The aggregator in `ci.yml` treats `skipped` as a failure alongside
+# `failure` / `cancelled` / `timed_out`, so this job must actually run
+# and report `success`. Do not gate it behind any `if:` that could
+# resolve to a `skipped` outcome.
+#
+# Strategy C (issue #460): the original top-level `release-dryrun.yml`
+# workflow is kept in place and runs in parallel with this new chain
+# until the branch-protection ruleset switches to the
+# `Required checks passed` aggregator (tracked under #5.2). Both
+# surfaces must stay green; the build logic here is a byte-for-byte
+# port of `release-dryrun.yml`'s `build-dryrun` job.
+#
+# Independent build (issue #460): this workflow does NOT upload its
+# `dist/` for downstream consumption. The sibling `check-release.yml`
+# workflow performs its own build run; the two paths exercise the same
+# script independently so a regression in either lane lights up the
+# corresponding check rather than masking behind a shared artefact
+# handoff.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # Pin uv to the same version `release-bot.yml` uses so the
+      # PR-time build's environment matches the publish path.
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.7"
+          enable-cache: true
+
+      # Required gate: a build failure here fails the job's
+      # check-run conclusion, which blocks merge via the parent
+      # aggregator's `needs.*.result == "success"` policy.
+      - name: Build into temp dist/
+        run: scripts/build-release-artifacts.sh --out dist
+
+      # Per-package release-asset layout (ADR 0044): one wheel + one
+      # sdist per workspace member. The expected count is derived from
+      # `packages/<svc>/pyproject.toml` so adding a new workspace
+      # member tightens the gate automatically with no edit here. A
+      # regression that drops one package's pair will fail the assert
+      # — the looser "at least one" gate this replaces could not.
+      - name: Assert expected artefact set
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=$(find packages -mindepth 2 -maxdepth 2 -name pyproject.toml | wc -l)
+          if [[ "${expected}" -lt 1 ]]; then
+            echo "::error::no workspace members found under packages/* — build count derivation is broken"
+            exit 1
+          fi
+          # `nullglob` makes an unmatched glob expand to nothing
+          # rather than the literal pattern, so the array stays empty
+          # if the build step somehow produced no dist/ contents.
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          sdists=(dist/*.tar.gz)
+          if [[ -d dist ]]; then
+            echo "Built artefacts in dist/:"
+            ls -1 dist/ | sed 's/^/  /'
+          else
+            echo "No dist/ directory present."
+          fi
+          fail=0
+          if [[ "${#wheels[@]}" -ne "${expected}" ]]; then
+            echo "::error::expected ${expected} .whl artefacts (one per workspace member), got ${#wheels[@]}"
+            fail=1
+          fi
+          if [[ "${#sdists[@]}" -ne "${expected}" ]]; then
+            echo "::error::expected ${expected} .tar.gz sdist artefacts (one per workspace member), got ${#sdists[@]}"
+            fail=1
+          fi
+          if [[ "${fail}" -eq 0 ]]; then
+            echo "OK: ${#wheels[@]} wheel(s), ${#sdists[@]} sdist(s) for ${expected} workspace member(s)."
+          fi
+          exit "${fail}"
