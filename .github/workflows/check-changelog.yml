@@ -1,0 +1,155 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Check Changelog
+
+# `workflow_call` child of `ci.yml` (parent issue #440) that owns the
+# changelog/@unreleased/*.yml gating surface. Splits the original
+# `.github/workflows/changelog-lint.yml` into two named jobs so the
+# parent's `Required checks passed` aggregator can surface
+# entry-presence and schema-validity as separate signals:
+#
+# - `exists` — verifies a `changelog/@unreleased/pr-<N>-*.yml` entry was
+#   *added* in this PR's diff, OR the PR carries the `no changelog`
+#   bypass label. Mirrors `scripts/changelog/lint.py`'s "Check 1" so
+#   contributors see the same error message whether the legacy or new
+#   workflow flagged the gap.
+# - `format` — runs the full schema validator
+#   (`scripts/changelog/lint.py`) plus the `version_logic` + lint unit
+#   tests (`scripts/changelog/test.sh`). Catches naming, schema,
+#   release-as, and description-style violations even when the bypass
+#   label is set, mirroring the legacy workflow's behaviour.
+#
+# Behaviour parity with the legacy workflow is byte-for-byte for the
+# checks themselves; the difference is only the surfacing into two job
+# names rather than one. The legacy `changelog-lint.yml` continues to
+# run alongside this child workflow until the Strategy-C cutover (#440
+# Phase 5).
+#
+# Release-PR skip: the legacy workflow short-circuits when the PR's
+# head ref starts with `release/` because release PRs delete every
+# `@unreleased/*.yml` (renaming them under `<X.Y.Z>/`) and would
+# otherwise fail the file-presence rule. Both jobs here apply the
+# same skip via a job-level `if:`.
+#
+# Non-PR events: when `ci.yml` runs on `push (main)` / `merge_group` /
+# `workflow_dispatch`, `github.event.pull_request` is null and no
+# changelog entry can be associated with the run. Both jobs no-op via
+# a step-level `if:` so the aggregator still sees a `success` result
+# (the parent treats `skipped` as a failure per #441).
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  exists:
+    name: exists
+    runs-on: ubuntu-latest
+    # Skip on release PRs (#296). Release PRs DELETE every
+    # `@unreleased/*.yml` (renaming them under `<X.Y.Z>/`) rather than
+    # adding a new one — the file-presence check would otherwise fail
+    # closed. Mirrors the legacy `changelog-lint.yml` job-level guard.
+    if: ${{ github.event_name != 'pull_request' || !startsWith(github.event.pull_request.head.ref, 'release/') }}
+    steps:
+      - name: Skip on non-PR events
+        # `ci.yml` invokes this child on `push (main)` / `merge_group`
+        # / `workflow_dispatch` too; without a PR context the lint has
+        # no diff to inspect. Surface a `success` result rather than
+        # skipping the job (the aggregator treats `skipped` as a
+        # failure per #441).
+        if: ${{ github.event_name != 'pull_request' }}
+        run: echo "no PR context — skipping changelog presence check"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          # Need full history so `git diff base...head` resolves and
+          # `git describe --tags` finds the latest vX.Y.Z tag.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify changelog entry presence
+        if: ${{ github.event_name == 'pull_request' }}
+        # Lightweight presence check that doesn't need the workspace
+        # venv. Mirrors `scripts/changelog/lint.py`'s "Check 1" so the
+        # error message a contributor sees is identical to the legacy
+        # workflow's. The bypass label is honoured here so an
+        # `automerge` + `no changelog` Dependabot PR doesn't trip the
+        # presence rule.
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ",${PR_LABELS}," == *",no changelog,"* ]]; then
+            echo "PR #${PR_NUMBER}: \`no changelog\` label present — skipping presence check"
+            exit 0
+          fi
+          mapfile -t added < <(
+            git diff --name-only --diff-filter=A "${BASE_SHA}...${HEAD_SHA}" \
+              | grep -E "^changelog/@unreleased/pr-${PR_NUMBER}-[A-Za-z0-9_-]+\.yml$" \
+              || true
+          )
+          if [[ ${#added[@]} -eq 0 ]]; then
+            echo "::error::PR #${PR_NUMBER}: no changelog entry added under \`changelog/@unreleased/pr-${PR_NUMBER}-<slug>.yml\`. Add a YAML entry per CONTRIBUTING.md, or apply the \`no changelog\` label to bypass."
+            exit 1
+          fi
+          printf 'changelog entry present: %s\n' "${added[@]}"
+
+  format:
+    name: format
+    runs-on: ubuntu-latest
+    # Skip on release PRs (#296) — see `exists` above for the rationale.
+    if: ${{ github.event_name != 'pull_request' || !startsWith(github.event.pull_request.head.ref, 'release/') }}
+    steps:
+      - name: Skip on non-PR events
+        if: ${{ github.event_name != 'pull_request' }}
+        run: echo "no PR context — skipping changelog format check"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          # Need full history so `git diff base...head` resolves and
+          # `git describe --tags` finds the latest vX.Y.Z tag.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: ./.github/actions/setup-toolchain
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Bootstrap the workspace venv (provides PyYAML for the lint).
+      # `task` would normally trigger this implicitly via a venv-backed
+      # task, but the lint runs as a one-shot Python entrypoint so we
+      # call uv directly.
+      - name: Bootstrap workspace venv
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv-Linux-x86_64
+        run: uv sync --extra dev
+
+      - name: Run changelog lint over PR diff
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv-Linux-x86_64
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: uv run --no-sync python scripts/changelog/lint.py
+
+      - name: Run version_logic + lint unit tests
+        if: ${{ github.event_name == 'pull_request' }}
+        # Tests are gated on every PR rather than nightly because the
+        # lint logic is the only thing standing between malformed
+        # YAML and the release workflow (#296). A regression here
+        # would silently let bad entries land.
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv-Linux-x86_64
+        run: scripts/changelog/test.sh
