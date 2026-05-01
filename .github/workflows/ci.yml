@@ -137,6 +137,18 @@ jobs:
     needs: [plan]
     uses: ./.github/workflows/check-docs.yml
 
+  check-pull-request:
+    # PR-metadata child workflow (issue #450). Houses jobs that
+    # validate the pull-request envelope itself — DCO sign-off today;
+    # pr-lint validators (title, body, commit-message block) follow
+    # under #4.18 — rather than the working tree's contents. Strategy
+    # C: the original top-level `dco.yml` workflow stays in place and
+    # runs in parallel with this chain until the branch-protection
+    # ruleset switches to this aggregator (#5.2).
+    name: check-pull-request
+    needs: [plan]
+    uses: ./.github/workflows/check-pull-request.yml
+
   required-checks-passed:
     # Repo-wide aggregator (#440 "Decisions (locked in)"): a single
     # `Required checks passed` status check sits at the top of `ci.yml`
@@ -145,7 +157,7 @@ jobs:
     # branch-protection ruleset switch from per-workflow required
     # checks to this one aggregator is tracked under #5.2.
     name: Required checks passed
-    needs: [plan, check-docs]
+    needs: [plan, check-docs, check-pull-request]
     if: always()
     runs-on: ubuntu-latest
     steps:
