@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Python
+
+# `workflow_call` child of `check-lint.yml` carrying the Python static
+# analysis jobs (mypy + pyright). Migrated from the standalone
+# `typecheck.yml` workflow under the uv-style nested CI structure
+# (parent issue #440, Phase 2 issue #453). Per the strategy-C decision
+# locked in 2026-05-01, the original `typecheck.yml` continues to run
+# alongside this child until the Phase 5 sweep deletes it; do not
+# remove it from here.
+#
+# The original `typecheck.yml` ran a single `typecheck` job that
+# invoked `task typecheck` (which calls `scripts/typecheck.sh` →
+# `mypy` then `pyright` sequentially). This file splits the two
+# checkers into separate sibling jobs so they parallelise across CI
+# runners and so issue #459 can extend `python.yml` with a third
+# `ruff` job without reshuffling. Each job sources
+# `scripts/_bootstrap_venv.sh` (the same helper `scripts/typecheck.sh`
+# uses) so the per-OS/arch venv is created and `UV_PROJECT_ENVIRONMENT`
+# is exported, then `exec`s its tool through `uv run --no-sync`.
+# Going through `task typecheck` would re-couple the two checkers
+# serially.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  mypy:
+    name: mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run mypy
+        run: |
+          set -euo pipefail
+          # shellcheck source=scripts/_bootstrap_venv.sh
+          source scripts/_bootstrap_venv.sh
+          exec uv run --no-sync mypy
+
+  pyright:
+    name: pyright
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run pyright
+        run: |
+          set -euo pipefail
+          # shellcheck source=scripts/_bootstrap_venv.sh
+          source scripts/_bootstrap_venv.sh
+          exec uv run --no-sync pyright
