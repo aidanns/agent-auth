@@ -148,6 +148,15 @@ jobs:
     needs: [plan]
     uses: ./.github/workflows/check-docs.yml
 
+  check-standards:
+    # Project-standards slot (issue #455). Runs `task verify-standards`
+    # via `scripts/verify-standards.sh`. Until Phase 5 of #440 retires
+    # the original top-level workflow, the legacy `verify-standards.yml`
+    # continues to run in parallel; this PR does not delete it and does
+    # not modify the branch-protection ruleset (strategy C).
+    name: check-standards
+    needs: [plan]
+    uses: ./.github/workflows/check-standards.yml
   check-pull-request:
     # PR-metadata child workflow (issue #450). Houses jobs that
     # validate the pull-request envelope itself — DCO sign-off today;
@@ -188,7 +197,7 @@ jobs:
     # branch-protection ruleset switch from per-workflow required
     # checks to this one aggregator is tracked under #5.2.
     name: Required checks passed
-    needs: [plan, check-lint, check-docs, check-changelog, check-publish, check-pull-request]
+    needs: [plan, check-docs, check-standards, check-changelog, check-publish, check-pull-request, check-lint]
     if: always()
     runs-on: ubuntu-latest
     steps:
