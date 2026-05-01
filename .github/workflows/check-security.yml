@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Check Security
+
+# `workflow_call` parent shell for security-cadence checks under the
+# uv-style nested workflow_call CI structure (parent issue #440).
+# Currently carries the CodeQL analyse child (`codeql-analyse.yml`,
+# issue #447); subsequent migration issues add `dependency-review`
+# (#448), `dependency-submission` (#449), and `ripsecrets` (#459)
+# under here as further `workflow_call` children, each one extending
+# the aggregator's `needs:` list.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  codeql-analyse:
+    name: CodeQL Analyse
+    uses: ./.github/workflows/codeql-analyse.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+  required-checks-passed:
+    # Per-parent aggregator (#440 "Decisions (locked in)"): each
+    # parent orchestrator carries its own `Required checks passed`
+    # job that consolidates the results of its `workflow_call`
+    # children, and `ci.yml`'s repo-wide aggregator depends on this
+    # one in turn. Subsequent migration issues add each new child
+    # workflow's job name to `needs:` here.
+    name: Required checks passed
+    needs: [codeql-analyse]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all required checks passed
+        # Pass `needs` through `env:` so the JSON survives shell
+        # quoting verbatim — child job names that contain colons or
+        # quotes would otherwise break the inline expansion. `jq -e`
+        # exits non-zero on a `false` boolean, so the step fails
+        # whenever any upstream `needs.*.result` is anything other
+        # than `success`. Per issue #441 ("fails on any
+        # failed/skipped/timed-out result"), `skipped` is treated as
+        # a failure alongside `failure`, `cancelled`, and `timed_out`
+        # — a child workflow that legitimately opts out via `if:`
+        # will need to surface a `success` result (e.g. via a
+        # short-circuit step) rather than skipping the job
+        # altogether.
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "${NEEDS}" \
+            | jq -e 'to_entries | all(.value.result == "success")' \
+            > /dev/null
