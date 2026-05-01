@@ -6,13 +6,17 @@ name: Weekly
 
 # Orchestrator shell for weekly-cadence checks (OSSF Scorecard, bench)
 # under the uv-style nested workflow_call CI structure (issue #440).
-# Currently an empty shell — the `required-checks-passed` aggregator
-# runs alone and trivially passes so the empty shell can land
-# independently. Scorecard and bench migrate under here in follow-up
-# issues; the forward-looking `if: always()` + `needs.*.result`
-# aggregator pattern lands when the first child does. Triggers on a
-# 05:00 UTC Sunday cron so weekly results land early in the week, and
-# on workflow_dispatch so a maintainer can trigger an on-demand run.
+# OSSF Scorecard migrates underneath this orchestrator via the
+# `open-ssf-scorecard` child below (#458); bench follows in a later
+# issue. Triggers on a 05:00 UTC Sunday cron so weekly results land
+# early in the week, and on workflow_dispatch so a maintainer can
+# trigger an on-demand run.
+#
+# Strategy C (#440 Phase 5): the standalone `scorecard.yml` keeps
+# running in parallel until a sweep PR retires it. This orchestrator
+# adds a second (weekly Sunday) Scorecard run on top of the existing
+# (weekly Monday + push: main) standalone runs; the duplication is
+# intentional and short-lived.
 on:
   workflow_dispatch:
   schedule:
@@ -25,10 +29,57 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
+  open-ssf-scorecard:
+    # OpenSSF Scorecard child workflow (#458). The child holds the
+    # full publish + gate split; this slot in `weekly.yml` only wires
+    # it into the aggregator below. Action SHAs, permissions
+    # (`security-events: write`, `id-token: write`), and the
+    # SCORECARD_MIN_SCORE floor are preserved byte-for-byte from the
+    # standalone `scorecard.yml`. See
+    # `.github/workflows/open-ssf-scorecard.yml`.
+    name: open-ssf-scorecard
+    permissions:
+      # Permissions for `workflow_call` children are capped by the
+      # caller job's permission set, so we re-declare the union of
+      # the child's per-job permissions here. The child's `publish`
+      # job needs `security-events: write` + `id-token: write` for
+      # SARIF upload and signed publication; both jobs need
+      # `actions: read` for the Token-Permissions check.
+      security-events: write
+      id-token: write
+      actions: read
+      contents: read
+    uses: ./.github/workflows/open-ssf-scorecard.yml
+
   required-checks-passed:
+    # Repo-wide aggregator for the weekly cadence (#440 "Decisions
+    # (locked in)"). Subsequent migration issues (e.g. bench) will
+    # add each `workflow_call` child workflow's job name to `needs:`
+    # here. `if: always()` + the `needs.*.result` JSON walk lets the
+    # aggregator distinguish `success` from
+    # `failure`/`cancelled`/`skipped`/`timed_out` — `skipped` is
+    # treated as a failure alongside the others, matching the
+    # `ci.yml` aggregator pattern (issue #441).
     name: Required checks passed
+    needs: [open-ssf-scorecard]
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Aggregate required-checks result
-        run: echo "all required checks passed"
+      - name: Verify all required checks passed
+        # Pass `needs` through `env:` so the JSON survives shell
+        # quoting verbatim — child job names that contain colons or
+        # quotes would otherwise break the inline expansion. `jq -e`
+        # exits non-zero on a `false` boolean, so the step fails
+        # whenever any upstream `needs.*.result` is anything other
+        # than `success`.
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "${NEEDS}" \
+            | jq -e 'to_entries | all(.value.result == "success")' \
+            > /dev/null
