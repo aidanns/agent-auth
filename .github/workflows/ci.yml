@@ -128,6 +128,18 @@ jobs:
               - '.github/workflows/**'
               - '.github/actions/**'
 
+  check-lint:
+    # First `workflow_call` child landed under the parent issue #440
+    # migration (Phase 2, issue #453). The `check-lint.yml` parent
+    # shell currently fans out to `python.yml` (mypy + pyright);
+    # follow-up issues attach more children (systems-engineering in
+    # #454, ruff in #459). Per Strategy C, the original `typecheck.yml`
+    # continues to run alongside this chain until the Phase 5 sweep.
+    name: check-lint
+    needs: [plan]
+    uses: ./.github/workflows/check-lint.yml
+    secrets: inherit
+
   required-checks-passed:
     # Repo-wide aggregator (#440 "Decisions (locked in)"): a single
     # `Required checks passed` status check sits at the top of `ci.yml`
@@ -136,7 +148,7 @@ jobs:
     # branch-protection ruleset switch from per-workflow required
     # checks to this one aggregator is tracked under #5.2.
     name: Required checks passed
-    needs: [plan]
+    needs: [plan, check-lint]
     if: always()
     runs-on: ubuntu-latest
     steps:
