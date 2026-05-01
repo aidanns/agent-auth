@@ -421,8 +421,8 @@ attaches:
   [`slsa-framework/slsa-github-generator`](https://github.com/slsa-framework/slsa-github-generator)'s
   `generator_generic_slsa3.yml` reusable workflow. One attestation
   covers every wheel + sdist subject in the release, binding each
-  artefact's sha256 digest to the exact `release-publish.yml`
-  workflow run, commit SHA, and ref that produced it. The generator
+  artefact's sha256 digest to the exact `release-bot.yml` workflow
+  run, commit SHA, and ref that produced it. The generator
   runs on GitHub's isolated SLSA generator runner (not the `publish`
   runner that produced the artefacts), so a compromised step inside
   `publish` cannot forge the provenance.
@@ -446,7 +446,12 @@ current state on `main` and the target for the 1.0 release.
 : "${TAG:?set TAG=vX.Y.Z to the release tag you downloaded}"
 
 VERSION="${TAG#v}"
-IDENTITY="https://github.com/aidanns/agent-auth/.github/workflows/release-publish.yml@refs/tags/${TAG}"
+# Cosign keyless signing records the path of the workflow file that
+# performed the signing. Releases ≤ 0.16.6 were signed by
+# `release-publish.yml`; releases cut after the consolidation in #445
+# are signed by `release-bot.yml`. Substitute `release-publish.yml`
+# below if verifying a pre-cutover tag.
+IDENTITY="https://github.com/aidanns/agent-auth/.github/workflows/release-bot.yml@refs/tags/${TAG}"
 
 # Per-package release-asset layout — one entry per workspace package.
 # Each name is the PEP 625-normalised dist name (hyphens → underscores).
@@ -503,7 +508,7 @@ done
 ```
 
 The `--certificate-identity` pins the signature to the
-`release-publish.yml` workflow running on the `v*` tag that cut the
+`release-bot.yml` workflow running on the `v*` tag that cut the
 release; a signature produced by any other workflow or branch fails
 verification. Exact-match is used instead of `--certificate-identity-regexp`
 so that unescaped `.` characters in the tag cannot widen the accepted
@@ -572,7 +577,10 @@ VERSION="${TAG#v}"
 # Re-published tags carry an identity bound to refs/heads/main, not
 # refs/tags/<TAG>. The match must be exact to avoid the regex /
 # unescaped-`.` widening risk that the primary recipe also avoids.
-IDENTITY="https://github.com/aidanns/agent-auth/.github/workflows/release-publish.yml@refs/heads/main"
+# As with the primary recipe, releases re-published before #445
+# carry `release-publish.yml` in the identity; substitute that
+# filename below if verifying a pre-cutover re-publish.
+IDENTITY="https://github.com/aidanns/agent-auth/.github/workflows/release-bot.yml@refs/heads/main"
 
 PACKAGES=(
   agent_auth

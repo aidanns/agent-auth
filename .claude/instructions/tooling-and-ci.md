@@ -148,7 +148,7 @@ language: `python.md`, `bash.md`.
   comment on each bump, keeping the pin reviewable.
 
   Scope today: `.github/workflows/release.yml`,
-  `.github/workflows/release-publish.yml`, `.github/workflows/reuse.yml`
+  `.github/workflows/release-bot.yml`, `.github/workflows/reuse.yml`
   (the REUSE gate is a release prerequisite), and
   `.github/actions/setup-toolchain/action.yml` (indirectly part of the
   release path via `reuse.yml`). Read-only workflows (`check.yml`,

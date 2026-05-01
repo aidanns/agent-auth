@@ -5,7 +5,7 @@
 # PR-time dry-run of the release-build step (#325).
 #
 # Runs `scripts/build-release-artifacts.sh` — the same script
-# `release-publish.yml` invokes on tag push — into a temp `dist/` dir,
+# `release-bot.yml` invokes on tag push — into a temp `dist/` dir,
 # then asserts the expected artefact set is present. No signing, no
 # SBOM generation, no upload. The job exists to catch the workspace-
 # split-style regression where the build silently breaks but the
@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      # Pin uv to the same version `release-publish.yml` uses so the
+      # Pin uv to the same version `release-bot.yml` uses so the
       # dry-run's build environment matches the publish path.
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0

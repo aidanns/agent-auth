@@ -694,8 +694,8 @@ from
 1. Land your PR on `main` with a `changelog/@unreleased/pr-<N>-*.yml`
    entry describing the change. The PR-time `changelog-lint` job
    enforces the schema.
-2. The `Release PR` workflow
-   ([`.github/workflows/release-pr.yml`](.github/workflows/release-pr.yml))
+2. The `open-release-pr` job in `release-bot.yml`
+   ([`.github/workflows/release-bot.yml`](.github/workflows/release-bot.yml))
    runs on every push to `main`. It:
    - Reads every `@unreleased/*.yml`.
    - Computes the next version via
@@ -718,15 +718,15 @@ from
 3. Review the release PR like any other change. Auto-merge is
    acceptable for routine releases; hold and review when the rendered
    notes mention behaviour the consumer needs to act on.
-4. Merging the release PR fires the `Release Tag` workflow
-   ([`.github/workflows/release-tag.yml`](.github/workflows/release-tag.yml)).
+4. Merging the release PR fires the `tag-and-release` job in `release-bot.yml`
+   ([`.github/workflows/release-bot.yml`](.github/workflows/release-bot.yml)).
    It validates the head ref + title (both must match the
    `release/X.Y.Z` / `chore(release): X.Y.Z` shape), tags
    `v<X.Y.Z>` on the merge commit using the release App's
    installation token, and creates the GitHub Release with the body
    re-rendered from the *moved* YAMLs.
-5. The tag push triggers the existing `Release Publish` workflow
-   ([`.github/workflows/release-publish.yml`](.github/workflows/release-publish.yml)).
+5. The tag push triggers the `publish-assets` job in `release-bot.yml`
+   ([`.github/workflows/release-bot.yml`](.github/workflows/release-bot.yml)).
    It builds the sdist + wheel with `uv build`, generates an SPDX
    SBOM per artifact with Syft, signs everything with keyless cosign
    (Sigstore OIDC), and attaches the SLSA-L3 provenance attestation.
@@ -736,12 +736,13 @@ from
 ### Manual escape hatch — `task release`
 
 `task release` runs `scripts/release.sh`, which dispatches the
-`Release PR` workflow on `main` via `gh workflow run release-pr.yml`.
+`Release Bot` workflow on `main` via `gh workflow run release-bot.yml`
+(the `open-release-pr` job fires on `workflow_dispatch`).
 Use it to force a refresh of the release PR (e.g. after editing a
 `changelog/@unreleased/*.yml` directly via the GitHub UI), or when
 you want to retry the workflow after a transient failure. It does
-**not** cut a tag on its own — tagging always happens inside
-`release-tag.yml` when the release PR merges.
+**not** cut a tag on its own — tagging always happens inside the
+`tag-and-release` job when the release PR merges.
 
 ### Forcing a specific version (`release-as`)
 
@@ -1154,21 +1155,21 @@ for historical reference.
 
 ### Release App setup
 
-Both `release-pr.yml` and `release-tag.yml` mint a short-lived
-installation token via
+Both the `open-release-pr` and `tag-and-release` jobs in `release-bot.yml`
+mint a short-lived installation token via
 [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token).
 
-- `release-pr.yml` opens / refreshes the `release/X.Y.Z` PR. The
+- `open-release-pr` opens / refreshes the `release/X.Y.Z` PR. The
   default `GITHUB_TOKEN` cannot create PRs unless the org/repo
   setting *Allow GitHub Actions to create and approve pull requests*
   is on, and enabling that flag would let every workflow auto-approve
   PRs — too broad for a repo with DCO and signing enforcement.
-- `release-tag.yml` pushes the `vX.Y.Z` tag. An App token is required
+- `tag-and-release` pushes the `vX.Y.Z` tag. An App token is required
   here because tag pushes from the default `GITHUB_TOKEN` do **not**
   fire downstream `on: push: tags:` workflows — the SLSA / SBOM /
-  cosign chain in `release-publish.yml` would silently break.
+  cosign chain in the `publish-assets` job would silently break.
 
-Both workflows share a single GitHub App, **`agent-auth-release-bot`**.
+Both jobs share a single GitHub App, **`agent-auth-release-bot`**.
 Repo secrets:
 
 - `RELEASE_BOT_APP_ID` — the App's numeric ID.
@@ -1388,7 +1389,8 @@ available.
 
 ### Tag signing under the YAML-driven release flow
 
-The release tag (`vX.Y.Z`) is created by `release-tag.yml` using the
+The release tag (`vX.Y.Z`) is created by the `tag-and-release` job in
+`release-bot.yml` using the
 release App's installation token, so no maintainer signing key is
 involved at tag time. Local signing setup applies only to the
 maintainer's own commits on PR branches and on the release-PR merge

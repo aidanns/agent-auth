@@ -17,11 +17,11 @@ out rather than duplicating.
 
 ## The three Apps at a glance
 
-| App slug / actor login          | Workflow file(s)                                                                                                                                                                               | Permissions                                                                                       | Required secrets                                                           | Main-ruleset bypass? |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------- |
-| `agent-auth-changelog-bot[bot]` | [`changelog-bot.yml`](../../.github/workflows/changelog-bot.yml)                                                                                                                               | See [changelog-bot-setup.md](changelog-bot-setup.md#one-time-registration)                        | `CHANGELOG_BOT_APP_ID`, `CHANGELOG_BOT_PRIVATE_KEY`, `CHANGELOG_BOT_EMAIL` | No                   |
-| `agent-auth-merge-bot[bot]`     | [`merge-bot.yml`](../../.github/workflows/merge-bot.yml)                                                                                                                                       | See [merge-bot-setup.md](merge-bot-setup.md#step-1--register-the-agent-auth-merge-bot-github-app) | `MERGE_BOT_APP_ID`, `MERGE_BOT_PRIVATE_KEY`                                | **Yes**              |
-| `agent-auth-release-bot[bot]`   | [`release-pr.yml`](../../.github/workflows/release-pr.yml), [`release-tag.yml`](../../.github/workflows/release-tag.yml), [`release-publish.yml`](../../.github/workflows/release-publish.yml) | See [release-bot-setup.md](release-bot-setup.md#one-time-registration)                            | `RELEASE_BOT_APP_ID`, `RELEASE_BOT_PRIVATE_KEY`                            | No                   |
+| App slug / actor login          | Workflow file(s)                                                 | Permissions                                                                                       | Required secrets                                                           | Main-ruleset bypass? |
+| ------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------- |
+| `agent-auth-changelog-bot[bot]` | [`changelog-bot.yml`](../../.github/workflows/changelog-bot.yml) | See [changelog-bot-setup.md](changelog-bot-setup.md#one-time-registration)                        | `CHANGELOG_BOT_APP_ID`, `CHANGELOG_BOT_PRIVATE_KEY`, `CHANGELOG_BOT_EMAIL` | No                   |
+| `agent-auth-merge-bot[bot]`     | [`merge-bot.yml`](../../.github/workflows/merge-bot.yml)         | See [merge-bot-setup.md](merge-bot-setup.md#step-1--register-the-agent-auth-merge-bot-github-app) | `MERGE_BOT_APP_ID`, `MERGE_BOT_PRIVATE_KEY`                                | **Yes**              |
+| `agent-auth-release-bot[bot]`   | [`release-bot.yml`](../../.github/workflows/release-bot.yml)     | See [release-bot-setup.md](release-bot-setup.md#one-time-registration)                            | `RELEASE_BOT_APP_ID`, `RELEASE_BOT_PRIVATE_KEY`                            | No                   |
 
 The canonical secret-name shape is `<BOT>_BOT_APP_ID` /
 `<BOT>_BOT_PRIVATE_KEY` where `<BOT>` is the short bot name
@@ -70,8 +70,9 @@ is resolvable when the bypass-actor step looks it up.
      [Verifying the bot end-to-end](merge-bot-setup.md#verifying-the-bot-end-to-end).
    - Release-bot: open and merge a PR with a release-bumping
      prefix (`feature:` / `improvement:` / `fix:` / etc.) and
-     confirm `release-pr.yml` opens the `release/X.Y.Z` PR and
-     `release-tag.yml` pushes the tag on its merge.
+     confirm `release-bot.yml`'s `open-release-pr` job opens the
+     `release/X.Y.Z` PR and the `tag-and-release` job pushes the tag
+     on its merge.
 
 ## Bypass-actor policy
 
