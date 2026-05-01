@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Check Publish
+
+# Publish-readiness check for the uv-style nested `workflow_call` CI
+# structure (parent issue #440, this slot #462). Builds the
+# release-asset set with `scripts/build-release-artifacts.sh` (the same
+# script `release-bot.yml` runs on tag push) and validates two things
+# the release-dryrun gate doesn't cover today:
+#
+#   1. `uv publish --dry-run` against TestPyPI — exercises the upload
+#      code path (metadata serialisation, multipart shape, index URL
+#      handshake) without transferring the file payload. `--dry-run`
+#      stops short of the actual upload `POST`, so no
+#      `UV_PUBLISH_TOKEN` is needed and there is no risk of an
+#      accidental publish. `--trusted-publishing never` is also
+#      passed so uv skips its default OIDC token probe — without it
+#      the dry-run aborts in `workflow_call` contexts that don't
+#      grant `id-token: write`. Pointing at TestPyPI rather than the
+#      real PyPI keeps the configured endpoint visible in the
+#      workflow log and means even a future regression that drops
+#      `--dry-run` would hit the test index, never prod.
+#
+#   2. `twine check dist/*` — validates README rendering (RST/Markdown
+#      long-description), classifier strings, and per-file metadata
+#      that PyPI's web upload pipeline would reject. This catches the
+#      class of release breakage where `uv build` produces a wheel
+#      that PyPI later refuses without surfacing the cause locally.
+#
+# This is a net-new check: there is no original top-level workflow for
+# Strategy C (#440 Phase 5) to retire later. Branch protection is
+# untouched in this PR; the slot is wired into `ci.yml`'s
+# `required-checks-passed` aggregator so it gates merges via the
+# single aggregate status check from day one.
+#
+# The aggregator in `ci.yml` treats `skipped` as a failure alongside
+# `failure` / `cancelled` / `timed_out`, so this job must actually run
+# and report `success`. Do not gate it behind any `if:` that could
+# resolve to a `skipped` outcome.
+#
+# Build duplication note: per #440's "locked-in decision: independent
+# builds", this workflow runs its own `uv build --all-packages` (via
+# `scripts/build-release-artifacts.sh`) rather than downloading from a
+# sibling `build.yml`. The duplicate build cost is the accepted price
+# for keeping each child workflow independently re-runnable.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check-publish:
+    name: check-publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Same invocation `release-dryrun.yml` and `release-bot.yml`'s
+      # `publish-assets` use, so this gate exercises exactly what the
+      # publish path will run. A divergence between the build commands
+      # would defeat the point of the check.
+      - name: Build into temp dist/
+        run: scripts/build-release-artifacts.sh --out dist
+
+      # `--dry-run` validates the upload code path without sending
+      # the file payload. `--publish-url https://test.pypi.org/legacy/`
+      # pins the endpoint to TestPyPI so even a regression that drops
+      # `--dry-run` would land on the test index, never prod PyPI.
+      # `--trusted-publishing never` opts out of the OIDC token probe
+      # uv runs by default; without it the dry-run aborts before the
+      # per-file dry-run loop because no OIDC token is available in a
+      # `workflow_call` context that doesn't grant `id-token: write`.
+      # No `UV_PUBLISH_TOKEN` is set in this workflow's environment;
+      # `uv publish --dry-run` does not transmit the file payloads.
+      - name: uv publish --dry-run (TestPyPI)
+        run: |
+          set -euo pipefail
+          uv publish \
+            --dry-run \
+            --trusted-publishing never \
+            --publish-url https://test.pypi.org/legacy/ \
+            dist/*
+
+      # `twine check` validates README rendering (RST/Markdown long
+      # description), classifier strings, and per-file metadata that
+      # PyPI's web upload pipeline would reject. `uvx` runs twine in
+      # an ephemeral environment without polluting the project venv.
+      # The plain (non-`--strict`) form matches the issue's spec —
+      # the `long_description` warnings the workspace packages carry
+      # today are not regressions to surface here; tightening to
+      # `--strict` is a follow-up once those metadata gaps are fixed.
+      - name: twine check dist/*
+        run: |
+          set -euo pipefail
+          uvx twine check dist/*
