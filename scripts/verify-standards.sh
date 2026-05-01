@@ -2077,23 +2077,30 @@ if threshold is None:
 fi
 rm -f /tmp/verify-standards-mutation.err
 
+mutation_missing=0
+
+fail_mutation_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  mutation_missing=1
+}
+
 # Worker workflow `mutation.yml` must exist and invoke the
 # mutation-testing tool. Matching on the Taskfile shim keeps us robust
 # if the workflow ever inlines the commands. The schedule lives on the
 # parent (`nightly.yml`) — see the chain check below.
 mutation_workflow=".github/workflows/mutation.yml"
-mutation_missing=0
 if [[ ! -f "${mutation_workflow}" ]]; then
-  echo "verify-standards: ${mutation_workflow} is missing." >&2
-  echo "  Add a workflow_call worker that runs the mutation gate (called from nightly.yml)." >&2
-  mutation_missing=1
+  fail_mutation_check \
+    "${mutation_workflow} is missing." \
+    "Add a workflow_call worker that runs the mutation gate (called from nightly.yml)."
 else
   # Strip comments so a disabled sample does not satisfy the gate.
   mutation_stripped="$(sed -E 's/(^|[[:space:]])#.*$//' "${mutation_workflow}")"
   if ! grep -qE "task[[:space:]]+mutation-test|mutmut[[:space:]]+run" <<<"${mutation_stripped}"; then
-    echo "verify-standards: ${mutation_workflow} does not invoke the mutation-testing gate." >&2
-    echo "  Call 'task mutation-test' (or 'mutmut run') in the workflow steps." >&2
-    mutation_missing=1
+    fail_mutation_check \
+      "${mutation_workflow} does not invoke the mutation-testing gate." \
+      "Call 'task mutation-test' (or 'mutmut run') in the workflow steps."
   fi
 fi
 
@@ -2103,29 +2110,28 @@ fi
 # the gate.
 nightly_workflow=".github/workflows/nightly.yml"
 if [[ ! -f "${nightly_workflow}" ]]; then
-  echo "verify-standards: ${nightly_workflow} is missing." >&2
-  echo "  Add the nightly orchestrator that schedules mutation.yml on a cron trigger." >&2
-  mutation_missing=1
+  fail_mutation_check \
+    "${nightly_workflow} is missing." \
+    "Add the nightly orchestrator that schedules mutation.yml on a cron trigger."
 else
   nightly_stripped="$(sed -E 's/(^|[[:space:]])#.*$//' "${nightly_workflow}")"
   if ! grep -qE "^on:" <<<"${nightly_stripped}"; then
-    echo "verify-standards: ${nightly_workflow} has no 'on:' trigger block." >&2
-    echo "  Add 'on:' with a 'schedule:' entry." >&2
-    mutation_missing=1
+    fail_mutation_check \
+      "${nightly_workflow} has no 'on:' trigger block." \
+      "Add 'on:' with a 'schedule:' entry."
   elif ! grep -qE "^[[:space:]]*schedule:" <<<"${nightly_stripped}"; then
-    echo "verify-standards: ${nightly_workflow} does not trigger on 'schedule:'." >&2
-    echo "  Add a 'schedule:' cron entry inside the 'on:' block." >&2
-    mutation_missing=1
+    fail_mutation_check \
+      "${nightly_workflow} does not trigger on 'schedule:'." \
+      "Add a 'schedule:' cron entry inside the 'on:' block."
   fi
   if ! grep -qE "uses:[[:space:]]*\./\.github/workflows/mutation\.yml" <<<"${nightly_stripped}"; then
-    echo "verify-standards: ${nightly_workflow} does not call mutation.yml." >&2
-    echo "  Add a job with 'uses: ./.github/workflows/mutation.yml' so the nightly cron runs the mutation gate." >&2
-    mutation_missing=1
+    fail_mutation_check \
+      "${nightly_workflow} does not call mutation.yml." \
+      "Add a job with 'uses: ./.github/workflows/mutation.yml' so the nightly cron runs the mutation gate."
   fi
 fi
 
 if [[ "${mutation_missing}" -ne 0 ]]; then
-  echo "  See .claude/instructions/testing-standards.md § Coverage and ADR 0021." >&2
   exit 1
 fi
 
