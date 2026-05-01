@@ -340,6 +340,7 @@ module = [
     "test_migrations",
     "test_notification_plugin_timeout",
     "test_perf_budget",
+    "test_pr_lint_validator_cli",
     "test_rate_limit",
     "test_scopes",
     "test_server",
