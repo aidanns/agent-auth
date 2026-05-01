@@ -161,6 +161,17 @@ jobs:
     name: check-release
     needs: [plan]
     uses: ./.github/workflows/check-release.yml
+  check-pull-request:
+    # PR-metadata child workflow (issue #450). Houses jobs that
+    # validate the pull-request envelope itself — DCO sign-off today;
+    # pr-lint validators (title, body, commit-message block) follow
+    # under #4.18 — rather than the working tree's contents. Strategy
+    # C: the original top-level `dco.yml` workflow stays in place and
+    # runs in parallel with this chain until the branch-protection
+    # ruleset switches to this aggregator (#5.2).
+    name: check-pull-request
+    needs: [plan]
+    uses: ./.github/workflows/check-pull-request.yml
   check-publish:
     # Publish-readiness slot (issue #462). Builds the release-asset
     # set with `scripts/build-release-artifacts.sh` and runs
@@ -190,7 +201,7 @@ jobs:
     # branch-protection ruleset switch from per-workflow required
     # checks to this one aggregator is tracked under #5.2.
     name: Required checks passed
-    needs: [plan, build, check-docs, check-release, check-changelog, check-publish]
+    needs: [plan, build, check-docs, check-release, check-changelog, check-publish, check-pull-request]
     if: always()
     runs-on: ubuntu-latest
     steps:
