@@ -81,7 +81,9 @@ Baselines are CI-generated rather than author-generated so the numbers
 match the runner that will later be compared against.
 
 1. Trigger the benchmark workflow manually
-   (`gh workflow run benchmark.yml`).
+   (`gh workflow run weekly.yml` — the `bench` child is a
+   `workflow_call` worker so the parent `weekly.yml` is the dispatch
+   surface).
 2. Download the artifact produced by the run: the JSON report lands
    at `packages/agent-auth/benchmarks/results.json`.
 3. Rename it to
