@@ -1,0 +1,187 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Check Changelog
+
+# `workflow_call` child of `ci.yml` (parent issue #440) that owns the
+# changelog/@unreleased/*.yml gating surface. Splits the original
+# `.github/workflows/changelog-lint.yml` into two named jobs so the
+# parent's `Required checks passed` aggregator can surface
+# entry-presence and schema-validity as separate signals:
+#
+# - `exists` — verifies a `changelog/@unreleased/pr-<N>-*.yml` entry was
+#   *added* in this PR's diff, OR the PR carries the `no changelog`
+#   bypass label. Mirrors `scripts/changelog/lint.py`'s "Check 1" so
+#   contributors see the same error message whether the legacy or new
+#   workflow flagged the gap.
+# - `format` — runs the full schema validator
+#   (`scripts/changelog/lint.py`) plus the `version_logic` + lint unit
+#   tests (`scripts/changelog/test.sh`). Catches naming, schema,
+#   release-as, and description-style violations even when the bypass
+#   label is set, mirroring the legacy workflow's behaviour.
+#
+# Behaviour parity with the legacy workflow is byte-for-byte for the
+# checks themselves; the difference is only the surfacing into two job
+# names rather than one. The legacy `changelog-lint.yml` continues to
+# run alongside this child workflow until the Strategy-C cutover (#440
+# Phase 5).
+#
+# Release-PR skip and non-PR events: the legacy workflow skipped the
+# whole job when the PR's head ref started with `release/` (release PRs
+# delete every `@unreleased/*.yml`, renaming them under `<X.Y.Z>/`,
+# and would otherwise fail the file-presence rule). The new aggregator
+# treats `skipped` as a failure (per #441), so both jobs here run
+# unconditionally and short-circuit at step level — emitting a
+# `skip=true` output that gates the remaining steps. The same
+# short-circuit covers `push (main)` / `merge_group` /
+# `workflow_dispatch` runs of `ci.yml` where there is no PR diff to
+# inspect.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  exists:
+    name: exists
+    runs-on: ubuntu-latest
+    # Job runs unconditionally — the aggregator treats `skipped` as a
+    # failure (per #441), so the release-PR / non-PR-event cases are
+    # handled at step level by short-circuiting to `success` rather
+    # than skipping the job. The legacy workflow skipped the whole job
+    # on release PRs because it didn't feed a `Required checks passed`
+    # aggregator; the new shape needs an explicit success.
+    steps:
+      - name: Short-circuit when no presence check is needed
+        # Skip the lint and surface `success` when:
+        # - Non-PR events (`push (main)` / `merge_group` /
+        #   `workflow_dispatch`): no PR diff exists.
+        # - Release PRs (#296): release PRs DELETE every
+        #   `@unreleased/*.yml` (renaming them under `<X.Y.Z>/`) and
+        #   would otherwise fail the file-presence rule. Mirrors the
+        #   legacy `changelog-lint.yml` skip condition.
+        id: skip
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "no PR context — skipping changelog presence check"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [[ "${HEAD_REF}" == release/* ]]; then
+            echo "release PR (head=${HEAD_REF}) — skipping changelog presence check"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "skip=false" >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: ${{ steps.skip.outputs.skip != 'true' }}
+        with:
+          # Need full history so `git diff base...head` resolves and
+          # `git describe --tags` finds the latest vX.Y.Z tag.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify changelog entry presence
+        if: ${{ steps.skip.outputs.skip != 'true' }}
+        # Lightweight presence check that doesn't need the workspace
+        # venv. Mirrors `scripts/changelog/lint.py`'s "Check 1" so the
+        # error message a contributor sees is identical to the legacy
+        # workflow's. The bypass label is honoured here so an
+        # `automerge` + `no changelog` Dependabot PR doesn't trip the
+        # presence rule.
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ",${PR_LABELS}," == *",no changelog,"* ]]; then
+            echo "PR #${PR_NUMBER}: \`no changelog\` label present — skipping presence check"
+            exit 0
+          fi
+          mapfile -t added < <(
+            git diff --name-only --diff-filter=A "${BASE_SHA}...${HEAD_SHA}" \
+              | grep -E "^changelog/@unreleased/pr-${PR_NUMBER}-[A-Za-z0-9_-]+\.yml$" \
+              || true
+          )
+          if [[ ${#added[@]} -eq 0 ]]; then
+            echo "::error::PR #${PR_NUMBER}: no changelog entry added under \`changelog/@unreleased/pr-${PR_NUMBER}-<slug>.yml\`. Add a YAML entry per CONTRIBUTING.md, or apply the \`no changelog\` label to bypass."
+            exit 1
+          fi
+          printf 'changelog entry present: %s\n' "${added[@]}"
+
+  format:
+    name: format
+    runs-on: ubuntu-latest
+    # Job runs unconditionally for the same reason as `exists` above —
+    # the aggregator treats `skipped` as a failure.
+    steps:
+      - name: Short-circuit when no format check is needed
+        # Skip the lint and surface `success` for non-PR events and
+        # release PRs (#296). See `exists` above for full rationale.
+        id: skip
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "no PR context — skipping changelog format check"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [[ "${HEAD_REF}" == release/* ]]; then
+            echo "release PR (head=${HEAD_REF}) — skipping changelog format check"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "skip=false" >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: ${{ steps.skip.outputs.skip != 'true' }}
+        with:
+          # Need full history so `git diff base...head` resolves and
+          # `git describe --tags` finds the latest vX.Y.Z tag.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: ./.github/actions/setup-toolchain
+        if: ${{ steps.skip.outputs.skip != 'true' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Bootstrap the workspace venv (provides PyYAML for the lint).
+      # `task` would normally trigger this implicitly via a venv-backed
+      # task, but the lint runs as a one-shot Python entrypoint so we
+      # call uv directly.
+      - name: Bootstrap workspace venv
+        if: ${{ steps.skip.outputs.skip != 'true' }}
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv-Linux-x86_64
+        run: uv sync --extra dev
+
+      - name: Run changelog lint over PR diff
+        if: ${{ steps.skip.outputs.skip != 'true' }}
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv-Linux-x86_64
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: uv run --no-sync python scripts/changelog/lint.py
+
+      - name: Run version_logic + lint unit tests
+        if: ${{ steps.skip.outputs.skip != 'true' }}
+        # Tests are gated on every PR rather than nightly because the
+        # lint logic is the only thing standing between malformed
+        # YAML and the release workflow (#296). A regression here
+        # would silently let bad entries land.
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv-Linux-x86_64
+        run: scripts/changelog/test.sh
