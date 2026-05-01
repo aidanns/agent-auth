@@ -81,8 +81,10 @@
 #      mark the verify step continue-on-error, so regressions in
 #      function-to-test allocation fail CI.
 #  12. A mutation-testing tool is configured (e.g. [tool.mutmut] in
-#      pyproject.toml) and a scheduled CI workflow invokes it with a
-#      documented score threshold, per
+#      pyproject.toml) with a documented score threshold, the
+#      `.github/workflows/mutation.yml` worker invokes it, and the
+#      parent `.github/workflows/nightly.yml` calls mutation.yml on
+#      a `schedule:` trigger, per
 #      .claude/instructions/testing-standards.md "Mutation testing on
 #      security-critical paths".
 #  13. A tests/fault/ directory exists and contains test files covering
@@ -96,10 +98,11 @@
 #      pytest marker, per .claude/instructions/testing-standards.md
 #      "Performance budget".
 #  15. A packages/agent-auth/benchmarks/ directory contains at least
-#      one test_*.py file AND a scheduled CI workflow
-#      (.github/workflows/benchmark.yml) invokes it on
-#      `on: schedule:`, per .claude/instructions/testing-standards.md
-#      "Benchmark suite".
+#      one test_*.py file AND a scheduled CI workflow path runs it:
+#      `.github/workflows/bench.yml` invokes the suite, and the
+#      parent `.github/workflows/weekly.yml` calls bench.yml on a
+#      `schedule:` trigger, per
+#      .claude/instructions/testing-standards.md "Benchmark suite".
 #  16. .vscode/extensions.json, .vscode/settings.json, and
 #      .vscode/launch.json all exist so a fresh checkout opens with
 #      recommended extensions, formatter-on-save, and debug configs,
@@ -2040,10 +2043,18 @@ fi
 # Mutation testing on security-critical paths.
 # ---------------------------------------------------------------------------
 # .claude/instructions/testing-standards.md (Coverage — "Mutation testing
-# on security-critical paths") requires:
+# on security-critical paths") requires every link in the chain
+# (config → mutation.yml worker → nightly.yml scheduler) to stay
+# wired so the gate cannot silently drift apart:
 #   1. A mutation-testing tool configured in pyproject.toml.
-#   2. A scheduled CI workflow that invokes it.
-#   3. A documented score threshold.
+#   2. .github/workflows/mutation.yml exists and invokes the tool
+#      (`task mutation-test` or `mutmut run`), so deleting the worker
+#      workflow fails the gate.
+#   3. .github/workflows/nightly.yml exists, has an `on: schedule:`
+#      trigger, and calls mutation.yml via
+#      `uses: ./.github/workflows/mutation.yml`, so removing the
+#      cadence (or unwiring mutation from nightly) fails the gate.
+#   4. A documented score threshold.
 #
 # The check is deliberately agnostic between mutmut / cosmic-ray — it
 # only asserts that one of the two config sections exists. The threshold
@@ -2067,29 +2078,65 @@ if threshold is None:
 fi
 rm -f /tmp/verify-standards-mutation.err
 
-# Require at least one workflow file under .github/workflows/ that
-# both has a `schedule:` trigger AND runs `task mutation-test` or calls
-# mutmut directly. Matching on the Taskfile shim keeps us robust if
-# the workflow ever inlines the commands.
-mutation_workflow_found=0
-for wf in .github/workflows/*.yml; do
-  [[ -f "${wf}" ]] || continue
-  if yq eval '.on | has("schedule")' "${wf}" 2>/dev/null | grep -qx true \
-    && grep -qE "task[[:space:]]+mutation-test|mutmut[[:space:]]+run" "${wf}"; then
-    mutation_workflow_found=1
-    mutation_workflow="${wf}"
-    break
-  fi
-done
+mutation_missing=0
 
-if [[ "${mutation_workflow_found}" -eq 0 ]]; then
-  echo "verify-standards: no scheduled workflow invokes the mutation-testing gate." >&2
-  echo "  Add a .github/workflows/*.yml that triggers on 'schedule:' and runs" >&2
-  echo "  'task mutation-test' (or 'mutmut run')." >&2
+fail_mutation_check() {
+  echo "verify-standards: $1" >&2
+  echo "  $2" >&2
+  mutation_missing=1
+}
+
+# Worker workflow `mutation.yml` must exist and invoke the
+# mutation-testing tool. Matching on the Taskfile shim keeps us robust
+# if the workflow ever inlines the commands. The schedule lives on the
+# parent (`nightly.yml`) — see the chain check below.
+mutation_workflow=".github/workflows/mutation.yml"
+if [[ ! -f "${mutation_workflow}" ]]; then
+  fail_mutation_check \
+    "${mutation_workflow} is missing." \
+    "Add a workflow_call worker that runs the mutation gate (called from nightly.yml)."
+else
+  # Strip comments so a disabled sample does not satisfy the gate.
+  mutation_stripped="$(sed -E 's/(^|[[:space:]])#.*$//' "${mutation_workflow}")"
+  if ! grep -qE "task[[:space:]]+mutation-test|mutmut[[:space:]]+run" <<<"${mutation_stripped}"; then
+    fail_mutation_check \
+      "${mutation_workflow} does not invoke the mutation-testing gate." \
+      "Call 'task mutation-test' (or 'mutmut run') in the workflow steps."
+  fi
+fi
+
+# Scheduler workflow `nightly.yml` must exist, trigger on `schedule:`,
+# and call mutation.yml via `uses: ./.github/workflows/mutation.yml`,
+# so removing the cadence (or unwiring mutation from nightly) fails
+# the gate.
+nightly_workflow=".github/workflows/nightly.yml"
+if [[ ! -f "${nightly_workflow}" ]]; then
+  fail_mutation_check \
+    "${nightly_workflow} is missing." \
+    "Add the nightly orchestrator that schedules mutation.yml on a cron trigger."
+else
+  nightly_stripped="$(sed -E 's/(^|[[:space:]])#.*$//' "${nightly_workflow}")"
+  if ! grep -qE "^on:" <<<"${nightly_stripped}"; then
+    fail_mutation_check \
+      "${nightly_workflow} has no 'on:' trigger block." \
+      "Add 'on:' with a 'schedule:' entry."
+  elif ! grep -qE "^[[:space:]]*schedule:" <<<"${nightly_stripped}"; then
+    fail_mutation_check \
+      "${nightly_workflow} does not trigger on 'schedule:'." \
+      "Add a 'schedule:' cron entry inside the 'on:' block."
+  fi
+  if ! grep -qE "uses:[[:space:]]*\./\.github/workflows/mutation\.yml" <<<"${nightly_stripped}"; then
+    fail_mutation_check \
+      "${nightly_workflow} does not call mutation.yml." \
+      "Add a job with 'uses: ./.github/workflows/mutation.yml' so the nightly cron runs the mutation gate."
+  fi
+fi
+
+if [[ "${mutation_missing}" -ne 0 ]]; then
   exit 1
 fi
 
-echo "verify-standards: mutation testing configured ([tool.mutmut] / [tool.mutation_score]) and scheduled via ${mutation_workflow}."
+echo "verify-standards: mutation testing configured ([tool.mutmut] / [tool.mutation_score]); ${mutation_workflow} invokes it, and ${nightly_workflow} schedules it."
 
 # Metrics endpoints per .claude/instructions/service-design.md
 # ("Metrics endpoint") and the deterministic regression check from
@@ -2588,18 +2635,21 @@ echo "verify-standards: notification plugin is URL-based (out-of-process); no im
 # ---------------------------------------------------------------------------
 # .claude/instructions/testing-standards.md (Performance — "Benchmark
 # suite") requires a maintained benchmark suite that runs in CI on a
-# schedule. The deterministic regression check asserts both sides
+# schedule. The deterministic regression check asserts every link in
+# the chain (benchmarks → bench.yml worker → weekly.yml scheduler)
 # cannot silently drift apart:
 #
 #   1. packages/agent-auth/benchmarks/ exists and contains at least
 #      one test_*.py file, so deleting the benchmarks but leaving the
 #      workflow behind fails the gate.
-#   2. .github/workflows/benchmark.yml exists, has an `on:` block
-#      containing a `schedule:` trigger, and its steps invoke either
+#   2. .github/workflows/bench.yml exists and its steps invoke either
 #      `task benchmark` or a direct pytest run against the
-#      packages/agent-auth/benchmarks/ tree, so deleting the workflow
-#      (or accidentally narrowing it to workflow_dispatch-only)
-#      fails the gate.
+#      packages/agent-auth/benchmarks/ tree, so deleting the worker
+#      workflow fails the gate.
+#   3. .github/workflows/weekly.yml exists, has an `on: schedule:`
+#      trigger, and calls bench.yml via `uses: ./.github/workflows/bench.yml`,
+#      so removing the cadence (or unwiring bench from weekly) fails
+#      the gate.
 
 benchmark_missing=0
 
@@ -2625,37 +2675,55 @@ else
   fi
 fi
 
-benchmark_workflow=".github/workflows/benchmark.yml"
-if [[ ! -f "${benchmark_workflow}" ]]; then
+bench_workflow=".github/workflows/bench.yml"
+if [[ ! -f "${bench_workflow}" ]]; then
   fail_benchmark_check \
-    "${benchmark_workflow} is missing." \
-    "Add a scheduled GitHub Actions workflow that runs the benchmark suite."
+    "${bench_workflow} is missing." \
+    "Add a workflow_call worker that runs the benchmark suite (called from weekly.yml)."
 else
-  # Match ``on:`` and ``schedule:`` inside it. Allow either the
-  # short form (``on: [schedule]``) or the mapping form
-  # (``on:\n  schedule:``). Strip comments so a disabled sample
-  # does not satisfy the gate.
-  workflow_stripped="$(sed -E 's/(^|[[:space:]])#.*$//' "${benchmark_workflow}")"
-  if ! grep -qE "^on:" <<<"${workflow_stripped}"; then
-    fail_benchmark_check \
-      "${benchmark_workflow} has no 'on:' trigger block." \
-      "Add 'on:' with a 'schedule:' entry."
-  elif ! grep -qE "^[[:space:]]*schedule:" <<<"${workflow_stripped}"; then
-    fail_benchmark_check \
-      "${benchmark_workflow} does not trigger on 'schedule:'." \
-      "Add a 'schedule:' cron entry inside the 'on:' block."
-  fi
+  # Strip comments so a disabled sample does not satisfy the gate.
+  bench_stripped="$(sed -E 's/(^|[[:space:]])#.*$//' "${bench_workflow}")"
 
-  # The workflow must actually invoke the benchmark suite — accept
+  # The worker must actually invoke the benchmark suite — accept
   # either the ``task benchmark`` wrapper or a raw ``pytest`` against
   # any ``benchmarks/`` path (the tree now lives under
   # packages/agent-auth/, but the suffix match keeps the gate stable
   # if the package name changes later), so the gate does not mandate
   # the Taskfile indirection specifically.
-  if ! grep -qE "task[[:space:]]+benchmark\b|pytest[[:space:]].*benchmarks/" <<<"${workflow_stripped}"; then
+  if ! grep -qE "task[[:space:]]+benchmark\b|pytest[[:space:]].*benchmarks/" <<<"${bench_stripped}"; then
     fail_benchmark_check \
-      "${benchmark_workflow} does not invoke the benchmark suite." \
+      "${bench_workflow} does not invoke the benchmark suite." \
       "Call 'task benchmark' or run pytest against a 'benchmarks/' tree in the workflow steps."
+  fi
+fi
+
+weekly_workflow=".github/workflows/weekly.yml"
+if [[ ! -f "${weekly_workflow}" ]]; then
+  fail_benchmark_check \
+    "${weekly_workflow} is missing." \
+    "Add the weekly orchestrator that schedules bench.yml on a cron trigger."
+else
+  # Match ``on:`` and ``schedule:`` inside it. Allow either the
+  # short form (``on: [schedule]``) or the mapping form
+  # (``on:\n  schedule:``). Strip comments so a disabled sample
+  # does not satisfy the gate.
+  weekly_stripped="$(sed -E 's/(^|[[:space:]])#.*$//' "${weekly_workflow}")"
+  if ! grep -qE "^on:" <<<"${weekly_stripped}"; then
+    fail_benchmark_check \
+      "${weekly_workflow} has no 'on:' trigger block." \
+      "Add 'on:' with a 'schedule:' entry."
+  elif ! grep -qE "^[[:space:]]*schedule:" <<<"${weekly_stripped}"; then
+    fail_benchmark_check \
+      "${weekly_workflow} does not trigger on 'schedule:'." \
+      "Add a 'schedule:' cron entry inside the 'on:' block."
+  fi
+
+  # weekly.yml must wire bench.yml as a workflow_call child so the
+  # cadence on weekly actually drives the bench worker.
+  if ! grep -qE "uses:[[:space:]]*\./\.github/workflows/bench\.yml" <<<"${weekly_stripped}"; then
+    fail_benchmark_check \
+      "${weekly_workflow} does not call bench.yml." \
+      "Add a job with 'uses: ./.github/workflows/bench.yml' so the weekly cron runs the benchmark suite."
   fi
 fi
 
@@ -2663,7 +2731,7 @@ if [[ ${benchmark_missing} -ne 0 ]]; then
   exit 1
 fi
 
-echo "verify-standards: benchmark suite exists under ${benchmarks_dir}/ and ${benchmark_workflow} runs it on a schedule."
+echo "verify-standards: benchmark suite exists under ${benchmarks_dir}/, ${bench_workflow} invokes it, and ${weekly_workflow} schedules it."
 
 # ---------------------------------------------------------------------------
 # VS Code project scaffolding.

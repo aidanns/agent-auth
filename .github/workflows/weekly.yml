@@ -6,11 +6,18 @@ name: Weekly
 
 # Orchestrator shell for weekly-cadence checks (OSSF Scorecard, bench)
 # under the uv-style nested workflow_call CI structure (issue #440).
-# OSSF Scorecard migrates underneath this orchestrator via the
-# `open-ssf-scorecard` child below (#458); bench follows in a later
-# issue. Triggers on a 05:00 UTC Sunday cron so weekly results land
-# early in the week, and on workflow_dispatch so a maintainer can
-# trigger an on-demand run.
+# Triggers on a 05:00 UTC Sunday cron so weekly results land early in
+# the week, and on workflow_dispatch so a maintainer can trigger an
+# on-demand run (e.g. when refreshing the bench baseline). The
+# `required-checks-passed` aggregator's `needs:` list grows with each
+# child as migrations land.
+#
+# Sunday 05:00 UTC is also offset from the Mutation workflow's Mon
+# 04:00 UTC slot to avoid sharing a runner window on a single queue
+# day. Since this header now governs the cadence for every weekly
+# child (bench, Scorecard), preserve that cross-workflow scheduling
+# constraint here so a future maintainer doesn't move the cron without
+# noticing the Mutation collision risk.
 #
 # Strategy C (#440 Phase 5): the standalone `scorecard.yml` keeps
 # running in parallel until a sweep PR retires it. This orchestrator
@@ -29,10 +36,20 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
+# Permissions union over every child called below. The `bench` child
+# only needs `contents: read` (checkout + upload-artifact); the
+# `open-ssf-scorecard` child widens this with `security-events: write`,
+# `id-token: write`, and `actions: read` for SARIF upload, signed
+# publication, and the Token-Permissions check respectively. Future
+# children will widen this block at minimum-privilege.
 permissions:
   contents: read
 
 jobs:
+  bench:
+    name: Bench
+    uses: ./.github/workflows/bench.yml
+
   open-ssf-scorecard:
     # OpenSSF Scorecard child workflow (#458). The child holds the
     # full publish + gate split; this slot in `weekly.yml` only wires
@@ -56,16 +73,12 @@ jobs:
     uses: ./.github/workflows/open-ssf-scorecard.yml
 
   required-checks-passed:
-    # Repo-wide aggregator for the weekly cadence (#440 "Decisions
-    # (locked in)"). Subsequent migration issues (e.g. bench) will
-    # add each `workflow_call` child workflow's job name to `needs:`
-    # here. `if: always()` + the `needs.*.result` JSON walk lets the
-    # aggregator distinguish `success` from
-    # `failure`/`cancelled`/`skipped`/`timed_out` — `skipped` is
-    # treated as a failure alongside the others, matching the
-    # `ci.yml` aggregator pattern (issue #441).
+    # Mirrors the forward-looking aggregator pattern in `ci.yml`: a
+    # single status check that consolidates every child's result.
+    # Subsequent migration issues add each new `workflow_call` child's
+    # job name to `needs:` here.
     name: Required checks passed
-    needs: [open-ssf-scorecard]
+    needs: [bench, open-ssf-scorecard]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -75,7 +88,13 @@ jobs:
         # quotes would otherwise break the inline expansion. `jq -e`
         # exits non-zero on a `false` boolean, so the step fails
         # whenever any upstream `needs.*.result` is anything other
-        # than `success`.
+        # than `success`. Per issue #441 ("fails on any
+        # failed/skipped/timed-out result"), `skipped` is treated as
+        # a failure alongside `failure`, `cancelled`, and `timed_out`
+        # — a child workflow that legitimately opts out via `if:`
+        # will need to surface a `success` result (e.g. via a
+        # short-circuit step) rather than skipping the job
+        # altogether.
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
