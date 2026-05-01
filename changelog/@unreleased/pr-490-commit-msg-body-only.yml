@@ -5,7 +5,7 @@
 type: improvement
 improvement:
   description: |
-    `==COMMIT_MSG==` block convention narrows to body and trailers only — the squash commit subject now comes solely from the PR title (rendered into the merge API's `commit_title`), so a leading subject line in the block no longer renders twice on `main`. The validator rejects a body whose first non-blank line looks like a Conventional-Commit subject.
+    `==COMMIT_MSG==` block convention narrows to body and trailers only; the squash subject now comes solely from the PR title.
   links:
     - https://github.com/aidanns/agent-auth/issues/478
     - https://github.com/aidanns/agent-auth/pull/490
