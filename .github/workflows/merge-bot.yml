@@ -496,7 +496,15 @@ jobs:
 
           echo "merge-bot: required-check contexts source = ${source}"
           echo "merge-bot: required-check contexts ="
-          printf '  %s\n' ${contexts:-(none)}
+          if [[ -z "${contexts}" ]]; then
+            echo "  (none)"
+          else
+            # `${contexts}` is a newline-separated list; indent each
+            # line for log readability. Avoids word-splitting on
+            # whitespace because context names can contain spaces
+            # (e.g. "Required checks passed").
+            printf '%s\n' "${contexts}" | awk 'NF { print "  " $0 }'
+          fi
 
           {
             echo "source=${source}"
