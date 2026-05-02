@@ -107,10 +107,7 @@ on:
   #   - Release Tag (only fires on PR `closed`, well after merge).
   workflow_run:
     workflows:
-      - Test
-      - Check
-      - Typecheck
-      - CodeQL
+      - CI
       - PR Lint
       - DCO
       - Changelog Lint
