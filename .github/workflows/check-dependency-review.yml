@@ -27,6 +27,21 @@ name: Check Dependency Review
 # each.
 on:
   workflow_call:
+    inputs:
+      # Centralised event-kind gate from `ci.yml`'s `plan` job
+      # (issue #530). `actions/dependency-review-action` only supports
+      # `pull_request`, `pull_request_target`, and `merge_group` — on
+      # `push` / `workflow_dispatch` it has no base/head pair to scan
+      # and exits non-zero. Gate the steps (not the whole job) so the
+      # job's result stays `success` and `check-security.yml`'s
+      # `Required checks passed` aggregator (which rejects `skipped`)
+      # stays green.
+      event_has_diff_base_head:
+        description: >-
+          True iff the originating event carries a base/head diff
+          (`pull_request`, `pull_request_target`, `merge_group`).
+        required: true
+        type: boolean
 
 permissions:
   # Read-only access to the Dependency Graph diff — this is the scanner input.
@@ -40,11 +55,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - if: ${{ inputs.event_has_diff_base_head }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
 
       - name: dependency-check
+        if: ${{ inputs.event_has_diff_base_head }}
         uses: actions/dependency-review-action@v4
         with:
           # HIGH/CRITICAL is the industry-standard gating bar and matches

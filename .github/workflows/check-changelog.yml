@@ -39,6 +39,19 @@ name: Check Changelog
 # inspect.
 on:
   workflow_call:
+    inputs:
+      # Centralised event-kind gate from `ci.yml`'s `plan` job
+      # (issue #530). The `exists` and `format` jobs both need PR
+      # context (the diff and labels) and short-circuit on non-PR
+      # events. The release-PR head-ref skip below is retained
+      # alongside this gate — it's a content-specific changelog rule
+      # rather than event-kind policy and stays local.
+      event_is_pull_request:
+        description: >-
+          True iff the originating event is a pull_request (the
+          changelog checks need PR diff + labels).
+        required: true
+        type: boolean
 
 permissions:
   contents: read
@@ -65,9 +78,10 @@ jobs:
         id: skip
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          EVENT_IS_PULL_REQUEST: ${{ inputs.event_is_pull_request }}
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+          if [[ "${EVENT_IS_PULL_REQUEST}" != "true" ]]; then
             echo "no PR context — skipping changelog presence check"
             echo "skip=true" >> "${GITHUB_OUTPUT}"
             exit 0
@@ -129,9 +143,10 @@ jobs:
         id: skip
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          EVENT_IS_PULL_REQUEST: ${{ inputs.event_is_pull_request }}
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+          if [[ "${EVENT_IS_PULL_REQUEST}" != "true" ]]; then
             echo "no PR context — skipping changelog format check"
             echo "skip=true" >> "${GITHUB_OUTPUT}"
             exit 0

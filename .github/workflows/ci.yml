@@ -79,6 +79,9 @@ jobs:
       docs_changed: ${{ steps.filter.outputs.docs }}
       design_changed: ${{ steps.filter.outputs.design }}
       workflows_changed: ${{ steps.filter.outputs.workflows }}
+      event_is_pull_request: ${{ steps.event.outputs.event_is_pull_request }}
+      event_has_diff_base_head: ${{ steps.event.outputs.event_has_diff_base_head }}
+      event_from_external_repo: ${{ steps.event.outputs.event_from_external_repo }}
       # Verified-prior-success flag (issue #527 / Option 4). `true`
       # only on `labeled` / `unlabeled` events whose head SHA already
       # has a non-failing conclusion for every diff-dependent child
@@ -91,6 +94,56 @@ jobs:
       diff_dependent_jobs_already_passed: ${{ steps.prior.outputs.diff_dependent_jobs_already_passed }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Compute event-kind gating booleans
+        id: event
+        # Centralise the event-kind decisions that downstream child
+        # workflows need to gate steps on (issue #530), so individual
+        # children don't replicate `github.event_name` /
+        # `head.repo.full_name` checks. Three booleans because the
+        # downstream gates are not identical:
+        #   - `event_is_pull_request`: PR-only context (changelog
+        #     presence/format depend on the PR diff and PR labels).
+        #   - `event_has_diff_base_head`: events that carry a base/head
+        #     diff (`pull_request`, `pull_request_target`, `merge_group`)
+        #     — required by `actions/dependency-review-action`.
+        #   - `event_from_external_repo`: PR from a fork. Used by checks
+        #     whose write-token POSTs would 403 under the read-only
+        #     fork-PR `GITHUB_TOKEN` (dependency-submission).
+        # User-controlled metadata (`head.repo.full_name`) is routed
+        # through env vars rather than inlined `${{ ... }}` expressions
+        # inside `run:` so a maliciously-named fork repository cannot
+        # inject shell syntax — same convention as the
+        # `Compute label-driven gating booleans` step above.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REPO_FULL_NAME: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            event_is_pull_request=true
+          else
+            event_is_pull_request=false
+          fi
+          if [[ "${EVENT_NAME}" == "pull_request" \
+              || "${EVENT_NAME}" == "pull_request_target" \
+              || "${EVENT_NAME}" == "merge_group" ]]; then
+            event_has_diff_base_head=true
+          else
+            event_has_diff_base_head=false
+          fi
+          if [[ "${EVENT_NAME}" == "pull_request" \
+              && "${HEAD_REPO_FULL_NAME}" != "${REPOSITORY}" ]]; then
+            event_from_external_repo=true
+          else
+            event_from_external_repo=false
+          fi
+          {
+            echo "event_is_pull_request=${event_is_pull_request}"
+            echo "event_has_diff_base_head=${event_has_diff_base_head}"
+            echo "event_from_external_repo=${event_from_external_repo}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Compute label-driven gating booleans
         id: labels
@@ -252,6 +305,9 @@ jobs:
     # Diff-dependent — see `check-fmt` above for the gate contract.
     if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/check-security.yml
+    with:
+      event_has_diff_base_head: ${{ needs.plan.outputs.event_has_diff_base_head == 'true' }}
+      event_from_external_repo: ${{ needs.plan.outputs.event_from_external_repo == 'true' }}
     permissions:
       # Granted to the `check-security.yml` chain. workflow_call
       # permissions are intersected at every layer — the parent must
@@ -411,6 +467,8 @@ jobs:
     name: check-changelog
     needs: [plan]
     uses: ./.github/workflows/check-changelog.yml
+    with:
+      event_is_pull_request: ${{ needs.plan.outputs.event_is_pull_request == 'true' }}
 
   required-checks-passed:
     # Repo-wide aggregator (#440 "Decisions (locked in)"): a single
