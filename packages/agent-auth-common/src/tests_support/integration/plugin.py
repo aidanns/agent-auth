@@ -100,12 +100,17 @@ AGENT_AUTH_INTERNAL_PORT = 9100
 # ``stop_grace_period: 5s`` per service; with SIGTERM handlers wired
 # across all three (agent-auth + things-bridge from #154, notifier
 # from #294) every container exits cleanly in well under a second, so
-# a healthy teardown + docker overhead lands at ~1-2 s. The 3 s budget
-# absorbs slow-CI noise without being so loose it would have hidden
-# the original #288 regression (~30 s) or the #294 ceiling (~6 s).
-# Wired into the integration plugin's fixture teardowns and asserted
-# in ``pytest_sessionfinish`` below.
-COMPOSE_STOP_BUDGET_SECONDS = 3.0
+# a healthy teardown + docker overhead lands at ~1-2 s. Hosted GitHub
+# Actions runners can push that into the 5-8 s range under normal
+# noise (e.g. 7.87 s observed on the run of 0e18211 to main, #545),
+# which is jitter rather than a real teardown regression. The gate's
+# job is to flag tens-of-seconds-class regressions like the original
+# #288 case (~30 s); single-second runner jitter is not the target.
+# 10 s leaves the #288 case clearly detectable while absorbing
+# observed CI variance — the #294 ~6 s ceiling now sits comfortably
+# under the budget. Wired into the integration plugin's fixture
+# teardowns and asserted in ``pytest_sessionfinish`` below.
+COMPOSE_STOP_BUDGET_SECONDS = 10.0
 
 
 @dataclass
