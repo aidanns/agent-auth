@@ -12,7 +12,7 @@ How the engineering skills should consume this repo's domain documentation when 
 
 - **`CONTEXT.md`** at the repo root — domain glossary.
 - **`design/decisions/`** — ADRs that touch the area you're about to work in. ADRs live at `design/decisions/`, not the default `docs/adr/`.
-- **`design/`** — broader documentation: `DESIGN.md` (architecture), `THINGS.md` (Things 3 integration), `functional_decomposition.*`, `product_breakdown.*`, and assurance docs (`ASSURANCE.md`, `ASVS.md`, `SSDF.md`, `SELF_ASSESSMENT.md`). Consult when the topic is broader than a single ADR.
+- **`design/`** — broader documentation: `DESIGN.md` (architecture), `THINGS.md` (Things 3 AppleScript API reference — third-party surface, not this project's integration architecture; for the integration see `DESIGN.md` and ADR-0013), `functional_decomposition.*`, `product_breakdown.*`, and assurance docs (`ASSURANCE.md`, `ASVS.md`, `SSDF.md`, `SELF_ASSESSMENT.md`). Consult when the topic is broader than a single ADR.
 
 The canonical layout of `design/` is documented in `.claude/instructions/design.md`.
 

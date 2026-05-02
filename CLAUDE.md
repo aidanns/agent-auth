@@ -173,4 +173,4 @@ Canonical vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-fo
 
 ### Domain docs
 
-Single-context — `CONTEXT.md` at the repo root, ADRs at `design/decisions/` (non-default path). See `docs/agents/domain.md`.
+Glossary at `CONTEXT.md` (repo root); ADRs at `design/decisions/` (non-default path — i.e. not the `docs/adr/` location the engineering skills default to). See `docs/agents/domain.md`.
