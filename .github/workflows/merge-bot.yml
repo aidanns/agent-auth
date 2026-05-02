@@ -110,11 +110,18 @@ name: Merge Bot
 #
 # A separate `label-needs-fix` job (see below) listens on the same
 # `workflow_run: completed` trigger regardless of conclusion and
-# applies / removes the `needs fix` label on the PR head's rollup
-# state, so a known-failing automerge PR is parked out of the
-# sweep eligibility filter until CI returns to green. This
-# replaced the comment-marker-anchored auto-update loop guard the
-# bot used to run before #503.
+# applies / removes the `needs fix` label on the PR head's
+# *required-check* subset of the rollup, so a known-failing
+# automerge PR is parked out of the sweep eligibility filter until
+# CI returns to green. The required-check subset and the FAILURE
+# classifier (only `FAILURE` / `state == FAILURE | ERROR`) are
+# intentionally narrow: `CANCELLED | STARTUP_FAILURE |
+# ACTION_REQUIRED | TIMED_OUT` are no-ops because none correspond
+# to a problem with the PR author's commit. The previous broader
+# rollup classifier flapped `needs fix` on superseded CI runs
+# during rapid-push bursts (issue #536). This replaced the
+# comment-marker-anchored auto-update loop guard the bot used to
+# run before #503.
 
 on:
   pull_request:
@@ -410,121 +417,18 @@ jobs:
       # set from this rather than encoding a static "any failure
       # blocks" rule, so adding / removing required checks is a
       # branch-protection edit rather than a bot-workflow edit. See
-      # issue #528.
-      #
-      # Two API surfaces, queried in priority order:
-      #   1. The modern rulesets API — `GET /repos/.../rulesets`
-      #      lists rulesets, each detail call returns the
-      #      `required_status_checks` rule's contexts. We filter to
-      #      `target == "branch"` and `enforcement == "active"` so
-      #      disabled / evaluation-mode rulesets and tag rulesets
-      #      don't pollute the contexts list.
-      #   2. The legacy `GET /repos/.../branches/{branch}/protection`
-      #      endpoint — fallback for repos that pre-date rulesets.
-      #
-      # If the rulesets API returns rulesets but extraction yields
-      # zero contexts, we still try the legacy fallback before giving
-      # up — a ruleset with `required_status_checks: false` should
-      # not silently zero out the gating set.
-      #
-      # The `source` output records which path was used so the next
-      # step can fail-closed when neither path produced contexts —
-      # an empty contexts list under the new design would otherwise
-      # let the bot merge with NO required-check verification at all.
-      # That is the wrong fail mode (fail-open); branch protection
-      # being unreachable should refuse the merge with a clear
-      # comment so the maintainer investigates the App permission /
-      # API outage.
-      #
-      # Permissions: the rulesets endpoint requires the calling App
-      # installation to have `Administration: read`; the legacy
-      # endpoint requires the same scope. See
-      # docs/release/merge-bot-setup.md Step 1.
+      # issue #528. Implementation lives in the
+      # `read-required-contexts` composite action so the
+      # `label-needs-fix` job below can share the same gating set
+      # without duplicating the rulesets / legacy-API plumbing.
+      # See issue #536.
       - name: Read required-check contexts from branch protection
         id: required
         if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.meta.outputs.state == 'OPEN' && steps.meta.outputs.has_automerge_label == 'true'
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          # `gh pr view --json baseRefName` returns the PR's target
-          # branch (typically `main`). Refetch here rather than wiring
-          # it through the earlier `meta` step so the dependency on
-          # the base branch is co-located with the step that uses it.
-          PR_NUMBER: ${{ steps.pr.outputs.pr }}
-        run: |
-          set -euo pipefail
-          base_ref="$(gh pr view "${PR_NUMBER}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --json baseRefName \
-            --jq '.baseRefName')"
-          echo "merge-bot: PR base branch = ${base_ref}"
-
-          # Step 1 — modern rulesets API. List active branch-targeted
-          # rulesets, then per-ruleset detail call extracts the
-          # required-status-checks contexts. The `--jq` filter on the
-          # detail call walks the full rule tree (`.. | objects`)
-          # because the schema may evolve; selecting on
-          # `type == "required_status_checks"` is shape-stable.
-          contexts=""
-          ruleset_ids="$(gh api \
-            "repos/${GITHUB_REPOSITORY}/rulesets" \
-            --paginate \
-            --jq '.[] | select(.target == "branch" and .enforcement == "active") | .id' \
-            2>/dev/null || true)"
-          if [[ -n "${ruleset_ids}" ]]; then
-            while IFS= read -r id; do
-              [[ -z "${id}" ]] && continue
-              detail="$(gh api "repos/${GITHUB_REPOSITORY}/rulesets/${id}" 2>/dev/null || true)"
-              if [[ -z "${detail}" ]]; then
-                echo "::warning::Could not fetch ruleset #${id}; skipping."
-                continue
-              fi
-              ruleset_ctx="$(jq -r '
-                .. | objects
-                | select(.type? == "required_status_checks")
-                | .parameters.required_status_checks[]?.context
-              ' <<<"${detail}" || true)"
-              if [[ -n "${ruleset_ctx}" ]]; then
-                contexts+="${ruleset_ctx}"$'\n'
-              fi
-            done <<<"${ruleset_ids}"
-          fi
-          # Dedupe and strip blank lines.
-          contexts="$(printf '%s' "${contexts}" | awk 'NF' | sort -u)"
-
-          source="rulesets"
-          if [[ -z "${contexts}" ]]; then
-            # Step 2 — legacy fallback. The pre-rulesets API still
-            # works on repos that have only classic branch protection.
-            source="branch_protection"
-            contexts="$(gh api \
-              "repos/${GITHUB_REPOSITORY}/branches/${base_ref}/protection" \
-              --jq '.required_status_checks.contexts[]?' \
-              2>/dev/null | awk 'NF' | sort -u || true)"
-          fi
-
-          if [[ -z "${contexts}" ]]; then
-            source="empty"
-            echo "::warning::No required-check contexts found via rulesets or legacy branch-protection API. The next step will fail-closed."
-          fi
-
-          echo "merge-bot: required-check contexts source = ${source}"
-          echo "merge-bot: required-check contexts ="
-          if [[ -z "${contexts}" ]]; then
-            echo "  (none)"
-          else
-            # `${contexts}` is a newline-separated list; indent each
-            # line for log readability. Avoids word-splitting on
-            # whitespace because context names can contain spaces
-            # (e.g. "Required checks passed").
-            printf '%s\n' "${contexts}" | awk 'NF { print "  " $0 }'
-          fi
-
-          {
-            echo "source=${source}"
-            echo "contexts<<MERGE_BOT_EOF"
-            printf '%s\n' "${contexts}"
-            echo "MERGE_BOT_EOF"
-          } >> "${GITHUB_OUTPUT}"
+        uses: ./.github/actions/read-required-contexts
+        with:
+          pr-number: ${{ steps.pr.outputs.pr }}
+          github-token: ${{ steps.app-token.outputs.token }}
 
       # Inspect required-check status. We iterate ONLY the contexts
       # produced by `Read required-check contexts from branch
@@ -990,25 +894,45 @@ jobs:
   # `needs fix` label management. On every `workflow_run.completed`
   # for a watched PR-gating workflow (regardless of upstream
   # conclusion), look up the PR carrying the upstream run's head
-  # SHA and the `automerge` label, inspect the PR's overall
-  # `statusCheckRollup`, and:
-  #   - apply `needs fix` if the rollup conclusion is FAILURE,
-  #   - remove `needs fix` if the rollup conclusion is SUCCESS,
-  #   - no-op while checks are still pending or the PR is not in
-  #     the automerge set.
+  # SHA and the `automerge` label, inspect the PR's required-check
+  # subset of the `statusCheckRollup`, and:
+  #   - apply `needs fix` if any required-check context is failing
+  #     (FAILURE / state == FAILURE / state == ERROR),
+  #   - remove `needs fix` if every required-check context is
+  #     satisfied (success / neutral / skipped),
+  #   - no-op for any other state — pending, missing, CANCELLED,
+  #     STARTUP_FAILURE, ACTION_REQUIRED, TIMED_OUT, or the PR is
+  #     not in the automerge set.
   # The `needs fix` label is the sweep eligibility signal (see
   # #498) — a parked PR stops consuming sweep slots until a fresh
   # commit (typically a user fix) drives CI back to green and the
-  # label is auto-cleared. This replaces the comment-marker-anchored
+  # label is auto-cleared. This replaced the comment-marker-anchored
   # auto-update loop guard the bot used to run before #503.
+  #
+  # Required-check narrowing (issue #536): both the contexts set
+  # (mirroring branch protection — same source as the `merge` job
+  # via the `read-required-contexts` composite action) and the
+  # FAILURE classifier (only `FAILURE` / `state == FAILURE | ERROR`
+  # — not `CANCELLED | STARTUP_FAILURE | ACTION_REQUIRED |
+  # TIMED_OUT`, none of which are author-actionable on a green
+  # final-head PR) are intentionally narrow. The previous broader
+  # classifier flapped `needs fix` on superseded CI runs during
+  # rapid-push bursts (e.g. PR #535 on 2026-05-02), producing
+  # noisy timeline events without ever surfacing a real PR-author
+  # problem.
   #
   # The `label-needs-fix` job runs *only* on the `workflow_run`
   # trigger so unrelated triggers (`pull_request: labeled`,
   # `pull_request_review`, `push:main`, `workflow_dispatch`) skip
-  # it. Uses the default `GITHUB_TOKEN` (not the App token):
-  # `pull-requests: write` (already granted at the workflow level)
-  # is sufficient for label edits. The PR resolution by head-SHA
-  # mirrors the `merge` job's `Resolve target PR` step.
+  # it. Uses the merge-bot App token (not the default
+  # `GITHUB_TOKEN`) because the `read-required-contexts` composite
+  # action calls `GET /repos/.../rulesets`, which requires
+  # `Administration: read` — a scope the default token does not
+  # carry. The token-mint here is the same shape as the `merge`
+  # job's; sharing it via `needs:` would force this job to wait
+  # for the (longer) merge job and drop concurrency benefits.
+  # PR resolution by head-SHA mirrors the `merge` job's
+  # `Resolve target PR` step.
   label-needs-fix:
     name: Apply / remove "needs fix" label on workflow_run completion
     runs-on: ubuntu-latest
@@ -1024,9 +948,56 @@ jobs:
       group: merge-bot-label-needs-fix-${{ github.event.workflow_run.head_sha }}
       cancel-in-progress: true
     steps:
-      - name: Resolve PR + rollup conclusion and edit label
+      # Same secrets-check shape as the `merge` job above — first-
+      # time setup / partial-config detection. The full rationale
+      # lives in that job's comment block; not duplicated here.
+      - name: Check secrets are configured
+        id: secrets-check
         env:
-          GH_TOKEN: ${{ github.token }}
+          APP_ID: ${{ secrets.MERGE_BOT_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APP_ID:-}" && -z "${PRIVATE_KEY:-}" ]]; then
+            echo "::notice::MERGE_BOT_APP_ID / MERGE_BOT_PRIVATE_KEY secrets are not set; skipping label-needs-fix run."
+            echo "::notice::See docs/release/merge-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+          elif [[ -n "${APP_ID:-}" && -n "${PRIVATE_KEY:-}" ]]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          else
+            if [[ -z "${APP_ID:-}" ]]; then
+              missing="MERGE_BOT_APP_ID"
+            else
+              missing="MERGE_BOT_PRIVATE_KEY"
+            fi
+            echo "::error::${missing} secret is not set but the other merge-bot secret is; this is a partial / broken configuration."
+            echo "::error::See docs/release/merge-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            exit 1
+          fi
+
+      # The `read-required-contexts` composite action calls
+      # `GET /repos/.../rulesets`, which requires the App
+      # installation's `Administration: read` permission. The
+      # default `GITHUB_TOKEN` does not carry that scope, so we
+      # mint the App token here even though the label edit itself
+      # only needs `pull-requests: write` (already granted at the
+      # workflow level via the default token).
+      - name: Mint merge-bot App token
+        id: app-token
+        if: steps.secrets-check.outputs.configured == 'true'
+        # Pinned by SHA per .claude/instructions/tooling-and-ci.md
+        # — same pin policy as the `merge` job above.
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.MERGE_BOT_APP_ID }}
+          private-key: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
+
+      - name: Resolve target PR
+        id: pr
+        if: steps.secrets-check.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           # `workflow_run` on a fork PR carries the contributor's
           # head SHA; `gh pr list --search <SHA>` still resolves to
           # the same-repo PR row that owns it. Same shape as the
@@ -1043,77 +1014,155 @@ jobs:
             --jq '.[0].number // empty')"
           if [[ -z "${pr}" ]]; then
             echo "merge-bot label-needs-fix: no automerge-labeled PR for head sha ${WORKFLOW_RUN_HEAD_SHA}; nothing to do."
-            exit 0
+            echo "pr=" >> "${GITHUB_OUTPUT}"
+          else
+            echo "pr=${pr}" >> "${GITHUB_OUTPUT}"
           fi
-          # Aggregate the PR's `statusCheckRollup` into a single
-          # rollup conclusion: FAILURE if any non-bot check is
-          # FAILURE / TIMED_OUT / CANCELLED / STARTUP_FAILURE /
-          # ACTION_REQUIRED (or legacy state FAILURE / ERROR);
-          # PENDING if any non-bot check is still
-          # QUEUED / IN_PROGRESS / WAITING / PENDING / REQUESTED;
-          # SUCCESS otherwise. Filters out the bot's own check-runs
-          # (workflowName == "Merge Bot") and dedupes by latest run
-          # per name, mirroring the `merge` job's required-check
-          # inspection so the two jobs read the rollup the same way.
-          rollup_payload="$(gh pr view "${pr}" \
+
+      - name: Exit early if no target PR
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr == ''
+        run: |
+          echo "merge-bot label-needs-fix: no PR to act on; exiting cleanly."
+          exit 0
+
+      # `uses: ./.github/actions/...` requires the repo to be
+      # checked out so the action.yml is on disk. Pin to `main`
+      # for the same defence-in-depth reason the `merge` job uses
+      # (a contributor cannot ship a malicious composite action in
+      # the same PR they want labeled — the head ref carries
+      # contributor changes; checking out the head would make the
+      # action self-mutable).
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != ''
+        with:
+          ref: main
+
+      # Same composite action the `merge` job uses, so the two
+      # jobs gate on the identical contexts set. Issue #536 — the
+      # previous label-needs-fix classifier evaluated the FULL
+      # `statusCheckRollup` (any non-required failure flipped the
+      # label); narrowing to required-only matches the merge gate
+      # and removes the false-positive surface for unrelated
+      # check-runs.
+      - name: Read required-check contexts from branch protection
+        id: required
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != ''
+        uses: ./.github/actions/read-required-contexts
+        with:
+          pr-number: ${{ steps.pr.outputs.pr }}
+          github-token: ${{ steps.app-token.outputs.token }}
+
+      - name: Classify required checks and edit "needs fix" label
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          REQUIRED_SOURCE: ${{ steps.required.outputs.source }}
+          REQUIRED_CONTEXTS: ${{ steps.required.outputs.contexts }}
+        run: |
+          set -euo pipefail
+          # Fail-closed if branch protection is unreachable. Same
+          # rationale as the `merge` job's `Inspect required checks`
+          # step — an empty contexts list under the derived-from-
+          # config design would otherwise let this job apply or
+          # remove `needs fix` based on an empty required set,
+          # silently bypassing the gating signal.
+          if [[ "${REQUIRED_SOURCE}" == "empty" ]]; then
+            echo "::error::PR #${PR_NUMBER}: could not read required-check contexts from branch protection (rulesets and legacy branch-protection APIs both returned empty). The merge-bot App installation likely needs the 'Administration: read' permission, or no branch protection is configured. See docs/release/merge-bot-setup.md."
+            exit 1
+          fi
+
+          # Iterate ONLY the required-context list, mirroring the
+          # `merge` job's `Inspect required checks` step. Per-context:
+          # take the latest run by `startedAt` so a retried check
+          # reads its current status rather than its first-ever
+          # outcome. Then classify per the issue #536 Decisions:
+          #   - success / neutral / skipped → satisfied.
+          #   - empty / null / missing / in_progress / queued /
+          #     waiting / pending / requested → still pending; no
+          #     label change.
+          #   - cancelled / startup_failure / action_required /
+          #     timed_out → no-op (NOT failure; these conclusions
+          #     are not author-actionable — see issue #536's
+          #     observed-on-PR-#535 scenario where rapid pushes
+          #     produced CANCELLED runs that flapped the label).
+          #   - failure (or state == failure / error) → failing.
+          # `workflowName != "Merge Bot"` filtering is retained as
+          # defensive depth (same as the `merge` job).
+          rollup_payload="$(gh pr view "${PR_NUMBER}" \
             --repo "${GITHUB_REPOSITORY}" \
             --json statusCheckRollup \
             --jq '.statusCheckRollup')"
-          rollup="$(jq -r '
-            map(select((.workflowName // "") != "Merge Bot"))
-            | group_by(.name // .context // "<unnamed>")
-            | map(max_by(.startedAt // ""))
-            | (
-              if any(.[];
-                ((.conclusion // "") | ascii_upcase | IN("FAILURE","TIMED_OUT","CANCELLED","STARTUP_FAILURE","ACTION_REQUIRED"))
-                or ((.state // "") | ascii_upcase | IN("FAILURE","ERROR"))
-              ) then "FAILURE"
-              elif any(.[];
-                ((.conclusion // "") == ""
-                  and ((.status // "") | ascii_upcase | IN("QUEUED","IN_PROGRESS","WAITING","PENDING","REQUESTED")))
-                or ((.state // "") | ascii_upcase == "PENDING")
-              ) then "PENDING"
-              else "SUCCESS"
-              end
-            )
-          ' <<<"${rollup_payload}")"
-          echo "merge-bot label-needs-fix: PR #${pr} rollup=${rollup}"
+
+          fail=""
+          while IFS= read -r ctx; do
+            [[ -z "${ctx}" ]] && continue
+            latest="$(jq -r --arg n "${ctx}" '
+              [.[] | select((.workflowName // "") != "Merge Bot")
+                   | select((.name // .context // "") == $n)]
+              | sort_by(.startedAt // "")
+              | (.[-1] // {})
+              | (.conclusion // .state // "missing")
+              | ascii_downcase
+            ' <<<"${rollup_payload}")"
+            case "${latest}" in
+              success|neutral|skipped)
+                ;;
+              ""|null|missing|in_progress|queued|waiting|pending|requested)
+                # Pending — leaves the existing label state
+                # untouched. The next workflow_run.completed will
+                # re-evaluate once the check finishes.
+                ;;
+              cancelled|startup_failure|action_required|timed_out)
+                # Not author-actionable — no label change. See
+                # issue #536 Decisions: these conclusions are
+                # produced by infra / superseded-run scenarios and
+                # do not indicate a problem with the PR head.
+                echo "merge-bot label-needs-fix: PR #${PR_NUMBER} required context '${ctx}' is ${latest} — treating as no-op."
+                ;;
+              failure|error)
+                fail+="${ctx}"$'\n'
+                ;;
+              *)
+                # Unknown status — log and treat as no-op so a
+                # GitHub schema addition we haven't classified
+                # cannot accidentally flap the label.
+                echo "merge-bot label-needs-fix: PR #${PR_NUMBER} required context '${ctx}' has unknown status '${latest}' — treating as no-op."
+                ;;
+            esac
+          done <<<"${REQUIRED_CONTEXTS}"
+
+          fail="$(printf '%s' "${fail}" | awk 'NF')"
+
           # Read the current label set once so we know whether the
-          # remove call would be a no-op (avoids a noisy 404 in the
-          # log when `needs fix` isn't applied).
-          has_needs_fix="$(gh pr view "${pr}" \
+          # apply / remove call would be a no-op (avoids a noisy
+          # 404 in the log when `needs fix` isn't applied, and
+          # avoids redundant timeline events on no-op transitions).
+          has_needs_fix="$(gh pr view "${PR_NUMBER}" \
             --repo "${GITHUB_REPOSITORY}" \
             --json labels \
             --jq '[.labels[].name] | index("needs fix") != null')"
-          case "${rollup}" in
-            FAILURE)
-              if [[ "${has_needs_fix}" == "true" ]]; then
-                echo "merge-bot label-needs-fix: PR #${pr} already carries 'needs fix'; nothing to do."
-              else
-                gh pr edit "${pr}" \
-                  --repo "${GITHUB_REPOSITORY}" \
-                  --add-label "needs fix"
-                echo "::notice::PR #${pr}: applied 'needs fix' label (CI rollup=FAILURE)."
-              fi
-              ;;
-            SUCCESS)
-              if [[ "${has_needs_fix}" == "true" ]]; then
-                gh pr edit "${pr}" \
-                  --repo "${GITHUB_REPOSITORY}" \
-                  --remove-label "needs fix"
-                echo "::notice::PR #${pr}: removed 'needs fix' label (CI rollup=SUCCESS)."
-              else
-                echo "merge-bot label-needs-fix: PR #${pr} does not carry 'needs fix'; nothing to do."
-              fi
-              ;;
-            *)
-              # PENDING — leave the label as-is. The next
-              # workflow_run.completed (when the remaining checks
-              # finish) will resolve the rollup to FAILURE or
-              # SUCCESS and apply the appropriate edit.
-              echo "merge-bot label-needs-fix: PR #${pr} rollup=${rollup}; deferring label decision."
-              ;;
-          esac
+
+          if [[ -n "${fail}" ]]; then
+            names="$(printf '%s\n' "${fail}" | awk 'NF' | paste -sd ', ' -)"
+            if [[ "${has_needs_fix}" == "true" ]]; then
+              echo "merge-bot label-needs-fix: PR #${PR_NUMBER} already carries 'needs fix' (failing required: ${names}); nothing to do."
+            else
+              gh pr edit "${PR_NUMBER}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --add-label "needs fix"
+              echo "::notice::PR #${PR_NUMBER}: applied 'needs fix' label (failing required check(s): ${names})."
+            fi
+          else
+            if [[ "${has_needs_fix}" == "true" ]]; then
+              gh pr edit "${PR_NUMBER}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --remove-label "needs fix"
+              echo "::notice::PR #${PR_NUMBER}: removed 'needs fix' label (no required checks failing)."
+            else
+              echo "merge-bot label-needs-fix: PR #${PR_NUMBER} has no failing required checks and does not carry 'needs fix'; nothing to do."
+            fi
+          fi
 
   # `push:main` sweep. Whenever `main` advances, list every open
   # PR carrying the `automerge` label and re-process each by
