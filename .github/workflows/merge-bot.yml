@@ -79,12 +79,26 @@ name: Merge Bot
 # other repos. Issue closure failures are warning-only; the merge
 # itself has already landed by that point.
 #
+# Required-check policy: the bot derives its gating set from the
+# active branch-protection ruleset(s) on the PR's base branch (with
+# a fallback to the legacy `branches/{branch}/protection` API for
+# repos that pre-date rulesets). Branch protection is the single
+# authoritative source — adding / removing required checks is a
+# branch-protection edit, not a bot-workflow edit. A check that is
+# failing in the rollup but is NOT in the required-contexts set
+# does not block the merge. Override is intentionally NOT a bot-
+# controllable surface; manual `gh pr merge --squash --admin` is
+# the only escape hatch. See issue #528.
+#
 # Failure modes (ALL surface as a `Claude: Cannot merge — <reason>`
 # comment so the PR author sees the block):
-#   - Required check is FAILURE / TIMED_OUT / CANCELLED.
+#   - A required-context check is FAILURE / TIMED_OUT / CANCELLED.
 #   - `==COMMIT_MSG==` extraction failed (missing block, malformed).
 #   - Block has no `Signed-off-by:` trailer.
 #   - PR is not mergeable (conflict, missing reviews, etc.).
+#   - Branch protection is unreachable (rulesets + legacy APIs both
+#     returned empty) — fail-closed, since merging with no required-
+#     check verification is the wrong fail mode.
 #
 # The label stays sticky on lint/check failure so the
 # workflow_run.completed retrigger picks up the recovered run
@@ -376,84 +390,225 @@ jobs:
           echo "merge-bot: PR #${PR_NUMBER} state=${PR_STATE} label=${HAS_AUTOMERGE_LABEL}; nothing to do."
           exit 0
 
-      # Inspect required-check status. We classify each required
-      # check into FAILURE / PENDING / SUCCESS and react:
+      # Read the required-check contexts from the active branch-
+      # protection ruleset(s) for the PR's base branch. Branch
+      # protection is the single authoritative source of "what must
+      # be SUCCESS for a merge to land" — the bot derives its gating
+      # set from this rather than encoding a static "any failure
+      # blocks" rule, so adding / removing required checks is a
+      # branch-protection edit rather than a bot-workflow edit. See
+      # issue #528.
+      #
+      # Two API surfaces, queried in priority order:
+      #   1. The modern rulesets API — `GET /repos/.../rulesets`
+      #      lists rulesets, each detail call returns the
+      #      `required_status_checks` rule's contexts. We filter to
+      #      `target == "branch"` and `enforcement == "active"` so
+      #      disabled / evaluation-mode rulesets and tag rulesets
+      #      don't pollute the contexts list.
+      #   2. The legacy `GET /repos/.../branches/{branch}/protection`
+      #      endpoint — fallback for repos that pre-date rulesets.
+      #
+      # If the rulesets API returns rulesets but extraction yields
+      # zero contexts, we still try the legacy fallback before giving
+      # up — a ruleset with `required_status_checks: false` should
+      # not silently zero out the gating set.
+      #
+      # The `source` output records which path was used so the next
+      # step can fail-closed when neither path produced contexts —
+      # an empty contexts list under the new design would otherwise
+      # let the bot merge with NO required-check verification at all.
+      # That is the wrong fail mode (fail-open); branch protection
+      # being unreachable should refuse the merge with a clear
+      # comment so the maintainer investigates the App permission /
+      # API outage.
+      #
+      # Permissions: the rulesets endpoint requires the calling App
+      # installation to have `Administration: read`; the legacy
+      # endpoint requires the same scope. See
+      # docs/release/merge-bot-setup.md Step 1.
+      - name: Read required-check contexts from branch protection
+        id: required
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.meta.outputs.state == 'OPEN' && steps.meta.outputs.has_automerge_label == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # `gh pr view --json baseRefName` returns the PR's target
+          # branch (typically `main`). Refetch here rather than wiring
+          # it through the earlier `meta` step so the dependency on
+          # the base branch is co-located with the step that uses it.
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          base_ref="$(gh pr view "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json baseRefName \
+            --jq '.baseRefName')"
+          echo "merge-bot: PR base branch = ${base_ref}"
+
+          # Step 1 — modern rulesets API. List active branch-targeted
+          # rulesets, then per-ruleset detail call extracts the
+          # required-status-checks contexts. The `--jq` filter on the
+          # detail call walks the full rule tree (`.. | objects`)
+          # because the schema may evolve; selecting on
+          # `type == "required_status_checks"` is shape-stable.
+          contexts=""
+          ruleset_ids="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/rulesets" \
+            --paginate \
+            --jq '.[] | select(.target == "branch" and .enforcement == "active") | .id' \
+            2>/dev/null || true)"
+          if [[ -n "${ruleset_ids}" ]]; then
+            while IFS= read -r id; do
+              [[ -z "${id}" ]] && continue
+              detail="$(gh api "repos/${GITHUB_REPOSITORY}/rulesets/${id}" 2>/dev/null || true)"
+              if [[ -z "${detail}" ]]; then
+                echo "::warning::Could not fetch ruleset #${id}; skipping."
+                continue
+              fi
+              ruleset_ctx="$(jq -r '
+                .. | objects
+                | select(.type? == "required_status_checks")
+                | .parameters.required_status_checks[]?.context
+              ' <<<"${detail}" || true)"
+              if [[ -n "${ruleset_ctx}" ]]; then
+                contexts+="${ruleset_ctx}"$'\n'
+              fi
+            done <<<"${ruleset_ids}"
+          fi
+          # Dedupe and strip blank lines.
+          contexts="$(printf '%s' "${contexts}" | awk 'NF' | sort -u)"
+
+          source="rulesets"
+          if [[ -z "${contexts}" ]]; then
+            # Step 2 — legacy fallback. The pre-rulesets API still
+            # works on repos that have only classic branch protection.
+            source="branch_protection"
+            contexts="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/branches/${base_ref}/protection" \
+              --jq '.required_status_checks.contexts[]?' \
+              2>/dev/null | awk 'NF' | sort -u || true)"
+          fi
+
+          if [[ -z "${contexts}" ]]; then
+            source="empty"
+            echo "::warning::No required-check contexts found via rulesets or legacy branch-protection API. The next step will fail-closed."
+          fi
+
+          echo "merge-bot: required-check contexts source = ${source}"
+          echo "merge-bot: required-check contexts ="
+          if [[ -z "${contexts}" ]]; then
+            echo "  (none)"
+          else
+            # `${contexts}` is a newline-separated list; indent each
+            # line for log readability. Avoids word-splitting on
+            # whitespace because context names can contain spaces
+            # (e.g. "Required checks passed").
+            printf '%s\n' "${contexts}" | awk 'NF { print "  " $0 }'
+          fi
+
+          {
+            echo "source=${source}"
+            echo "contexts<<MERGE_BOT_EOF"
+            printf '%s\n' "${contexts}"
+            echo "MERGE_BOT_EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      # Inspect required-check status. We iterate ONLY the contexts
+      # produced by `Read required-check contexts from branch
+      # protection`, classify each into FAILURE / PENDING / SUCCESS,
+      # and react:
       #   - FAILURE: hard-fail with a Claude comment.
       #   - PENDING: clean exit; the workflow_run.completed retrigger
       #     will run the bot again once everything settles.
       #   - All SUCCESS: proceed.
       # Uses the GraphQL `statusCheckRollup` so legacy commit-status
       # checks are included alongside Actions check-runs.
+      #
+      # Per-context: take the latest run by `startedAt` so a retried
+      # check (workflow rerun, fix-then-push) reads its *current*
+      # status rather than its first-ever outcome. Origin: #347.
+      # Then classify on `conclusion` (Actions check-runs) or `state`
+      # (legacy commit statuses):
+      #   - success / neutral / skipped → satisfied.
+      #   - empty / null / missing / in_progress / queued / waiting /
+      #     pending / requested → still pending.
+      #   - everything else (FAILURE / TIMED_OUT / CANCELLED /
+      #     STARTUP_FAILURE / ACTION_REQUIRED / ERROR) → failing.
+      #
+      # `workflowName != "Merge Bot"` filtering is retained as
+      # defensive depth, even though under the derived-from-config
+      # design the bot's own check-run name is unlikely to appear in
+      # the required-contexts list. If it ever did (misconfiguration),
+      # the filter prevents a self-block loop.
       - name: Inspect required checks
         id: checks
         if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.meta.outputs.state == 'OPEN' && steps.meta.outputs.has_automerge_label == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          REQUIRED_SOURCE: ${{ steps.required.outputs.source }}
+          REQUIRED_CONTEXTS: ${{ steps.required.outputs.contexts }}
         run: |
           set -euo pipefail
+          # Fail-closed if the previous step couldn't determine a
+          # contexts set. An empty contexts list under the derived-
+          # from-config design would otherwise let the bot merge with
+          # NO required-check verification at all — branch protection
+          # being unreachable should refuse the merge, not bypass it.
+          if [[ "${REQUIRED_SOURCE}" == "empty" ]]; then
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --body "Claude: Cannot merge — could not read required-check contexts from branch protection (rulesets and legacy branch-protection APIs both returned empty). The merge-bot App installation likely needs the \`Administration: read\` permission, or no branch protection is configured. See \`docs/release/merge-bot-setup.md\`."
+            exit 1
+          fi
+
           rollup="$(gh pr view "${PR_NUMBER}" \
             --repo "${GITHUB_REPOSITORY}" \
             --json statusCheckRollup \
             --jq '.statusCheckRollup')"
-          # `conclusion` is set on Actions check-runs; `state` is set
-          # on legacy commit statuses. Treat NEUTRAL/SKIPPED as pass.
-          # Anything not in the success/pending/skipped sets is a
-          # failure. Surfaced as one line per check so the failure
-          # comment can name the offending check.
-          #
-          # Filter out the merge-bot's own checks (workflowName ==
-          # "Merge Bot"). A previous failed merge-bot run would
-          # otherwise show up as a failure in the rollup and block
-          # every subsequent retrigger — the bot would refuse to
-          # merge forever after its first failure. The bot's pre-
-          # merge gating supersedes its own historical check
-          # outcomes; only the substantive required checks should
-          # gate the merge decision.
-          #
-          # Dedupe-by-latest-run: `statusCheckRollup` returns one
-          # entry per check *run*, not per check *name*. A retried
-          # check (workflow rerun, fix-then-push, close+reopen
-          # retrigger) appears multiple times. Without the dedupe a
-          # historical FAILURE for a check that has since passed
-          # would keep the failure / pending predicates true forever
-          # on the same head SHA — the fail-then-pass workflow that
-          # GitHub's "Re-run failed jobs" UI is built for would
-          # wedge merge-bot indefinitely (origin: PR #346 / issue
-          # #347, where `changelog-lint` failed on the first run,
-          # passed on the rerun, and kept the bot in
-          # FAILED_CHECKS:changelog-lint until the stale run was
-          # manually deleted via `gh run delete`). Group by
-          # name+context, keep the entry with the most recent
-          # startedAt, then apply the failure / pending predicates
-          # so they read the *current* status of each check, not
-          # every historical run. The same dedupe applies to the
-          # pending selector below — a stale IN_PROGRESS entry from
-          # a cancelled run must not pin the wait-clean-exit path.
-          failed="$(jq -r '
-            map(select((.workflowName // "") != "Merge Bot"))
-            | group_by(.name // .context // "<unnamed>")
-            | map(max_by(.startedAt // ""))
-            | map(select(
-              ((.conclusion // "") | ascii_upcase | IN("FAILURE","TIMED_OUT","CANCELLED","STARTUP_FAILURE","ACTION_REQUIRED"))
-              or ((.state // "") | ascii_upcase | IN("FAILURE","ERROR"))
-            ))
-            | map(.name // .context // "<unnamed>") | .[]
-          ' <<<"${rollup}")"
-          pending="$(jq -r '
-            map(select((.workflowName // "") != "Merge Bot"))
-            | group_by(.name // .context // "<unnamed>")
-            | map(max_by(.startedAt // ""))
-            | map(select(
-              ((.conclusion // "") == ""
-                and ((.status // "") | ascii_upcase | IN("QUEUED","IN_PROGRESS","WAITING","PENDING","REQUESTED")))
-              or ((.state // "") | ascii_upcase == "PENDING")
-            ))
-            | map(.name // .context // "<unnamed>") | .[]
-          ' <<<"${rollup}")"
+
+          fail=""
+          pending=""
+          while IFS= read -r ctx; do
+            [[ -z "${ctx}" ]] && continue
+            # Per-context: filter to entries whose name (Actions) or
+            # context (legacy status) matches, drop merge-bot's own
+            # entries, sort by startedAt, take the latest. The
+            # resulting status string is lowercased for case-insensitive
+            # bucketing below. `missing` is the sentinel when the
+            # context exists in branch protection but no run has been
+            # reported yet — treated as pending so the bot waits
+            # rather than refusing.
+            latest="$(jq -r --arg n "${ctx}" '
+              [.[] | select((.workflowName // "") != "Merge Bot")
+                   | select((.name // .context // "") == $n)]
+              | sort_by(.startedAt // "")
+              | (.[-1] // {})
+              | (.conclusion // .state // "missing")
+              | ascii_downcase
+            ' <<<"${rollup}")"
+
+            case "${latest}" in
+              success|neutral|skipped)
+                ;;
+              ""|null|missing|in_progress|queued|waiting|pending|requested)
+                pending+="${ctx}"$'\n'
+                ;;
+              *)
+                fail+="${ctx}"$'\n'
+                ;;
+            esac
+          done <<<"${REQUIRED_CONTEXTS}"
+
+          # Strip trailing newlines (downstream `awk 'NF'` handles
+          # this too, but keeping the outputs tidy makes step-output
+          # introspection easier when debugging).
+          fail="$(printf '%s' "${fail}" | awk 'NF')"
+          pending="$(printf '%s' "${pending}" | awk 'NF')"
+
           {
             echo "failed<<MERGE_BOT_EOF"
-            echo "${failed}"
+            echo "${fail}"
             echo "MERGE_BOT_EOF"
             echo "pending<<MERGE_BOT_EOF"
             echo "${pending}"

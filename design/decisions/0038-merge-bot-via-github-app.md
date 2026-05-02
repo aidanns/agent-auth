@@ -146,6 +146,24 @@ Three orthogonal questions fall out of that:
    Pending checks cause a clean exit with a log line; the same
    retrigger handles the green-completion case.
 
+   Amended 2026-05-02 (issue #528). The set of "required checks"
+   the bot gates on is now derived at runtime from the active
+   branch-protection ruleset(s) on the PR's base branch, with a
+   fallback to the legacy `branches/{branch}/protection` API. The
+   prior implementation encoded a static "any failure in the
+   rollup blocks merge" rule which was stricter than branch
+   protection itself — a check that was failing for an unrelated
+   reason (flaky test, parallel-PR regression) blocked the bot
+   even when `gh pr merge --squash` would have been allowed by
+   branch protection. Branch protection is now the single
+   authoritative source of "what must be SUCCESS for a merge to
+   land." Override is intentionally NOT a bot-controllable
+   surface; manual `gh pr merge --squash --admin` is the only
+   escape hatch. The bot fails-closed when both APIs return empty
+   so an unreachable branch-protection config doesn't silently
+   bypass verification. Requires the App installation to have
+   `Administration: read`.
+
 4. **DCO trailer is a hard validator failure.** The bot authors no
    commits — the squash commit's `Signed-off-by:` trailer must
    already be present in the extracted body. The validator
