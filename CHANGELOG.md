@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.17.1] - 2026-05-02
+
+### Improvements
+
+- `pr-lint-validator` backports rule 8 (no leading subject line in the `==COMMIT_MSG==` block) so the wheel matches the canonical in-tree script. (#500)
+
 ## [0.17.0] - 2026-05-02
 
 ### Features
