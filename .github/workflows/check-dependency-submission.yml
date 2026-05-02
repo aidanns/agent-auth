@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Check Dependency Submission
+
+# `workflow_call` child of `check-security.yml`, itself a child of
+# `ci.yml` (parent issue #440). Carries the tool-versions Dependency
+# Graph snapshot job that previously lived in the standalone
+# `dependency-submission.yml`. Per the Strategy C migration plan
+# agreed on the parent issue, this workflow runs alongside the
+# original `dependency-submission.yml` until Phase 5 cuts branch
+# protection over to the `Required checks passed` aggregator and the
+# original is deleted. Both produce a check context named `submit`;
+# GitHub disambiguates them by `workflowName`, so existing
+# branch-protection rules on the original continue to fire
+# identically while the new chain runs in parallel.
+#
+# The push / weekly-cron / workflow_dispatch triggers stay on
+# `dependency-submission.yml` for the duration of the migration; this
+# child only runs on `workflow_call` (i.e. on `pull_request` via the
+# `ci.yml` chain). The fork-PR skip is preserved verbatim — fork PRs
+# receive a read-only `GITHUB_TOKEN`, so the snapshot POST would 403.
+on:
+  workflow_call:
+
+permissions:
+  # Required to POST to /repos/{owner}/{repo}/dependency-graph/snapshots.
+  contents: write
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Skip on fork PR
+        # GITHUB_TOKEN is read-only on fork PRs, so the snapshot POST
+        # would 403. Surfacing a `success` result here (rather than
+        # `if:`-skipping the whole job) keeps the parent
+        # `check-security.yml` aggregator green — its `Required checks
+        # passed` step rejects `skipped` alongside `failure` /
+        # `cancelled` / `timed_out`. Push / cron / workflow_dispatch
+        # always run in the main repo context and fall through to the
+        # snapshot submission below.
+        id: fork-check
+        env:
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ "${IS_FORK}" == "true" ]]; then
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            echo "Fork PR detected — skipping snapshot submission."
+          else
+            echo "skip=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - if: steps.fork-check.outputs.skip != 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Build and submit snapshot
+        if: steps.fork-check.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MANIFEST_PATH: .github/tool-versions.yml
+        run: bash scripts/ci/submit-dependency-snapshot.sh

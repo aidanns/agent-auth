@@ -29,6 +29,11 @@ jobs:
   ripsecrets:
     name: ripsecrets
     uses: ./.github/workflows/ripsecrets.yml
+  check-dependency-submission:
+    name: Check Dependency Submission
+    uses: ./.github/workflows/check-dependency-submission.yml
+    permissions:
+      contents: write
 
   required-checks-passed:
     # Per-parent aggregator (#440 "Decisions (locked in)"): each
@@ -38,7 +43,7 @@ jobs:
     # one in turn. Subsequent migration issues add each new child
     # workflow's job name to `needs:` here.
     name: Required checks passed
-    needs: [codeql-analyse, ripsecrets]
+    needs: [codeql-analyse, ripsecrets, check-dependency-submission]
     if: always()
     runs-on: ubuntu-latest
     steps:
