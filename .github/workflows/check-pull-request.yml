@@ -7,8 +7,9 @@ name: Check Pull Request
 # PR-metadata child workflow for the uv-style nested `workflow_call` CI
 # structure (parent issue #440). Houses jobs that validate the
 # pull-request envelope itself — Developer Certificate of Origin
-# sign-off today; pr-lint validators (title, body, commit-message
-# block) follow under #4.18 — rather than the working tree's contents.
+# sign-off, plus the pr-lint validators (title prefix, title prose
+# style, ==COMMIT_MSG== block) — rather than the working tree's
+# contents.
 #
 # The aggregator in `ci.yml` treats `skipped` as a failure alongside
 # `failure` / `cancelled` / `timed_out`, so every job under here must
@@ -20,6 +21,19 @@ name: Check Pull Request
 # branch-protection ruleset switches to the `Required checks passed`
 # aggregator (tracked under #5.2). Both surfaces must stay green; the
 # DCO logic here is a byte-for-byte port of `dco.yml`.
+#
+# pr-lint migration (issue #463): the three pr-lint validation jobs
+# (`title-prefix`, `title-prose-style`, `commit-message`) are ported
+# from the standalone `pr-lint.yml` workflow into this child so the
+# parent `Required checks passed` aggregator covers them too. Unlike
+# the DCO migration, these job names were not in the branch-protection
+# ruleset at the time of the cutover, so the parallel-run rationale of
+# Strategy C does not apply here — `pr-lint.yml`'s copies were deleted
+# in the same PR. The validator binary comes from a pinned
+# `pr-lint-validator` GitHub Release wheel via the
+# `install-pr-lint-validator` composite, which is immune to fork-PR
+# tampering by construction; PR title and body strings are routed
+# through `env:` to keep shell expansion off untrusted input.
 on:
   workflow_call:
 
@@ -87,6 +101,142 @@ jobs:
           fi
           echo "All non-bot PR commits carry a Signed-off-by trailer."
 
+  title-prefix:
+    # Validate the PR title's Palantir-style prefix against the
+    # ADR 0037 allowlist (`feature` | `improvement` | `fix` | `break` |
+    # `deprecation` | `migration` | `chore`, with optional `(scope)`).
+    #
+    # The pr-lint-validator package (issue #463) exposes title prose
+    # style and ==COMMIT_MSG== block validation, but NOT the prefix
+    # allowlist itself — the validator's `title.py` docstring is
+    # explicit that "the Palantir-style prefix allowlist itself is
+    # enforced upstream by `amannn/action-semantic-pull-request`".
+    # Migrating this job from `pr-lint.yml` therefore preserves the
+    # third-party action rather than swapping it for a non-existent
+    # validator subcommand. The `types:` allowlist below is kept in
+    # sync with `scripts/lint/commit_taxonomy.py::ALLOWED_TYPES` by
+    # `pr-lint.yml`'s `pr-title-types-self-test` job (and a parallel
+    # pytest case in `scripts/changelog/tests/test_commit_taxonomy.py`
+    # exercised by `changelog-lint.yml`); the YAML structure here
+    # matches what `assert_pr_lint_yaml_in_sync` expects (a `types: |`
+    # literal block bracketed by the alphabetisation markers below).
+    name: title-prefix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate title prefix
+        # Pinned by SHA per .claude/instructions/tooling-and-ci.md
+        # "Pin release-affecting GitHub Actions to commit SHAs". This
+        # workflow is read-only (no contents:write, no id-token:write)
+        # so the pin is best-practice rather than mandatory.
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Explicit allowlist — do NOT fall back to the action's
+          # default conventional-commits set. See ADR 0037.
+          # keep-sorted start
+          types: |
+            break
+            chore
+            deprecation
+            feature
+            fix
+            improvement
+            migration
+          # keep-sorted end
+          requireScope: false
+
+  title-prose-style:
+    # Validate the PR title (squash-merge subject) against the prose
+    # rules in CONTRIBUTING.md → "Writing release-worthy commits" →
+    # "Subject (PR title)": 72-char hard cap on the projected
+    # `<title> (#<n>)` shape, no trailing period, no past-tense opener,
+    # two-tier scope rule (#402). Delegates to the `title` subcommand
+    # of the released `pr-lint-validator` wheel.
+    #
+    # Unlike the standalone `pr-lint.yml` workflow this child runs on
+    # the parent `ci.yml`'s `pull_request` trigger rather than
+    # `pull_request_target`, so the elevated-secrets fork-safety
+    # concern doesn't apply here. The composite still pins to a
+    # GitHub Release wheel so the validator binary itself is immune
+    # to fork-PR tampering by construction.
+    name: title-prose-style
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install pr-lint-validator from release
+        uses: ./.github/actions/install-pr-lint-validator
+        with:
+          version: "0.17.2"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List changed files
+        # Fetch the PR's changed-files list so the validator can apply
+        # the two-tier scope rule (#402): a PR contained to a single
+        # `packages/<name>/` MUST use `(<name>)` as the scope; otherwise
+        # the scope MUST be in `commit_taxonomy.AREA_SCOPES`. Pulled via
+        # `gh pr view --json files` rather than a `git diff` so the
+        # workflow doesn't need base-ref history. Output goes through
+        # `RUNNER_TEMP` so paths with spaces or shell metacharacters
+        # survive verbatim.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh pr view "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json files \
+            --jq '.files[].path' \
+            > "${RUNNER_TEMP}/changed-files.txt"
+
+      - name: Validate PR title prose style
+        env:
+          # Read the title via env var instead of inlining
+          # ${{ github.event.pull_request.title }} into the run-block —
+          # the env-var path keeps shell expansion off the title.
+          TITLE: ${{ github.event.pull_request.title }}
+          # Same env-var pattern for the PR number so the suffix-aware
+          # length cap (#399) runs against the projected squash-merge
+          # subject (un-suffixed title + ` (#<n>)`).
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          pr-lint-validator title \
+            --changed-files-from "${RUNNER_TEMP}/changed-files.txt" \
+            --pr-number "${PR_NUMBER}" \
+            --title "${TITLE:-}"
+
+  commit-message:
+    # Validate the ==COMMIT_MSG== block in the PR body against the
+    # rules in CONTRIBUTING.md and ADR 0037 — line wrap, no markdown,
+    # BREAKING CHANGE positioning, kernel-style `Fixes:` shape,
+    # contiguous trailer block, leading non-blank, no leading subject
+    # line. Per #478 the block carries body + trailers only; the
+    # squash subject comes from the PR title (covered above).
+    name: commit-message
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install pr-lint-validator from release
+        uses: ./.github/actions/install-pr-lint-validator
+        with:
+          version: "0.17.2"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate ==COMMIT_MSG== block
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp)"
+          # Write the PR body to disk via env var; piping through the
+          # shell would let backticks / $(...) in the PR body execute.
+          printf '%s' "${PR_BODY:-}" > "${tmp}"
+          pr-lint-validator commit-msg "${tmp}"
+
   required-checks-passed:
     # Per-child aggregator: collapses every sibling job in this
     # workflow into a single `success` / `failure` outcome the parent
@@ -94,10 +244,13 @@ jobs:
     # `skipped` is treated as a failure alongside `failure`,
     # `cancelled`, and `timed_out` (issue #441) — so a sibling job that
     # legitimately opts out via `if:` must surface a `success` result
-    # rather than skipping. As pr-lint validator jobs are migrated under
-    # #4.18 they get added to `needs:` here.
+    # rather than skipping.
     name: Required checks passed
-    needs: [developer-certificate-of-origin]
+    needs:
+      - developer-certificate-of-origin
+      - title-prefix
+      - title-prose-style
+      - commit-message
     if: always()
     runs-on: ubuntu-latest
     steps:

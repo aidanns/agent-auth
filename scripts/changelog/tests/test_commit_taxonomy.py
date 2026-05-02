@@ -67,7 +67,7 @@ def test_allowed_types_release_impact_matches_contributing_table() -> None:
 
 
 def test_allowed_types_is_alphabetical() -> None:
-    """Iteration order matches the keep-sorted block in ``pr-lint.yml``.
+    """Iteration order matches the keep-sorted block in ``check-pull-request.yml``.
 
     The YAML self-test (:func:`assert_pr_lint_yaml_in_sync`) compares
     ``list(ALLOWED_TYPES)`` against the YAML literal. Both surfaces are
@@ -176,7 +176,7 @@ def test_internal_only_scopes_does_not_overlap_allowed_types() -> None:
 
 
 def test_pr_lint_yaml_matches_allowed_types() -> None:
-    """The live ``pr-lint.yml`` is in sync with ``ALLOWED_TYPES``.
+    """The live ``check-pull-request.yml`` is in sync with ``ALLOWED_TYPES``.
 
     Same assertion the ``pr-title-types-self-test`` job runs in CI;
     repeating it here catches drift on a developer machine before push.
