@@ -85,7 +85,7 @@ def _run_commit_msg(args: argparse.Namespace) -> int:
         return 2
     body = Path(args.body_path).read_text(encoding="utf-8")
     try:
-        commit_msg.validate(body, title=args.title)
+        commit_msg.validate(body)
     except commit_msg.ValidationError as err:
         print(f"pr-lint: {err}", file=sys.stderr)
         return 1
@@ -170,15 +170,6 @@ def _build_parser() -> argparse.ArgumentParser:
         nargs="?",
         default=None,
         help="Path to a file containing the PR body markdown.",
-    )
-    commit_msg_parser.add_argument(
-        "--title",
-        default=None,
-        help=(
-            "PR title (the squash-merge subject). When provided, the "
-            "first body line is also checked for duplication of the "
-            "title."
-        ),
     )
     commit_msg_parser.add_argument(
         "--self-test",
