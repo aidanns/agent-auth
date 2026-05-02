@@ -422,6 +422,17 @@ jobs:
       # `label-needs-fix` job below can share the same gating set
       # without duplicating the rulesets / legacy-API plumbing.
       # See issue #536.
+      #
+      # `uses: ./.github/actions/...` requires the repo to be
+      # checked out so the action.yml is on disk. Pin to `main`
+      # for defence in depth — a contributor cannot ship a
+      # malicious composite action in the same PR they want
+      # merged because the merge job loads the action from `main`,
+      # not the PR head.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.meta.outputs.state == 'OPEN' && steps.meta.outputs.has_automerge_label == 'true'
+        with:
+          ref: main
       - name: Read required-check contexts from branch protection
         id: required
         if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.meta.outputs.state == 'OPEN' && steps.meta.outputs.has_automerge_label == 'true'
