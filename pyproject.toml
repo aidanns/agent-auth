@@ -440,7 +440,6 @@ tests_dir = [
     "packages/agent-auth/tests/test_scopes.py",
     "packages/agent-auth/tests/test_store.py",
     "packages/agent-auth/tests/test_tokens.py",
-    "packages/gpg-bridge/tests/integration/test_gpg_bridge_server.py",
     "packages/gpg-bridge/tests/test_gpg_backend_fake.py",
     "packages/gpg-bridge/tests/test_gpg_bridge_config.py",
     "packages/gpg-cli/tests/test_gpg_cli_cli.py",
