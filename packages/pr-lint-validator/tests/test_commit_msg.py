@@ -4,8 +4,8 @@
 
 """Tests for ``pr_lint_validator.commit_msg``.
 
-The bundled title-aware and verbose-body self-test fixtures are the
-contract surface; the tests below parametrise over both tuples so
+The bundled leading-subject and verbose-body self-test fixtures are
+the contract surface; the tests below parametrise over both tuples so
 each fixture surfaces as its own pytest report line.
 """
 
@@ -20,14 +20,14 @@ def _label_for(case: tuple[object, ...]) -> str:
     return str(case[-1])
 
 
-@pytest.mark.parametrize("case", commit_msg._TITLE_AWARE_SELF_TEST_CASES, ids=_label_for)
-def test_title_aware_self_test_fixture(case: tuple[object, ...]) -> None:
-    body, title_str, expect_pass, _label = case
+@pytest.mark.parametrize("case", commit_msg._LEADING_SUBJECT_SELF_TEST_CASES, ids=_label_for)
+def test_leading_subject_self_test_fixture(case: tuple[object, ...]) -> None:
+    body, expect_pass, _label = case
     if expect_pass:
-        commit_msg.validate(body, title=title_str)  # type: ignore[arg-type]
+        commit_msg.validate(body)  # type: ignore[arg-type]
         return
     with pytest.raises(commit_msg.ValidationError):
-        commit_msg.validate(body, title=title_str)  # type: ignore[arg-type]
+        commit_msg.validate(body)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("case", commit_msg._VERBOSE_BODY_SELF_TEST_CASES, ids=_label_for)
