@@ -5,18 +5,19 @@
 name: Check Fmt
 
 # Intermediate orchestrator under `ci.yml` for formatting / lint checks
-# (issue #440 nested workflow_call structure). Today this shell carries a
-# single child — `spdx-license-headers` (issue #452, the REUSE lint
-# migration). Subsequent migration issues (e.g. #459 for treefmt and
-# ruff format) add additional children as siblings under the same
-# `required-checks-passed` aggregator below; the aggregator pattern
-# matches `ci.yml` so the same forwarding contract holds at every level.
+# (issue #440 nested workflow_call structure). Children today:
+# `spdx-license-headers` (issue #452, the REUSE lint migration), plus
+# inline `treefmt` and `ruff-format` jobs (issue #459, splitting
+# `check.yml`). Subsequent migration issues add additional children
+# as siblings under the same `required-checks-passed` aggregator
+# below; the aggregator pattern matches `ci.yml` so the same
+# forwarding contract holds at every level.
 #
 # Until every formatting workflow migrates underneath here, this shell
 # runs alongside (not in place of) the existing top-level workflows
-# (e.g. `reuse.yml`). The Phase 5 sweep deletes the originals once
-# `Required checks passed` becomes the sole required status check on
-# `main`.
+# (e.g. `reuse.yml`, `check.yml`). The Phase 5 sweep deletes the
+# originals once `Required checks passed` becomes the sole required
+# status check on `main`.
 
 on:
   workflow_call:
@@ -29,6 +30,53 @@ jobs:
     name: spdx-license-headers
     uses: ./.github/workflows/spdx-license-headers.yml
 
+  treefmt:
+    name: treefmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run treefmt --ci
+        # `scripts/lint.sh` + `scripts/format.sh` invoke each per-language
+        # formatter directly, so they don't exercise `treefmt.toml` itself.
+        # This job catches a broken or stale `treefmt.toml` (missing
+        # formatter entry, wrong includes, drift from the per-tool
+        # configs) that the direct path would miss. Mirrors the
+        # `treefmt --ci` step in the legacy `check.yml` byte-for-byte.
+        run: treefmt --ci
+
+  ruff-format:
+    name: ruff-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run ruff format --check
+        # Mirror `scripts/format.sh --check`'s ruff invocation: scope to
+        # tracked `*.py` files via `git ls-files` so the formatting
+        # surface matches what authors run locally. `treefmt --ci` (the
+        # sibling job above) also exercises `ruff format` via
+        # `treefmt.toml`, but a separate sibling here keeps the failure
+        # signal split — ruff drift surfaces independently of any
+        # treefmt-config drift.
+        run: |
+          set -euo pipefail
+          python_files_raw="$(git ls-files '*.py')"
+          if [[ -z "${python_files_raw}" ]]; then
+            echo "No *.py files tracked; skipping ruff format --check."
+            exit 0
+          fi
+          mapfile -t python_files <<<"${python_files_raw}"
+          ruff format --check "${python_files[@]}"
+
   required-checks-passed:
     # Aggregator at this level mirrors `ci.yml`'s pattern so the
     # parent's `needs.check-fmt.result` collapses to a single
@@ -36,7 +84,7 @@ jobs:
     # passed` gate. Future issues add `needs:` entries (treefmt,
     # ruff format) without touching `ci.yml`.
     name: Required checks passed
-    needs: [spdx-license-headers]
+    needs: [spdx-license-headers, treefmt, ruff-format]
     if: always()
     runs-on: ubuntu-latest
     steps:

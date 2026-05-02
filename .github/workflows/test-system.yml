@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Test System
+
+# `workflow_call` child of `ci.yml` (parent issue #440, this slot
+# #461). Carries the macOS-only Darwin-gated AppleScript system test
+# from the original top-level `test.yml`'s `macos-applescript` job
+# (one job today; future system-level tests will land alongside).
+#
+# Strategy C (#440 phase plan, agreed 2026-05-01): the original
+# `test.yml` stays in place for the duration of the migration, so
+# its existing `macos-applescript` job continues to run in parallel
+# with this child. Phase 5 retires the original.
+#
+# The aggregator in `ci.yml` treats `skipped` as a failure alongside
+# `failure` / `cancelled` / `timed_out`, so this job must actually
+# run and report `success`. Do not gate it behind any `if:` that
+# could resolve to a `skipped` outcome.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  # macOS-only job that exercises the real osascript path shipped in
+  # things-client-cli-applescript. The rest of the suite runs against a
+  # FakeRunner on Linux; this job guards against the failure modes that
+  # only show up when the emitted AppleScript is actually compiled —
+  # invalid helper syntax, osascript error-message wording that breaks
+  # our stderr parsing, subprocess-level timeout handling. A real
+  # Things 3 instance + Automation permissions are not available on
+  # GitHub's hosted macOS runners, so the few ``@_requires_things3``
+  # e2e tests auto-skip here; driving the full bridge + AppleScript CLI
+  # against a live Things database is tracked as a follow-up.
+  #
+  # Minimal toolchain: this job deliberately does NOT reuse
+  # .github/actions/setup-toolchain (which hard-codes Linux asset URLs
+  # for every release binary). The Darwin-gated suite only needs uv +
+  # the project venv + osascript (pre-installed on GitHub's macOS
+  # runner), so we bootstrap that directly.
+  macos-applescript:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.7"
+          enable-cache: true
+
+      - name: Sync venv
+        run: uv sync --extra dev
+
+      - name: Run Darwin-gated AppleScript client tests
+        run: uv run pytest packages/things-client-cli-applescript/tests/test_things_client_applescript_things.py --no-cov -v
