@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Test Unit
+
+# `workflow_call` child of `ci.yml` (parent issue #440, this slot
+# #461). Carries the per-package unit-test surface from the original
+# top-level `test.yml` `unit` job, reshaped into a matrix that emits
+# one `unit-tests (<package>)` check context per workspace member.
+#
+# Per #414's parens-variant naming convention (job IDs use the parens
+# style for matrix variants), the matrix `name:` is
+# `unit-tests (<package>)` rather than the legacy flat-suffix
+# `unit-<package>` form.
+#
+# Strategy C (#440 phase plan, agreed 2026-05-01): the original
+# `test.yml` stays in place for the duration of the migration, so its
+# existing `unit` and `tests` aggregator jobs continue to run in
+# parallel with the new per-package matrix here. test.yml's `unit`
+# job is the authoritative gate for workspace-wide coverage
+# (`check-package-coverage.sh`) and the workspace-only checks that
+# live under the root `tests/` tree (release-semver, openapi-spec,
+# pip-audit-to-sarif, scan-failure); this matrix deliberately scopes
+# to per-package `tests/` trees only and runs without coverage so
+# the per-shard runtime stays bounded. Phase 5 of #440 will retire
+# the original workflow and re-home the workspace gate then.
+#
+# The aggregator in `ci.yml` treats `skipped` as a failure alongside
+# `failure` / `cancelled` / `timed_out`, so every matrix shard must
+# actually run and report `success`. Do not gate any shard behind an
+# `if:` that could resolve to a `skipped` outcome.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: unit-tests (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The 7 uv workspace members declared in the root
+        # `pyproject.toml` `[tool.uv.workspace]` table. Each shard
+        # runs the per-package `tests/` tree under
+        # `packages/<package>/tests/`, ignoring the integration
+        # subtree (Docker-backed integration tests live in
+        # `test-integration.yml`). Matching the workspace member list
+        # keeps the matrix authoritative — a future package added to
+        # the workspace must be added here too, and `check-standards`
+        # (`scripts/verify-standards.sh`) will be extended to enforce
+        # parity.
+        package:
+          # keep-sorted start
+          - agent-auth
+          - agent-auth-common
+          - gpg-bridge
+          - gpg-cli
+          - things-bridge
+          - things-cli
+          - things-client-cli-applescript
+          # keep-sorted end
+    steps:
+      # fetch-depth: 0 makes the workspace's git tags reachable so
+      # setuptools-scm can derive a real PEP 440 version when the
+      # release-wheel-version regression test
+      # (tests/test_release_wheel_version.py) builds a wheel. The
+      # default shallow clone (fetch-depth: 1, no tags) makes
+      # setuptools-scm fall back to a "0.0.1.dev1+unknown.gsha"
+      # placeholder that the test correctly rejects. Mirrors the
+      # original `test.yml` `unit` job; kept here for parity even
+      # though the per-package shards don't directly run the
+      # wheel-version test (it lives under root `tests/`, covered by
+      # test.yml).
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # `setup-toolchain` installs the `uv` binary but doesn't sync the
+      # project virtualenv, so `pytest` (a dev-extra dependency) isn't
+      # on PATH until we materialise it. `scripts/test.sh` does this
+      # via `_bootstrap_venv.sh`; the per-package matrix bypasses
+      # `task test -- --unit` (see comment below) so we sync inline
+      # here. Mirrors test.yml's `macos-applescript` job, which is the
+      # other path that talks directly to `uv` without going through
+      # the shared script.
+      - name: Sync project venv with dev extras
+        run: uv sync --extra dev
+
+      # Pytest is invoked directly rather than via `task test --
+      # --unit` because the shared script runs the full workspace
+      # surface in a single process and enforces the workspace
+      # coverage floor — both deliberately retained on test.yml's
+      # `unit` job for the duration of strategy C. The per-package
+      # `--ignore` is a no-op when the integration subdir doesn't
+      # exist (`agent-auth-common`, `gpg-cli`,
+      # `things-client-cli-applescript`).
+      - name: Run unit tests for ${{ matrix.package }}
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          uv run --no-sync pytest \
+            --no-cov \
+            --ignore="packages/${PACKAGE}/tests/integration" \
+            "packages/${PACKAGE}/tests/"
