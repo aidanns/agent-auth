@@ -55,7 +55,7 @@ def test_extract_block_returns_content_between_markers() -> None:
     assert block == (
         "The thing is small but useful.\n"
         "\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>"
     )
 

@@ -93,7 +93,7 @@ maintainer:
 3. Confirm end-to-end on the first bot-mediated merge:
    `git log -1 --format=%B` on `main` should match the merged PR's
    `==COMMIT_MSG==` block contents exactly (sign-off included),
-   and the `Closes #N` trailer should have closed the linked
+   and the `Closes: #N` trailer should have closed the linked
    issue.
 4. The `squash_merge_commit_message: BLANK` setting can stay in
    place — the bot ignores it (it passes `commit_message`

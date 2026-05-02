@@ -65,7 +65,7 @@ workflow:
    (`closes` / `fixes` / `resolves` and their inflections, case-
    insensitive) and closes each same-repo issue with a
    `Closed by merge of PR #<P> (squash commit <sha>).` comment.
-   GitHub's UI auto-close-on-`Closes #N` does not fire for App-
+   GitHub's UI auto-close-on-`Closes: #N` does not fire for App-
    token-mediated merges; this step compensates. Cross-repo
    references (`other-org/other-repo#N`) are logged via
    `::notice::` and skipped — the App's installation token is
@@ -108,9 +108,9 @@ trailer at PR-author time.
        permission is granted).
      - *Issues*: **Read & write** (call
        `PATCH /repos/.../issues/{N}` to close issues referenced via
-       `Closes #N` / `Fixes #N` / `Resolves #N` in the squash commit
+       `Closes: #N` / `Fixes: #N` / `Resolves: #N` in the squash commit
        body, and post the closing-comment audit-trail line.
-       GitHub's UI auto-close-on-`Closes #N` does not fire for App-
+       GitHub's UI auto-close-on-`Closes: #N` does not fire for App-
        token-mediated `PUT /pulls/{n}/merge` calls — issue #429 — so
        the bot does the closure itself).
      - *Pull requests*: **Read & write** (call `PUT /pulls/{n}/merge`,
@@ -306,7 +306,7 @@ should produce:
   `agent-auth-merge-bot` App identity).
 - The `dco` workflow staying green on `main` because the
   `Signed-off-by:` trailer round-trips into the squash commit.
-- The `Closes #N` trailer in the block closing the linked issue
+- The `Closes: #N` trailer in the block closing the linked issue
   on merge, with a
   `Closed by merge of PR #<P> (squash commit <sha>).` comment
   posted by the `agent-auth-merge-bot` App identity. (Until the
@@ -375,7 +375,7 @@ Operational notes:
 
 ## Closing linked issues
 
-GitHub's UI auto-close-on-`Closes #N` does not fire for App-token-
+GitHub's UI auto-close-on-`Closes: #N` does not fire for App-token-
 mediated `PUT /pulls/{n}/merge` calls. Confirmed deterministic
 across PRs #350 / #354 / #423 (issue #429). Without compensation,
 linked issues stay OPEN after a bot-mediated merge unless an
@@ -417,22 +417,22 @@ The parser mirrors GitHub UI auto-closer behaviour exactly, which
 implies two nuances PR authors should know about:
 
 - **Comma-separated multi-issue forms close only the first.**
-  `Closes #1, #2, and #3` closes #1 only — the matcher requires a
+  `Closes: #1, #2, and #3` closes #1 only — the matcher requires a
   keyword before each `#N`, and #2 / #3 in that body look like bare
   issue references. To close several issues from one PR, repeat the
-  keyword (`Closes #1`, then `Closes #2`, then `Closes #3` on
+  keyword (`Closes: #1`, then `Closes: #2`, then `Closes: #3` on
   separate lines). This matches what GitHub's UI auto-closer would
   do for the same body.
-- **Any `Closes #N` mention closes the issue, regardless of context.**
+- **Any `Closes: #N` mention closes the issue, regardless of context.**
   `Will close #100 once we ship`, `If we close #100`, and
   `did not close #100` all close #100 on merge. GitHub's UI behaves
   the same way. Avoid putting future-work or hypothetical
-  `Closes #N` mentions inside the `==COMMIT_MSG==` block — move
+  `Closes: #N` mentions inside the `==COMMIT_MSG==` block — move
   them to `## Review notes` (which never enters git history) if you
   need to reference an issue without closing it.
 
 Failure handling for this step is best-effort: a 404 (typo'd
-`Closes #99999`), 5xx, or any other API error on a per-issue close
+`Closes: #99999`), 5xx, or any other API error on a per-issue close
 call surfaces as a `::warning::` and the loop continues. The merge
 has already landed; failing the workflow at this point would
 generate a red merge-bot run on a PR that merged successfully —
