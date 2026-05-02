@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.17.2] - 2026-05-02
+
+### Improvements
+
+- pr-lint.yml jobs now consume the released pr-lint-validator wheel from GitHub Releases instead of in-tree scripts. (#506)
+
 ## [0.17.1] - 2026-05-02
 
 ### Improvements
