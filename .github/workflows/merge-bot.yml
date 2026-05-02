@@ -16,10 +16,12 @@ name: Merge Bot
 #
 # Triggers:
 #   - pull_request: labeled — proceed when the new label == `automerge`.
-#   - workflow_run: completed — sticky-label retry once the last
-#     watched CI workflow completes AFTER the label was set. We list
-#     every PR-gating workflow by name so each one's completion fires
-#     the bot. `workflow_run` is used here (not `check_suite`) because
+#   - workflow_run: completed — sticky-label retry once `CI`
+#     completes AFTER the label was set. The listener is scoped to
+#     `CI` only because its `Required checks passed` aggregator is
+#     the single branch-protection-required check, so a green CI
+#     run means every gate passed (issue #467). `workflow_run` is
+#     used here (not `check_suite`) because
 #     `check_suite` events are suppressed by GitHub's anti-recursion
 #     rule when the upstream workflow runs under the default
 #     `GITHUB_TOKEN` — every CI workflow in this repo does, so
@@ -119,32 +121,17 @@ name: Merge Bot
 on:
   pull_request:
     types: [labeled]
-  # Every PR-gating workflow listed by name so each completion fires
-  # the bot. Adding a new required-check workflow requires updating
-  # this list — that's intentional. Excludes:
-  #   - Merge Bot itself (anti-recursion).
-  #   - Release / publish / scorecard / mutation / benchmark workflows
-  #     that don't run on PRs.
-  #   - Dependency Submission, which now runs on PRs (issue #412) but
-  #     intentionally skips on fork PRs (read-only GITHUB_TOKEN), so
-  #     it can't be a required gate without blocking external
-  #     contributions; PR-time CVE gating is enforced by Dependency
-  #     Review against the head-SHA snapshot it produces.
-  #   - Release Tag (only fires on PR `closed`, well after merge).
+  # Listen on `CI` only — that workflow's `Required checks passed`
+  # aggregator is the single branch-protection-required check, so a
+  # green CI completion is the one signal that means "every gate
+  # passed and the bot should re-evaluate" (issue #467). The
+  # previous per-workflow enumeration was redundant once the
+  # aggregator landed, and `CI` itself is naturally excluded from
+  # an anti-recursion list because Merge Bot does not author
+  # commits — there is no recursion to break.
   workflow_run:
     workflows:
       - CI
-      - PR Lint
-      - DCO
-      - Changelog Lint
-      - REUSE
-      - Dependency Review
-      - Verify Design
-      - Verify Function Tests
-      - Verify Standards
-      - Verify Token CLI / HTTP Parity
-      - Changelog Bot
-      - Release Dryrun
     types: [completed]
   pull_request_review:
     types: [submitted, dismissed]
