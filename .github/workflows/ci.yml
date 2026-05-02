@@ -128,6 +128,15 @@ jobs:
               - '.github/workflows/**'
               - '.github/actions/**'
 
+  check-fmt:
+    # Intermediate orchestrator carrying formatting / lint children
+    # (issue #452 lands `spdx-license-headers`; #459 will add treefmt
+    # and ruff format alongside). `needs: plan` keeps the
+    # label/changed-files outputs reachable for future children that
+    # opt into changed-files gating.
+    name: Check Fmt
+    needs: [plan]
+    uses: ./.github/workflows/check-fmt.yml
   check-security:
     # Security-cadence child orchestrator (issue #447). Carries CodeQL
     # analyse today; `dependency-review`, `dependency-submission`, and
@@ -276,7 +285,7 @@ jobs:
     # branch-protection ruleset switch from per-workflow required
     # checks to this one aggregator is tracked under #5.2.
     name: Required checks passed
-    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release, check-security]
+    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release, check-security, check-fmt]
     if: always()
     runs-on: ubuntu-latest
     steps:
