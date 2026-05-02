@@ -36,6 +36,28 @@ name: Check Pull Request
 # through `env:` to keep shell expansion off untrusted input.
 on:
   workflow_call:
+    inputs:
+      # Centralised event-kind gate from `ci.yml`'s `plan` job
+      # (issue #530). The pr-lint validators (`title-prefix`,
+      # `title-prose-style`, `commit-message`) all require PR context
+      # — `amannn/action-semantic-pull-request` refuses to run outside
+      # a `pull_request` event, and the prose / commit-message jobs
+      # read `github.event.pull_request.*`. They short-circuit on
+      # non-PR events (`push (main)` / `merge_group` /
+      # `workflow_dispatch`) so the parent's `Required checks passed`
+      # aggregator sees `success` rather than `failure` (#544).
+      #
+      # The DCO job is implicitly PR-scoped via its
+      # `${{ github.event.pull_request.head.sha }}` ref and is left
+      # ungated here — the checkout falls through to the workflow's
+      # default ref on non-PR events, and the trailer check is a
+      # no-op when `BASE_SHA` and `HEAD_SHA` are empty.
+      event_is_pull_request:
+        description: >-
+          True iff the originating event is a pull_request (the
+          pr-lint validators need PR context).
+        required: true
+        type: boolean
 
 permissions:
   contents: read
@@ -122,8 +144,30 @@ jobs:
     # literal block bracketed by the alphabetisation markers below).
     name: title-prefix
     runs-on: ubuntu-latest
+    # Job runs unconditionally — the aggregator treats `skipped` as a
+    # failure (per #441), so non-PR events are handled at step level
+    # by short-circuiting to `success`.
     steps:
+      - name: Short-circuit when no PR context is available
+        # Skip the validator and surface `success` on non-PR events
+        # (`push (main)` / `merge_group` / `workflow_dispatch`):
+        # `amannn/action-semantic-pull-request` errors out hard with
+        # "This action can only be invoked in pull_request_target or
+        # pull_request events" otherwise (#544).
+        id: skip
+        env:
+          EVENT_IS_PULL_REQUEST: ${{ inputs.event_is_pull_request }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_IS_PULL_REQUEST}" != "true" ]]; then
+            echo "no PR context — skipping title-prefix validation"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "skip=false" >> "${GITHUB_OUTPUT}"
+
       - name: Validate title prefix
+        if: ${{ steps.skip.outputs.skip != 'true' }}
         # Pinned by SHA per .claude/instructions/tooling-and-ci.md
         # "Pin release-affecting GitHub Actions to commit SHAs". This
         # workflow is read-only (no contents:write, no id-token:write)
@@ -162,16 +206,38 @@ jobs:
     # to fork-PR tampering by construction.
     name: title-prose-style
     runs-on: ubuntu-latest
+    # Job runs unconditionally — the aggregator treats `skipped` as a
+    # failure (per #441), so non-PR events are handled at step level
+    # by short-circuiting to `success`.
     steps:
+      - name: Short-circuit when no PR context is available
+        # Skip the validator and surface `success` on non-PR events:
+        # the validator reads `github.event.pull_request.title` and
+        # the changed-files lookup needs a PR number (#544).
+        id: skip
+        env:
+          EVENT_IS_PULL_REQUEST: ${{ inputs.event_is_pull_request }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_IS_PULL_REQUEST}" != "true" ]]; then
+            echo "no PR context — skipping title-prose-style validation"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "skip=false" >> "${GITHUB_OUTPUT}"
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: ${{ steps.skip.outputs.skip != 'true' }}
 
       - name: Install pr-lint-validator from release
+        if: ${{ steps.skip.outputs.skip != 'true' }}
         uses: ./.github/actions/install-pr-lint-validator
         with:
           version: "0.17.2"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: List changed files
+        if: ${{ steps.skip.outputs.skip != 'true' }}
         # Fetch the PR's changed-files list so the validator can apply
         # the two-tier scope rule (#402): a PR contained to a single
         # `packages/<name>/` MUST use `(<name>)` as the scope; otherwise
@@ -192,6 +258,7 @@ jobs:
             > "${RUNNER_TEMP}/changed-files.txt"
 
       - name: Validate PR title prose style
+        if: ${{ steps.skip.outputs.skip != 'true' }}
         env:
           # Read the title via env var instead of inlining
           # ${{ github.event.pull_request.title }} into the run-block —
@@ -217,16 +284,38 @@ jobs:
     # squash subject comes from the PR title (covered above).
     name: commit-message
     runs-on: ubuntu-latest
+    # Job runs unconditionally — the aggregator treats `skipped` as a
+    # failure (per #441), so non-PR events are handled at step level
+    # by short-circuiting to `success`.
     steps:
+      - name: Short-circuit when no PR context is available
+        # Skip the validator and surface `success` on non-PR events:
+        # the validator reads `github.event.pull_request.body`, which
+        # is empty outside `pull_request` events (#544).
+        id: skip
+        env:
+          EVENT_IS_PULL_REQUEST: ${{ inputs.event_is_pull_request }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_IS_PULL_REQUEST}" != "true" ]]; then
+            echo "no PR context — skipping commit-message validation"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "skip=false" >> "${GITHUB_OUTPUT}"
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: ${{ steps.skip.outputs.skip != 'true' }}
 
       - name: Install pr-lint-validator from release
+        if: ${{ steps.skip.outputs.skip != 'true' }}
         uses: ./.github/actions/install-pr-lint-validator
         with:
           version: "0.17.2"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Validate ==COMMIT_MSG== block
+        if: ${{ steps.skip.outputs.skip != 'true' }}
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |

@@ -445,6 +445,8 @@ jobs:
     name: check-pull-request
     needs: [plan]
     uses: ./.github/workflows/check-pull-request.yml
+    with:
+      event_is_pull_request: ${{ needs.plan.outputs.event_is_pull_request == 'true' }}
   check-publish:
     # Publish-readiness slot (issue #462). Builds the release-asset
     # set with `scripts/build-release-artifacts.sh` and runs
