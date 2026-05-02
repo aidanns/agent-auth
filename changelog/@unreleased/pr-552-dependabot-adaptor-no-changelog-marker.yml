@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: fix
+fix:
+  description: Make the dependabot-adaptor inject `==NO_CHANGELOG==` so the changelog-bot keeps the `no changelog` label sticky on Dependabot PRs instead of stripping it after each adaptor run.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/551
+    - https://github.com/aidanns/agent-auth/pull/552

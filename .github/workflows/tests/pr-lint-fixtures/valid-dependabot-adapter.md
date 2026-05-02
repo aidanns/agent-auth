@@ -18,5 +18,7 @@ See the PR description for upstream release notes.
 Signed-off-by: dependabot[bot] <support@github.com>
 ==COMMIT_MSG==
 
+==NO_CHANGELOG==
+
 Bumps [actions/setup-python](https://github.com/actions/setup-python) from 5.6.0 to 6.2.0.
 - Upstream release notes elided in this fixture.
