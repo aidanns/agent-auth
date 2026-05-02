@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.17.4] - 2026-05-02
+
+### Fixes
+
+- Make the dependabot-adaptor inject `==NO_CHANGELOG==` so the changelog-bot keeps the `no changelog` label sticky on Dependabot PRs instead of stripping it after each adaptor run. (#552)
+
 ## [0.17.3] - 2026-05-02
 
 ### Fixes
