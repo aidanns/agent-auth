@@ -66,6 +66,212 @@ language: `python.md`, `bash.md`.
 
 ## CI
 
+### Workflow layout
+
+The repository uses a uv-style nested `workflow_call` structure (issue
+440). Each cadence has a single **parent orchestrator** that calls
+**child workflows** via `uses: ./.github/workflows/<child>.yml`.
+Children live alongside the orchestrators in `.github/workflows/`;
+their `on:` block declares only `workflow_call` (no `pull_request` or
+`push` of their own — only the parent has those).
+
+The four orchestrators today:
+
+- **`ci.yml`** (`name: CI`) — every PR-time check. Top of the file is
+  a `plan` job that emits gating booleans (label-driven outputs like
+  `label_no_changelog` and `label_automerge`; changed-files outputs
+  like `python_changed`, `bash_changed`, `docs_changed`; event-kind
+  booleans like `event_is_pull_request`, `event_from_external_repo`).
+  Every other job in `ci.yml` is a `workflow_call` child
+  (`check-fmt`, `check-lint`, `check-security`, `check-changelog`,
+  `check-publish`, `check-release`, `check-pull-request`,
+  `check-standards`, `check-docs`, `test-unit`, `test-integration`,
+  `test-smoke`, `test-system`, `build`).
+- **`nightly.yml`** (`name: Nightly`) — daily-cadence checks
+  (`mutation` today). Cron at 04:00 UTC.
+- **`weekly.yml`** (`name: Weekly`) — weekly-cadence checks (`bench`,
+  `open-ssf-scorecard`). Cron at 05:00 UTC Sunday (offset from
+  `nightly.yml` so the runner queue is not doubled-up).
+- **Bot workflows** — standalone, not children of any orchestrator.
+  `merge-bot.yml`, `changelog-bot.yml`, `release-bot.yml`,
+  `dependabot-adaptor-bot.yml`. They consume other workflows'
+  completions or PR / push events directly and own their own
+  trigger surface.
+
+### Single `Required checks passed` aggregator
+
+Each orchestrator ends with a `required-checks-passed` job named
+`Required checks passed` whose `needs:` lists every child. Branch
+protection on `main` references **only** that one status check. When
+a new child is added to an orchestrator, the migration step is two
+lines in the same file (a new job block + appending to `needs:`);
+branch protection never has to be touched.
+
+The aggregator's logic is intentionally strict: per issue 441, any
+`needs.*.result` other than `success` is treated as a failure —
+including `skipped`. A child that legitimately opts out via `if:`
+must surface a `success` outcome (e.g. via a short-circuit step)
+rather than skipping the job, so the aggregator can rely on
+`success` meaning "the check ran and passed" rather than "the check
+ran or skipped".
+
+The one carve-out is `ci.yml`'s verified-prior-success path for
+`labeled` / `unlabeled` re-runs (issue 527). When the head SHA
+already has a non-failing conclusion for every diff-dependent child,
+those children skip via an `if:` gate and the aggregator relaxes the
+`skipped = failure` rule for that specific set, gated on the
+`diff_dependent_jobs_already_passed` flag emitted by `plan`. The
+metadata-dependent children (`check-changelog`, `check-pull-request`)
+keep the strict contract because their inputs (PR labels, PR
+metadata) can change without the head SHA changing.
+
+### Per-child aggregators
+
+A child workflow that has **≥3 sibling jobs** of its own (e.g.
+`check-fmt.yml` with `spdx-license-headers`, `treefmt`, `ruff-format`)
+ends with its own `Required checks passed` aggregator job using the
+same `jq -e 'all(.value.result == "success")'` pattern. The parent's
+`needs.<child>.result` collapses the entire child workflow to a
+single boolean, so the parent does not have to enumerate the child's
+internal jobs. With \<3 siblings the per-child aggregator is overhead
+without payoff (`needs.<child>.result` already collapses to a single
+boolean); skip it.
+
+### Naming conventions
+
+- **Workflow filenames** — kebab-case, `.yml` extension. When ≥2
+  workflows share a domain (`check-*`, `test-*`, `release-*`,
+  `*-bot`), use a family prefix; bare single-word filenames are
+  reserved for orchestrators (`ci.yml`, `nightly.yml`, `weekly.yml`)
+  and standalone children whose name has no family. Suffix policy:
+  `-bot` for workflows that author commits / labels back to the PR
+  (`merge-bot.yml`, `changelog-bot.yml`, `release-bot.yml`);
+  `-adaptor` for ones that wrap an external system to fit our
+  conventions (`dependabot-adaptor-bot.yml`); no suffix otherwise.
+
+- **Workflow `name:` field** — Title Case for words; preserve
+  canonical capitalization for acronyms (`CI`, `DCO`, `PR`,
+  `CodeQL`, `OpenSSF Scorecard`, `SPDX License Headers`). The display
+  name is the human-readable form of the filename, not a
+  re-invention. Parent orchestrators read `CI`, `Nightly`, `Weekly`,
+  `Merge Bot`. Children read `Check Fmt`, `Test Unit`, `Build`, etc.
+  The `merge-bot.yml` `workflow_run` listener references parent names
+  exactly (case-sensitive) — renaming a parent's `name:` field
+  requires a matching update to every listener that names it.
+
+- **Job IDs** — kebab-case, matching what shows up as the
+  required-status-check display name when a job is wired into branch
+  protection. **Matrix variants use the parens style**:
+  `unit-tests (<package>)`, `integration-tests (<package>)`,
+  `analyze (python)`, `install-from-wheels (<package>)`. The
+  flat-suffix form (`integration-agent-auth`,
+  `unit-agent-auth-common`) is non-conforming. The parens form
+  preserves a stable parent name across variants so a CI dashboard
+  can fold all variants under one row.
+
+- **Step `name:` fields** — sentence case, no trailing period,
+  imperative verb that matches the action being taken ("Build
+  snapshot", "Run treefmt --ci", "Verify all required checks
+  passed"). Not "Snapshot building" or "treefmt".
+
+- **Composite actions** — kebab-case directory under
+  `.github/actions/`, kebab-case action name, named after what they
+  install / set up: `setup-toolchain`, `install-pr-lint-validator`,
+  `build-integration-test-image`. The action's own `name:` field uses
+  sentence case ("Setup toolchain", "Install pr-lint-validator").
+
+### Where a new check goes
+
+Pick the orchestrator by cadence and trigger surface:
+
+- **PR-time check** — child of `ci.yml`. Pick the right parent slot:
+
+  - Formatting / lint drift → `check-fmt.yml`.
+  - Type checks, lint rules, language-specific static analysis →
+    `check-lint.yml`.
+  - Secrets scans, SAST, dependency review / submission →
+    `check-security.yml`.
+  - Changelog presence / format → `check-changelog.yml`.
+  - PR-metadata validators (DCO, title prefix, body shape) →
+    `check-pull-request.yml`.
+  - Project-standards canaries (`scripts/verify-standards.sh` and its
+    siblings) → `check-standards.yml`.
+  - Docs build → `check-docs.yml`.
+  - Release dry-run / publish-readiness → `check-release.yml` /
+    `check-publish.yml`.
+  - Production-artefact build → `build.yml`.
+  - Per-package unit / integration / smoke / system tests →
+    `test-unit.yml` / `test-integration.yml` / `test-smoke.yml` /
+    `test-system.yml`.
+
+  If no existing parent is the right home, add a new direct child of
+  `ci.yml` (named `<verb>-<noun>.yml`, `name:` Title Case) and append
+  it to `ci.yml`'s `Required checks passed` `needs:` list.
+
+- **Daily-cadence check** — child of `nightly.yml`. Append the new
+  `<child>.yml` alongside `mutation`, add it to the aggregator's
+  `needs:`.
+
+- **Weekly-cadence check** — child of `weekly.yml`. Same shape as
+  nightly; runner-queue scheduling lives in the cron at the top of
+  the file, so no extra coordination needed.
+
+- **Cross-cutting bot logic** that consumes other workflows'
+  completions — standalone workflow with a `workflow_run:` listener.
+  `merge-bot.yml` is the canonical example: its listener is scoped to
+  `workflows: [CI]` (issue 467) so a green CI run is the single
+  signal that every gate passed. Do not add a parallel listener for a
+  child orchestrator; the parent's `Required checks passed` already
+  reflects every child's outcome.
+
+### Branch protection
+
+A single ruleset entry on `main` requires `Required checks passed`.
+That string is the parent orchestrator's aggregator job name. Adding
+a new PR-time child requires zero ruleset changes — the child is
+already covered transitively through the aggregator.
+
+### Bot listener trigger surface
+
+- `merge-bot.yml` listens on `pull_request: types: [labeled]`
+  (primary, for `automerge` label application),
+  `workflow_run: workflows: [CI]` (sticky retry once CI completes),
+  `pull_request_review`, `push: branches: [main]` (sweep open
+  `automerge` PRs when `main` advances), and `workflow_dispatch`
+  (maintainer break-glass / sweep fan-out). The `workflow_run`
+  listener is intentionally scoped to the single parent orchestrator
+  name `CI`; the previous broader listener was collapsed in issue 467
+  once the aggregator became the single required check.
+- `changelog-bot.yml` listens on
+  `pull_request: types: [opened, edited, synchronize, unlabeled]`
+  directly (NOT `pull_request_target`) so a fork PR cannot mint a
+  write-token from this workflow. It does not need to wait for
+  `ci.yml` because its decisions depend only on PR metadata + the
+  diff, both of which the `pull_request` event already carries.
+
+### Cutover order when restructuring
+
+When introducing a new parent orchestrator, splitting an existing
+child, or moving jobs between children, the safe sequence is:
+
+1. **Add new** — land the new parent / child / job alongside the
+   existing one. Both run in parallel.
+2. **Run in parallel** — leave both in place across at least one
+   merge cycle so failure modes surface against real PRs, not just
+   synthetic ones.
+3. **Flip the ruleset** — only after the new aggregator (or new
+   required check) has demonstrated green runs against PRs the old
+   one also approved, switch branch protection to point at the new
+   `Required checks passed`.
+4. **Delete the old** — remove the legacy workflow file and any
+   references to its check names in the same PR that flips the
+   ruleset (or in the immediate follow-up). Do not leave the legacy
+   file in the tree as a "just in case" — Strategy C of the 440
+   migration explicitly retired every superseded workflow once its
+   replacement was wired in.
+
+### Tooling rules
+
 - **Test runner script** — ensure a single-command test runner exists (e.g.
   `scripts/test.sh`) so the full test suite runs with one command.
 
@@ -147,12 +353,10 @@ language: `python.md`, `bash.md`.
   trailing comment to track upgrades and rewrites both the SHA and the
   comment on each bump, keeping the pin reviewable.
 
-  Scope today: `.github/workflows/release.yml`,
-  `.github/workflows/release-bot.yml`, `.github/workflows/reuse.yml`
-  (the REUSE gate is a release prerequisite), and
+  Scope today: `.github/workflows/release-bot.yml`, the SLSA provenance
+  generator referenced from `release-bot.yml`, and
   `.github/actions/setup-toolchain/action.yml` (indirectly part of the
-  release path via `reuse.yml`). Read-only workflows (`check.yml`,
-  `test.yml`, `verify-*.yml`, `typecheck.yml`, `security.yml`) stay on
+  release path). Read-only PR-time workflows under `ci.yml` stay on
   floating-major tags — their blast radius is small enough that the
   review cost of SHA-pinned bumps outweighs the benefit. Local composite
   actions referenced as `uses: ./...` are version-locked to the repo
