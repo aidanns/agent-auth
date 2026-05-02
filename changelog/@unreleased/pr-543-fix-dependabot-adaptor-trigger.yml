@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: fix
+fix:
+  description: Trigger `dependabot-adaptor-bot.yml` on `pull_request_target` so the App credentials resolve under the Dependabot secrets context.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/537
+    - https://github.com/aidanns/agent-auth/pull/543
