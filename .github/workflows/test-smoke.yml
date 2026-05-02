@@ -34,6 +34,12 @@ jobs:
   # installs uv on PATH — the install scripts must work without uv
   # (uv is the build-time dependency, not an install-time one).
   install-from-wheels:
+    # Explicit kebab-case parens template per ADR 0046 § Naming
+    # conventions — sibling matrix jobs (`unit-tests`,
+    # `integration-tests`, `analyze`) all declare their template
+    # too. GitHub's default object-matrix rendering happens to
+    # match this string today; pinning it here is forward-defence.
+    name: install-from-wheels (${{ matrix.service.name }}, ${{ matrix.service.entrypoint }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

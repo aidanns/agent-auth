@@ -166,9 +166,14 @@ emit_job_leaves() {
   name=$(echo "${wf_doc}" | jq -r --arg jid "${jid}" '.jobs[$jid].name // ""')
   local base
   if [[ -n "${name}" ]]; then
-    # Strip `(${{ matrix.<key> }})` from the template; matrix_suffixes()
-    # reattaches the row-specific parens-suffix below.
-    base=$(echo "${name}" | sed -E 's/[[:space:]]*\(\$\{\{[[:space:]]*matrix\.[^}]+\}\}[[:space:]]*\)//')
+    # Strip the trailing `(...)` parens block when it contains a
+    # `${{ matrix... }}` placeholder; matrix_suffixes() reattaches
+    # the row-specific parens-suffix below. Handles both single-
+    # placeholder (`unit-tests (${{ matrix.package }})`) and
+    # multi-placeholder
+    # (`install-from-wheels (${{ matrix.service.name }}, ${{ matrix.service.entrypoint }})`)
+    # templates.
+    base=$(echo "${name}" | sed -E 's/[[:space:]]*\([^)]*\$\{\{[[:space:]]*matrix\.[^)]*\)//')
   else
     base="${jid}"
   fi

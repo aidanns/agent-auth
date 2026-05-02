@@ -216,12 +216,14 @@ Pick the orchestrator by cadence and trigger surface:
   `ci.yml`'s `required-checks-passed.needs:` list.
 
 - **Daily-cadence check** — child of `nightly.yml`. Append the new
-  `<child>.yml` alongside `mutation`, add it to the aggregator's
-  `needs:`.
+  `<child>.yml` alongside `mutation` in `nightly.yml`'s `jobs:` map;
+  the workflow_run conclusion is the cadence's single signal (no
+  aggregator under ADR 0046).
 
 - **Weekly-cadence check** — child of `weekly.yml`. Same shape as
-  nightly; runner-queue scheduling lives in the cron at the top of
-  the file, so no extra coordination needed.
+  nightly: append to `weekly.yml`'s `jobs:` map. Runner-queue
+  scheduling lives in the cron at the top of the file, so no extra
+  coordination needed.
 
 - **Cross-cutting bot logic** that consumes other workflows'
   completions — standalone workflow with a `workflow_run:` listener.

@@ -44,11 +44,11 @@ jobs:
     # Wait for `check-dependency-submission`'s POST so the review
     # action sees a head-SHA snapshot in the Dependency Graph
     # (otherwise it emits a sticky "no snapshots found" PR comment).
-    # ADR 0046's aggregator already has both jobs in `needs:`, so a
-    # `submit` failure that GitHub propagates as `skipped` here is
-    # correctly rejected by `ci.yml`'s strict `skipped = failure`
-    # rule (#441) — the review verdict against a missing snapshot
-    # would be meaningless.
+    # `ci.yml`'s aggregator depends on `check-security`, which fails
+    # if either child fails (per #441), so a `submit` failure that
+    # GitHub propagates as `skipped` here is correctly rejected —
+    # the review verdict against a missing snapshot would be
+    # meaningless.
     needs: [check-dependency-submission]
     uses: ./.github/workflows/check-dependency-review.yml
     with:
