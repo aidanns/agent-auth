@@ -83,6 +83,17 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # `setup-toolchain` installs the `uv` binary but doesn't sync the
+      # project virtualenv, so `pytest` (a dev-extra dependency) isn't
+      # on PATH until we materialise it. `scripts/test.sh` does this
+      # via `_bootstrap_venv.sh`; the per-package matrix bypasses
+      # `task test -- --unit` (see comment below) so we sync inline
+      # here. Mirrors test.yml's `macos-applescript` job, which is the
+      # other path that talks directly to `uv` without going through
+      # the shared script.
+      - name: Sync project venv with dev extras
+        run: uv sync --extra dev
+
       # Pytest is invoked directly rather than via `task test --
       # --unit` because the shared script runs the full workspace
       # surface in a single process and enforces the workspace
