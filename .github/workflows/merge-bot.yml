@@ -1148,37 +1148,156 @@ jobs:
       group: merge-bot-sweep
       cancel-in-progress: true
     steps:
-      - name: List open automerge PRs and dispatch merge-bot per PR
+      - name: List, filter, partition, cap, and dispatch merge-bot per PR
         env:
           GH_TOKEN: ${{ github.token }}
+          # Per-sweep dispatch cap. Sourced from a repo variable so
+          # the cap can be tuned without a workflow edit; defaults
+          # to 3 when the repo variable is unset. See issue #498.
+          SWEEP_MAX: ${{ vars.MERGE_BOT_SWEEP_MAX || '3' }}
         run: |
           set -euo pipefail
-          # `gh pr list --json number` returns a JSON array of
-          # `{number: <int>}`; `--jq '.[].number'` flattens it to
-          # one number per line. Empty output means no PRs to
-          # dispatch — exit 0 cleanly. Bind through `mapfile` so
-          # the per-PR loop body sees one number at a time and
-          # the dispatch call quotes `${pr}` rather than splitting
-          # on whitespace.
-          mapfile -t prs < <(gh pr list \
+          # Sweep cap rationale (issue #498): firing
+          # `workflow_dispatch` against every open `automerge` PR on
+          # every `push:main` advance produces a thundering-herd of
+          # `update-branch` calls (each pushes a merge commit, which
+          # restarts CI on the PR head). When N PRs are simultaneously
+          # BEHIND and `main` advances repeatedly during a CI cycle,
+          # this multiplies into N parallel CI cascades and saturates
+          # the runner queue. Capping the per-sweep fan-out to the
+          # oldest N *eligible* PRs drains the queue at a sustainable
+          # rate; PRs not picked this sweep get picked on the next
+          # `push:main` (which fires when one of the dispatched N
+          # actually merges, advancing main). The per-PR
+          # `merge-bot-<n>` concurrency group already serialises
+          # per-PR work — this cap is purely about across-PR fan-out.
+
+          # Stage 1 — list open `automerge` PRs with the metadata
+          # needed for eligibility, partition, and sort. Capture
+          # number, headRefName, title, and labels in a single
+          # `gh pr list` call so downstream filters operate on a
+          # frozen snapshot.
+          all_prs="$(gh pr list \
             --repo "${GITHUB_REPOSITORY}" \
             --state open \
             --label automerge \
-            --json number \
-            --jq '.[].number')
-          if [[ "${#prs[@]}" -eq 0 ]]; then
-            echo "merge-bot sweep: no open automerge PRs; nothing to dispatch."
+            --json number,headRefName,title,labels \
+            --jq '[.[] | {number, headRefName, title, labels: [.labels[].name]}]')"
+          total_open="$(jq 'length' <<<"${all_prs}")"
+          if [[ "${total_open}" -eq 0 ]]; then
+            echo "merge-bot sweep: total=0 eligible=0 needs-fix-excluded=0 dispatched=0 (no open automerge PRs)."
             exit 0
           fi
-          echo "merge-bot sweep: dispatching merge-bot for PRs: ${prs[*]}"
+
+          # Stage 2 — eligibility filter.
+          #
+          # A PR is eligible iff:
+          #   (a) any commit on the PR has ever had a
+          #       `statusCheckRollup.state == "SUCCESS"` rollup
+          #       (the "ever-been-green" check), AND
+          #   (b) it does NOT carry the `needs fix` label.
+          #
+          # The ever-green check uses the GraphQL
+          # `pullRequest.commits(last: 100).nodes.commit.statusCheckRollup.state`
+          # walk — a structurally-independent GitHub-native signal.
+          # Comment-text or commit-author heuristics are explicitly
+          # rejected because they depend on the bot's own prior
+          # outputs and create circular dependencies. The
+          # `needs fix` exclusion is the PR-level park gate that
+          # the `label-needs-fix` job (#503 / #515) maintains in
+          # response to `workflow_run.completed`; combined with the
+          # ever-green check it lets the sweep skip both
+          # never-been-green PRs and known-failing PRs.
+          #
+          # `commits(last: 100)` cap is acceptable; PRs with deeper
+          # histories that have ever been green will surface as a
+          # current-rollup hit on a near-future sweep anyway.
+          eligible_numbers=()
+          needs_fix_excluded=0
+          while IFS= read -r pr_json; do
+            pr_number="$(jq -r '.number' <<<"${pr_json}")"
+            has_needs_fix="$(jq -r '[.labels[] | select(. == "needs fix")] | length > 0' <<<"${pr_json}")"
+            if [[ "${has_needs_fix}" == "true" ]]; then
+              needs_fix_excluded=$((needs_fix_excluded + 1))
+              echo "merge-bot sweep: PR #${pr_number} excluded (carries 'needs fix' label)."
+              continue
+            fi
+            rollup_states="$(gh api graphql \
+              -F owner="${GITHUB_REPOSITORY%%/*}" \
+              -F repo="${GITHUB_REPOSITORY#*/}" \
+              -F number="${pr_number}" \
+              -f query='
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    pullRequest(number: $number) {
+                      commits(last: 100) {
+                        nodes { commit { oid statusCheckRollup { state } } }
+                      }
+                    }
+                  }
+                }
+              ' \
+              --jq '[.data.repository.pullRequest.commits.nodes[].commit.statusCheckRollup.state] | map(select(. != null))')"
+            ever_green="$(jq 'any(. == "SUCCESS")' <<<"${rollup_states}")"
+            if [[ "${ever_green}" == "true" ]]; then
+              eligible_numbers+=("${pr_number}")
+            else
+              echo "merge-bot sweep: PR #${pr_number} excluded (no commit on the PR has ever had statusCheckRollup=SUCCESS)."
+            fi
+          done < <(jq -c '.[]' <<<"${all_prs}")
+          eligible_count="${#eligible_numbers[@]}"
+
+          if [[ "${eligible_count}" -eq 0 ]]; then
+            echo "merge-bot sweep: total=${total_open} eligible=0 needs-fix-excluded=${needs_fix_excluded} dispatched=0 (nothing eligible to dispatch)."
+            exit 0
+          fi
+
+          # Stage 3 — partition, sort, head.
+          #
+          # Release PRs (head ref `^release/X.Y.Z$` AND title
+          # `^chore\(release\): X.Y.Z$`) are dispatched first to
+          # unblock the next tag-and-publish; other PRs follow.
+          # Within each group, FIFO (ascending PR number).
+          # Concatenate, then head at SWEEP_MAX. `jq -n` builds the
+          # number-only output from the metadata snapshot keyed on
+          # the eligible-list bash array.
+          eligible_json="$(printf '%s\n' "${eligible_numbers[@]}" | jq -R 'tonumber' | jq -s '.')"
+          dispatch_numbers="$(jq -n \
+            --argjson all "${all_prs}" \
+            --argjson eligible "${eligible_json}" \
+            --argjson cap "${SWEEP_MAX}" '
+              ($all | map(select(.number as $n | $eligible | index($n)))) as $picked
+              | ($picked | map(select(
+                  (.headRefName | test("^release/[0-9]+\\.[0-9]+\\.[0-9]+$"))
+                  and (.title | test("^chore\\(release\\): [0-9]+\\.[0-9]+\\.[0-9]+$"))
+                ))) as $release
+              | ($picked | map(select(
+                  ((.headRefName | test("^release/[0-9]+\\.[0-9]+\\.[0-9]+$")) | not)
+                  or ((.title | test("^chore\\(release\\): [0-9]+\\.[0-9]+\\.[0-9]+$")) | not)
+                ))) as $other
+              | (($release | sort_by(.number)) + ($other | sort_by(.number)))
+              | .[0:$cap]
+              | map(.number)
+            ')"
+
+          mapfile -t prs < <(jq -r '.[]' <<<"${dispatch_numbers}")
+          dispatched_count="${#prs[@]}"
+          echo "merge-bot sweep: total=${total_open} eligible=${eligible_count} needs-fix-excluded=${needs_fix_excluded} cap=${SWEEP_MAX} dispatched=${dispatched_count} numbers=[${prs[*]:-}]"
+
+          if [[ "${dispatched_count}" -eq 0 ]]; then
+            exit 0
+          fi
+
+          # Stage 4 — dispatch.
+          #
+          # `gh workflow run` posts to
+          # `POST /repos/.../actions/workflows/{id}/dispatches`,
+          # which fires a `workflow_dispatch` event. Each dispatched
+          # run hits the existing per-PR `merge-bot-<n>`
+          # concurrency group on the `merge` job, so a
+          # sweep-triggered dispatch for a PR already being
+          # processed by another trigger queues cleanly.
           for pr in "${prs[@]}"; do
-            # `gh workflow run` posts to
-            # `POST /repos/.../actions/workflows/{id}/dispatches`,
-            # which fires a `workflow_dispatch` event. Each
-            # dispatched run hits the existing per-PR
-            # `merge-bot-<n>` concurrency group on the `merge`
-            # job, so a sweep-triggered dispatch for a PR already
-            # being processed by another trigger queues cleanly.
             gh workflow run merge-bot.yml \
               --repo "${GITHUB_REPOSITORY}" \
               --ref main \
