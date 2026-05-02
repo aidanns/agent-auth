@@ -296,7 +296,7 @@ jobs:
     # branch-protection ruleset switch from per-workflow required
     # checks to this one aggregator is tracked under #5.2.
     name: Required checks passed
-    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release, check-security, check-fmt]
+    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release, check-security, check-fmt, test-unit, test-integration, test-smoke, test-system]
     if: always()
     runs-on: ubuntu-latest
     steps:
