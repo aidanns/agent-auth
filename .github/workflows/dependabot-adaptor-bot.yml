@@ -151,7 +151,7 @@ jobs:
           app-id: ${{ secrets.CHANGELOG_BOT_APP_ID }}
           private-key: ${{ secrets.CHANGELOG_BOT_PRIVATE_KEY }}
 
-      - name: Inject ==COMMIT_MSG== block and apply labels
+      - name: Inject ==COMMIT_MSG== / ==NO_CHANGELOG== markers and apply labels
         if: steps.secrets-check.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
