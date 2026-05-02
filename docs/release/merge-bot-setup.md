@@ -39,8 +39,11 @@ workflow:
 4. Otherwise calls `PUT /repos/aidanns/agent-auth/pulls/{n}/merge`
    with `merge_method: squash`,
    `commit_title: <PR title> (#<n>)`,
-   `commit_message: <extracted block>`. The bot appends ` (#<n>)`
-   to the subject so GitHub renders the squash-merge commit subject
+   `commit_message: <extracted block>`. The block carries the body
+   and trailers only (#478) — GitHub renders the squash commit by
+   joining `commit_title + blank + commit_message`, so the PR
+   title is the single source of the squash subject. The bot
+   appends ` (#<n>)` to the title so GitHub renders the subject
    as a clickable link to the originating PR in the commit log;
    the REST merge endpoint does not auto-append the suffix the
    way the web UI's "Squash and merge" button does. See #399.
