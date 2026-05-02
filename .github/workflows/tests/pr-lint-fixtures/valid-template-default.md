@@ -15,6 +15,6 @@ The foo previously bypassed the bar because of a typo in
 config.py; this fix routes every foo through the bar so the
 metrics counter actually increments.
 
-Closes #3
+Closes: #3
 Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>
 ==COMMIT_MSG==

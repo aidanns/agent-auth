@@ -77,7 +77,7 @@ simplifying for "personal project" scope.
   (no `(#<issue>)` suffix). GitHub's squash-merge appends the PR
   number, which the `conventionalcommits` preset auto-links; adding
   an issue number by hand produces a duplicate parenthesized link in
-  `CHANGELOG.md`. Link the issue with a `Closes #N` footer in the
+  `CHANGELOG.md`. Link the issue with a `Closes: #N` footer in the
   `==COMMIT_MSG==` block. See CONTRIBUTING.md § "Writing PRs".
 - Every PR commit needs a DCO `Signed-off-by:` trailer — use
   `git commit -s` every time, or alias it once with

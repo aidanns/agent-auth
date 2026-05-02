@@ -11,6 +11,6 @@ The cbea.ms / kernel-style enumerated-changes form reads better
 in `git log` than the run-on prose paragraph that authors fell
 back to under the previous blanket no-markdown ban (see #345).
 
-Closes #11
+Closes: #11
 Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>
 ==COMMIT_MSG==
