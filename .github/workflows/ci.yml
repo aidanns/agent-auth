@@ -128,6 +128,21 @@ jobs:
               - '.github/workflows/**'
               - '.github/actions/**'
 
+  check-security:
+    # Security-cadence child orchestrator (issue #447). Carries CodeQL
+    # analyse today; `dependency-review`, `dependency-submission`, and
+    # `ripsecrets` migrate underneath it in follow-up issues. The
+    # security checks don't consume any of `plan`'s gating booleans
+    # today (CodeQL scans the full repo every run), but the `needs:
+    # plan` keeps a stable ordering so future security children can
+    # reference plan outputs without churning this file.
+    name: Check Security
+    needs: [plan]
+    uses: ./.github/workflows/check-security.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
   check-lint:
     # First `workflow_call` child landed under the parent issue #440
     # migration (Phase 2, issue #453). The `check-lint.yml` parent
@@ -261,7 +276,7 @@ jobs:
     # branch-protection ruleset switch from per-workflow required
     # checks to this one aggregator is tracked under #5.2.
     name: Required checks passed
-    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release]
+    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release, check-security]
     if: always()
     runs-on: ubuntu-latest
     steps:
