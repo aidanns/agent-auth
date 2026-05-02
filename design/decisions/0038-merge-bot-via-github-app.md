@@ -163,7 +163,7 @@ Three orthogonal questions fall out of that:
    doesn't apply it in code.
 
 6. **Close linked issues after a successful merge.** Amended
-   2026-04-28 (issue #429). GitHub's UI auto-close-on-`Closes #N`
+   2026-04-28 (issue #429). GitHub's UI auto-close-on-`Closes: #N`
    does not fire for App-token-mediated `PUT /pulls/{n}/merge`
    calls — confirmed deterministically across PRs #350 / #354 /
    #423 — so the bot does the closure itself: it parses the
@@ -201,6 +201,21 @@ Three orthogonal questions fall out of that:
    Hard cutover — no dual-shape support — because the open-PR set
    is small and the validator's error message tells the author
    exactly what to do.
+
+8. **Canonical issue-close trailer is `Closes: #N` (colon form).**
+   Amended 2026-05-02 (issue #486). The pre-amendment recommendation
+   was `Closes #N` (no colon) because GitHub's UI auto-closer rejects
+   the colon form; with item 6 above the bot does the closure itself
+   via `PATCH /repos/.../issues/{N}` so GitHub's UI parser is no
+   longer in the loop, and the colon form matches the shape of every
+   other trailer in the block (`Signed-off-by:`, `Co-authored-by:`,
+   `Fixes: <sha>`). Stay-lenient cutover — the parser
+   (`scripts/parse-close-keywords.py`) and the validator
+   (`scripts/validate-commit-msg-block.py` /
+   `pr-lint-validator commit-msg`) both continue to accept the bare
+   form so historical CHANGELOG entries and any in-flight PRs keep
+   matching; only the documented recommendation and the canonical
+   `valid-*.md` PR-lint fixtures move to the colon form.
 
 ## Consequences
 

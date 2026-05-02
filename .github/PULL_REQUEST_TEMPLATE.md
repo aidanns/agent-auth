@@ -38,9 +38,11 @@ below. Rules (enforced by .github/workflows/pr-lint.yml):
 - If a `BREAKING CHANGE:` footer is present, it must be on the last
   non-`Signed-off-by:` line.
 - Trailers (`Closes`, `Co-authored-by`, `Signed-off-by`) follow the
-  git-trailer format `Token: value`. `Closes #N` (no colon) is also
-  accepted for compatibility with the existing CHANGELOG style.
-- The trailer block is contiguous: stack `Closes #N` and
+  git-trailer format `Token: value`. The bare `Closes #N` (no colon)
+  is also accepted for compatibility with the existing CHANGELOG
+  style, but new PRs should prefer `Closes: #N` so it matches the
+  shape of every other trailer.
+- The trailer block is contiguous: stack `Closes: #N` and
   `Signed-off-by:` with no blank line between them. One blank line
   goes ABOVE the trailer block (between body and trailers), not
   inside it — `git interpret-trailers --parse` treats a blank line
