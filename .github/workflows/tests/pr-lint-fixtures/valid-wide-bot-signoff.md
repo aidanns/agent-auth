@@ -18,6 +18,6 @@ The foo previously bypassed the bar because of a typo in
 config.py; this fix routes every foo through the bar so the
 metrics counter actually increments.
 
-Closes #1
+Closes: #1
 Signed-off-by: agent-auth-release-bot[bot] <123456+agent-auth-release-bot[bot]@users.noreply.github.com>
 ==COMMIT_MSG==
