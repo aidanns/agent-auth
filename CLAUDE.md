@@ -73,6 +73,7 @@ simplifying for "personal project" scope.
   `pr-lint.yml` enforces that. See
   `docs/release/merge-bot-setup.md` for maintainer setup and
   CONTRIBUTING.md § "Writing PRs" for the worked example.
+- Claude-authored `==COMMIT_MSG==` blocks include a `Co-Authored-By: Claude <model+context> <noreply@anthropic.com>` trailer between `Closes:` and `Signed-off-by:` (see CONTRIBUTING.md § "Writing PRs" → "Claude attribution trailer" and ADR 0045).
 - Commit subjects must not include the linked issue number
   (no `(#<issue>)` suffix). GitHub's squash-merge appends the PR
   number, which the `conventionalcommits` preset auto-links; adding
@@ -160,3 +161,17 @@ topic is relevant:
 - `bash.md` — Bash-specific linting and formatting.
 - `release-and-hygiene.md` — required project files (CONTRIBUTING, CHANGELOG,
   LICENSE, SECURITY), release process, and repo metadata.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues at `aidanns/agent-auth`, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`); the four non-`wontfix` labels are created on first use. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Glossary at `CONTEXT.md` (repo root); ADRs at `design/decisions/` (non-default path — i.e. not the `docs/adr/` location the engineering skills default to). See `docs/agents/domain.md`.

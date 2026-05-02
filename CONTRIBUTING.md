@@ -1026,6 +1026,62 @@ matching is case-insensitive — `Co-Authored-By:` from a pair-bot or
 copy-paste is recognised the same way and must stack contiguously
 with the other trailers.
 
+##### Claude attribution trailer
+
+The author of the `==COMMIT_MSG==` block adds a `Co-Authored-By: Claude`
+trailer when Claude authored the body. The squash-merge collapses
+every feature-branch commit into one, so the per-commit Claude
+co-authorship signal Claude Code records on the working branch is
+lost on `main` unless the trailer rides into the squash body via this
+block. Position: between `Closes:` and `Signed-off-by:` inside the
+contiguous trailer block.
+
+Format:
+
+```
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+```
+
+The `<model+context>` string is whatever the writing agent is actually
+running as. The literal `noreply@anthropic.com` email renders the
+Claude icon next to the co-author chip in the GitHub UI.
+
+Full trailer-block-position example:
+
+```
+<body prose>
+
+Closes: #N
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>
+```
+
+See [ADR 0045](design/decisions/0045-claude-coauthorship-trailer.md)
+for the rationale, the rejected alternatives (server-side merge-bot
+injection, bare `Claude` model string, `claude[bot]` email,
+multi-trailer audit form), and the no-backfill / no-validator-in-v1
+decisions.
+
+Edge cases:
+
+- **Human polishes a Claude-authored body** → the trailer stays
+  (Claude still authored the substance). A wholesale rewrite where
+  the human re-authors the prose from scratch → the human removes
+  the trailer.
+- **Multi-model PR** (more than one Claude model touched the body
+  during authoring) → the agent that writes the final block writes
+  its own model identifier. There is no multi-trailer convention;
+  one block, one trailer, one model identity.
+- **Bot-authored PRs** (`agent-auth-release-bot[bot]`,
+  `changelog-bot[bot]`, the dependabot adaptor's synthesised blocks)
+  → implicitly excluded. Their `==COMMIT_MSG==` blocks are rendered
+  deterministically from YAML by Python helpers with no Claude in
+  the loop. Do not "fix" the omission by adding a trailer.
+- **`gh pr merge --admin --squash` break-glass** → the merge bypasses
+  the bot, so the committer pastes the squash-merge body manually.
+  The same rule applies: if Claude authored the block, include the
+  trailer in the pasted body.
+
 #### Worked examples
 
 The block is **body and trailers only** (issue #478) — the squash
