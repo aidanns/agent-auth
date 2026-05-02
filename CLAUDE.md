@@ -160,3 +160,17 @@ topic is relevant:
 - `bash.md` — Bash-specific linting and formatting.
 - `release-and-hygiene.md` — required project files (CONTRIBUTING, CHANGELOG,
   LICENSE, SECURITY), release process, and repo metadata.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues at `aidanns/agent-auth`, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`); the four non-`wontfix` labels are created on first use. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Glossary at `CONTEXT.md` (repo root); ADRs at `design/decisions/` (non-default path — i.e. not the `docs/adr/` location the engineering skills default to). See `docs/agents/domain.md`.
