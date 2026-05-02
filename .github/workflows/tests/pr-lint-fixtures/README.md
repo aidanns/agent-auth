@@ -23,8 +23,12 @@ or a warning count rather than raise/no-raise). Those rules live in
 inline self-test cases inside the validator scripts and run via
 separate self-test jobs in `pr-lint.yml`:
 
-- `python3 scripts/validate-pr-title.py --self-test` — title-only
-  rules (`pr-title-self-test` job).
+- `pr-lint-validator title --self-test` — title-only rules
+  (`pr-title-self-test` job). The `pr-lint-validator` console
+  script is on PATH inside the CI composite (see
+  `.github/actions/install-pr-lint-validator/action.yml`); locally,
+  run `uv run --package pr-lint-validator pr-lint-validator title --self-test`
+  to exercise the workspace source.
 - `python3 scripts/validate-commit-msg-block.py --self-test` —
   body rules whose outcome is a warning count (currently just the
   verbose-body rule, #395) — `pr-body-warning-self-test` job.
