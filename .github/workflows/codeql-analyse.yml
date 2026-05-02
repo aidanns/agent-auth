@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: CodeQL Analyse
+
+# `workflow_call` child of `check-security.yml`, itself a child of
+# `ci.yml` (parent issue #440). Carries the CodeQL `analyze (python)`
+# and `analyze (actions)` matrix jobs that previously lived in the
+# standalone `codeql.yml`. Per the Strategy C migration plan agreed
+# on the parent issue, this workflow runs alongside the original
+# `codeql.yml` until Phase 5 cuts branch protection over to the
+# `Required checks passed` aggregator and the original is deleted.
+# Both produce a check context named `analyze (python)` /
+# `analyze (actions)`; GitHub disambiguates them by `workflowName`,
+# so existing branch-protection rules on the originals continue to
+# fire identically while the new chain runs in parallel.
+#
+# The daily 07:00 UTC cron stays on `codeql.yml` for the duration
+# of the migration; this child only runs on `workflow_call`.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # ``python`` covers the packages/ + tests/ Python surface; ``actions``
+        # covers workflow files under .github/ so a dangerous
+        # script-injection pattern in a new workflow lands in the
+        # Security tab rather than going unnoticed.
+        language: [python, actions]
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          # Explicit security-extended suite: default ``security`` is
+          # high-precision but narrow; extended adds medium-precision
+          # queries that routinely surface real issues on the Python
+          # surface (e.g. clear-text logging, weak crypto choices).
+          queries: security-extended
+          # ``.github/codeql/codeql-config.yml`` carries
+          # ``path-classifiers`` that mark the workspace test trees and
+          # the ``tests_support`` library as test code so test-only
+          # patterns (e.g. world-readable bind-mount perms in
+          # ``tests_support.integration.plugin``) don't trigger
+          # production-grade queries.
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
