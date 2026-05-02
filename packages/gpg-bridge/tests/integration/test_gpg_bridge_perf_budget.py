@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
 #
 # SPDX-License-Identifier: MIT
+# integration-isolation: in-process-server
 
 """Performance-budget assertion for gpg-bridge sign / verify.
 

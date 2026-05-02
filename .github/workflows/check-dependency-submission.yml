@@ -23,6 +23,22 @@ name: Check Dependency Submission
 # receive a read-only `GITHUB_TOKEN`, so the snapshot POST would 403.
 on:
   workflow_call:
+    inputs:
+      # Centralised fork-PR gate from `ci.yml`'s `plan` job
+      # (issue #530). Replaces the previous in-job `fork-check` step
+      # that recomputed `IS_FORK` from `github.event_name` and
+      # `head.repo.full_name`. The semantic is identical: fork PRs
+      # receive a read-only `GITHUB_TOKEN` so the snapshot POST would
+      # 403, and we short-circuit to `success` rather than
+      # `if:`-skipping the job (the parent aggregator rejects
+      # `skipped`). Push / cron-equivalent / `workflow_dispatch` /
+      # `merge_group` / internal PRs all submit normally.
+      event_from_external_repo:
+        description: >-
+          True iff this is a `pull_request` event from a fork (head
+          repo differs from the workflow repo).
+        required: true
+        type: boolean
 
 permissions:
   # Required to POST to /repos/{owner}/{repo}/dependency-graph/snapshots.
@@ -33,32 +49,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Skip on fork PR
-        # GITHUB_TOKEN is read-only on fork PRs, so the snapshot POST
-        # would 403. Surfacing a `success` result here (rather than
-        # `if:`-skipping the whole job) keeps the parent
-        # `check-security.yml` aggregator green — its `Required checks
-        # passed` step rejects `skipped` alongside `failure` /
-        # `cancelled` / `timed_out`. Push / cron / workflow_dispatch
-        # always run in the main repo context and fall through to the
-        # snapshot submission below.
-        id: fork-check
-        env:
-          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-        run: |
-          set -euo pipefail
-          if [[ "${IS_FORK}" == "true" ]]; then
-            echo "skip=true" >> "${GITHUB_OUTPUT}"
-            echo "Fork PR detected — skipping snapshot submission."
-          else
-            echo "skip=false" >> "${GITHUB_OUTPUT}"
-          fi
-
-      - if: steps.fork-check.outputs.skip != 'true'
+      - if: ${{ !inputs.event_from_external_repo }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Build and submit snapshot
-        if: steps.fork-check.outputs.skip != 'true'
+        if: ${{ !inputs.event_from_external_repo }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MANIFEST_PATH: .github/tool-versions.yml
