@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Check Fmt
+
+# Intermediate orchestrator under `ci.yml` for formatting / lint checks
+# (issue #440 nested workflow_call structure). Today this shell carries a
+# single child — `spdx-license-headers` (issue #452, the REUSE lint
+# migration). Subsequent migration issues (e.g. #459 for treefmt and
+# ruff format) add additional children as siblings under the same
+# `required-checks-passed` aggregator below; the aggregator pattern
+# matches `ci.yml` so the same forwarding contract holds at every level.
+#
+# Until every formatting workflow migrates underneath here, this shell
+# runs alongside (not in place of) the existing top-level workflows
+# (e.g. `reuse.yml`). The Phase 5 sweep deletes the originals once
+# `Required checks passed` becomes the sole required status check on
+# `main`.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  spdx-license-headers:
+    name: spdx-license-headers
+    uses: ./.github/workflows/spdx-license-headers.yml
+
+  required-checks-passed:
+    # Aggregator at this level mirrors `ci.yml`'s pattern so the
+    # parent's `needs.check-fmt.result` collapses to a single
+    # `success` / `failure` for the top-level `Required checks
+    # passed` gate. Future issues add `needs:` entries (treefmt,
+    # ruff format) without touching `ci.yml`.
+    name: Required checks passed
+    needs: [spdx-license-headers]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all required checks passed
+        # Same JSON-via-env pattern as `ci.yml`'s aggregator: passes
+        # `needs` through `env:` so the JSON survives shell quoting
+        # verbatim. `jq -e` exits non-zero on a `false` boolean, so
+        # the step fails whenever any upstream `needs.*.result` is
+        # anything other than `success` (per #441, `skipped` is
+        # treated as a failure alongside `failure`, `cancelled`, and
+        # `timed_out`).
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "${NEEDS}" \
+            | jq -e 'to_entries | all(.value.result == "success")' \
+            > /dev/null
