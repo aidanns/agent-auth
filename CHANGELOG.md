@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.0] - 2026-05-02
+
+### Features
+
+- Extract the PR-title and `==COMMIT_MSG==` block validators into a
+  new `pr-lint-validator` workspace package shipped as a wheel and
+  console script on every release. (#489)
+
 ## [0.16.6] - 2026-04-28
 
 ### Improvements
