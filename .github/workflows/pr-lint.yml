@@ -16,11 +16,13 @@ name: PR Lint
 #      (the closed list of `Added` / `Fixed` / `Updated` / etc.).
 #   3. The PR body contains exactly one well-formed `==COMMIT_MSG==`
 #      block (line wrap, no markdown, BREAKING CHANGE positioning,
-#      trailer parsing, leading non-blank, no first-line subject
-#      duplication, kernel-style `Fixes: <sha> ("subject")` shape).
+#      trailer parsing, leading non-blank, no leading subject line,
+#      kernel-style `Fixes: <sha> ("subject")` shape). Per #478 the
+#      block is body + trailers only — the squash subject comes from
+#      the PR title via the merge API's `commit_title` field.
 #
 # Separate self-test jobs (`validator-self-test`,
-# `pr-title-self-test`, `pr-body-title-aware-self-test`) exercise the
+# `pr-title-self-test`, `validator-warning-self-test`) exercise the
 # validators against fixtures and inline cases on every run, so a
 # regression in either validator (e.g. one that exits 0 on every
 # input) immediately fails CI rather than silently approving every PR.
@@ -148,19 +150,13 @@ jobs:
       - name: Validate ==COMMIT_MSG== block
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-          # Pass the PR title through to the validator so the
-          # subject-dup body rule (CONTRIBUTING.md → "Writing
-          # release-worthy commits") can run. Same env-var pattern as
-          # the body itself for shell-injection safety.
-          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
           tmp="$(mktemp)"
           # Write the PR body to disk via env var; piping through the
           # shell would let backticks / $(...) in the PR body execute.
           printf '%s' "${PR_BODY:-}" > "${tmp}"
-          python3 scripts/validate-commit-msg-block.py "${tmp}" \
-            --title "${PR_TITLE:-}"
+          python3 scripts/validate-commit-msg-block.py "${tmp}"
 
   validator-self-test:
     name: Validator self-test
@@ -233,9 +229,13 @@ jobs:
           set -euo pipefail
           python3 scripts/validate-pr-title.py --self-test
 
-  pr-body-title-aware-self-test:
-    name: PR body title-aware validator self-test
+  pr-body-warning-self-test:
+    name: PR body warning-rule validator self-test
     runs-on: ubuntu-latest
+    # Exercises the body-rule paths whose outcome is a warning
+    # count, not raise/no-raise — currently just the verbose-body
+    # rule (#395) — so the fixture self-test loop above (which
+    # treats a fixture as raise/no-raise) cannot cover them.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -246,7 +246,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Run inline title-aware self-test
+      - name: Run inline warning-rule self-test
         run: |
           set -euo pipefail
           python3 scripts/validate-commit-msg-block.py --self-test

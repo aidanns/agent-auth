@@ -121,10 +121,11 @@ jobs:
           # line would defeat extract_block. printf keeps every
           # line flush-left regardless of YAML script indentation.
           tmp=$(mktemp)
+          # Body + trailers only per #478 — the squash subject comes
+          # from the PR title via the merge API's `commit_title`
+          # field, so the block must NOT carry its own subject line.
           printf '%s\n' \
             '==COMMIT_MSG==' \
-            'Routine dependency upgrade authored by Dependabot.' \
-            '' \
             'See the PR description for upstream release notes.' \
             '' \
             'Signed-off-by: dependabot[bot] <support@github.com>' \

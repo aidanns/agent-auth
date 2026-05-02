@@ -1,5 +1,5 @@
 ==COMMIT_MSG==
-Add a thing.
+The thing is small but useful.
 
 - [ ] ran `task check`
 - [x] ran `task test`

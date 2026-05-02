@@ -1,6 +1,4 @@
 ==COMMIT_MSG==
-Tighten the foo / bar handshake.
-
 This rolls up several closely-related changes that all touch the
 same handshake:
 
