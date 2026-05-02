@@ -1,0 +1,162 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Read required-check contexts from branch protection
+description: |
+  Read the required-check contexts from the active branch-protection
+  ruleset(s) for a PR's base branch, with a fallback to the legacy
+  ``branches/{branch}/protection`` API for repos that pre-date
+  rulesets. Branch protection is the single authoritative source of
+  "what must be SUCCESS for a merge to land" — consumers derive their
+  gating set from this rather than encoding a static "any failure
+  blocks" rule, so adding / removing required checks is a
+  branch-protection edit rather than a workflow edit. See issue #528.
+
+  Two API surfaces, queried in priority order:
+
+    1. The modern rulesets API — ``GET /repos/.../rulesets`` lists
+       rulesets, each detail call returns the
+       ``required_status_checks`` rule's contexts. Filtered to
+       ``target == "branch"`` and ``enforcement == "active"`` so
+       disabled / evaluation-mode rulesets and tag rulesets don't
+       pollute the contexts list.
+    2. The legacy ``GET /repos/.../branches/{branch}/protection``
+       endpoint — fallback for repos that pre-date rulesets.
+
+  If the rulesets API returns rulesets but extraction yields zero
+  contexts, the legacy fallback still runs before giving up — a
+  ruleset with ``required_status_checks: false`` should not silently
+  zero out the gating set.
+
+  The ``source`` output records which path was used so the caller can
+  fail-closed when neither path produced contexts — an empty contexts
+  list under the derived-from-config design would otherwise let the
+  consumer (e.g. merge-bot) treat a PR as having no required-check
+  verification at all. That is the wrong fail mode (fail-open); branch
+  protection being unreachable should refuse the operation with a
+  clear error so the maintainer investigates the App permission /
+  API outage.
+
+  Permissions: the rulesets endpoint requires the calling token to
+  have ``Administration: read``; the legacy endpoint requires the
+  same scope. See ``docs/release/merge-bot-setup.md`` Step 1.
+
+inputs:
+  pr-number:
+    description: PR number whose base branch's required-check contexts to read.
+    required: true
+  github-token:
+    # Don't write `${{ ... }}` here — action.yml metadata only has
+    # the `inputs` context in scope, so `${{ github.token }}` fails
+    # to load with "Unrecognized named-value: 'github'".
+    description: >
+      GitHub token used to read branch protection. Must have
+      ``Administration: read`` on the target repo (typically the
+      merge-bot App installation token).
+    required: true
+
+outputs:
+  contexts:
+    description: >
+      Newline-delimited list of required-check context names, deduped
+      and with blank lines stripped. Empty when neither API surface
+      returned contexts; consumers should fail-closed in that case.
+    value: ${{ steps.read.outputs.contexts }}
+  source:
+    description: >
+      Which API surface produced the contexts list. One of:
+      ``rulesets`` (modern API), ``branch_protection`` (legacy API
+      fallback), or ``empty`` (neither returned contexts — the
+      consumer should fail-closed).
+    value: ${{ steps.read.outputs.source }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read required-check contexts
+      id: read
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        # `gh pr view --json baseRefName` returns the PR's target
+        # branch (typically `main`). Refetch here rather than wiring
+        # it through a separate input so the dependency on the base
+        # branch is co-located with the step that uses it.
+        base_ref="$(gh pr view "${PR_NUMBER}" \
+          --repo "${REPO}" \
+          --json baseRefName \
+          --jq '.baseRefName')"
+        echo "read-required-contexts: PR base branch = ${base_ref}"
+
+        # Step 1 — modern rulesets API. List active branch-targeted
+        # rulesets, then per-ruleset detail call extracts the
+        # required-status-checks contexts. The `--jq` filter on the
+        # detail call walks the full rule tree (`.. | objects`)
+        # because the schema may evolve; selecting on
+        # `type == "required_status_checks"` is shape-stable.
+        contexts=""
+        ruleset_ids="$(gh api \
+          "repos/${REPO}/rulesets" \
+          --paginate \
+          --jq '.[] | select(.target == "branch" and .enforcement == "active") | .id' \
+          2>/dev/null || true)"
+        if [[ -n "${ruleset_ids}" ]]; then
+          while IFS= read -r id; do
+            [[ -z "${id}" ]] && continue
+            detail="$(gh api "repos/${REPO}/rulesets/${id}" 2>/dev/null || true)"
+            if [[ -z "${detail}" ]]; then
+              echo "::warning::Could not fetch ruleset #${id}; skipping."
+              continue
+            fi
+            ruleset_ctx="$(jq -r '
+              .. | objects
+              | select(.type? == "required_status_checks")
+              | .parameters.required_status_checks[]?.context
+            ' <<<"${detail}" || true)"
+            if [[ -n "${ruleset_ctx}" ]]; then
+              contexts+="${ruleset_ctx}"$'\n'
+            fi
+          done <<<"${ruleset_ids}"
+        fi
+        # Dedupe and strip blank lines.
+        contexts="$(printf '%s' "${contexts}" | awk 'NF' | sort -u)"
+
+        source="rulesets"
+        if [[ -z "${contexts}" ]]; then
+          # Step 2 — legacy fallback. The pre-rulesets API still
+          # works on repos that have only classic branch protection.
+          source="branch_protection"
+          contexts="$(gh api \
+            "repos/${REPO}/branches/${base_ref}/protection" \
+            --jq '.required_status_checks.contexts[]?' \
+            2>/dev/null | awk 'NF' | sort -u || true)"
+        fi
+
+        if [[ -z "${contexts}" ]]; then
+          source="empty"
+          echo "::warning::No required-check contexts found via rulesets or legacy branch-protection API. Consumers should fail-closed."
+        fi
+
+        echo "read-required-contexts: source = ${source}"
+        echo "read-required-contexts: contexts ="
+        if [[ -z "${contexts}" ]]; then
+          echo "  (none)"
+        else
+          # `${contexts}` is a newline-separated list; indent each
+          # line for log readability. Avoids word-splitting on
+          # whitespace because context names can contain spaces
+          # (e.g. "Required checks passed").
+          printf '%s\n' "${contexts}" | awk 'NF { print "  " $0 }'
+        fi
+
+        {
+          echo "source=${source}"
+          echo "contexts<<READ_REQUIRED_CONTEXTS_EOF"
+          printf '%s\n' "${contexts}"
+          echo "READ_REQUIRED_CONTEXTS_EOF"
+        } >> "${GITHUB_OUTPUT}"
