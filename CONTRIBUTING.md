@@ -313,8 +313,10 @@ below. The two surfaces are kept in lockstep by the
 `pr-title-types-self-test` job and by code review against this
 section.
 
-The validator at
-[`scripts/validate-pr-title.py`](scripts/validate-pr-title.py)
+The validator
+([`packages/pr-lint-validator/src/pr_lint_validator/title.py`](packages/pr-lint-validator/src/pr_lint_validator/title.py),
+shipped as the `pr-lint-validator title` console script via the
+`pr_lint_validator-<v>-py3-none-any.whl` GitHub Release asset)
 applies a **two-tier rule** (#402) when the PR's changed-files list
 is available:
 
@@ -363,8 +365,9 @@ or a multi-package PR. Prefer a scope when one applies.
 
 #### Type × scope matrix
 
-Not every type is allowed on every scope. The validator at
-[`scripts/validate-pr-title.py`](scripts/validate-pr-title.py) reads
+Not every type is allowed on every scope. The validator
+([`packages/pr-lint-validator/src/pr_lint_validator/title.py`](packages/pr-lint-validator/src/pr_lint_validator/title.py),
+shipped as the `pr-lint-validator title` console script) reads
 the canonical
 [`commit_taxonomy.INTERNAL_ONLY_SCOPES`](scripts/lint/commit_taxonomy.py)
 set and rejects release-bumping prefixes paired with internal
@@ -837,13 +840,13 @@ A subset of the rules below is **CI-enforced**; the rest are
 | Rule                                                                             | Enforced by                                                                                                                       |
 | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Title prefix in the Palantir allowlist                                           | CI (`pr-title` job, `amannn/action-semantic-pull-request`)                                                                        |
-| Title ≤ 72 chars (after `merge-bot.yml` appends ` (#<n>)`)                       | CI (`pr-title-style` job, `scripts/validate-pr-title.py --pr-number`)                                                             |
+| Title ≤ 72 chars (after `merge-bot.yml` appends ` (#<n>)`)                       | CI (`pr-title-style` job, `pr-lint-validator title --pr-number`)                                                                  |
 | Title has no trailing period                                                     | CI (`pr-title-style` job)                                                                                                         |
 | Title does not open with a past-tense / participle verb in the closed list       | CI (`pr-title-style` job — list: `Added` / `Fixed` / `Updated` / `Changed` / `Removed` / `Refactored` / `Implemented` / `Bumped`) |
 | Title summary ≤ 50 chars (soft target on the post-prefix summary)                | Convention only                                                                                                                   |
 | Title summary capitalisation (project lowercases post-prefix)                    | Convention only                                                                                                                   |
 | Imperative mood beyond the past-tense closed list                                | Convention only (no clean regex without false positives)                                                                          |
-| Body wraps at ≤ 72 chars                                                         | CI (`pr-body-commit-msg` job, `scripts/validate-commit-msg-block.py`)                                                             |
+| Body wraps at ≤ 72 chars                                                         | CI (`pr-body-commit-msg` job, `pr-lint-validator commit-msg`)                                                                     |
 | Body length (soft cap, warning only)                                             | CI (`pr-body-commit-msg` job; warning surfaced in workflow log, does not fail the job)                                            |
 | Body has no markdown headings / task checkboxes / image embeds                   | CI (`pr-body-commit-msg` job — plain `-` / `*` bullets and `1.` numbered lists are permitted)                                     |
 | Body opens non-blank (after PR-template scaffolding)                             | CI (`pr-body-commit-msg` job)                                                                                                     |
@@ -942,7 +945,7 @@ A subset of the rules below is **CI-enforced**; the rest are
      need.
 
   A soft-cap warning (warning only — does not fail CI) fires from
-  `scripts/validate-commit-msg-block.py` when the body region (the
+  `pr-lint-validator commit-msg` when the body region (the
   block content with the subject and trailer block removed) goes
   beyond `VERBOSE_BODY_MAX_WORDS` words OR
   `VERBOSE_BODY_MAX_LINES` non-blank lines. The thresholds are
@@ -958,7 +961,7 @@ A subset of the rules below is **CI-enforced**; the rest are
   read when deciding whether a fix applies to their tree.
 
 - **Wrap at 72 characters.** Already enforced by
-  `scripts/validate-commit-msg-block.py`. `git log` and most
+  `pr-lint-validator commit-msg`. `git log` and most
   terminal viewers display 80-column commit bodies with a 4-space
   indent, so 72 is the safe wrap.
 
@@ -966,7 +969,7 @@ A subset of the rules below is **CI-enforced**; the rest are
 
 The `==COMMIT_MSG==` block accepts the following trailers (see
 `KNOWN_TRAILER_TOKENS` in
-[`scripts/validate-commit-msg-block.py`](scripts/validate-commit-msg-block.py)).
+[`packages/pr-lint-validator/src/pr_lint_validator/commit_msg.py`](packages/pr-lint-validator/src/pr_lint_validator/commit_msg.py)).
 Unknown tokens are rejected to fail closed on typos like
 `Singed-off-by:` or `Cosed: #1`.
 
