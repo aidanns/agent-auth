@@ -201,15 +201,18 @@ INTERNAL_ONLY_SCOPES: frozenset[str] = frozenset(
 )
 
 
-# --- pr-lint.yml self-test ----------------------------------------------------
+# --- check-pull-request.yml self-test -----------------------------------------
 
 # Path to the YAML this module is the source of truth for. Resolved
 # at runtime so the self-test works in both worktree and CI checkouts.
-_PR_LINT_YAML = _REPO_ROOT / ".github" / "workflows" / "pr-lint.yml"
+# Migrated from ``pr-lint.yml`` to ``check-pull-request.yml`` in #463
+# when the pr-lint validators became children of the parent
+# ``ci.yml`` workflow.
+_PR_LINT_YAML = _REPO_ROOT / ".github" / "workflows" / "check-pull-request.yml"
 
 
 def _extract_pr_lint_types(yaml_text: str) -> list[str]:
-    """Pull the ``types:`` block from ``pr-lint.yml`` as a list of strings.
+    """Pull the ``types:`` block from ``check-pull-request.yml`` as a list of strings.
 
     Hand-rolled rather than using ``PyYAML`` so the self-test works on
     a vanilla Python without optional deps and so the parser narrows to
@@ -263,7 +266,7 @@ def _extract_pr_lint_types(yaml_text: str) -> list[str]:
 
 
 def assert_pr_lint_yaml_in_sync(yaml_path: Path | None = None) -> None:
-    """Raise ``AssertionError`` if ``pr-lint.yml`` drifts from ``ALLOWED_TYPES``.
+    """Raise ``AssertionError`` if ``check-pull-request.yml`` drifts from ``ALLOWED_TYPES``.
 
     Compares the ordered list of types declared in the workflow with
     ``list(ALLOWED_TYPES)``. The keep-sorted block in the workflow
@@ -283,10 +286,10 @@ def assert_pr_lint_yaml_in_sync(yaml_path: Path | None = None) -> None:
         )
     if actual != expected:
         raise AssertionError(
-            "pr-lint.yml `types:` list drift:\n"
+            "check-pull-request.yml `types:` list drift:\n"
             f"  yaml:     {actual}\n"
             f"  expected: {expected}\n"
-            "Update either `.github/workflows/pr-lint.yml` or "
+            "Update either `.github/workflows/check-pull-request.yml` or "
             "`scripts/lint/commit_taxonomy.py::ALLOWED_TYPES` so they agree."
         )
 
@@ -298,8 +301,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Inspect or self-test the canonical PR-title taxonomy. The "
-            "`--check-pr-lint-yaml` mode is wired into pr-lint.yml so a "
-            "drift between the YAML and ALLOWED_TYPES fails CI."
+            "`--check-pr-lint-yaml` mode is wired into "
+            "check-pull-request.yml so a drift between the YAML and "
+            "ALLOWED_TYPES fails CI."
         )
     )
     sub = parser.add_subparsers(dest="command")
@@ -311,14 +315,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     check_yaml = sub.add_parser(
         "check-pr-lint-yaml",
-        help="Assert pr-lint.yml's `types:` list matches ALLOWED_TYPES.",
+        help=("Assert check-pull-request.yml's `types:` list matches " "ALLOWED_TYPES."),
     )
     check_yaml.add_argument(
         "--yaml-path",
         default=None,
         help=(
-            "Override the path to pr-lint.yml (defaults to "
-            ".github/workflows/pr-lint.yml at the repo root)."
+            "Override the path to the YAML (defaults to "
+            ".github/workflows/check-pull-request.yml at the repo root)."
         ),
     )
 
@@ -330,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
         except AssertionError as err:
             print(str(err), file=sys.stderr)
             return 1
-        print("commit_taxonomy: pr-lint.yml `types:` matches ALLOWED_TYPES")
+        print("commit_taxonomy: check-pull-request.yml `types:` matches " "ALLOWED_TYPES")
         return 0
 
     # Default: list-types.

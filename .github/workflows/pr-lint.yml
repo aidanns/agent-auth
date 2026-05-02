@@ -4,39 +4,35 @@
 
 name: PR Lint
 
-# Enforces the PR conventions described in ADR 0037 and CONTRIBUTING.md
-# § "Writing PRs":
+# Residual top-level workflow for the two `pr-lint`-adjacent jobs that
+# stayed put after the validator migration in #463:
 #
-#   1. PR title uses one of the Palantir-style prefixes
-#      (feature | improvement | fix | break | deprecation | migration |
-#      chore), with optional `(scope)`.
-#   2. PR title obeys the prose-style rules from CONTRIBUTING.md
-#      § "Writing release-worthy commits" → "Subject (PR title)":
-#      72-char hard cap, no trailing period, no past-tense opener
-#      (the closed list of `Added` / `Fixed` / `Updated` / etc.).
-#   3. The PR body contains exactly one well-formed `==COMMIT_MSG==`
-#      block (line wrap, no markdown, BREAKING CHANGE positioning,
-#      trailer parsing, leading non-blank, no leading subject line,
-#      kernel-style `Fixes: <sha> ("subject")` shape). Per #478 the
-#      block is body + trailers only — the squash subject comes from
-#      the PR title via the merge API's `commit_title` field.
+#   * `pr-title-types-self-test` — asserts the `types: |` allowlist in
+#     `check-pull-request.yml` (`title-prefix` job) stays in lockstep
+#     with `scripts/lint/commit_taxonomy.py::ALLOWED_TYPES`. Runs here
+#     rather than as a child of `ci.yml` because it's a meta-check on
+#     the workflow YAML itself, not a per-PR title/body validator.
+#   * `release-impact-comment` — posts/updates the predicted release
+#     bump on PRs that touch `changelog/@unreleased/*.yml`. Slated to
+#     move to `changelog-bot.yml` under #466.
+#   * `predict-release-impact-self-test` — exercises the predict
+#     script's bump matrix on every run; co-located with the comment
+#     job for the same reason as above.
 #
-# Separate self-test jobs (`validator-self-test`,
-# `pr-title-self-test`, `validator-warning-self-test`) exercise the
-# validators against fixtures and inline cases on every run, so a
-# regression in either validator (e.g. one that exits 0 on every
-# input) immediately fails CI rather than silently approving every PR.
+# The original PR-title and ==COMMIT_MSG== validation jobs (plus their
+# self-tests) were ported into `check-pull-request.yml` in #463 so the
+# parent `Required checks passed` aggregator covers them. The validator
+# package's own pytest suite at `packages/pr-lint-validator/tests/`
+# exercises `run_self_test`, so the `validator-self-test`,
+# `pr-title-self-test`, and `pr-body-warning-self-test` jobs that lived
+# here became redundant and were deleted in the same migration.
 #
-# This workflow runs on `pull_request_target` so the validator
-# composite at `.github/actions/install-pr-lint-validator/` operates
-# on the *base ref's* copy — a fork can't weaken the lint by editing
-# the wheel-fetch shape in the same PR. Per #477 the validator binary
-# itself comes from the wheel published to the
-# `pr-lint-validator-<v>-py3-none-any.whl` GitHub Release asset, which
-# is immune to fork-PR tampering by construction. The body itself is
-# read from `github.event.pull_request.body`, which is only ever a
-# string, so the elevated token does not gain a code-execution
-# surface from the PR contents.
+# This workflow runs on `pull_request_target` so the
+# `release-impact-comment` job has `pull-requests: write` on fork PRs
+# (the comment surface is informational; see the per-job comment for
+# the full fork-safety rationale). The remaining jobs do not need the
+# elevated token but inherit the trigger to keep this workflow a
+# single-trigger surface.
 
 on:
   pull_request_target:
@@ -47,236 +43,18 @@ permissions:
   pull-requests: read
 
 jobs:
-  pr-title:
-    name: PR title (conventional prefix)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Validate title prefix
-        # Pinned by SHA per .claude/instructions/tooling-and-ci.md
-        # "Pin release-affecting GitHub Actions to commit SHAs". This
-        # workflow is read-only (no contents:write, no id-token:write)
-        # so the pin is best-practice rather than mandatory; keep it
-        # SHA-pinned anyway because the action runs against
-        # pull_request_target which has access to repo secrets.
-        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          # Explicit allowlist — do NOT fall back to the action's
-          # default conventional-commits set. See ADR 0037.
-          # keep-sorted start
-          types: |
-            break
-            chore
-            deprecation
-            feature
-            fix
-            improvement
-            migration
-          # keep-sorted end
-          requireScope: false
-
-  pr-title-style:
-    name: PR title (subject style)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          # Pin to the base ref so a fork PR cannot weaken the
-          # composite action's wheel-fetch + sha256-verify shape in
-          # the same PR (see workflow-level comment). The wheel
-          # itself comes from a published GitHub Release so it is
-          # immune to fork-PR tampering, but the local composite at
-          # `.github/actions/install-pr-lint-validator/action.yml`
-          # is still in-tree and base-ref-pinned for the same reason
-          # the validator scripts were before #477's cutover.
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Install pr-lint-validator from release
-        uses: ./.github/actions/install-pr-lint-validator
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: List changed files
-        # Fetch the PR's changed-files list so the validator can apply
-        # the two-tier scope rule (#402): a PR contained to a single
-        # `packages/<name>/` MUST use `(<name>)` as the scope; otherwise
-        # the scope MUST be in `commit_taxonomy.AREA_SCOPES`. We pull
-        # the list via `gh pr view --json files` instead of a checkout
-        # + `git diff` so the workflow doesn't have to fetch base-ref
-        # history; `pull_request_target` already has read access to the
-        # PR metadata via the default GITHUB_TOKEN. Output is written
-        # to RUNNER_TEMP rather than piped through a shell variable so
-        # paths with spaces or other shell metacharacters survive.
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          gh pr view "${PR_NUMBER}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --json files \
-            --jq '.files[].path' \
-            > "${RUNNER_TEMP}/changed-files.txt"
-
-      - name: Validate PR title prose style
-        env:
-          # Read the title via env var instead of inlining
-          # ${{ github.event.pull_request.title }} into the run-block —
-          # the env-var path keeps shell expansion off the title and
-          # mirrors the injection-safety pattern of pr-body-commit-msg.
-          TITLE: ${{ github.event.pull_request.title }}
-          # Same env-var pattern for the PR number so the suffix-aware
-          # length cap (#399) runs against the projected squash-merge
-          # subject (un-suffixed title + ` (#<n>)`). The number is an
-          # integer in the event payload, but routing it through env
-          # rather than inlining ${{ github.event.pull_request.number }}
-          # keeps `pull_request_target` workflows off CodeQL's
-          # `js/actions/command-injection` flagged channel.
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          pr-lint-validator title \
-            --changed-files-from "${RUNNER_TEMP}/changed-files.txt" \
-            --pr-number "${PR_NUMBER}" \
-            --title "${TITLE:-}"
-
-  pr-body-commit-msg:
-    name: PR body (==COMMIT_MSG== block)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          # Base-ref pin: the local composite action lives in-tree.
-          # The wheel itself comes from the GitHub Release so it is
-          # not subject to fork-PR tampering, but the composite that
-          # fetches and verifies it is. See pr-title-style for the
-          # full rationale.
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Install pr-lint-validator from release
-        uses: ./.github/actions/install-pr-lint-validator
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Validate ==COMMIT_MSG== block
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-        run: |
-          set -euo pipefail
-          tmp="$(mktemp)"
-          # Write the PR body to disk via env var; piping through the
-          # shell would let backticks / $(...) in the PR body execute.
-          printf '%s' "${PR_BODY:-}" > "${tmp}"
-          pr-lint-validator commit-msg "${tmp}"
-
-  validator-self-test:
-    name: Validator self-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          # Base-ref pin: the fixtures under
-          # `.github/workflows/tests/pr-lint-fixtures/` come from the
-          # base ref so a fork PR cannot weaken the self-test by
-          # adding a malformed fixture in the same PR. The composite
-          # action is also base-ref pinned for the same reason.
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Install pr-lint-validator from release
-        uses: ./.github/actions/install-pr-lint-validator
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run validator against every fixture
-        run: |
-          set -euo pipefail
-          fail=0
-          for fixture in .github/workflows/tests/pr-lint-fixtures/*.md; do
-            name="$(basename "${fixture}")"
-            if [[ ${name} == "README.md" ]]; then
-              continue
-            fi
-            if [[ ${name} == valid-* ]]; then
-              expected=0
-            elif [[ ${name} == invalid-* ]]; then
-              expected=1
-            else
-              echo "::error::Fixture ${name} must be named valid-*.md or invalid-*.md"
-              fail=1
-              continue
-            fi
-            if pr-lint-validator commit-msg "${fixture}" \
-              >/tmp/pr-lint-self-test.out 2>&1; then
-              actual=0
-            else
-              actual=$?
-            fi
-            if [[ ${actual} -eq ${expected} ]]; then
-              echo "ok: ${name} (expected ${expected}, got ${actual})"
-            else
-              echo "::error::${name}: expected exit ${expected}, got ${actual}"
-              cat /tmp/pr-lint-self-test.out
-              fail=1
-            fi
-          done
-          if [[ ${fail} -ne 0 ]]; then
-            exit 1
-          fi
-
-  pr-title-self-test:
-    name: PR title validator self-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          # Base-ref pin for the local composite. The wheel itself
-          # comes from the GitHub Release (see pr-title-style for the
-          # full rationale).
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Install pr-lint-validator from release
-        uses: ./.github/actions/install-pr-lint-validator
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run inline self-test
-        run: |
-          set -euo pipefail
-          pr-lint-validator title --self-test
-
-  pr-body-warning-self-test:
-    name: PR body warning-rule validator self-test
-    runs-on: ubuntu-latest
-    # Exercises the body-rule paths whose outcome is a warning
-    # count, not raise/no-raise — currently just the verbose-body
-    # rule (#395) — so the fixture self-test loop above (which
-    # treats a fixture as raise/no-raise) cannot cover them.
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Install pr-lint-validator from release
-        uses: ./.github/actions/install-pr-lint-validator
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run inline warning-rule self-test
-        run: |
-          set -euo pipefail
-          pr-lint-validator commit-msg --self-test
-
   pr-title-types-self-test:
     name: PR title types match commit_taxonomy
     runs-on: ubuntu-latest
     # Asserts the explicit `types:` allowlist on the
-    # `amannn/action-semantic-pull-request` step above stays in lockstep
+    # `amannn/action-semantic-pull-request` step in
+    # `check-pull-request.yml`'s `title-prefix` job stays in lockstep
     # with `scripts/lint/commit_taxonomy.py::ALLOWED_TYPES`. Without
     # this self-test the YAML and the Python module could drift — a
     # type added to one but not the other would silently change which
     # PR titles the lint accepts vs. which the changelog tooling
-    # understands. See issue #405.
+    # understands. See issue #405. Migrated YAML target from
+    # `pr-lint.yml` to `check-pull-request.yml` in #463.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -287,7 +65,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Assert pr-lint.yml types match commit_taxonomy.ALLOWED_TYPES
+      - name: Assert check-pull-request.yml types match commit_taxonomy.ALLOWED_TYPES
         run: |
           set -euo pipefail
           python3 scripts/lint/commit_taxonomy.py check-pr-lint-yaml
