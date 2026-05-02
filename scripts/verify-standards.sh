@@ -1885,12 +1885,25 @@ fi
 
 echo "verify-standards: ${audit_schema_file} exists and references all documented audit event kinds."
 
-# Error taxonomy contract tests: tests/test_error_taxonomy.py must exist and
-# reference each documented error code
+# Error taxonomy contract tests: per-package contract files must exist
+# and together reference each documented error code
 # (.claude/instructions/service-design.md — stable error taxonomy).
-error_taxonomy_file="packages/agent-auth/tests/test_error_taxonomy.py"
-if [[ ! -f "${error_taxonomy_file}" ]]; then
-  echo "verify-standards: ${error_taxonomy_file} does not exist." >&2
+# The taxonomy is split across two files so each per-package unit-test
+# shard stays self-contained (issue #519): the agent-auth half does not
+# import the bridge's test-only ``things_client_fake`` module, and the
+# things-bridge half does not import any agent-auth-only test fixtures.
+error_taxonomy_files=(
+  "packages/agent-auth/tests/test_error_taxonomy.py"
+  "packages/things-bridge/tests/test_things_bridge_error_taxonomy.py"
+)
+error_taxonomy_missing_file=0
+for f in "${error_taxonomy_files[@]}"; do
+  if [[ ! -f "${f}" ]]; then
+    echo "verify-standards: ${f} does not exist." >&2
+    error_taxonomy_missing_file=1
+  fi
+done
+if [[ ${error_taxonomy_missing_file} -ne 0 ]]; then
   echo "  Create contract tests for every documented error code in design/error-codes.md." >&2
   exit 1
 fi
@@ -1904,8 +1917,8 @@ error_codes=(
 )
 error_missing=0
 for code in "${error_codes[@]}"; do
-  if ! grep -q "\"${code}\"" "${error_taxonomy_file}"; then
-    echo "verify-standards: error code '${code}' not referenced in ${error_taxonomy_file}." >&2
+  if ! grep -hq "\"${code}\"" "${error_taxonomy_files[@]}"; then
+    echo "verify-standards: error code '${code}' not referenced in any of: ${error_taxonomy_files[*]}." >&2
     error_missing=1
   fi
 done
@@ -1913,7 +1926,7 @@ if [[ ${error_missing} -ne 0 ]]; then
   exit 1
 fi
 
-echo "verify-standards: ${error_taxonomy_file} exists and references all documented error codes."
+echo "verify-standards: ${error_taxonomy_files[*]} exist and together reference all documented error codes."
 
 # OpenAPI specs live alongside the service that owns each surface
 # (packages/agent-auth/openapi/agent-auth.v1.yml,
@@ -1963,10 +1976,11 @@ echo "verify-standards: packages/*/openapi/*.v1.yml exist and ${openapi_contract
 #     response (503 for agent-auth when the store ping fails; 502 for
 #     things-bridge when the authz upstream is unavailable).
 #
-# The check is scoped per-function (not per-file): without that,
-# tests/test_error_taxonomy.py would satisfy the gate for any route
-# because it mentions every route and every status code somewhere in
-# the file.
+# The check is scoped per-function (not per-file): without that, the
+# error-taxonomy contract files (test_error_taxonomy.py /
+# test_things_bridge_error_taxonomy.py) would satisfy the gate for any
+# route because they mention every route and every status code
+# somewhere in the file.
 
 health_drift="$(
   python3 - <<'PY'
