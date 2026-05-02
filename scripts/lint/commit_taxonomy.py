@@ -8,8 +8,9 @@ This module owns the canonical lists of PR-title prefixes (``ALLOWED_TYPES``),
 allowed scopes (``PACKAGE_SCOPES`` / ``AREA_SCOPES``), and the
 type-to-release-bump mapping consumed by the changelog tooling. Every
 duplicated definition that previously lived in
-``.github/workflows/pr-lint.yml`` (the ``amannn/action-semantic-pull-request``
-``types:`` list), ``scripts/changelog/version_logic.py`` (the
+``.github/workflows/check-pull-request.yml`` (the
+``amannn/action-semantic-pull-request`` ``types:`` list under the
+``title-prefix`` job), ``scripts/changelog/version_logic.py`` (the
 ``_BUMP_TABLE_POST_1X``), and the prose tables in CONTRIBUTING.md is now
 derived from — or self-tested against — the constants here.
 
@@ -19,8 +20,9 @@ derived from — or self-tested against — the constants here.
   ``ALLOWED_TYPES`` entry. ``version_logic`` re-exports this as
   ``BumpType`` so callers built before #405 keep working unchanged.
 - ``ALLOWED_TYPES`` — every PR-title prefix the
-  ``pr-lint.yml`` workflow accepts, mapped to the SemVer impact the
-  ``release-as`` workflow infers from a YAML carrying that ``type:``.
+  ``check-pull-request.yml`` workflow accepts, mapped to the SemVer
+  impact the ``release-as`` workflow infers from a YAML carrying that
+  ``type:``.
   ``chore`` maps to ``ReleaseImpact.NONE`` since chore PRs never produce
   a changelog YAML; the six release-bumping types are exposed under
   ``RELEASE_BUMPING_TYPES`` for callers that need to skip ``chore``.
@@ -54,8 +56,9 @@ renaming or shape changes require simultaneous updates to:
 
 - ``scripts/changelog/version_logic.py`` (re-derives ``EntryType`` and
   the bump table).
-- ``.github/workflows/pr-lint.yml`` (the explicit ``types:`` list, kept
-  in sync via the ``pr-title-types-self-test`` job that calls
+- ``.github/workflows/check-pull-request.yml`` (the explicit ``types:``
+  list under the ``title-prefix`` job, kept in sync via the
+  ``pr-title-types-self-test`` job that calls
   :func:`assert_pr_lint_yaml_in_sync`).
 - ``CONTRIBUTING.md`` (the prose ``Type / Release impact`` table, kept
   honest by code review against this file).
@@ -91,14 +94,15 @@ class ReleaseImpact(enum.IntEnum):
 
 # Canonical PR-title prefix allowlist (ADR 0037). The keys here are the
 # only values accepted by ``amannn/action-semantic-pull-request`` in
-# ``.github/workflows/pr-lint.yml``; the values are the SemVer impact
-# inferred when a YAML changelog entry carries that ``type:``. ``chore``
-# maps to ``NONE`` because chore PRs do not produce a changelog YAML —
-# but it is still a valid PR-title prefix, so it belongs in this dict.
+# the ``title-prefix`` job of ``.github/workflows/check-pull-request.yml``;
+# the values are the SemVer impact inferred when a YAML changelog entry
+# carries that ``type:``. ``chore`` maps to ``NONE`` because chore PRs
+# do not produce a changelog YAML — but it is still a valid PR-title
+# prefix, so it belongs in this dict.
 #
 # Order matters for the YAML self-test (we render ``ALLOWED_TYPES.keys()``
 # in dict-iteration order); keep it alphabetical so the rendered list
-# matches the ``keep-sorted`` block in ``pr-lint.yml``.
+# matches the alphabetisation block in ``check-pull-request.yml``.
 ALLOWED_TYPES: dict[str, ReleaseImpact] = {
     "break": ReleaseImpact.MAJOR,
     "chore": ReleaseImpact.NONE,
@@ -255,8 +259,8 @@ def _extract_pr_lint_types(yaml_text: str) -> list[str]:
             block_indent = indent
         # A line dedented past the items' indent ends the block. A
         # ``#`` comment at the same indent is tolerated (the
-        # keep-sorted markers in ``pr-lint.yml`` sit alongside the
-        # items).
+        # alphabetisation markers in ``check-pull-request.yml`` sit
+        # alongside the items).
         if indent < block_indent:
             break
         if stripped.startswith("#"):
