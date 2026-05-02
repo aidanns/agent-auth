@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Install pr-lint-validator
+description: >
+  Fetch the released pr-lint-validator wheel from a GitHub Release,
+  verify its sha256 sidecar, install it into a per-job virtualenv,
+  and add the venv's bin directory to GITHUB_PATH so subsequent
+  steps can call `pr-lint-validator` directly. Used by every
+  pr-lint.yml job that consumes the package (#477).
+
+# Bumping the pinned tag:
+#
+#   1. Land a release-bot publish PR that bumps the workspace
+#      version and ships a new `pr_lint_validator-<version>-py3-none-any.whl`
+#      asset under a `v<version>` GitHub Release tag.
+#   2. Update the `version:` default below to the new tag's bare
+#      version string (no leading `v` — `gh release download` takes
+#      the tag name verbatim, but the wheel filename has no `v`
+#      prefix and the inputs here drive both).
+#   3. Renovate / Dependabot do NOT auto-track GitHub Release tags
+#      by default (see #477's follow-up issue for tracking the
+#      automation hook). Until that lands, the bump is manual on
+#      each release-bot publish PR.
+
+inputs:
+  version:
+    description: >
+      Bare semver version of the pr-lint-validator wheel to install
+      (e.g. `0.17.1`). The composite resolves the GitHub Release tag
+      as `v<version>` and the wheel asset name as
+      `pr_lint_validator-<version>-py3-none-any.whl`.
+    required: false
+    default: "0.17.1"
+  github-token:
+    description: >
+      GitHub token used to download the wheel asset. Defaults to the
+      workflow's GITHUB_TOKEN, which has `contents: read` and is
+      sufficient for downloading release assets from the same
+      private repository.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      # Pinned by SHA per `.claude/instructions/tooling-and-ci.md`
+      # "Pin release-affecting GitHub Actions to commit SHAs". This
+      # composite is consumed by `pull_request_target` workflows
+      # which inherit the base repo's secrets, so the pin is
+      # best-practice rather than mandatory; keep it SHA-pinned
+      # anyway because the action runs against `pull_request_target`.
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: "3.11"
+
+    - name: Fetch wheel and sha256 sidecar from release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        VERSION: ${{ inputs.version }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        # Reset the download dir so a previous run on the same
+        # runner doesn't leak a stale wheel under
+        # ${RUNNER_TEMP}/pr-lint-validator/. The dir is named for
+        # the action (not the version) so steps that run multiple
+        # composites in one job — none today, but a future caller
+        # might — don't collide on `${RUNNER_TEMP}/pr-lint-*`.
+        dir="${RUNNER_TEMP}/pr-lint-validator-install"
+        rm -rf "${dir}"
+        mkdir -p "${dir}"
+        # Download the wheel + its sha256 sidecar into ${dir}. The
+        # ".whl*" pattern catches both the wheel itself and the
+        # `.sha256` sidecar (and harmlessly the `.sig.bundle` /
+        # `.spdx.json` / `.spdx.json.sig.bundle` files, which we
+        # don't verify here — sigstore verification of the wheel
+        # is a separate concern tracked outside #477). gh resolves
+        # the tag from `--repo` so a private-release download works
+        # with the default GITHUB_TOKEN.
+        gh release download "v${VERSION}" \
+          --repo "${REPO}" \
+          --pattern "pr_lint_validator-${VERSION}-py3-none-any.whl*" \
+          --dir "${dir}"
+        echo "PR_LINT_VALIDATOR_DIR=${dir}" >> "${GITHUB_ENV}"
+        echo "PR_LINT_VALIDATOR_VERSION=${VERSION}" >> "${GITHUB_ENV}"
+
+    - name: Verify sha256 of wheel
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        cd "${PR_LINT_VALIDATOR_DIR}"
+        # Filename-only sha256 sidecar, as emitted by release-bot.yml.
+        # `sha256sum -c` exits non-zero on mismatch so the step
+        # aborts before pip install touches the wheel.
+        sha256sum -c "pr_lint_validator-${VERSION}-py3-none-any.whl.sha256"
+
+    - name: Install wheel into per-job venv
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        venv="${RUNNER_TEMP}/pr-lint-validator-venv"
+        # Reset the venv too — same rationale as the download dir
+        # above. `python -m venv` reuses an existing venv but pip
+        # install would not pick up a downgrade to an older wheel
+        # without `--force-reinstall`.
+        rm -rf "${venv}"
+        python -m venv "${venv}"
+        "${venv}/bin/pip" install --no-cache-dir --quiet \
+          "${PR_LINT_VALIDATOR_DIR}/pr_lint_validator-${VERSION}-py3-none-any.whl"
+        # Expose the console script on PATH so consuming steps can
+        # call `pr-lint-validator` without spelling out the venv path.
+        echo "${venv}/bin" >> "${GITHUB_PATH}"
