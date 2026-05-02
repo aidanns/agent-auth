@@ -79,8 +79,12 @@ name: Merge Bot
 # other repos. Issue closure failures are warning-only; the merge
 # itself has already landed by that point.
 #
-# Failure modes (ALL surface as a `Claude: Cannot merge — <reason>`
-# comment so the PR author sees the block):
+# Failure modes (all surface in the workflow run log via
+# `::error::` / `::notice::` lines; the bot does not post PR
+# comments — the failing required check / Actions log is the
+# source of truth, and a duplicate `Claude:` comment surface added
+# noise to PR review discussion without adding signal that the PR
+# UI did not already carry. See issue #503):
 #   - Required check is FAILURE / TIMED_OUT / CANCELLED.
 #   - `==COMMIT_MSG==` extraction failed (missing block, malformed).
 #   - Block has no `Signed-off-by:` trailer.
@@ -89,6 +93,14 @@ name: Merge Bot
 # The label stays sticky on lint/check failure so the
 # workflow_run.completed retrigger picks up the recovered run
 # automatically.
+#
+# A separate `label-needs-fix` job (see below) listens on the same
+# `workflow_run: completed` trigger regardless of conclusion and
+# applies / removes the `needs fix` label on the PR head's rollup
+# state, so a known-failing automerge PR is parked out of the
+# sweep eligibility filter until CI returns to green. This
+# replaced the comment-marker-anchored auto-update loop guard the
+# bot used to run before #503.
 
 on:
   pull_request:
@@ -136,9 +148,10 @@ on:
         required: true
         type: number
 
-# `pull-requests: write` is needed to post the `Claude: ...` comment
-# and (via the App token) to call the merge endpoint. `contents: write`
-# is needed for the BEHIND-handling auto-update branch — the
+# `pull-requests: write` is needed by the `label-needs-fix` job
+# to apply / remove the `needs fix` label, and (via the App token)
+# to call the merge endpoint. `contents: write` is needed for the
+# BEHIND-handling auto-update branch — the
 # `PUT /pulls/{n}/update-branch` endpoint requires write access to
 # the repo's contents to push the merge commit that fast-forwards
 # the PR head onto the latest `main`. `actions: write` is needed by
@@ -466,17 +479,22 @@ jobs:
       - name: Refuse to merge — required check failed
         if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.checks.outputs.failed != ''
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
           FAILED_CHECKS: ${{ steps.checks.outputs.failed }}
         run: |
           set -euo pipefail
           # Trim leading/trailing whitespace and join with `, ` so
-          # the PR comment is one line of names.
+          # the log line is one row of names. The failing check
+          # itself surfaces in the PR UI (red status); the
+          # `::error::` line records the bot's reason for the
+          # workflow-run log without posting a duplicate PR
+          # comment. The `automerge` label stays applied so the
+          # next green run retriggers the merge — and the
+          # `label-needs-fix` job applies `needs fix` to keep the
+          # PR out of the sweep eligibility filter (#498) until
+          # CI returns to green.
           names="$(printf '%s\n' "${FAILED_CHECKS}" | awk 'NF' | paste -sd ', ' -)"
-          gh pr comment "${PR_NUMBER}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --body "Claude: Cannot merge — required check(s) failed: ${names}. Fix the failing check; the \`automerge\` label stays applied so the next green run will retrigger the merge."
+          echo "::error::PR #${PR_NUMBER}: required check(s) failed: ${names}"
           exit 1
 
       - name: Wait for pending checks (clean exit)
@@ -511,13 +529,15 @@ jobs:
       - name: Refuse to merge — extraction failed
         if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.extract.outputs.ok == 'false'
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
           ERROR: ${{ steps.extract.outputs.error }}
         run: |
-          gh pr comment "${PR_NUMBER}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --body "Claude: Cannot merge — \`==COMMIT_MSG==\` block extraction failed: ${ERROR}"
+          # The `Extract ==COMMIT_MSG== block` step already emitted
+          # the parser error via `::error::`; re-emit it with PR
+          # context so a maintainer scanning failed merge-bot runs
+          # can identify the affected PR without opening the
+          # earlier step.
+          echo "::error::PR #${PR_NUMBER}: ==COMMIT_MSG== block extraction failed: ${ERROR}"
           exit 1
 
       # Defence-in-depth: pr-lint already enforces that the block
@@ -541,12 +561,12 @@ jobs:
       - name: Refuse to merge — DCO trailer missing
         if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'false'
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
         run: |
-          gh pr comment "${PR_NUMBER}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --body "Claude: Cannot merge — \`==COMMIT_MSG==\` block has no \`Signed-off-by:\` trailer. The merge bot pastes the block as the squash-merge body, so the trailer must sit inside the block. Add \`Signed-off-by: Name <email>\` and update the PR body."
+          # `pr-lint.yml` enforces the trailer at PR-author time;
+          # this is the defence-in-depth check for body edits made
+          # between the lint passing and the bot running.
+          echo "::error::PR #${PR_NUMBER}: ==COMMIT_MSG== block has no Signed-off-by: trailer. Add 'Signed-off-by: Name <email>' inside the block (the bot pastes the block as the squash-merge body)."
           exit 1
 
       # Idempotency guard — re-check state right before the API call
@@ -590,40 +610,24 @@ jobs:
       # fires before GitHub finishes computing the merge state, the
       # status comes back UNKNOWN. Without polling, the step would
       # fall through to the merge call and the API would reject a
-      # behind PR with a noisy "GitHub merge API rejected the call"
-      # comment that contradicts the auto-update story. Poll for up
-      # to ~30s (10 attempts × 3s) and bail out cleanly if the value
-      # never resolves — the next CI completion (or any state change
-      # on `main`) will retrigger merge-bot via
+      # behind PR with a misleading 405 in the workflow log. Poll for
+      # up to ~30s (10 attempts × 3s) and bail out cleanly if the
+      # value never resolves — the next CI completion (or any state
+      # change on `main`) will retrigger merge-bot via
       # `workflow_run.completed`.
       #
-      # Loop guard: count prior auto-update comments authored by this
-      # App on the same PR *since the most recent push to the PR
-      # head*. If we have already auto-updated three times without
-      # merging, a flapping `main` (or a PR that keeps falling behind
-      # faster than CI completes) is the cause; refuse the fourth
-      # update so the bot stops burning CI cycles and surfaces the
-      # situation to a human. Anchoring the count on the head
-      # commit's `committer.date` makes "push a new commit to reset
-      # the count" the actual recovery path — without the timestamp
-      # filter, every auto-update comment ever posted on the PR
-      # keeps counting and the bot would refuse forever after the
-      # third update. Counting by author + prefix + `created_at`
-      # keeps the count tied to *this* App's auto-updates posted
-      # since the latest push, and ignores arbitrary `Claude: `
-      # comments from human / agent authors.
+      # No self-throttling on update cadence (issue #503): the bot
+      # auto-updates a green PR every time `main` moves, forever,
+      # until the PR merges or the `label-needs-fix` job parks the
+      # PR with `needs fix` (which the sweep eligibility filter,
+      # #498, treats as "skip"). The previous comment-marker-anchored
+      # loop guard was removed along with every `gh pr comment` call.
       - name: Detect BEHIND and auto-update branch
         id: behind
         if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.signoff.outputs.ok == 'true' && steps.recheck.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
-          # `app-slug` is the App's slug (e.g. `agent-auth-merge-bot`);
-          # the matching bot user login is `<slug>[bot]`. Resolved
-          # from the token-mint step rather than at runtime so the
-          # filter doesn't depend on App identity endpoints that
-          # behave inconsistently with installation tokens.
-          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
         run: |
           set -euo pipefail
           # Re-fetch mergeStateStatus + headRefOid so the BEHIND
@@ -631,8 +635,8 @@ jobs:
           # earlier `meta` step. Poll for up to ~30s while
           # mergeStateStatus is UNKNOWN — that's GitHub's "still
           # computing" sentinel and falling through to the merge
-          # call while it's UNKNOWN produces a misleading failure
-          # comment if the PR is in fact behind.
+          # call while it's UNKNOWN produces a misleading 405 in the
+          # workflow log if the PR is in fact behind.
           merge_state=""
           head_sha=""
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
@@ -648,10 +652,7 @@ jobs:
             sleep 3
           done
           if [[ "${merge_state}" == "UNKNOWN" ]]; then
-            echo "merge-bot: mergeStateStatus stayed UNKNOWN after polling; exiting cleanly so workflow_run.completed retriggers."
-            gh pr comment "${PR_NUMBER}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --body "Claude: GitHub is still computing merge state — will retry on next workflow_run.completed."
+            echo "::notice::PR #${PR_NUMBER}: mergeStateStatus stayed UNKNOWN after polling; exiting cleanly so workflow_run.completed retriggers."
             # Set behind=true so the merge step is skipped this run.
             echo "behind=true" >> "${GITHUB_OUTPUT}"
             exit 0
@@ -660,53 +661,6 @@ jobs:
             echo "merge-bot: mergeStateStatus=${merge_state}; not BEHIND, proceeding to merge."
             echo "behind=false" >> "${GITHUB_OUTPUT}"
             exit 0
-          fi
-          # Count prior auto-update comments by this App posted
-          # since the most recent push to the PR head. The PR head
-          # commit's `committer.date` is the natural anchor: pushing
-          # a new commit advances it, which makes "push a new commit
-          # to reset the count" actually reset the count. Without
-          # the `created_at >= since` filter, every auto-update
-          # comment ever posted would count forever.
-          #
-          # `--paginate` alone (no `--slurp`) returns concatenated
-          # arrays from each page; piping into `jq -r '.[] | select(...) | .id'`
-          # flattens and filters in a single pass and `wc -l`
-          # counts. `--slurp` was avoided because it requires gh
-          # ≥ 2.50 — a stale gh on a self-hosted runner would
-          # silently flip the JSON shape and the count would always
-          # be 0, bypassing the loop guard. The marker, App login,
-          # and `since` cutoff are passed to jq via `--arg` rather
-          # than templated into the jq program so the embedded
-          # UTF-8 em dash, `;`, and ISO-8601 colons survive shell
-          # quoting verbatim.
-          head_pushed_at="$(gh api \
-            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/commits" \
-            --paginate \
-            --jq '.[].commit.committer.date' \
-            | tail -n 1)"
-          if [[ -z "${head_pushed_at}" ]]; then
-            echo "::error::Could not determine head commit timestamp for PR #${PR_NUMBER}."
-            exit 1
-          fi
-          marker="Claude: Branch was behind main — updated;"
-          prior_updates="$(gh api \
-            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
-            --paginate \
-            | jq -r --arg login "${APP_LOGIN}" \
-                    --arg marker "${marker}" \
-                    --arg since "${head_pushed_at}" \
-                  '.[] | select(.user.login == $login) | select(.body | startswith($marker)) | select(.created_at >= $since) | .id' \
-            | wc -l)"
-          # Strip whitespace from `wc -l` output (some `wc` implementations left-pad).
-          prior_updates="${prior_updates//[[:space:]]/}"
-          echo "merge-bot: prior auto-update count since ${head_pushed_at} = ${prior_updates}"
-          if [[ "${prior_updates}" -ge 3 ]]; then
-            gh pr comment "${PR_NUMBER}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --body "Claude: Auto-update loop exceeded — main is moving too fast or this PR keeps falling behind. Investigate manually."
-            echo "::error::Auto-update loop guard tripped after ${prior_updates} prior updates."
-            exit 1
           fi
           # Call `PUT /pulls/{n}/update-branch`. Pin `expected_head_sha`
           # so a contributor push that races us produces a documented
@@ -727,15 +681,10 @@ jobs:
               echo "behind=true" >> "${GITHUB_OUTPUT}"
               exit 0
             fi
-            echo "::error::update-branch API call failed: ${err}"
-            gh pr comment "${PR_NUMBER}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --body "Claude: Cannot merge — \`update-branch\` API rejected the call: ${err}"
+            echo "::error::PR #${PR_NUMBER}: update-branch API call failed: ${err}"
             exit 1
           fi
-          gh pr comment "${PR_NUMBER}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --body "Claude: Branch was behind main — updated; will retry merge after CI completes."
+          echo "::notice::PR #${PR_NUMBER}: branch was behind main — updated; will retry merge after CI completes."
           echo "behind=true" >> "${GITHUB_OUTPUT}"
 
       - name: Call PUT /pulls/{n}/merge
@@ -786,40 +735,19 @@ jobs:
             err="$(cat "${RUNNER_TEMP}/merge.err")"
             # Treat "Pull Request has already been merged" as a
             # successful no-op (idempotency). Any other 4xx/5xx is
-            # a real failure surfaced via a comment.
+            # a real failure surfaced as an `::error::` line.
             if grep -qi "already been merged" <<<"${err}"; then
               echo "merge-bot: PR #${PR_NUMBER} was already merged by a prior trigger."
               echo "merged=already" >> "${GITHUB_OUTPUT}"
             else
-              echo "::error::Merge API call failed: ${err}"
+              echo "::error::PR #${PR_NUMBER}: GitHub merge API rejected the call: ${err}"
               echo "merged=false" >> "${GITHUB_OUTPUT}"
-              echo "error<<MERGE_BOT_EOF" >> "${GITHUB_OUTPUT}"
-              echo "${err}" >> "${GITHUB_OUTPUT}"
-              echo "MERGE_BOT_EOF" >> "${GITHUB_OUTPUT}"
             fi
           fi
 
-      - name: Comment on merge-API failure
+      - name: Fail on merge-API failure
         if: steps.secrets-check.outputs.configured == 'true' && steps.merge_call.outputs.merged == 'false'
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_NUMBER: ${{ steps.pr.outputs.pr }}
-          ERROR: ${{ steps.merge_call.outputs.error }}
-        run: |
-          gh pr comment "${PR_NUMBER}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --body "Claude: Cannot merge — GitHub merge API rejected the call: ${ERROR}"
-          exit 1
-
-      - name: Post success comment
-        if: steps.secrets-check.outputs.configured == 'true' && steps.merge_call.outputs.merged == 'true'
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_NUMBER: ${{ steps.pr.outputs.pr }}
-        run: |
-          gh pr comment "${PR_NUMBER}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --body "Claude: Merged via bot."
+        run: exit 1
 
       # Close linked issues referenced via auto-close keywords in the
       # squash commit body. GitHub's UI auto-close-on-`Closes #N` does
@@ -908,6 +836,134 @@ jobs:
             fi
             echo "merge-bot: closed issue #${issue} with comment."
           done
+
+  # `needs fix` label management. On every `workflow_run.completed`
+  # for a watched PR-gating workflow (regardless of upstream
+  # conclusion), look up the PR carrying the upstream run's head
+  # SHA and the `automerge` label, inspect the PR's overall
+  # `statusCheckRollup`, and:
+  #   - apply `needs fix` if the rollup conclusion is FAILURE,
+  #   - remove `needs fix` if the rollup conclusion is SUCCESS,
+  #   - no-op while checks are still pending or the PR is not in
+  #     the automerge set.
+  # The `needs fix` label is the sweep eligibility signal (see
+  # #498) — a parked PR stops consuming sweep slots until a fresh
+  # commit (typically a user fix) drives CI back to green and the
+  # label is auto-cleared. This replaces the comment-marker-anchored
+  # auto-update loop guard the bot used to run before #503.
+  #
+  # The `label-needs-fix` job runs *only* on the `workflow_run`
+  # trigger so unrelated triggers (`pull_request: labeled`,
+  # `pull_request_review`, `push:main`, `workflow_dispatch`) skip
+  # it. Uses the default `GITHUB_TOKEN` (not the App token):
+  # `pull-requests: write` (already granted at the workflow level)
+  # is sufficient for label edits. The PR resolution by head-SHA
+  # mirrors the `merge` job's `Resolve target PR` step.
+  label-needs-fix:
+    name: Apply / remove "needs fix" label on workflow_run completion
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_run'
+    # Per-PR concurrency on the label management so a burst of
+    # workflow_run completions on the same head SHA collapses to
+    # the latest decision rather than racing apply/remove calls
+    # against each other. Use the head SHA (not the PR number) as
+    # the group key so this job runs in parallel with the per-PR
+    # `merge-bot-<n>` group on the `merge` job — the two jobs are
+    # independent.
+    concurrency:
+      group: merge-bot-label-needs-fix-${{ github.event.workflow_run.head_sha }}
+      cancel-in-progress: true
+    steps:
+      - name: Resolve PR + rollup conclusion and edit label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # `workflow_run` on a fork PR carries the contributor's
+          # head SHA; `gh pr list --search <SHA>` still resolves to
+          # the same-repo PR row that owns it. Same shape as the
+          # `merge` job's `Resolve target PR` step.
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          pr="$(gh pr list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --state open \
+            --label automerge \
+            --search "${WORKFLOW_RUN_HEAD_SHA}" \
+            --json number \
+            --jq '.[0].number // empty')"
+          if [[ -z "${pr}" ]]; then
+            echo "merge-bot label-needs-fix: no automerge-labeled PR for head sha ${WORKFLOW_RUN_HEAD_SHA}; nothing to do."
+            exit 0
+          fi
+          # Aggregate the PR's `statusCheckRollup` into a single
+          # rollup conclusion: FAILURE if any non-bot check is
+          # FAILURE / TIMED_OUT / CANCELLED / STARTUP_FAILURE /
+          # ACTION_REQUIRED (or legacy state FAILURE / ERROR);
+          # PENDING if any non-bot check is still
+          # QUEUED / IN_PROGRESS / WAITING / PENDING / REQUESTED;
+          # SUCCESS otherwise. Filters out the bot's own check-runs
+          # (workflowName == "Merge Bot") and dedupes by latest run
+          # per name, mirroring the `merge` job's required-check
+          # inspection so the two jobs read the rollup the same way.
+          rollup_payload="$(gh pr view "${pr}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json statusCheckRollup \
+            --jq '.statusCheckRollup')"
+          rollup="$(jq -r '
+            map(select((.workflowName // "") != "Merge Bot"))
+            | group_by(.name // .context // "<unnamed>")
+            | map(max_by(.startedAt // ""))
+            | (
+              if any(.[];
+                ((.conclusion // "") | ascii_upcase | IN("FAILURE","TIMED_OUT","CANCELLED","STARTUP_FAILURE","ACTION_REQUIRED"))
+                or ((.state // "") | ascii_upcase | IN("FAILURE","ERROR"))
+              ) then "FAILURE"
+              elif any(.[];
+                ((.conclusion // "") == ""
+                  and ((.status // "") | ascii_upcase | IN("QUEUED","IN_PROGRESS","WAITING","PENDING","REQUESTED")))
+                or ((.state // "") | ascii_upcase == "PENDING")
+              ) then "PENDING"
+              else "SUCCESS"
+              end
+            )
+          ' <<<"${rollup_payload}")"
+          echo "merge-bot label-needs-fix: PR #${pr} rollup=${rollup}"
+          # Read the current label set once so we know whether the
+          # remove call would be a no-op (avoids a noisy 404 in the
+          # log when `needs fix` isn't applied).
+          has_needs_fix="$(gh pr view "${pr}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json labels \
+            --jq '[.labels[].name] | index("needs fix") != null')"
+          case "${rollup}" in
+            FAILURE)
+              if [[ "${has_needs_fix}" == "true" ]]; then
+                echo "merge-bot label-needs-fix: PR #${pr} already carries 'needs fix'; nothing to do."
+              else
+                gh pr edit "${pr}" \
+                  --repo "${GITHUB_REPOSITORY}" \
+                  --add-label "needs fix"
+                echo "::notice::PR #${pr}: applied 'needs fix' label (CI rollup=FAILURE)."
+              fi
+              ;;
+            SUCCESS)
+              if [[ "${has_needs_fix}" == "true" ]]; then
+                gh pr edit "${pr}" \
+                  --repo "${GITHUB_REPOSITORY}" \
+                  --remove-label "needs fix"
+                echo "::notice::PR #${pr}: removed 'needs fix' label (CI rollup=SUCCESS)."
+              else
+                echo "merge-bot label-needs-fix: PR #${pr} does not carry 'needs fix'; nothing to do."
+              fi
+              ;;
+            *)
+              # PENDING — leave the label as-is. The next
+              # workflow_run.completed (when the remaining checks
+              # finish) will resolve the rollup to FAILURE or
+              # SUCCESS and apply the appropriate edit.
+              echo "merge-bot label-needs-fix: PR #${pr} rollup=${rollup}; deferring label decision."
+              ;;
+          esac
 
   # `push:main` sweep. Whenever `main` advances, list every open
   # PR carrying the `automerge` label and re-process each by

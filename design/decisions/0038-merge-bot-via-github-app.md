@@ -140,11 +140,18 @@ Three orthogonal questions fall out of that:
 
 3. **Refuse on lint or check failure.** If extraction of the
    `==COMMIT_MSG==` block fails, or any required check is `FAILURE`
-   / `TIMED_OUT` / `CANCELLED`, the bot posts a `Claude: Cannot merge — <reason>` comment and exits non-zero. It does **not**
+   / `TIMED_OUT` / `CANCELLED`, the bot logs the reason via
+   `::error::` in the workflow run log and exits non-zero. (The
+   bot used to post a `Claude: Cannot merge — <reason>` PR comment
+   for each failure mode; that surface was removed in #503 because
+   it duplicated signal the PR UI already carried.) It does **not**
    remove the `automerge` label — leaving it sticky lets the
    `check_suite.completed` retrigger pick up a fixed run automatically.
    Pending checks cause a clean exit with a log line; the same
-   retrigger handles the green-completion case.
+   retrigger handles the green-completion case. A failing PR is
+   also auto-parked with `needs fix` by the `label-needs-fix` job
+   until CI returns to green, which keeps the sweep eligibility
+   filter (#498) from re-dispatching the bot on a known-stuck PR.
 
 4. **DCO trailer is a hard validator failure.** The bot authors no
    commits — the squash commit's `Signed-off-by:` trailer must
