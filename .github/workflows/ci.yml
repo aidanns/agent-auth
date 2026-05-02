@@ -18,14 +18,26 @@ name: CI
 
 on:
   pull_request:
-    # Default activity types — `opened`, `synchronize`, `reopened`,
-    # `ready_for_review`. The aggregator surfaces as a status check
-    # on every PR, including draft → ready transitions. Restricted
-    # to PRs targeting `main` to match the convention every other
-    # PR-time workflow in this repo (`test.yml`, `check.yml`,
+    # Activity types — `opened`, `synchronize`, `reopened`,
+    # `ready_for_review` cover the diff-changing transitions; the
+    # aggregator surfaces as a status check on every PR, including
+    # draft → ready transitions. `labeled` and `unlabeled` are
+    # included so PR-time workflows that gate on labels
+    # (`check-changelog/exists` reading `no changelog`,
+    # dependabot-adapter reading `automerge`) re-fire when the label
+    # set changes — without them, applying `no changelog` after
+    # `gh pr create` left ci.yml stuck on the original `labels=[]`
+    # payload and `Required checks passed` reported a stale failure
+    # (issue #527). The diff-dependent children are skipped on
+    # label-only re-runs via the verified-prior-success path
+    # below, so the wasted-runtime cost of widening the trigger
+    # surface is bounded to the metadata-dependent children
+    # (`check-changelog`, `check-pull-request`). Restricted to PRs
+    # targeting `main` to match the convention every other PR-time
+    # workflow in this repo (`test.yml`, `check.yml`,
     # `typecheck.yml`, ...) uses.
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   push:
     branches: [main]
   merge_group:
@@ -70,6 +82,16 @@ jobs:
       event_is_pull_request: ${{ steps.event.outputs.event_is_pull_request }}
       event_has_diff_base_head: ${{ steps.event.outputs.event_has_diff_base_head }}
       event_from_external_repo: ${{ steps.event.outputs.event_from_external_repo }}
+      # Verified-prior-success flag (issue #527 / Option 4). `true`
+      # only on `labeled` / `unlabeled` events whose head SHA already
+      # has a non-failing conclusion for every diff-dependent child
+      # check-run; downstream `<job>:` `if:` gates and the aggregator
+      # carve-out both consume this. `false` on every other event
+      # (the diff itself changed → prior check-runs are stale by
+      # definition) and whenever the prior conclusion of any
+      # diff-dependent child is `failure` / `cancelled` /
+      # `timed_out` / `missing` (the safe-default branch).
+      diff_dependent_jobs_already_passed: ${{ steps.prior.outputs.diff_dependent_jobs_already_passed }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -181,6 +203,78 @@ jobs:
               - '.github/workflows/**'
               - '.github/actions/**'
 
+      - name: Probe prior run state on this head SHA
+        id: prior
+        # Verified partial-rerun gate for label-only events
+        # (issue #527 / Option 4). On `labeled` / `unlabeled` the
+        # head SHA is identical to the previous `synchronize`'s
+        # head SHA — so any check-run on that SHA whose conclusion
+        # is non-failing is still authoritative. We probe each
+        # diff-dependent child via the Checks API; if every one
+        # is non-failing on this SHA, downstream `<job>:` blocks
+        # skip via the `if:` gate below and the aggregator's
+        # `skipped = failure` rule (#441) is relaxed for that
+        # specific case. If ANY child's prior conclusion is
+        # `failure` / `cancelled` / `timed_out` / `missing`, the
+        # flag is `false` and downstream children run as today —
+        # safe default, no regression.
+        #
+        # The Checks API endpoint
+        # (`repos/{owner}/{repo}/commits/{sha}/check-runs`) accepts
+        # the workflow-level `contents: read` permission, which the
+        # `plan` job inherits — no additional permissions needed.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_ACTION: ${{ github.event.action }}
+        run: |
+          set -euo pipefail
+          # On `opened` / `synchronize` / `reopened` /
+          # `ready_for_review` the diff itself changed (or this is
+          # the first run on the SHA), so prior check-runs are
+          # stale by definition.
+          if [[ "${EVENT_ACTION}" != "labeled" && "${EVENT_ACTION}" != "unlabeled" ]]; then
+            echo "diff_dependent_jobs_already_passed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          # Diff-dependent check-run names — derived from
+          # `required-checks-passed.needs:` minus the metadata-
+          # dependent allowlist. Driving this from a helper rather
+          # than enumerating inline keeps the list in lockstep with
+          # ci.yml itself: when a new child is added to `needs:`,
+          # the helper auto-extends and the carve-out covers it
+          # without churning this file.
+          diff_dependent=$(scripts/ci/diff-dependent-jobs.sh)
+
+          rollup=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs" \
+            --paginate --jq '.check_runs')
+
+          all=true
+          while IFS= read -r name; do
+            [[ -z "${name}" ]] && continue
+            latest=$(jq -r --arg n "${name}" \
+              '[.[] | select(.name == $n)] | sort_by(.started_at) | .[-1].conclusion // "missing"' \
+              <<<"${rollup}")
+            # `success` / `neutral` / `skipped` from a prior label-
+            # aware run all preserve the SUCCESS contract for the
+            # aggregator. Anything else (`failure`, `cancelled`,
+            # `timed_out`, `missing`, `action_required`,
+            # `startup_failure`, `null`) invalidates the skip and
+            # the children re-run.
+            case "${latest}" in
+              success | neutral | skipped) ;;
+              *)
+                echo "::notice::diff-dependent job '${name}' conclusion=${latest} on head ${HEAD_SHA}; will re-run."
+                all=false
+                break
+                ;;
+            esac
+          done <<<"${diff_dependent}"
+
+          echo "diff_dependent_jobs_already_passed=${all}" >> "${GITHUB_OUTPUT}"
+
   check-fmt:
     # Intermediate orchestrator carrying formatting / lint children
     # (issue #452 lands `spdx-license-headers`; #459 will add treefmt
@@ -189,6 +283,14 @@ jobs:
     # opt into changed-files gating.
     name: Check Fmt
     needs: [plan]
+    # Diff-dependent: outcome is determined by code in the head SHA.
+    # Skip on `labeled`/`unlabeled` re-runs whose head SHA already
+    # passed (issue #527 / Option 4). The aggregator carve-out at
+    # the bottom of this file converts the resulting `skipped`
+    # result back into a SUCCESS contract, but only when the same
+    # flag is true — so the relaxation can't fire unless the probe
+    # in `plan` verified the prior pass.
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/check-fmt.yml
   check-security:
     # Security-cadence child orchestrator (issue #447). Carries CodeQL
@@ -200,6 +302,8 @@ jobs:
     # reference plan outputs without churning this file.
     name: Check Security
     needs: [plan]
+    # Diff-dependent — see `check-fmt` above for the gate contract.
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/check-security.yml
     with:
       event_has_diff_base_head: ${{ needs.plan.outputs.event_has_diff_base_head == 'true' }}
@@ -228,6 +332,8 @@ jobs:
     # continues to run alongside this chain until the Phase 5 sweep.
     name: check-lint
     needs: [plan]
+    # Diff-dependent — see `check-fmt` above for the gate contract.
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/check-lint.yml
     secrets: inherit
   check-docs:
@@ -237,6 +343,8 @@ jobs:
     # `.github/workflows/check-docs.yml` for the TODO marker.
     name: check-docs
     needs: [plan]
+    # Diff-dependent — see `check-fmt` above for the gate contract.
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/check-docs.yml
 
   test-unit:
@@ -249,6 +357,8 @@ jobs:
     # parallel until Phase 5 retires the original.
     name: test-unit
     needs: [plan]
+    # Diff-dependent — see `check-fmt` above for the gate contract.
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/test-unit.yml
 
   test-integration:
@@ -259,6 +369,8 @@ jobs:
     # workflow runs in parallel until Phase 5.
     name: test-integration
     needs: [plan]
+    # Diff-dependent — see `check-fmt` above for the gate contract.
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/test-integration.yml
 
   test-smoke:
@@ -269,6 +381,8 @@ jobs:
     # workflow runs in parallel until Phase 5.
     name: test-smoke
     needs: [plan]
+    # Diff-dependent — see `check-fmt` above for the gate contract.
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/test-smoke.yml
 
   test-system:
@@ -278,6 +392,8 @@ jobs:
     # workflow runs in parallel until Phase 5.
     name: test-system
     needs: [plan]
+    # Diff-dependent — see `check-fmt` above for the gate contract.
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/test-system.yml
   build:
     # Production-artifact build child workflow (issue #460). Runs
@@ -289,6 +405,8 @@ jobs:
     # branch-protection ruleset switches to this aggregator (#5.2).
     name: build
     needs: [plan]
+    # Diff-dependent — see `check-fmt` above for the gate contract.
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/build.yml
 
   check-release:
@@ -302,6 +420,8 @@ jobs:
     # switches to this aggregator (#5.2).
     name: check-release
     needs: [plan]
+    # Diff-dependent — see `check-fmt` above for the gate contract.
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/check-release.yml
   check-standards:
     # Project-standards slot (issue #455). Runs `task verify-standards`
@@ -311,6 +431,8 @@ jobs:
     # not modify the branch-protection ruleset (strategy C).
     name: check-standards
     needs: [plan]
+    # Diff-dependent — see `check-fmt` above for the gate contract.
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/check-standards.yml
   check-pull-request:
     # PR-metadata child workflow (issue #450). Houses jobs that
@@ -333,6 +455,8 @@ jobs:
     # in this PR.
     name: check-publish
     needs: [plan]
+    # Diff-dependent — see `check-fmt` above for the gate contract.
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/check-publish.yml
   check-changelog:
     # Changelog gating slot (issue #451). Splits the legacy
@@ -371,10 +495,65 @@ jobs:
         # will need to surface a `success` result (e.g. via a
         # short-circuit step) rather than skipping the job
         # altogether.
+        #
+        # Carve-out (issue #527 / Option 4): when a `labeled`/
+        # `unlabeled` event re-runs ci.yml and the `plan` job's
+        # probe step verified that every diff-dependent child
+        # already produced a non-failing conclusion on the same
+        # head SHA, those children skip via the `if:` gate above.
+        # `skipped` then maps to SUCCESS for that specific set —
+        # but ONLY when `diff_dependent_jobs_already_passed ==
+        # 'true'`, AND ONLY for the ci.yml job IDs in
+        # DIFF_DEPENDENT_JOB_IDS below. Anything outside that set
+        # (the metadata-dependent children `check-changelog` and
+        # `check-pull-request`, plus `plan` itself) keeps the
+        # original strict #441 contract. The carve-out can't fire
+        # without the verified-prior-success flag, so a label
+        # change against a SHA whose CI never finished still
+        # fails on `skipped` — by design.
         env:
           NEEDS: ${{ toJSON(needs) }}
+          DIFF_DEPENDENT_JOBS_ALREADY_PASSED: ${{ needs.plan.outputs.diff_dependent_jobs_already_passed }}
+          # Mirror of the diff-dependent ci.yml job IDs that
+          # `scripts/ci/diff-dependent-jobs.sh` enumerates (the
+          # script outputs LEAF check-run names; here we need the
+          # parent ci.yml job IDs that show up as keys in
+          # `needs.*`). Drift between this list and the script is
+          # caught by `tests/test_ci_diff_dependent_probe.py`.
+          DIFF_DEPENDENT_JOB_IDS: |
+            check-fmt
+            check-security
+            check-lint
+            check-docs
+            check-publish
+            check-release
+            check-standards
+            build
+            test-unit
+            test-integration
+            test-smoke
+            test-system
         run: |
           set -euo pipefail
+          # Build a jq-side set of the diff-dependent job IDs from
+          # the env list. Strip blank lines so the YAML block
+          # scalar's trailing newline doesn't add an empty key.
+          diff_dependent_set=$(printf '%s\n' "${DIFF_DEPENDENT_JOB_IDS}" \
+            | awk 'NF' \
+            | jq -R . \
+            | jq -s 'map({(.): true}) | add')
+
           echo "${NEEDS}" \
-            | jq -e 'to_entries | all(.value.result == "success")' \
+            | jq -e \
+                --arg flag "${DIFF_DEPENDENT_JOBS_ALREADY_PASSED}" \
+                --argjson dd "${diff_dependent_set}" \
+                'to_entries
+                  | all(
+                      .value.result == "success"
+                      or (
+                        $flag == "true"
+                        and ($dd[.key] // false)
+                        and .value.result == "skipped"
+                      )
+                    )' \
             > /dev/null

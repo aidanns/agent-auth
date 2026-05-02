@@ -1125,15 +1125,22 @@ is green. The bot is the merge path of record:
    apply the label before checks finish.
 3. On any pre-merge failure (`==COMMIT_MSG==` block missing /
    malformed, required check failed, `Signed-off-by:` trailer
-   missing from the block) the bot posts a
-   `Claude: Cannot merge — <reason>` comment and exits non-zero.
-   The label stays applied, so a fix-and-push retriggers the bot
-   automatically via `check_suite: completed`. Remove the
-   `automerge` label only if you want the bot to stop trying.
-4. On success the bot posts `Claude: Merged via bot.` and the
-   squash commit lands on `main` with the `==COMMIT_MSG==` block
-   as its body verbatim — sign-off, `Closes: #N`, and any
-   `BREAKING CHANGE:` footer all round-trip into git history.
+   missing from the block) the bot logs the reason via `::error::`
+   in the workflow run log and exits non-zero. (The bot used to
+   post a `Claude: Cannot merge — <reason>` PR comment for each
+   failure mode; that surface was removed in #503 because it
+   duplicated signal the PR UI already carried.) The label stays
+   applied, so a fix-and-push retriggers the bot automatically via
+   `check_suite: completed`. Remove the `automerge` label only if
+   you want the bot to stop trying. A failing PR also gets parked
+   with the `needs fix` label by the `label-needs-fix` job until
+   CI returns to green; the `push:main` sweep skips parked PRs
+   (#498).
+4. On success the squash commit lands on `main` with the
+   `==COMMIT_MSG==` block as its body verbatim — sign-off,
+   `Closes: #N`, and any `BREAKING CHANGE:` footer all round-trip
+   into git history. The merge event itself shows up in the PR
+   timeline; the bot does not post a separate "merged" comment.
 
 The `Signed-off-by:` trailer must already sit inside the
 `==COMMIT_MSG==` block — the bot authors no commits and pastes the
