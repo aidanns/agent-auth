@@ -13,8 +13,6 @@ self-test.
 -->
 
 ==COMMIT_MSG==
-Routine dependency upgrade authored by Dependabot.
-
 See the PR description for upstream release notes.
 
 Signed-off-by: dependabot[bot] <support@github.com>

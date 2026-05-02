@@ -5,10 +5,12 @@
 name: Merge Bot
 
 # Pastes the PR's `==COMMIT_MSG==` block as the squash-merge commit
-# body when the contributor (or an automerge-eligible CI agent)
-# applies the `automerge` label and every required check is green.
-# Replaces the maintainer-paste step from #290 with a deterministic
-# bot-mediated merge. See:
+# body — the body and trailers only, per #478 — when the contributor
+# (or an automerge-eligible CI agent) applies the `automerge` label
+# and every required check is green. The squash-merge subject comes
+# from the PR title via the merge API's `commit_title` field, not
+# from the block. Replaces the maintainer-paste step from #290 with
+# a deterministic bot-mediated merge. See:
 #   - design/decisions/0038-merge-bot-via-github-app.md
 #   - docs/release/merge-bot-setup.md
 #
@@ -54,12 +56,16 @@ name: Merge Bot
 #     `push:main` trigger above.
 #
 # The bot authors no commits — it only calls `PUT /pulls/{n}/merge`.
-# The squash commit body is the contents of the PR's `==COMMIT_MSG==`
+# The squash commit's `commit_title` is `<PR title> (#<n>)` and the
+# `commit_message` is the contents of the PR's `==COMMIT_MSG==`
 # block, extracted via `scripts/extract-commit-msg-block.py` (which
 # reuses the validator's parser — there is no second regex). The
-# DCO `Signed-off-by:` trailer must already sit inside the block;
-# `pr-lint.yml` enforces that at PR-author time and the bot
-# spot-checks it again here as defence-in-depth.
+# block carries the body and trailers only (#478); GitHub renders
+# the squash commit by joining `commit_title + blank + commit_message`,
+# so a leading subject line in the block would render twice on
+# `main`. The DCO `Signed-off-by:` trailer must already sit inside
+# the block; `pr-lint.yml` enforces that at PR-author time and the
+# bot spot-checks it again here as defence-in-depth.
 #
 # After a successful merge, the bot also closes any same-repo issues
 # referenced via GitHub's auto-close keywords (`Closes #N`,

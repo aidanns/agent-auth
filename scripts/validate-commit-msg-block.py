@@ -6,6 +6,14 @@
 # Validate the `==COMMIT_MSG==` block in a PR body against the conventions
 # described in `CONTRIBUTING.md` § "Writing PRs" and ADR 0037.
 #
+# The block is "body and trailers only" — the squash commit's subject
+# comes from the PR title via the merge API's `commit_title` field, and
+# the block is what lands as `commit_message`. GitHub renders a squash
+# commit by joining `commit_title + blank + commit_message`, so a
+# leading subject line in the block would produce the subject twice in
+# `git log` (once as the rendered subject, once as the first body
+# line). See issue #478.
+#
 # Rules:
 #   1. Exactly one `==COMMIT_MSG==` … `==COMMIT_MSG==` block.
 #   2. Every non-empty line in the block wraps at <= 72 chars.
@@ -28,14 +36,20 @@
 #      The DCO workflow checks per-PR-commit trailers; this rule
 #      covers the *body* the bot will paste.
 #   7. The first content line of the block (after stripping HTML
-#      comments) is non-blank — git commits open with the subject,
-#      not a leading blank line.
-#   8. When a `Fixes:` trailer carries a SHA-style value (i.e. it is
+#      comments) is non-blank — without a non-blank opener the bot
+#      pastes a body whose first line is empty, which renders without
+#      a body at all in `git log`.
+#   8. The first content line of the block does NOT look like a
+#      Conventional-Commit subject — e.g. `improvement(ci): wire
+#      the foo`. The block is body + trailers only (issue #478); the
+#      PR title is the source of the squash-merge subject. A leading
+#      subject line would render twice on `main`.
+#   9. When a `Fixes:` trailer carries a SHA-style value (i.e. it is
 #      not the `Fixes #N` GitHub-keyword form), it follows the
 #      kernel-style `Fixes: <sha> ("subject")` shape: a hex SHA of
 #      at least 7 characters followed by a parenthesised
 #      double-quoted subject.
-#   9. The trailer block at the tail of the body is contiguous: no
+#  10. The trailer block at the tail of the body is contiguous: no
 #      blank lines between two consecutive trailers. RFC 5322 / kernel
 #      convention / cbea.ms all say trailers form one contiguous
 #      block, and `git interpret-trailers --parse` treats a blank line
@@ -43,24 +57,23 @@
 #      `Signed-off-by:` makes it see only the latter as a trailer, so
 #      release-note generators and audit-trail extractors silently
 #      lose the `Closes:` reference.
-#  10. At least one blank line sits between the last body paragraph
+#  11. At least one blank line sits between the last body paragraph
 #      and the first trailer line. The body ends, blank line(s),
 #      then the contiguous trailer stack — that blank is where the
 #      visual separation lives, not between trailers. This matches
 #      `git interpret-trailers --parse` semantics, which treats any
 #      run of one or more blanks as the body/trailer boundary.
-#  11. (Soft, warning-only — issue #395.) The body region (block
-#      content with the subject line and trailer block removed) is
-#      not unusually long. A body that exceeds either of the soft
-#      thresholds in `VERBOSE_BODY_MAX_LINES` /
-#      `VERBOSE_BODY_MAX_WORDS` prompts a stderr `Warning:` line
-#      pointing at CONTRIBUTING.md → "Writing release-worthy
-#      commits" → "Body" → "Lead with why, not what". This rule
-#      does NOT fail CI — bodies whose length is justified
-#      (ADR-grade decisions, non-obvious failure modes, supply-chain
-#      or release-pipeline changes with audit-trail value) are
-#      legitimately long and the project would rather surface the
-#      warning than block the PR.
+#  12. (Soft, warning-only — issue #395.) The body region (block
+#      content with the trailer block removed) is not unusually
+#      long. A body that exceeds either of the soft thresholds in
+#      `VERBOSE_BODY_MAX_LINES` / `VERBOSE_BODY_MAX_WORDS` prompts
+#      a stderr `Warning:` line pointing at CONTRIBUTING.md →
+#      "Writing release-worthy commits" → "Body" → "Lead with
+#      why, not what". This rule does NOT fail CI — bodies whose
+#      length is justified (ADR-grade decisions, non-obvious
+#      failure modes, supply-chain or release-pipeline changes
+#      with audit-trail value) are legitimately long and the
+#      project would rather surface the warning than block the PR.
 #
 # The PR title (subject) has its own prose-style rules — length cap,
 # trailing period, past-tense imperative — enforced by the sibling
@@ -110,7 +123,8 @@ MAX_LINE_WIDTH = 72
 # thresholds. The line cap is the active separator here: `7ab4c6a`
 # (216 words) sits beneath `c3c7136` (240 words) on word count, so a
 # pure word threshold cannot tell them apart. Counting non-blank lines
-# in the body region (subject and trailer block excluded) catches the
+# in the body region (trailer block excluded; the block is body-only
+# post-#478, so there is no subject line to exclude) catches the
 # offender's six diff-restating paragraphs while leaving the
 # 4-paragraph ADR-grade bodies under cap. The word threshold is set
 # above the worst offender so it only fires on bodies even more
@@ -652,10 +666,11 @@ def _is_github_issue_ref(value: str) -> bool:
 def check_first_line_non_blank(block: str) -> None:
     """Reject a leading blank line at the top of the block.
 
-    The git-commit shape is "subject on the first line, blank line,
-    body" — a leading blank line in the *authored* block means the
-    bot pastes a body whose first line is empty, which renders
-    without a subject in `git log`.
+    The block becomes the squash commit's body verbatim, and the body
+    must have a non-blank first line — otherwise the bot pastes a body
+    whose first line is empty, which renders as a body-less commit in
+    `git log` (the rendered subject would still display because GitHub
+    sets `commit_title` from the PR title independently).
 
     Template scaffolding is the recognised exception: when the first
     non-blank line is an HTML comment (`<!-- ... -->`) the contributor
@@ -683,51 +698,43 @@ def check_first_line_non_blank(block: str) -> None:
     if first_idx > 0:
         raise ValidationError(
             f"`{MARKER}` block opens with {first_idx} blank line(s) "
-            "before the subject. The first content line must be the "
-            "commit subject so the bot's pasted body renders correctly "
-            "in `git log` — drop the leading blank line(s)."
+            "before the body. The first content line must be the "
+            "first line of the commit body so the bot's pasted body "
+            "renders correctly in `git log` — drop the leading "
+            "blank line(s)."
         )
 
 
-def check_first_line_not_subject_dup(lines: list[str], title: str | None) -> None:
-    """Reject a body whose first line duplicates the PR title.
+# Conventional-Commit subject shape — the project's PR-title prefix
+# allowlist (ADR 0037) followed by `: <text>`. Used by
+# ``check_no_leading_subject_line`` to detect a leading subject line in
+# the block, which post-#478 belongs in the PR title (rendered as the
+# squash commit's `commit_title`), not the body. Matched on the first
+# non-blank content line of the block.
+LEADING_SUBJECT_RE = re.compile(
+    r"^(feature|improvement|fix|deprecation|migration|break|chore)(\([^)]+\))?: .+$"
+)
 
-    The merge bot pastes the PR title as the squash-merge subject and
-    pastes the block as the body. If the contributor copies the title
-    into the first line of the block, the resulting commit has the
-    subject repeated as the first body line — visually noisy in
-    `git log`, and a sign the contributor didn't realise the title
-    *is* the subject.
 
-    `title` is the PR title (passed via `--title` / env var); a
-    ``None`` value means the validator was not given a title (e.g.
-    when invoked from the `validator-self-test` fixture loop), in
-    which case the check is a no-op.
+def check_no_leading_subject_line(lines: list[str]) -> None:
+    """Reject a body whose first line looks like a Conventional-Commit subject.
+
+    The block is body + trailers only (issue #478): the squash
+    commit's subject comes from the PR title via the merge API's
+    `commit_title` field, so a leading subject line in the block
+    would render twice on `main` — once as the subject, once as the
+    first body line. The check fires on the first non-blank content
+    line.
     """
-    if title is None or not lines:
+    first_line = next((line for line in lines if line.strip()), None)
+    if first_line is None:
         return
-    title_summary = _strip_title_prefix(title).strip().rstrip(".")
-    first_line = lines[0].strip().rstrip(".")
-    if not title_summary or not first_line:
-        return
-    if first_line.lower() == title_summary.lower():
+    if LEADING_SUBJECT_RE.match(first_line.strip()):
         raise ValidationError(
-            f"`{MARKER}` block's first line duplicates the PR title "
-            f"({first_line!r}). The PR title becomes the squash-merge "
-            "subject; drop the duplicate from the body and lead with "
-            "the rationale."
+            f"`{MARKER}` block is now the body only — remove the "
+            "leading subject line; the PR title is the source for "
+            "the squash commit subject."
         )
-
-
-PR_TITLE_PREFIX_RE = re.compile(r"^[A-Za-z]+(?:\([^)]+\))?:\s+")
-
-
-def _strip_title_prefix(title: str) -> str:
-    """Return the post-prefix summary of a PR title for comparison."""
-    match = PR_TITLE_PREFIX_RE.match(title)
-    if match is None:
-        return title
-    return title[match.end() :]
 
 
 def check_fixes_trailer_shape(lines: list[str]) -> None:
@@ -767,21 +774,20 @@ def check_fixes_trailer_shape(lines: list[str]) -> None:
 def _body_region(lines: list[str]) -> list[str]:
     """Return the body region of a commit-msg block.
 
-    The body region is the block content with the subject line
-    (``lines[0]``) and the trailer block (identified by
+    Post-#478 the block is body + trailers only, so the body region
+    is the block content with the trailer block (identified by
     ``_trailer_block_start_index``) removed. Trailing blank lines
     inside the resulting region are stripped so a body whose last
     paragraph is followed by the canonical blank-then-trailers tail
     contributes only its content lines to the region.
 
     Used by ``check_verbose_body`` to size the body alone, separately
-    from the subject (which has its own length cap in
-    ``validate-pr-title.py``) and from the trailer block (which is
-    structurally bounded — every trailer is one line).
+    from the trailer block (which is structurally bounded — every
+    trailer is one line).
     """
     if not lines:
         return []
-    body = lines[1:]
+    body = list(lines)
     first_trailer_idx = _trailer_block_start_index(body)
     if first_trailer_idx is not None:
         body = body[:first_trailer_idx]
@@ -833,11 +839,12 @@ def check_verbose_body(lines: list[str]) -> int:
     return 1
 
 
-def validate(body: str, title: str | None = None) -> None:
+def validate(body: str) -> None:
     block = extract_commit_msg_block(body)
     check_first_line_non_blank(block)
     lines = block_lines(block)
     check_non_empty(lines)
+    check_no_leading_subject_line(lines)
     check_line_width(lines)
     check_no_markdown(lines)
     check_breaking_change_position(lines)
@@ -851,7 +858,6 @@ def validate(body: str, title: str | None = None) -> None:
     check_trailer_block_contiguity(lines)
     check_blank_line_before_trailers(lines)
     check_signoff_present(lines)
-    check_first_line_not_subject_dup(lines, title)
     check_fixes_trailer_shape(lines)
     # Soft warning — runs last so a body that fails any structural
     # rule above surfaces the actionable error first; the verbose-body
@@ -861,42 +867,6 @@ def validate(body: str, title: str | None = None) -> None:
     # release-worthy commits" → "Body" → "Lead with why, not what" for
     # the warning-not-failure rationale).
     check_verbose_body(lines)
-
-
-# Inline self-test cases for title-aware checks (currently only
-# subject-dup). Each tuple is (body, title, expect_pass, label).
-# A separate self-test entry point — rather than fixture files — is
-# used because these checks need both a body and a title and the
-# fixture-loop runs title-less.
-_TITLE_AWARE_SELF_TEST_CASES: tuple[tuple[str, str, bool, str], ...] = (
-    (
-        # Failing case: body's first line duplicates the PR title's
-        # post-prefix summary. Bot would paste a commit whose subject
-        # is followed by the same line as the first body line.
-        "==COMMIT_MSG==\n"
-        "Wire the foo into the bar.\n\n"
-        "More rationale.\n\n"
-        "Closes #1\n"
-        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
-        "==COMMIT_MSG==\n",
-        "feature(foo): wire the foo into the bar",
-        False,
-        "failing-first-line-dup",
-    ),
-    (
-        # Passing case: same body, but the title's summary is genuinely
-        # different from the first body line.
-        "==COMMIT_MSG==\n"
-        "Wire the foo into the bar.\n\n"
-        "More rationale.\n\n"
-        "Closes #1\n"
-        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
-        "==COMMIT_MSG==\n",
-        "chore(foo): refactor the foo helper",
-        True,
-        "passing-no-dup",
-    ),
-)
 
 
 def _build_verbose_body(word_count: int, words_per_line: int = 20) -> str:
@@ -912,6 +882,12 @@ def _build_verbose_body(word_count: int, words_per_line: int = 20) -> str:
     ``verbose-body-trips`` case overrides ``words_per_line`` to a
     smaller value to also exceed the line cap, mirroring the real
     diff-restating shape that motivated the warning.
+
+    The synthesized block is body + trailers only (no leading subject
+    line) per #478 — the body region is the ``w w w …`` block alone,
+    so the line / word counts the boundary cases assert match the
+    sizing exactly. ``w`` is not a CC-shaped prefix, so the
+    ``check_no_leading_subject_line`` regex doesn't match.
     """
     full_lines = word_count // words_per_line
     leftover = word_count % words_per_line
@@ -921,7 +897,6 @@ def _build_verbose_body(word_count: int, words_per_line: int = 20) -> str:
     body_block = "\n".join(body_lines)
     return (
         "==COMMIT_MSG==\n"
-        "Subject summary placeholder.\n\n"
         f"{body_block}\n\n"
         "Closes #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
@@ -930,10 +905,11 @@ def _build_verbose_body(word_count: int, words_per_line: int = 20) -> str:
 
 
 # Inline self-test cases for the verbose-body warning. Each tuple is
-# (body, expect_warning, label). Run separately from the title-aware
-# self-test because ``check_verbose_body`` returns a warning count
-# (not a raise/no-raise outcome), so the validate-raises-vs-passes
-# loop above cannot exercise it.
+# (body, expect_warning, label). Lives inside the validator (rather
+# than a fixture file) because ``check_verbose_body`` returns a
+# warning count — not a raise/no-raise outcome — so the
+# validate-raises-vs-passes fixture loop in ``pr-lint.yml`` cannot
+# exercise it.
 _VERBOSE_BODY_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
     (
         # Verbose body — well over both thresholds. Mirrors the worst
@@ -948,7 +924,6 @@ _VERBOSE_BODY_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         # Short, focused body — the canonical "lead with why" shape.
         # Should not trip the warning under any threshold.
         "==COMMIT_MSG==\n"
-        "Subject summary placeholder.\n\n"
         "One paragraph of why this change exists. Two short lines is\n"
         "all the body needs because the diff is self-evident.\n\n"
         "Closes #1\n"
@@ -1005,23 +980,8 @@ _VERBOSE_BODY_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
 )
 
 
-def _run_title_aware_self_test() -> int:
+def _run_self_test() -> int:
     fail = 0
-    for body, title, expect_pass, label in _TITLE_AWARE_SELF_TEST_CASES:
-        try:
-            validate(body, title=title)
-        except ValidationError as err:
-            if expect_pass:
-                print(f"FAIL: {label}: expected pass, got {err}", file=sys.stderr)
-                fail += 1
-            else:
-                print(f"ok: {label}: {err}")
-        else:
-            if expect_pass:
-                print(f"ok: {label}")
-            else:
-                print(f"FAIL: {label}: expected fail, got pass", file=sys.stderr)
-                fail += 1
     for body, expect_warning, label in _VERBOSE_BODY_SELF_TEST_CASES:
         block = extract_commit_msg_block(body)
         lines = block_lines(block)
@@ -1034,7 +994,7 @@ def _run_title_aware_self_test() -> int:
             actual = "warning" if actually_warned else "no warning"
             print(f"FAIL: {label}: expected {expected}, got {actual}", file=sys.stderr)
             fail += 1
-    total = len(_TITLE_AWARE_SELF_TEST_CASES) + len(_VERBOSE_BODY_SELF_TEST_CASES)
+    total = len(_VERBOSE_BODY_SELF_TEST_CASES)
     if fail:
         print(f"{fail} self-test case(s) failed", file=sys.stderr)
         return 1
@@ -1057,33 +1017,23 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to a file containing the PR body markdown.",
     )
     parser.add_argument(
-        "--title",
-        default=None,
-        help=(
-            "PR title (the squash-merge subject). When provided, the "
-            "first body line is also checked for duplication of the "
-            "title. Omit to skip that check (used by the fixture "
-            "self-test loop, which has no PR title to compare against)."
-        ),
-    )
-    parser.add_argument(
         "--self-test",
         action="store_true",
         help=(
-            "Run the inline title-aware self-test cases instead of "
-            "validating a body file. Covers the rules whose input "
-            "needs both a body and a title (subject-dup) so the "
-            "fixture-loop's title-less invocation does not have to."
+            "Run the inline self-test cases instead of validating a "
+            "body file. Covers the verbose-body warning rule, whose "
+            "outcome is a warning count rather than raise/no-raise "
+            "and so cannot be exercised by the fixture self-test loop."
         ),
     )
     args = parser.parse_args(argv)
     if args.self_test:
-        return _run_title_aware_self_test()
+        return _run_self_test()
     if args.body_path is None:
         parser.error("body_path is required unless --self-test is given")
     body = args.body_path.read_text(encoding="utf-8")
     try:
-        validate(body, title=args.title)
+        validate(body)
     except ValidationError as err:
         print(f"pr-lint: {err}", file=sys.stderr)
         return 1
