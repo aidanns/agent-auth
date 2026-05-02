@@ -14,6 +14,27 @@ name: Check Security
 # the aggregator's `needs:` list.
 on:
   workflow_call:
+    inputs:
+      # Centralised event-kind gating from `ci.yml`'s `plan` job
+      # (issue #530). Forwarded to leaf children whose actions
+      # require a base/head diff (`check-dependency-review`) or whose
+      # write-token POSTs would 403 on fork PRs
+      # (`check-dependency-submission`).
+      event_has_diff_base_head:
+        description: >-
+          True for events that carry a base/head diff
+          (`pull_request`, `pull_request_target`, `merge_group`) — the
+          set the GitHub `actions/dependency-review-action` supports.
+        required: true
+        type: boolean
+      event_from_external_repo:
+        description: >-
+          True for `pull_request` events whose head repo differs from
+          the workflow repo (i.e. fork PRs). Fork PRs receive a
+          read-only `GITHUB_TOKEN`, so any check that POSTs to
+          `/repos/.../dependency-graph/snapshots` etc. must short-circuit.
+        required: true
+        type: boolean
 
 permissions:
   contents: read
@@ -33,12 +54,16 @@ jobs:
   check-dependency-review:
     name: Check Dependency Review
     uses: ./.github/workflows/check-dependency-review.yml
+    with:
+      event_has_diff_base_head: ${{ inputs.event_has_diff_base_head }}
     permissions:
       contents: read
       pull-requests: write
   check-dependency-submission:
     name: Check Dependency Submission
     uses: ./.github/workflows/check-dependency-submission.yml
+    with:
+      event_from_external_repo: ${{ inputs.event_from_external_repo }}
     permissions:
       contents: write
 
