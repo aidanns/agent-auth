@@ -37,13 +37,14 @@ workflow:
    #528.
 3. If the PR head sits behind `main` (`mergeStateStatus = BEHIND`),
    calls `PUT /repos/aidanns/agent-auth/pulls/{n}/update-branch`
-   to fast-forward the PR head onto `main`, comments
-   `Claude: Branch was behind main — updated; will retry merge after CI completes.`, and exits 0. The new head SHA retriggers
-   CI; once those workflows complete, `workflow_run.completed`
-   re-fires merge-bot for the second-pass merge. Capped at three
-   auto-updates per PR — the fourth BEHIND state surfaces
-   `Claude: Auto-update loop exceeded — main is moving too fast or this PR keeps falling behind. Investigate manually.` and
-   fails the job rather than burning further CI cycles. See
+   to fast-forward the PR head onto `main`, and exits 0. The new
+   head SHA retriggers CI; once those workflows complete,
+   `workflow_run.completed` re-fires merge-bot for the second-
+   pass merge. The bot is no longer self-throttling on update
+   cadence (issue #503); a `label-needs-fix` job in the same
+   workflow parks a known-failing PR with a `needs fix` label
+   instead, and the sweep eligibility filter (#498) skips parked
+   PRs until a fresh push drives CI back to green. See
    [Auto-update on BEHIND](#auto-update-on-behind) below.
 4. Otherwise calls `PUT /repos/aidanns/agent-auth/pulls/{n}/merge`
    with `merge_method: squash`,
@@ -56,10 +57,12 @@ workflow:
    as a clickable link to the originating PR in the commit log;
    the REST merge endpoint does not auto-append the suffix the
    way the web UI's "Squash and merge" button does. See #399.
-5. Comments `Claude: Merged via bot.` on success, or
-   `Claude: Cannot merge — <reason>` on any pre-merge failure
-   (label stays applied so the next green run retriggers the
-   merge).
+5. Logs every decision via `::notice::` / `::error::` lines in
+   the workflow run log. The bot does not post PR comments —
+   contributors and maintainers read state from the PR UI
+   (failing required checks, the merge timeline, the `needs fix`
+   label) and from the workflow run log for edge-case
+   diagnostics. Origin: issue #503.
 6. After a successful merge, parses the squash commit body for
    GitHub auto-close keyword references
    (`closes` / `fixes` / `resolves` and their inflections, case-
@@ -114,7 +117,9 @@ trailer at PR-author time.
        token-mediated `PUT /pulls/{n}/merge` calls — issue #429 — so
        the bot does the closure itself).
      - *Pull requests*: **Read & write** (call `PUT /pulls/{n}/merge`,
-       post comments, read body and labels).
+       read body and labels). The bot itself does not post PR
+       comments since #503; the write grant is still required for
+       the merge call.
      - *Checks*: **Read-only** (inspect required-check status via
        the `statusCheckRollup` GraphQL field).
      - *Workflows*: **Read & write** (any PR that edits a file under
@@ -236,9 +241,12 @@ The `automerge` label already exists on the repo (created during
   in the agent's pipeline with `gh pr edit <pr> --add-label automerge`. The label is the new "ready to merge" signal.
 - Any merge attempt that hits a problem (`==COMMIT_MSG==`
   malformed, required check failed, DCO trailer missing) surfaces
-  as a `Claude: Cannot merge — <reason>` comment. The label stays
-  applied so a fix-and-push retriggers the bot via
-  `check_suite: completed`.
+  as `::error::` lines in the workflow run log; the bot does not
+  post PR comments. The label stays applied so a fix-and-push
+  retriggers the bot via `check_suite: completed`. A failing PR
+  also gets parked with `needs fix` by the `label-needs-fix` job
+  so the sweep eligibility filter (#498) skips it until CI
+  returns to green.
 
 ## Optional: flip `squash_merge_commit_message` away from `BLANK`
 
@@ -302,8 +310,10 @@ should produce:
 - A squash commit on `main` whose body (`git log -1 --format=%B`)
   matches the contents of the PR's `==COMMIT_MSG==` block exactly,
   including the `Signed-off-by:` trailer.
-- A `Claude: Merged via bot.` comment on the PR (posted by the
-  `agent-auth-merge-bot` App identity).
+- A squash-merge event in the PR timeline authored by the
+  `agent-auth-merge-bot` App identity. (The bot no longer posts a
+  PR comment on success — see #503; the timeline event is the
+  signal of record.)
 - The `dco` workflow staying green on `main` because the
   `Signed-off-by:` trailer round-trips into the squash commit.
 - The `Closes: #N` trailer in the block closing the linked issue
@@ -332,30 +342,34 @@ The bot now handles this autonomously instead of stalling the PR:
 1. After the green-check gate and DCO trailer check, the bot
    re-fetches `mergeStateStatus`. If the value is `BEHIND`, the
    merge step is skipped.
-2. Counts prior auto-update comments authored by the bot on the
-   same PR (matched by author = `agent-auth-merge-bot[bot]` plus
-   the literal comment-body prefix
-   `Claude: Branch was behind main — updated;`).
-3. If the count is **3 or more**, refuses the fourth update,
-   posts `Claude: Auto-update loop exceeded — main is moving too fast or this PR keeps falling behind. Investigate manually.`,
-   and fails the job. The `automerge` label stays sticky so a
-   contributor / maintainer can fix the underlying issue (e.g.
-   slow `main`, conflict in the PR) and the next push will
-   retrigger the bot.
-4. Otherwise calls
+2. Calls
    `PUT /repos/aidanns/agent-auth/pulls/{n}/update-branch` with
-   `expected_head_sha` pinned, posts
-   `Claude: Branch was behind main — updated; will retry merge after CI completes.`, and exits 0. The new head SHA retriggers
-   every PR-gating CI workflow; once they complete,
+   `expected_head_sha` pinned and exits 0. The new head SHA
+   retriggers every PR-gating CI workflow; once they complete,
    `workflow_run.completed` re-fires merge-bot, which sees a
    green and up-to-date PR and merges it.
+
+The bot does not self-throttle on update cadence — it
+auto-updates a green PR every time `main` moves, forever, until
+the PR merges. A separate `label-needs-fix` job in the same
+workflow listens on `workflow_run.completed` regardless of
+upstream conclusion: it inspects the PR head's
+`statusCheckRollup` and applies the `needs fix` label on rollup
+`FAILURE`, removes it on rollup `SUCCESS`. The sweep eligibility
+filter (#498) excludes PRs with `needs fix`, so a known-failing
+PR stops consuming sweep slots until a fresh push (typically a
+user fix) drives CI back to green and the label is auto-cleared.
+This replaced the comment-marker-anchored auto-update loop guard
+the bot used to run before #503.
 
 Operational notes:
 
 - **Each auto-update burns a full CI cycle.** A PR that sits
   behind through three rebases will run all required checks 4×
-  total. Acceptable cost for hands-off merging; the loop guard
-  caps the worst case at 3 auto-updates.
+  total. Acceptable cost for hands-off merging; a PR whose CI
+  starts failing gets parked with `needs fix` (see above) so the
+  worst case is bounded by the rate at which `main` advances and
+  CI keeps passing.
 - **The PR's commit history accumulates merge commits.** The
   default `update-branch` merge-method produces a merge commit on
   the PR head — the same shape as clicking GitHub's "Update
@@ -459,17 +473,18 @@ in the `claude-skills` repo).
 
 ## Failure modes the bot surfaces
 
-Each `Claude: Cannot merge — <reason>` comment on a PR maps to one
-of:
+Each `::error::` line in the bot's workflow run log (since #503
+the bot does not post PR comments) maps to one of:
 
 - **Required check failed**: a context listed in the `main`
   ruleset's `required_status_checks` is `FAILURE` / `TIMED_OUT` /
   `CANCELLED` / `STARTUP_FAILURE` / `ACTION_REQUIRED` / `ERROR`.
-  Fix the check, push, and the `workflow_run.completed` retrigger
-  will run the bot again. A check that is failing in the rollup
-  but is NOT a required context does not produce this comment —
-  the bot only gates on the required-contexts set derived from
-  branch protection.
+  The failing check itself surfaces in the PR UI as a red status —
+  that is the primary signal. Fix the check, push, and the
+  `workflow_run.completed` retrigger will run the bot again. A
+  check that is failing in the rollup but is NOT a required
+  context does not block the merge — the bot only gates on the
+  required-contexts set derived from branch protection.
 - **Could not read required-check contexts from branch
   protection**: both the modern rulesets API and the legacy
   `branches/{branch}/protection` API returned empty. Most commonly
@@ -483,24 +498,17 @@ of:
   block parses but lacks DCO. Add `Signed-off-by: Name <email>` as
   the last line of the block.
 - **`update-branch` API rejected the call**: surfaced as the
-  literal API error string. Most commonly a missing
-  `contents: write` grant on the App installation, or a
+  literal API error string in the workflow log. Most commonly a
+  missing `contents: write` grant on the App installation, or a
   ruleset rule that blocks the App from pushing the merge commit.
-- **Auto-update loop exceeded**: the bot has already updated this
-  PR three times without merging. `main` is moving faster than
-  CI completes for this PR, or the PR keeps re-falling-behind for
-  another reason (e.g. a conflict that `update-branch` can't
-  resolve). Investigate manually; once the underlying cause is
-  fixed, push a new commit to the PR — the loop guard only counts
-  auto-update comments posted since the most recent push to the PR
-  head (anchored on the head commit's `committer.date`), so a
-  fresh push resets the count. The prior auto-update comments stay
-  on the PR but no longer block subsequent attempts.
 - **GitHub merge API rejected the call**: surfaced as the literal
-  API error string. The most common cause is the App not being a
-  bypass actor on the `main` ruleset (returns
+  API error string in the workflow log. The most common cause is
+  the App not being a bypass actor on the `main` ruleset (returns
   `405 Pull Request is not mergeable`).
 
 The label stays applied through every failure so the recovery path
 is "fix the underlying problem and push" — no need to remove and
-re-add the label.
+re-add the label. A failing PR is also auto-parked with
+`needs fix` by the `label-needs-fix` job until CI returns to
+green; this prevents the sweep job (#498 eligibility filter) from
+re-dispatching merge-bot on a PR known to be stuck.
