@@ -6,9 +6,9 @@ name: Check Lint
 
 # `workflow_call` parent shell for lint-and-static-analysis children
 # under the uv-style nested CI structure (parent issue #440, Phase 2
-# issue #453). Today the only child is `python` (mypy + pyright);
-# follow-up issues attach more children here:
-#   - #454: systems-engineering (REUSE / SPDX, treefmt --ci, ripsecrets)
+# issue #453). Children today: `python` (mypy + pyright) and
+# `systems-engineering` (verify-design + verify-function-tests).
+# Follow-up issues attach more children here:
 #   - #459: extends `python.yml` with ruff lint, or adds a sibling
 #
 # The aggregator below mirrors the pattern in `ci.yml`'s
@@ -30,9 +30,14 @@ jobs:
     uses: ./.github/workflows/python.yml
     secrets: inherit
 
+  systems-engineering:
+    name: systems-engineering
+    uses: ./.github/workflows/systems-engineering.yml
+    secrets: inherit
+
   required-checks-passed:
     name: Required checks passed
-    needs: [python]
+    needs: [python, systems-engineering]
     if: always()
     runs-on: ubuntu-latest
     steps:
