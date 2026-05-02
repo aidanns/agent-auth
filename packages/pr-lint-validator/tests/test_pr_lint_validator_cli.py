@@ -83,6 +83,33 @@ def test_commit_msg_subcommand_validates_passing_body(
     assert "block OK" in out
 
 
+def test_commit_msg_subcommand_rejects_leading_subject_line(
+    tmp_path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A leading CC-shaped first line in the block is rejected (rule 8).
+
+    Post-#478 the block is body + trailers only — the squash commit's
+    subject is rendered from the PR title, so a CC-shaped first line
+    in the block would render twice on ``main``. The CLI's
+    ``commit-msg`` subcommand must surface this as exit code 1 with a
+    fix-it pointer mentioning the body-only convention.
+    """
+    body = tmp_path / "body.md"
+    body.write_text(
+        "==COMMIT_MSG==\n"
+        "improvement(ci): wire the foo into the bar\n\n"
+        "Body paragraph.\n\n"
+        "Closes #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n",
+        encoding="utf-8",
+    )
+    rc = cli.main(["commit-msg", str(body)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "leading subject line" in err
+
+
 def test_commit_msg_subcommand_rejects_missing_signoff(
     tmp_path, capsys: pytest.CaptureFixture[str]
 ) -> None:
