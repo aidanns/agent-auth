@@ -109,6 +109,35 @@ expected outcomes:
   `Changelog Lint` will then fail the PR (this is the intentional
   fall-through).
 
+## Dependabot-scoped secrets gotcha
+
+Workflows triggered by `dependabot[bot]`-authored PRs run in the
+**Dependabot secrets context**, not the Actions secrets context.
+GitHub surfaces this as `Secret source: Dependabot` in the run log.
+The two stores are separate: secrets you provision under Settings ->
+Secrets and variables -> Actions are not visible to a Dependabot run,
+and vice versa.
+
+The `CHANGELOG_BOT_APP_ID` / `CHANGELOG_BOT_PRIVATE_KEY` /
+`CHANGELOG_BOT_EMAIL` triplet documented above lives in the Actions
+store. That works for `changelog-bot.yml` (it runs only on
+human-authored PRs in this repo's `pull_request` cohort) but does
+**not** work for
+[`dependabot-adaptor-bot.yml`](../../.github/workflows/dependabot-adaptor-bot.yml),
+which by definition only runs on Dependabot PRs.
+
+To resolve, the adaptor workflow uses `pull_request_target` instead
+of `pull_request`. `pull_request_target` runs in the base-repo
+context regardless of the PR author, so the Actions secrets resolve
+normally. The alternative — duplicating the App credentials into the
+Dependabot secrets store — works, but introduces a second store to
+keep in sync on App key rollovers and is easy to forget. The
+`pull_request_target` choice keeps the App's secret material in a
+single store. The workflow header comment in
+`dependabot-adaptor-bot.yml` walks through the trust argument that
+makes this safe (the workflow never checks out the PR ref); see that
+file before changing the trigger.
+
 ## Branch protection interaction
 
 The bot pushes commits directly to PR branches (not to `main`). If the

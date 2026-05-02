@@ -33,18 +33,58 @@ name: Dependabot Adaptor Bot
 # body-edit must trigger pr-lint's `pull_request_target: edited`.
 # App-token-driven events do trigger downstream workflows.
 #
-# Runs on `pull_request` (NOT `pull_request_target`) so a fork PR
-# can never reach this workflow's elevated token. The `if:` gate
-# narrows execution to PRs whose `user.login` is `dependabot[bot]`,
-# which GitHub assigns to PRs opened by the Dependabot App and
-# cannot be spoofed by a contributor.
+# Runs on `pull_request_target` (NOT `pull_request`) — counter to
+# the default fork-safety stance for App-token workflows — because
+# Dependabot-authored PRs run their workflows in the **Dependabot
+# secrets context**, not the Actions secrets context. The
+# `CHANGELOG_BOT_APP_ID` / `CHANGELOG_BOT_PRIVATE_KEY` App
+# credentials are provisioned in the Actions store, so under
+# `pull_request` they resolve to empty inside a Dependabot run and
+# the secrets-check guard below short-circuits the adaptor (issue
+# #537). `pull_request_target` runs in the base-repo context and
+# resolves the Actions secrets normally, avoiding a duplicate
+# secret store to keep in sync on App key rollovers.
+#
+# Why the standard `pull_request_target` risk does not apply here:
+# the canonical exploit is "checkout the PR ref, run its build,
+# leak the elevated token". This workflow never checks out the PR.
+# Every step is either a bash block whose inputs come from `env:`
+# bindings populated from `${{ secrets.* }}` or from
+# `github.event.pull_request.{number,user.login}` (both controlled
+# by GitHub, not the PR author), or a `gh pr edit / view` call by
+# PR number. The single piece of PR-author-controlled data that
+# enters a `run:` block is the existing PR body fetched via
+# `gh pr view ... --jq .body`, and it is only `grep -Fq`'d for a
+# literal `==COMMIT_MSG==` marker — never executed, eval'd, or
+# string-interpolated into a shell command. There is no
+# PR-bytes -> code-execution path.
+#
+# The `if:` gate (`user.login == 'dependabot[bot]'`) remains
+# spoof-proof under `pull_request_target`: GitHub sets `user.login`
+# from the authenticated PR author, not from any PR-controlled
+# field, and the `dependabot[bot]` login is reserved for the
+# Dependabot App. Dependabot PRs are also always pushed to
+# branches in the base repo, never from forks, so the fork-PR
+# threat surface that motivates `pull_request` for human-authored
+# PRs does not apply to the cohort this workflow runs on.
+#
+# !!! TRUST-MODEL GUARD !!!
+# Introducing `actions/checkout` of the PR ref into this workflow
+# (or flowing any other `${{ github.event.pull_request.* }}` /
+# `${{ github.event.head_commit.* }}` value into a `run:` block as
+# code rather than as a `grep` / `gh pr edit` argument) invalidates
+# the trust argument above. Any such change MUST trigger a
+# re-evaluation of the `pull_request_target` decision, including
+# the option to revert to `pull_request` and accept the secrets-
+# context constraint by duplicating the App credentials into the
+# Dependabot secrets store.
 #
 # Idempotent: re-running on the same PR is a no-op (the body edit
 # is skipped when a `==COMMIT_MSG==` marker is already present; `gh
 # pr edit --add-label` is a no-op for labels already applied).
 
 on:
-  pull_request:
+  pull_request_target:
     # `synchronize` is included so the adaptor picks up Dependabot
     # PRs that were opened before the workflow shipped (their next
     # rebase / `@dependabot recreate` push fires `synchronize`).
