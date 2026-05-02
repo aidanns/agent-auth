@@ -34,9 +34,12 @@ inputs:
     required: false
     default: "0.17.1"
   github-token:
+    # Don't write `${{ ... }}` here — action.yml metadata only has
+    # the `inputs` context in scope, so `${{ github.token }}` fails
+    # to load with "Unrecognized named-value: 'github'".
     description: >
       GitHub token used to download the wheel asset. Callers
-      typically pass the workflow's `${{ github.token }}`, which
+      typically pass the workflow's `github.token`, which
       has `contents: read` and is sufficient for downloading
       release assets from the same private repository.
     required: true
