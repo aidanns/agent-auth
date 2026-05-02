@@ -188,6 +188,30 @@ jobs:
     name: test-system
     needs: [plan]
     uses: ./.github/workflows/test-system.yml
+  build:
+    # Production-artifact build child workflow (issue #460). Runs
+    # `scripts/build-release-artifacts.sh` and asserts the per-package
+    # wheel + sdist count matches the workspace-member count, catching
+    # the silent build-regression failure mode (#324, #325). Strategy
+    # C: the original top-level `release-dryrun.yml` workflow stays in
+    # place and runs in parallel with this chain until the
+    # branch-protection ruleset switches to this aggregator (#5.2).
+    name: build
+    needs: [plan]
+    uses: ./.github/workflows/build.yml
+
+  check-release:
+    # Release-pipeline simulation child workflow (issue #460). Builds
+    # the artefacts independently (no `dist/` handoff from `build`)
+    # and exercises the `release-bot.yml` `publish-assets` upload
+    # mechanics WITHOUT publishing a release, surfacing upload-path
+    # regressions at PR time. Strategy C: the original top-level
+    # `release-dryrun.yml` workflow stays in place and runs in
+    # parallel with this chain until the branch-protection ruleset
+    # switches to this aggregator (#5.2).
+    name: check-release
+    needs: [plan]
+    uses: ./.github/workflows/check-release.yml
   check-standards:
     # Project-standards slot (issue #455). Runs `task verify-standards`
     # via `scripts/verify-standards.sh`. Until Phase 5 of #440 retires
@@ -237,7 +261,7 @@ jobs:
     # branch-protection ruleset switch from per-workflow required
     # checks to this one aggregator is tracked under #5.2.
     name: Required checks passed
-    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards]
+    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release]
     if: always()
     runs-on: ubuntu-latest
     steps:

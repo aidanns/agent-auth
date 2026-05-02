@@ -1,0 +1,140 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Check Release
+
+# Release-pipeline simulation child workflow for the uv-style nested
+# `workflow_call` CI structure (parent issue #440). Builds the
+# release artefacts (its own independent run — no shared `dist/`
+# handoff with the sibling `build.yml`, see below) and then exercises
+# the GH-release upload mechanics WITHOUT publishing a release. The
+# job exists so a regression in the upload path itself (a broken
+# `gh release upload` flag, an asset-glob typo, a missing artefact
+# the upload step expects) lights up at PR time rather than waiting
+# for the next tag push to fail mid-release.
+#
+# The aggregator in `ci.yml` treats `skipped` as a failure alongside
+# `failure` / `cancelled` / `timed_out`, so this job must actually run
+# and report `success`. Do not gate it behind any `if:` that could
+# resolve to a `skipped` outcome.
+#
+# Strategy C (issue #460): the original top-level `release-dryrun.yml`
+# workflow is kept in place and runs in parallel with this new chain
+# until the branch-protection ruleset switches to the
+# `Required checks passed` aggregator (tracked under #5.2).
+#
+# Independent build (issue #460): this workflow runs
+# `scripts/build-release-artifacts.sh` itself rather than consuming a
+# `dist/` produced by the sibling `build.yml`. The two paths exercise
+# the same script independently so a regression in either lane lights
+# up the corresponding check rather than masking behind a shared
+# artefact handoff.
+#
+# Why no `gh release create --dry-run`: the `gh` CLI does not expose a
+# `--dry-run` flag on `release create` (verified against `gh release
+# create --help` on the runner image). Calling `gh release create`
+# without `--dry-run` would actually publish a release and create a
+# tag on the repository — unacceptable from PR CI. The simulation
+# below instead validates the upload-path preconditions (asset files
+# exist and are non-empty under the same globs `release-bot.yml`'s
+# `publish-assets` step uses, the synthesized tag matches the
+# `vX.Y.Z` shape `release-bot.yml`'s `tag-and-release` step accepts)
+# and confirms the `gh release create` / `gh release upload` CLI
+# subcommands are reachable on the runner, without ever calling them
+# in a publishing mode. A regression in the upload glob, the tag
+# format, or the gh CLI install will surface here; the actual remote
+# publish remains exclusive to the tag-push path on `release-bot.yml`.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check-release:
+    name: check-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # Pin uv to the same version `release-bot.yml` uses so the
+      # PR-time build's environment matches the publish path.
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.7"
+          enable-cache: true
+
+      - name: Build into temp dist/
+        # Independent build (see workflow header). This step does not
+        # consume an artefact from `build.yml`.
+        run: scripts/build-release-artifacts.sh --out dist
+
+      - name: Simulate GH release-upload preconditions
+        # Exercises the `release-bot.yml` `publish-assets` job's
+        # `gh release upload` mechanics WITHOUT publishing a release.
+        # See workflow header for the rationale on not using
+        # `gh release create --dry-run` (the flag does not exist).
+        env:
+          # Synthesized fake tag for the format check. Never pushed,
+          # never used to create a release.
+          SIMULATED_TAG: v0.0.0-check-release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Tag-shape gate: `release-bot.yml`'s `tag-and-release` step
+          # accepts only `vX.Y.Z` tags, and `publish-assets` strips
+          # the leading `v` to compare against the artefact filenames'
+          # PEP-440 version. The fake tag here uses a pre-release
+          # suffix so it could never collide with a real release tag,
+          # but the prefix still has to satisfy the same regex shape
+          # that gates the publish path.
+          if [[ ! "${SIMULATED_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.+-]+)?$ ]]; then
+            echo "::error::simulated tag ${SIMULATED_TAG} does not match v<semver> shape — release-bot.yml tag-and-release would reject it"
+            exit 1
+          fi
+          echo "Simulated tag ${SIMULATED_TAG} satisfies release-bot.yml's vX.Y.Z gate."
+
+          # Asset-glob gate: `release-bot.yml`'s `publish-assets` step
+          # uploads `*.whl *.tar.gz` (plus the .sha256, .sig.bundle,
+          # and .spdx.json sidecars produced by signing / SBOM steps
+          # inside that job, which the PR-time build doesn't run).
+          # Verify the build artefacts the upload globs actually
+          # match exist and are non-empty under `dist/`.
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          sdists=(dist/*.tar.gz)
+          if (( ${#wheels[@]} == 0 )); then
+            echo "::error::no .whl artefacts under dist/ — release-bot.yml publish-assets upload glob would expand to nothing"
+            exit 1
+          fi
+          if (( ${#sdists[@]} == 0 )); then
+            echo "::error::no .tar.gz artefacts under dist/ — release-bot.yml publish-assets upload glob would expand to nothing"
+            exit 1
+          fi
+          for f in "${wheels[@]}" "${sdists[@]}"; do
+            if [[ ! -s "${f}" ]]; then
+              echo "::error::artefact ${f} is empty — release-bot.yml publish-assets would upload an empty asset"
+              exit 1
+            fi
+          done
+          echo "Verified ${#wheels[@]} wheel(s) + ${#sdists[@]} sdist(s) under dist/ are non-empty."
+
+          # gh CLI reachability gate: a runner-image regression that
+          # broke `gh` (or one of the subcommands `release-bot.yml`
+          # invokes) would only surface mid-release without this
+          # check. `--help` is the safest read-only invocation; it
+          # does not contact the GitHub API and cannot publish.
+          if ! gh release create --help >/dev/null; then
+            echo "::error::gh release create subcommand is not reachable on the runner"
+            exit 1
+          fi
+          if ! gh release upload --help >/dev/null; then
+            echo "::error::gh release upload subcommand is not reachable on the runner"
+            exit 1
+          fi
+          echo "gh release create / gh release upload subcommands are reachable on the runner."
+
+          echo "OK: release-upload preconditions satisfied (no release published)."
