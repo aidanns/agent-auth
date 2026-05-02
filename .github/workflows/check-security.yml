@@ -27,6 +27,9 @@ jobs:
       contents: read
       security-events: write
 
+  ripsecrets:
+    name: ripsecrets
+    uses: ./.github/workflows/ripsecrets.yml
   check-dependency-review:
     name: Check Dependency Review
     uses: ./.github/workflows/check-dependency-review.yml
@@ -47,7 +50,7 @@ jobs:
     # one in turn. Subsequent migration issues add each new child
     # workflow's job name to `needs:` here.
     name: Required checks passed
-    needs: [codeql-analyse, check-dependency-review, check-dependency-submission]
+    needs: [codeql-analyse, ripsecrets, check-dependency-submission, check-dependency-review]
     if: always()
     runs-on: ubuntu-latest
     steps:

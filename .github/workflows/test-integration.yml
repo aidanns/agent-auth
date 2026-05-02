@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Test Integration
+
+# `workflow_call` child of `ci.yml` (parent issue #440, this slot
+# #461). Carries the Docker-backed per-package integration test
+# surface from the original top-level `test.yml`'s
+# `integration-<package>` jobs, reshaped into a matrix that emits one
+# `integration-tests (<package>)` check context per package whose
+# `tests/integration/` slice exists.
+#
+# Per #414's parens-variant naming convention (job IDs use the
+# parens style for matrix variants), the matrix `name:` is
+# `integration-tests (<package>)` rather than the legacy flat-suffix
+# `integration-<package>` form.
+#
+# Strategy C (#440 phase plan, agreed 2026-05-01): the original
+# `test.yml` stays in place for the duration of the migration, so
+# its existing `integration-<package>` jobs continue to run in
+# parallel with the new matrix here. Both old and new workflows fire
+# on every PR until Phase 5 retires the original.
+#
+# The aggregator in `ci.yml` treats `skipped` as a failure alongside
+# `failure` / `cancelled` / `timed_out`, so every matrix shard must
+# actually run and report `success`. Do not gate any shard behind an
+# `if:` that could resolve to a `skipped` outcome.
+
+on:
+  workflow_call:
+
+# Shared across every integration shard: the composite build action
+# and the pytest session resolve every per-service image at
+# ``<svc>-test:ci`` via this shared session suffix. Each shard still
+# builds its own copy of every image today (caching is tracked under
+# issue #129); preserved verbatim from the original test.yml.
+env:
+  AGENT_AUTH_TEST_IMAGE_SESSION: ci
+
+permissions:
+  contents: read
+
+jobs:
+  integration-tests:
+    name: integration-tests (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The 5 packages whose `tests/integration/` slice is
+        # registered in `scripts/test.sh`'s `SERVICE_PATHS` map.
+        # Mirrors the original `integration-<package>` job set on
+        # test.yml so the new matrix's coverage matches the legacy
+        # workflow's check rollup.
+        package:
+          # keep-sorted start
+          - agent-auth
+          - gpg-bridge
+          - things-bridge
+          - things-cli
+          - things-client-applescript
+          # keep-sorted end
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/build-integration-test-image
+        with:
+          session: ${{ env.AGENT_AUTH_TEST_IMAGE_SESSION }}
+
+      - name: Run ${{ matrix.package }} integration tests
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: task test -- --integration "${PACKAGE}"

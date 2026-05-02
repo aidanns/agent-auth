@@ -149,8 +149,19 @@ jobs:
     needs: [plan]
     uses: ./.github/workflows/check-security.yml
     permissions:
+      # Granted to the `check-security.yml` chain. workflow_call
+      # permissions are intersected at every layer — the parent must
+      # grant ≥ what any descendant requests, otherwise GitHub refuses
+      # to start the run with `startup_failure`. Children today:
+      #  - codeql-analyse: needs `security-events: write` to upload
+      #    SARIF results.
+      #  - check-dependency-review: needs `pull-requests: write` to
+      #    post the comment-summary-in-pr findings on the PR.
+      #  - check-dependency-submission: needs `contents: write` to
+      #    POST the Dependency Graph snapshot.
       actions: read
-      contents: read
+      contents: write
+      pull-requests: write
       security-events: write
   check-lint:
     # First `workflow_call` child landed under the parent issue #440
@@ -172,6 +183,46 @@ jobs:
     needs: [plan]
     uses: ./.github/workflows/check-docs.yml
 
+  test-unit:
+    # Per-package unit-test matrix slot (issue #461). Carries the
+    # workspace-member matrix from `test.yml`'s `unit` job, reshaped
+    # to emit one `unit-tests (<package>)` parens-variant check
+    # context per workspace member (#414 naming convention). Per
+    # strategy C (#440), the original top-level `test.yml` stays in
+    # place; both `test.yml`'s `unit` job and this matrix run in
+    # parallel until Phase 5 retires the original.
+    name: test-unit
+    needs: [plan]
+    uses: ./.github/workflows/test-unit.yml
+
+  test-integration:
+    # Per-package Docker-backed integration-test matrix slot (issue
+    # #461). Carries the `integration-<package>` jobs from
+    # `test.yml`, renamed to `integration-tests (<package>)` per the
+    # #414 parens-variant naming convention. Strategy C: original
+    # workflow runs in parallel until Phase 5.
+    name: test-integration
+    needs: [plan]
+    uses: ./.github/workflows/test-integration.yml
+
+  test-smoke:
+    # Install-from-wheels smoke-test matrix slot (issue #461).
+    # Carries `test.yml`'s `install-from-wheels` matrix verbatim;
+    # the matrix already conformed to the parens-variant naming
+    # convention so no rename is needed. Strategy C: original
+    # workflow runs in parallel until Phase 5.
+    name: test-smoke
+    needs: [plan]
+    uses: ./.github/workflows/test-smoke.yml
+
+  test-system:
+    # macOS-runner system-test slot (issue #461). Carries
+    # `test.yml`'s `macos-applescript` job (one job today; future
+    # system-level tests will land alongside). Strategy C: original
+    # workflow runs in parallel until Phase 5.
+    name: test-system
+    needs: [plan]
+    uses: ./.github/workflows/test-system.yml
   build:
     # Production-artifact build child workflow (issue #460). Runs
     # `scripts/build-release-artifacts.sh` and asserts the per-package
@@ -245,7 +296,7 @@ jobs:
     # branch-protection ruleset switch from per-workflow required
     # checks to this one aggregator is tracked under #5.2.
     name: Required checks passed
-    needs: [plan, check-fmt, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release, check-security]
+    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release, check-security, check-fmt]
     if: always()
     runs-on: ubuntu-latest
     steps:

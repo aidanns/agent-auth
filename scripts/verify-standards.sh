@@ -977,19 +977,17 @@ echo "verify-standards: Dependency Review Action is wired into CI."
 
 # OpenSSF Scorecard must run on a schedule and gate on an aggregate
 # score floor, per design/SELF_ASSESSMENT.md → "OpenSSF Scorecard"
-# and the issue closure criteria for #108.
-scorecard_workflow=".github/workflows/scorecard.yml"
+# and the issue closure criteria for #108. The scorecard logic lives
+# in the workflow_call child `open-ssf-scorecard.yml`; the cadence
+# lives on the parent `weekly.yml` (see the chain check below).
+scorecard_workflow=".github/workflows/open-ssf-scorecard.yml"
 if [[ ! -f ${scorecard_workflow} ]]; then
   echo "verify-standards: ${scorecard_workflow} is missing." >&2
-  echo "  Add a Scorecard workflow using ossf/scorecard-action." >&2
+  echo "  Add a Scorecard workflow_call child using ossf/scorecard-action." >&2
   exit 1
 fi
 if ! grep -qE "ossf/scorecard-action" "${scorecard_workflow}"; then
   echo "verify-standards: ${scorecard_workflow} does not invoke ossf/scorecard-action." >&2
-  exit 1
-fi
-if ! grep -qE "^\s*-\s*cron:" "${scorecard_workflow}"; then
-  echo "verify-standards: ${scorecard_workflow} must run on a cron schedule." >&2
   exit 1
 fi
 if ! grep -qE "SCORECARD_MIN_SCORE" "${scorecard_workflow}"; then
@@ -997,22 +995,58 @@ if ! grep -qE "SCORECARD_MIN_SCORE" "${scorecard_workflow}"; then
   exit 1
 fi
 
+# Scheduler workflow `weekly.yml` must exist, trigger on `schedule:`,
+# and call open-ssf-scorecard.yml via `uses: ...` so removing the
+# cadence (or unwiring scorecard from weekly) fails the gate.
+weekly_scorecard_workflow=".github/workflows/weekly.yml"
+if [[ ! -f ${weekly_scorecard_workflow} ]]; then
+  echo "verify-standards: ${weekly_scorecard_workflow} is missing." >&2
+  echo "  Add the weekly orchestrator that schedules open-ssf-scorecard.yml on a cron trigger." >&2
+  exit 1
+fi
+weekly_scorecard_stripped="$(sed -E 's/(^|[[:space:]])#.*$//' "${weekly_scorecard_workflow}")"
+if ! grep -qE "^[[:space:]]*schedule:" <<<"${weekly_scorecard_stripped}"; then
+  echo "verify-standards: ${weekly_scorecard_workflow} must run on a cron schedule." >&2
+  exit 1
+fi
+if ! grep -qE "uses:[[:space:]]*\./\.github/workflows/open-ssf-scorecard\.yml" <<<"${weekly_scorecard_stripped}"; then
+  echo "verify-standards: ${weekly_scorecard_workflow} does not call open-ssf-scorecard.yml." >&2
+  echo "  Add a job with 'uses: ./.github/workflows/open-ssf-scorecard.yml' so the weekly cron runs the scorecard gate." >&2
+  exit 1
+fi
+
 echo "verify-standards: OpenSSF Scorecard workflow is present, scheduled, and gated on SCORECARD_MIN_SCORE."
 
 # DCO sign-off must be checked on every PR per design/SSDF.md PS.1.1
 # and the issue closure criteria for #116.
-dco_workflow=".github/workflows/dco.yml"
+# DCO sign-off lives in the workflow_call child `check-pull-request.yml`
+# under `ci.yml`. The pull_request trigger lives on the parent ci.yml
+# orchestrator (see the chain check below).
+dco_workflow=".github/workflows/check-pull-request.yml"
 if [[ ! -f ${dco_workflow} ]]; then
   echo "verify-standards: ${dco_workflow} is missing." >&2
-  echo "  Add a DCO sign-off check workflow (see CONTRIBUTING.md → 'DCO sign-off')." >&2
-  exit 1
-fi
-if ! grep -qE "^\s*-\s*pull_request\b|^\s*pull_request:" "${dco_workflow}"; then
-  echo "verify-standards: ${dco_workflow} must trigger on pull_request events." >&2
+  echo "  Add a DCO sign-off check workflow_call child (see CONTRIBUTING.md → 'DCO sign-off')." >&2
   exit 1
 fi
 if ! grep -qE "Signed-off-by" "${dco_workflow}"; then
   echo "verify-standards: ${dco_workflow} must check for a Signed-off-by trailer." >&2
+  exit 1
+fi
+
+ci_dco_workflow=".github/workflows/ci.yml"
+if [[ ! -f ${ci_dco_workflow} ]]; then
+  echo "verify-standards: ${ci_dco_workflow} is missing." >&2
+  echo "  Add the ci.yml orchestrator that fans out check-pull-request on pull_request." >&2
+  exit 1
+fi
+ci_dco_stripped="$(sed -E 's/(^|[[:space:]])#.*$//' "${ci_dco_workflow}")"
+if ! grep -qE "^[[:space:]]*pull_request:" <<<"${ci_dco_stripped}"; then
+  echo "verify-standards: ${ci_dco_workflow} must trigger on pull_request events." >&2
+  exit 1
+fi
+if ! grep -qE "uses:[[:space:]]*\./\.github/workflows/check-pull-request\.yml" <<<"${ci_dco_stripped}"; then
+  echo "verify-standards: ${ci_dco_workflow} does not call check-pull-request.yml." >&2
+  echo "  Add a job with 'uses: ./.github/workflows/check-pull-request.yml' so DCO runs on every PR." >&2
   exit 1
 fi
 
@@ -1082,19 +1116,24 @@ fi
 # Both mypy and pyright must appear on a workflow `run:` line. Using the
 # workflows_only_stripped corpus (workflows/*.yml, no actions/) keeps the
 # check honest — mypy/pyright also appear in dev-dependency install
-# steps, which don't count as "gated in CI".
+# steps, which don't count as "gated in CI". Three alternative patterns
+# accommodate the inline `run: <cmd>` form, the `task typecheck`
+# wrapper, and the multi-line `run: |\n  uv run [--flags...] <tool>`
+# form used by `python.yml` after issue #453's migration.
 if ! grep -qE "run:[[:space:]]*[^\\n]*\\bmypy\\b" <<<"${workflows_only_stripped}" \
-  && ! grep -qE "run:[[:space:]]*task[[:space:]]+typecheck" <<<"${workflows_only_stripped}"; then
+  && ! grep -qE "run:[[:space:]]*task[[:space:]]+typecheck" <<<"${workflows_only_stripped}" \
+  && ! grep -qE "uv[[:space:]]+run[[:space:]]+(--[[:alnum:]-]+[[:space:]]+)*mypy\\b" <<<"${workflows_only_stripped}"; then
   fail_typecheck_check \
     "no .github/workflows/*.yml runs 'mypy' (or 'task typecheck')." \
-    "Add a workflow step that runs 'task typecheck' (see .github/workflows/typecheck.yml)."
+    "Add a workflow step that runs 'task typecheck' (see .github/workflows/python.yml)."
 fi
 
 if ! grep -qE "run:[[:space:]]*[^\\n]*\\bpyright\\b" <<<"${workflows_only_stripped}" \
-  && ! grep -qE "run:[[:space:]]*task[[:space:]]+typecheck" <<<"${workflows_only_stripped}"; then
+  && ! grep -qE "run:[[:space:]]*task[[:space:]]+typecheck" <<<"${workflows_only_stripped}" \
+  && ! grep -qE "uv[[:space:]]+run[[:space:]]+(--[[:alnum:]-]+[[:space:]]+)*pyright\\b" <<<"${workflows_only_stripped}"; then
   fail_typecheck_check \
     "no .github/workflows/*.yml runs 'pyright' (or 'task typecheck')." \
-    "Add a workflow step that runs 'task typecheck' (see .github/workflows/typecheck.yml)."
+    "Add a workflow step that runs 'task typecheck' (see .github/workflows/python.yml)."
 fi
 
 if [[ ${typecheck_missing} -ne 0 ]]; then
@@ -1846,12 +1885,25 @@ fi
 
 echo "verify-standards: ${audit_schema_file} exists and references all documented audit event kinds."
 
-# Error taxonomy contract tests: tests/test_error_taxonomy.py must exist and
-# reference each documented error code
+# Error taxonomy contract tests: per-package contract files must exist
+# and together reference each documented error code
 # (.claude/instructions/service-design.md — stable error taxonomy).
-error_taxonomy_file="packages/agent-auth/tests/test_error_taxonomy.py"
-if [[ ! -f "${error_taxonomy_file}" ]]; then
-  echo "verify-standards: ${error_taxonomy_file} does not exist." >&2
+# The taxonomy is split across two files so each per-package unit-test
+# shard stays self-contained (issue #519): the agent-auth half does not
+# import the bridge's test-only ``things_client_fake`` module, and the
+# things-bridge half does not import any agent-auth-only test fixtures.
+error_taxonomy_files=(
+  "packages/agent-auth/tests/test_error_taxonomy.py"
+  "packages/things-bridge/tests/test_things_bridge_error_taxonomy.py"
+)
+error_taxonomy_missing_file=0
+for f in "${error_taxonomy_files[@]}"; do
+  if [[ ! -f "${f}" ]]; then
+    echo "verify-standards: ${f} does not exist." >&2
+    error_taxonomy_missing_file=1
+  fi
+done
+if [[ ${error_taxonomy_missing_file} -ne 0 ]]; then
   echo "  Create contract tests for every documented error code in design/error-codes.md." >&2
   exit 1
 fi
@@ -1865,8 +1917,8 @@ error_codes=(
 )
 error_missing=0
 for code in "${error_codes[@]}"; do
-  if ! grep -q "\"${code}\"" "${error_taxonomy_file}"; then
-    echo "verify-standards: error code '${code}' not referenced in ${error_taxonomy_file}." >&2
+  if ! grep -hq "\"${code}\"" "${error_taxonomy_files[@]}"; then
+    echo "verify-standards: error code '${code}' not referenced in any of: ${error_taxonomy_files[*]}." >&2
     error_missing=1
   fi
 done
@@ -1874,7 +1926,7 @@ if [[ ${error_missing} -ne 0 ]]; then
   exit 1
 fi
 
-echo "verify-standards: ${error_taxonomy_file} exists and references all documented error codes."
+echo "verify-standards: ${error_taxonomy_files[*]} exist and together reference all documented error codes."
 
 # OpenAPI specs live alongside the service that owns each surface
 # (packages/agent-auth/openapi/agent-auth.v1.yml,
@@ -1924,10 +1976,11 @@ echo "verify-standards: packages/*/openapi/*.v1.yml exist and ${openapi_contract
 #     response (503 for agent-auth when the store ping fails; 502 for
 #     things-bridge when the authz upstream is unavailable).
 #
-# The check is scoped per-function (not per-file): without that,
-# tests/test_error_taxonomy.py would satisfy the gate for any route
-# because it mentions every route and every status code somewhere in
-# the file.
+# The check is scoped per-function (not per-file): without that, the
+# error-taxonomy contract files (test_error_taxonomy.py /
+# test_things_bridge_error_taxonomy.py) would satisfy the gate for any
+# route because they mention every route and every status code
+# somewhere in the file.
 
 health_drift="$(
   python3 - <<'PY'
