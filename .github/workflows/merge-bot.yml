@@ -376,6 +376,121 @@ jobs:
           echo "merge-bot: PR #${PR_NUMBER} state=${PR_STATE} label=${HAS_AUTOMERGE_LABEL}; nothing to do."
           exit 0
 
+      # Read the required-check contexts from the active branch-
+      # protection ruleset(s) for the PR's base branch. Branch
+      # protection is the single authoritative source of "what must
+      # be SUCCESS for a merge to land" — the bot derives its gating
+      # set from this rather than encoding a static "any failure
+      # blocks" rule, so adding / removing required checks is a
+      # branch-protection edit rather than a bot-workflow edit. See
+      # issue #528.
+      #
+      # Two API surfaces, queried in priority order:
+      #   1. The modern rulesets API — `GET /repos/.../rulesets`
+      #      lists rulesets, each detail call returns the
+      #      `required_status_checks` rule's contexts. We filter to
+      #      `target == "branch"` and `enforcement == "active"` so
+      #      disabled / evaluation-mode rulesets and tag rulesets
+      #      don't pollute the contexts list.
+      #   2. The legacy `GET /repos/.../branches/{branch}/protection`
+      #      endpoint — fallback for repos that pre-date rulesets.
+      #
+      # If the rulesets API returns rulesets but extraction yields
+      # zero contexts, we still try the legacy fallback before giving
+      # up — a ruleset with `required_status_checks: false` should
+      # not silently zero out the gating set.
+      #
+      # The `source` output records which path was used so the next
+      # step can fail-closed when neither path produced contexts —
+      # an empty contexts list under the new design would otherwise
+      # let the bot merge with NO required-check verification at all.
+      # That is the wrong fail mode (fail-open); branch protection
+      # being unreachable should refuse the merge with a clear
+      # comment so the maintainer investigates the App permission /
+      # API outage.
+      #
+      # Permissions: the rulesets endpoint requires the calling App
+      # installation to have `Administration: read`; the legacy
+      # endpoint requires the same scope. See
+      # docs/release/merge-bot-setup.md Step 1.
+      - name: Read required-check contexts from branch protection
+        id: required
+        if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.meta.outputs.state == 'OPEN' && steps.meta.outputs.has_automerge_label == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # `gh pr view --json baseRefName` returns the PR's target
+          # branch (typically `main`). Refetch here rather than wiring
+          # it through the earlier `meta` step so the dependency on
+          # the base branch is co-located with the step that uses it.
+          PR_NUMBER: ${{ steps.pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          base_ref="$(gh pr view "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json baseRefName \
+            --jq '.baseRefName')"
+          echo "merge-bot: PR base branch = ${base_ref}"
+
+          # Step 1 — modern rulesets API. List active branch-targeted
+          # rulesets, then per-ruleset detail call extracts the
+          # required-status-checks contexts. The `--jq` filter on the
+          # detail call walks the full rule tree (`.. | objects`)
+          # because the schema may evolve; selecting on
+          # `type == "required_status_checks"` is shape-stable.
+          contexts=""
+          ruleset_ids="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/rulesets" \
+            --paginate \
+            --jq '.[] | select(.target == "branch" and .enforcement == "active") | .id' \
+            2>/dev/null || true)"
+          if [[ -n "${ruleset_ids}" ]]; then
+            while IFS= read -r id; do
+              [[ -z "${id}" ]] && continue
+              detail="$(gh api "repos/${GITHUB_REPOSITORY}/rulesets/${id}" 2>/dev/null || true)"
+              if [[ -z "${detail}" ]]; then
+                echo "::warning::Could not fetch ruleset #${id}; skipping."
+                continue
+              fi
+              ruleset_ctx="$(jq -r '
+                .. | objects
+                | select(.type? == "required_status_checks")
+                | .parameters.required_status_checks[]?.context
+              ' <<<"${detail}" || true)"
+              if [[ -n "${ruleset_ctx}" ]]; then
+                contexts+="${ruleset_ctx}"$'\n'
+              fi
+            done <<<"${ruleset_ids}"
+          fi
+          # Dedupe and strip blank lines.
+          contexts="$(printf '%s' "${contexts}" | awk 'NF' | sort -u)"
+
+          source="rulesets"
+          if [[ -z "${contexts}" ]]; then
+            # Step 2 — legacy fallback. The pre-rulesets API still
+            # works on repos that have only classic branch protection.
+            source="branch_protection"
+            contexts="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/branches/${base_ref}/protection" \
+              --jq '.required_status_checks.contexts[]?' \
+              2>/dev/null | awk 'NF' | sort -u || true)"
+          fi
+
+          if [[ -z "${contexts}" ]]; then
+            source="empty"
+            echo "::warning::No required-check contexts found via rulesets or legacy branch-protection API. The next step will fail-closed."
+          fi
+
+          echo "merge-bot: required-check contexts source = ${source}"
+          echo "merge-bot: required-check contexts ="
+          printf '  %s\n' ${contexts:-(none)}
+
+          {
+            echo "source=${source}"
+            echo "contexts<<MERGE_BOT_EOF"
+            printf '%s\n' "${contexts}"
+            echo "MERGE_BOT_EOF"
+          } >> "${GITHUB_OUTPUT}"
+
       # Inspect required-check status. We classify each required
       # check into FAILURE / PENDING / SUCCESS and react:
       #   - FAILURE: hard-fail with a Claude comment.
