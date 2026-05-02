@@ -491,84 +491,102 @@ jobs:
             echo "MERGE_BOT_EOF"
           } >> "${GITHUB_OUTPUT}"
 
-      # Inspect required-check status. We classify each required
-      # check into FAILURE / PENDING / SUCCESS and react:
+      # Inspect required-check status. We iterate ONLY the contexts
+      # produced by `Read required-check contexts from branch
+      # protection`, classify each into FAILURE / PENDING / SUCCESS,
+      # and react:
       #   - FAILURE: hard-fail with a Claude comment.
       #   - PENDING: clean exit; the workflow_run.completed retrigger
       #     will run the bot again once everything settles.
       #   - All SUCCESS: proceed.
       # Uses the GraphQL `statusCheckRollup` so legacy commit-status
       # checks are included alongside Actions check-runs.
+      #
+      # Per-context: take the latest run by `startedAt` so a retried
+      # check (workflow rerun, fix-then-push) reads its *current*
+      # status rather than its first-ever outcome. Origin: #347.
+      # Then classify on `conclusion` (Actions check-runs) or `state`
+      # (legacy commit statuses):
+      #   - success / neutral / skipped → satisfied.
+      #   - empty / null / missing / in_progress / queued / waiting /
+      #     pending / requested → still pending.
+      #   - everything else (FAILURE / TIMED_OUT / CANCELLED /
+      #     STARTUP_FAILURE / ACTION_REQUIRED / ERROR) → failing.
+      #
+      # `workflowName != "Merge Bot"` filtering is retained as
+      # defensive depth, even though under the derived-from-config
+      # design the bot's own check-run name is unlikely to appear in
+      # the required-contexts list. If it ever did (misconfiguration),
+      # the filter prevents a self-block loop.
       - name: Inspect required checks
         id: checks
         if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.meta.outputs.state == 'OPEN' && steps.meta.outputs.has_automerge_label == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr }}
+          REQUIRED_SOURCE: ${{ steps.required.outputs.source }}
+          REQUIRED_CONTEXTS: ${{ steps.required.outputs.contexts }}
         run: |
           set -euo pipefail
+          # Fail-closed if the previous step couldn't determine a
+          # contexts set. An empty contexts list under the derived-
+          # from-config design would otherwise let the bot merge with
+          # NO required-check verification at all — branch protection
+          # being unreachable should refuse the merge, not bypass it.
+          if [[ "${REQUIRED_SOURCE}" == "empty" ]]; then
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --body "Claude: Cannot merge — could not read required-check contexts from branch protection (rulesets and legacy branch-protection APIs both returned empty). The merge-bot App installation likely needs the \`Administration: read\` permission, or no branch protection is configured. See \`docs/release/merge-bot-setup.md\`."
+            exit 1
+          fi
+
           rollup="$(gh pr view "${PR_NUMBER}" \
             --repo "${GITHUB_REPOSITORY}" \
             --json statusCheckRollup \
             --jq '.statusCheckRollup')"
-          # `conclusion` is set on Actions check-runs; `state` is set
-          # on legacy commit statuses. Treat NEUTRAL/SKIPPED as pass.
-          # Anything not in the success/pending/skipped sets is a
-          # failure. Surfaced as one line per check so the failure
-          # comment can name the offending check.
-          #
-          # Filter out the merge-bot's own checks (workflowName ==
-          # "Merge Bot"). A previous failed merge-bot run would
-          # otherwise show up as a failure in the rollup and block
-          # every subsequent retrigger — the bot would refuse to
-          # merge forever after its first failure. The bot's pre-
-          # merge gating supersedes its own historical check
-          # outcomes; only the substantive required checks should
-          # gate the merge decision.
-          #
-          # Dedupe-by-latest-run: `statusCheckRollup` returns one
-          # entry per check *run*, not per check *name*. A retried
-          # check (workflow rerun, fix-then-push, close+reopen
-          # retrigger) appears multiple times. Without the dedupe a
-          # historical FAILURE for a check that has since passed
-          # would keep the failure / pending predicates true forever
-          # on the same head SHA — the fail-then-pass workflow that
-          # GitHub's "Re-run failed jobs" UI is built for would
-          # wedge merge-bot indefinitely (origin: PR #346 / issue
-          # #347, where `changelog-lint` failed on the first run,
-          # passed on the rerun, and kept the bot in
-          # FAILED_CHECKS:changelog-lint until the stale run was
-          # manually deleted via `gh run delete`). Group by
-          # name+context, keep the entry with the most recent
-          # startedAt, then apply the failure / pending predicates
-          # so they read the *current* status of each check, not
-          # every historical run. The same dedupe applies to the
-          # pending selector below — a stale IN_PROGRESS entry from
-          # a cancelled run must not pin the wait-clean-exit path.
-          failed="$(jq -r '
-            map(select((.workflowName // "") != "Merge Bot"))
-            | group_by(.name // .context // "<unnamed>")
-            | map(max_by(.startedAt // ""))
-            | map(select(
-              ((.conclusion // "") | ascii_upcase | IN("FAILURE","TIMED_OUT","CANCELLED","STARTUP_FAILURE","ACTION_REQUIRED"))
-              or ((.state // "") | ascii_upcase | IN("FAILURE","ERROR"))
-            ))
-            | map(.name // .context // "<unnamed>") | .[]
-          ' <<<"${rollup}")"
-          pending="$(jq -r '
-            map(select((.workflowName // "") != "Merge Bot"))
-            | group_by(.name // .context // "<unnamed>")
-            | map(max_by(.startedAt // ""))
-            | map(select(
-              ((.conclusion // "") == ""
-                and ((.status // "") | ascii_upcase | IN("QUEUED","IN_PROGRESS","WAITING","PENDING","REQUESTED")))
-              or ((.state // "") | ascii_upcase == "PENDING")
-            ))
-            | map(.name // .context // "<unnamed>") | .[]
-          ' <<<"${rollup}")"
+
+          fail=""
+          pending=""
+          while IFS= read -r ctx; do
+            [[ -z "${ctx}" ]] && continue
+            # Per-context: filter to entries whose name (Actions) or
+            # context (legacy status) matches, drop merge-bot's own
+            # entries, sort by startedAt, take the latest. The
+            # resulting status string is lowercased for case-insensitive
+            # bucketing below. `missing` is the sentinel when the
+            # context exists in branch protection but no run has been
+            # reported yet — treated as pending so the bot waits
+            # rather than refusing.
+            latest="$(jq -r --arg n "${ctx}" '
+              [.[] | select((.workflowName // "") != "Merge Bot")
+                   | select((.name // .context // "") == $n)]
+              | sort_by(.startedAt // "")
+              | (.[-1] // {})
+              | (.conclusion // .state // "missing")
+              | ascii_downcase
+            ' <<<"${rollup}")"
+
+            case "${latest}" in
+              success|neutral|skipped)
+                ;;
+              ""|null|missing|in_progress|queued|waiting|pending|requested)
+                pending+="${ctx}"$'\n'
+                ;;
+              *)
+                fail+="${ctx}"$'\n'
+                ;;
+            esac
+          done <<<"${REQUIRED_CONTEXTS}"
+
+          # Strip trailing newlines (downstream `awk 'NF'` handles
+          # this too, but keeping the outputs tidy makes step-output
+          # introspection easier when debugging).
+          fail="$(printf '%s' "${fail}" | awk 'NF')"
+          pending="$(printf '%s' "${pending}" | awk 'NF')"
+
           {
             echo "failed<<MERGE_BOT_EOF"
-            echo "${failed}"
+            echo "${fail}"
             echo "MERGE_BOT_EOF"
             echo "pending<<MERGE_BOT_EOF"
             echo "${pending}"
