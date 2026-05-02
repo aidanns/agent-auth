@@ -53,6 +53,7 @@ jobs:
     uses: ./.github/workflows/ripsecrets.yml
   check-dependency-review:
     name: Check Dependency Review
+    needs: [check-dependency-submission]
     uses: ./.github/workflows/check-dependency-review.yml
     with:
       event_has_diff_base_head: ${{ inputs.event_has_diff_base_head }}
