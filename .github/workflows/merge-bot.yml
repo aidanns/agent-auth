@@ -79,12 +79,26 @@ name: Merge Bot
 # other repos. Issue closure failures are warning-only; the merge
 # itself has already landed by that point.
 #
+# Required-check policy: the bot derives its gating set from the
+# active branch-protection ruleset(s) on the PR's base branch (with
+# a fallback to the legacy `branches/{branch}/protection` API for
+# repos that pre-date rulesets). Branch protection is the single
+# authoritative source — adding / removing required checks is a
+# branch-protection edit, not a bot-workflow edit. A check that is
+# failing in the rollup but is NOT in the required-contexts set
+# does not block the merge. Override is intentionally NOT a bot-
+# controllable surface; manual `gh pr merge --squash --admin` is
+# the only escape hatch. See issue #528.
+#
 # Failure modes (ALL surface as a `Claude: Cannot merge — <reason>`
 # comment so the PR author sees the block):
-#   - Required check is FAILURE / TIMED_OUT / CANCELLED.
+#   - A required-context check is FAILURE / TIMED_OUT / CANCELLED.
 #   - `==COMMIT_MSG==` extraction failed (missing block, malformed).
 #   - Block has no `Signed-off-by:` trailer.
 #   - PR is not mergeable (conflict, missing reviews, etc.).
+#   - Branch protection is unreachable (rulesets + legacy APIs both
+#     returned empty) — fail-closed, since merging with no required-
+#     check verification is the wrong fail mode.
 #
 # The label stays sticky on lint/check failure so the
 # workflow_run.completed retrigger picks up the recovered run
