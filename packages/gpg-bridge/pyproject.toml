@@ -53,22 +53,7 @@ addopts = [
     "--cov=gpg_bridge",
     "--cov-branch",
     "--cov-report=term-missing",
-    # Floor lowered from 62 to 55 in #520 when the gpg subprocess +
-    # HTTP wiring tests (test_gpg_bridge_server, test_gpg_bridge_perf_budget,
-    # test_gpg_subprocess_client[_passphrase], test_bridge_network_drop,
-    # plus the gpg_backend_fake-driven wedge in test_backend_subprocess_hang)
-    # were relocated under ``tests/integration/`` so the per-package
-    # ``test-unit`` shard's bare ``pytest`` invocation stops hitting
-    # PYTHONPATH-resolution failures for ``gpg_backend_fake`` (only the
-    # workspace ``task test`` path's ``_bootstrap_venv.sh`` exports the
-    # required PYTHONPATH for that subprocess). Workspace ``task test``
-    # only counts unit-shard coverage, so moving tests out of the unit
-    # shard drops the unit-shard floor measurement; the moved tests
-    # still execute (under ``test-integration.yml`` via
-    # ``task test --integration``) but do not contribute to the gate's
-    # input. 55 leaves a small headroom over the 58% currently observed
-    # so the floor does not need to ratchet on every minor refactor.
-    "--cov-fail-under=55",
+    "--cov-fail-under=62",
 ]
 pythonpath = [
     # keep-sorted start

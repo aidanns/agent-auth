@@ -255,6 +255,29 @@ runs:
         treefmt --version
         echo "::endgroup::"
 
+    # The things-bridge / gpg-bridge tests launch their fakes as
+    # subprocesses (``python -m things_client_fake``,
+    # ``python -m gpg_backend_fake``). Subprocesses don't inherit
+    # pytest's in-process ``pythonpath`` config, so each per-package
+    # ``tests/`` tree (where the fakes live) must be on ``PYTHONPATH``
+    # for the subprocess imports to resolve. ``scripts/_bootstrap_venv.sh``
+    # exports the same paths for the local-developer flow; this step
+    # is the CI counterpart so workflows that bypass the bootstrap
+    # script (e.g. the per-package ``test-unit`` shard, which invokes
+    # ``pytest`` directly without sourcing it) still inherit the
+    # right environment. Mirrors the bootstrap export verbatim so
+    # local + CI behaviour stays in lockstep. The fakes are never
+    # installed into the wheel — each package's
+    # ``setuptools.packages.find`` excludes ``tests*`` — so this is
+    # a dev/test-only path entry. Tracked in #522.
+    - name: Export workspace test PYTHONPATH
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'PYTHONPATH=%s\n' \
+          "${GITHUB_WORKSPACE}/packages/things-bridge/tests:${GITHUB_WORKSPACE}/packages/gpg-bridge/tests${PYTHONPATH:+:$PYTHONPATH}" \
+          >>"${GITHUB_ENV}"
+
     - name: Verify Required Tooling
       shell: bash
       run: task verify-dependencies
