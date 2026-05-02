@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Check Dependency Review
+
+# `workflow_call` child of `check-security.yml`, itself a child of
+# `ci.yml` (parent issue #440). Carries the GitHub Dependency Review
+# action that previously lived in the standalone
+# `dependency-review.yml`. Per the Strategy C migration plan agreed on
+# the parent issue, this workflow runs alongside the original
+# `dependency-review.yml` until Phase 5 cuts branch protection over to
+# the `Required checks passed` aggregator and the original is deleted.
+# Both produce a check context named `dependency-review`; GitHub
+# disambiguates them by `workflowName`, so the existing branch-
+# protection rule on the original continues to fire identically while
+# the new chain runs in parallel.
+#
+# The filename is `check-dependency-review.yml` (not
+# `dependency-review.yml`) so the new workflow_call child can coexist
+# on disk with the original `dependency-review.yml` for the duration
+# of the parallel-run migration.
+#
+# Action SHA, permissions, and inputs (`fail-on-severity: high`,
+# `comment-summary-in-pr: always`) are carried over byte-for-byte
+# from the original — see `dependency-review.yml` for the rationale on
+# each.
+on:
+  workflow_call:
+
+permissions:
+  # Read-only access to the Dependency Graph diff — this is the scanner input.
+  contents: read
+  # Required by comment-summary-in-pr so the action can post the inline
+  # findings summary on the PR conversation.
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: dependency-check
+        uses: actions/dependency-review-action@v4
+        with:
+          # HIGH/CRITICAL is the industry-standard gating bar and matches
+          # what Dependabot alerts prioritise for notification. Dropping to
+          # moderate produces a false-positive treadmill on transitive
+          # deps for a solo-maintained project — can be revisited if the
+          # noise/value trade flips.
+          fail-on-severity: high
+          # Post a human-readable summary on the PR so the action's
+          # findings are visible without clicking through to the check
+          # details page.
+          comment-summary-in-pr: always
