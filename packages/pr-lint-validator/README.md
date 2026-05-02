@@ -107,14 +107,14 @@ GitHub Actions provides.
 ### Validate a `==COMMIT_MSG==` block
 
 ```bash
-pr-lint-validator commit-msg \
-  pr-body.md \
-  --title 'feature(agent-auth): add JIT approval flow'
+pr-lint-validator commit-msg pr-body.md
 ```
 
-The body file is the PR's full markdown. The `--title` flag is
-optional; passing it enables the "first body line duplicates the PR
-title" check, which is the rule with title context.
+The body file is the PR's full markdown. Post-#478 the block is the
+commit body (and trailers) only — the squash commit's subject comes
+from the PR title — so the validator rejects any first line whose
+shape matches the Conventional-Commit subject allowlist (rule 8,
+`check_no_leading_subject_line`).
 
 ### Self-test mode
 
