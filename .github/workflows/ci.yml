@@ -149,8 +149,19 @@ jobs:
     needs: [plan]
     uses: ./.github/workflows/check-security.yml
     permissions:
+      # Granted to the `check-security.yml` chain. workflow_call
+      # permissions are intersected at every layer — the parent must
+      # grant ≥ what any descendant requests, otherwise GitHub refuses
+      # to start the run with `startup_failure`. Children today:
+      #  - codeql-analyse: needs `security-events: write` to upload
+      #    SARIF results.
+      #  - check-dependency-review: needs `pull-requests: write` to
+      #    post the comment-summary-in-pr findings on the PR.
+      #  - check-dependency-submission: needs `contents: write` to
+      #    POST the Dependency Graph snapshot.
       actions: read
-      contents: read
+      contents: write
+      pull-requests: write
       security-events: write
   check-lint:
     # First `workflow_call` child landed under the parent issue #440
