@@ -52,6 +52,14 @@ The block below is intentionally empty — the lint will fail until
 you replace this comment with the body.
 -->
 
+<!--
+If you (Claude or human) authored the ==COMMIT_MSG== body below, add
+a `Co-Authored-By: Claude <model+context> <noreply@anthropic.com>`
+trailer between `Closes:` and `Signed-off-by:`. See CONTRIBUTING.md
+→ "Writing PRs" → "Claude attribution trailer" for the format and
+the four edge-case rules; see ADR 0045 for the rationale.
+-->
+
 ==COMMIT_MSG==
 ==COMMIT_MSG==
 

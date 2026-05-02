@@ -73,6 +73,7 @@ simplifying for "personal project" scope.
   `pr-lint.yml` enforces that. See
   `docs/release/merge-bot-setup.md` for maintainer setup and
   CONTRIBUTING.md § "Writing PRs" for the worked example.
+- Claude-authored `==COMMIT_MSG==` blocks include a `Co-Authored-By: Claude <model+context> <noreply@anthropic.com>` trailer between `Closes:` and `Signed-off-by:` (see CONTRIBUTING.md § "Writing PRs" → "Claude attribution trailer" and ADR 0045).
 - Commit subjects must not include the linked issue number
   (no `(#<issue>)` suffix). GitHub's squash-merge appends the PR
   number, which the `conventionalcommits` preset auto-links; adding
