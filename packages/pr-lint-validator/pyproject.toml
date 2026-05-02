@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pr-lint-validator"
+dynamic = ["version"]
+description = "PR-title and ==COMMIT_MSG== block validators consumed by pr-lint.yml"
+requires-python = ">=3.11"
+# Pure stdlib by design. The validators are invoked from CI on PRs
+# and from local hooks; pulling in third-party deps would slow the
+# `pip install` step in #477's pr-lint.yml cutover with no payoff.
+# Match the contract of the original `scripts/validate-*.py` files,
+# which are stdlib-only by ADR 0037 § "Stdlib-only validator
+# contract".
+dependencies = []
+
+[project.scripts]
+pr-lint-validator = "pr_lint_validator.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+# Versioning currently follows the repo-wide ``v<X>.<Y>.<Z>`` tag the
+# release-bot workflow produces at root. See
+# ``packages/agent-auth/pyproject.toml`` for the full rationale on
+# ``root = "../.."`` (issue #408).
+root = "../.."
+fallback_version = "0.0.0+unknown"
+
+[tool.pytest.ini_options]
+# Per-package pytest config. See packages/agent-auth/pyproject.toml
+# for the full rationale on the per-package coverage gate. The floor
+# is set high — the validators are pure-function lint logic with no
+# I/O surface, so coverage rightly tracks ~100%.
+addopts = [
+    "--import-mode=importlib",
+    "--cov=pr_lint_validator",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    # Initial floor set against the bundled self-test + targeted-rule
+    # fixture coverage. The validators are pure-function lint logic
+    # so the long tail (a handful of error-message-only branches and
+    # the kernel-style ``Fixes:`` SHA shape's positive path) is not
+    # high-leverage to exercise; #477's cutover will surface any
+    # missed branch as a real PR failure long before this floor
+    # ratchets up.
+    "--cov-fail-under=88",
+]
+pythonpath = ["src"]
+testpaths = ["tests"]
