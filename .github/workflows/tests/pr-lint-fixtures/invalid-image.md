@@ -1,6 +1,4 @@
 ==COMMIT_MSG==
-Add a thing.
-
 The thing is small but useful.
 
 ![screenshot](https://example.com/shot.png)
