@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Install pr-lint-validator
+name: install-pr-lint-validator
 description: >
   Fetch the released pr-lint-validator wheel from a GitHub Release,
   verify its sha256 sidecar, install it into a per-job virtualenv,

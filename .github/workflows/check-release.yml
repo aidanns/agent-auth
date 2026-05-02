@@ -2,49 +2,21 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Check Release
+name: check-release
 
-# Release-pipeline simulation child workflow for the uv-style nested
-# `workflow_call` CI structure (parent issue #440). Builds the
-# release artefacts (its own independent run — no shared `dist/`
-# handoff with the sibling `build.yml`, see below) and then exercises
-# the GH-release upload mechanics WITHOUT publishing a release. The
-# job exists so a regression in the upload path itself (a broken
-# `gh release upload` flag, an asset-glob typo, a missing artefact
-# the upload step expects) lights up at PR time rather than waiting
-# for the next tag push to fail mid-release.
+# Release-pipeline simulation child of `ci.yml`. Builds release
+# artefacts (its own run — no `dist/` handoff with `build.yml`) and
+# then exercises the GH-release upload mechanics without publishing.
+# A regression in the upload path (broken flag, asset-glob typo,
+# missing artefact) lights up at PR time rather than mid-release.
 #
-# The aggregator in `ci.yml` treats `skipped` as a failure alongside
-# `failure` / `cancelled` / `timed_out`, so this job must actually run
-# and report `success`. Do not gate it behind any `if:` that could
-# resolve to a `skipped` outcome.
-#
-# Strategy C (issue #460): the original top-level `release-dryrun.yml`
-# workflow is kept in place and runs in parallel with this new chain
-# until the branch-protection ruleset switches to the
-# `Required checks passed` aggregator (tracked under #5.2).
-#
-# Independent build (issue #460): this workflow runs
-# `scripts/build-release-artifacts.sh` itself rather than consuming a
-# `dist/` produced by the sibling `build.yml`. The two paths exercise
-# the same script independently so a regression in either lane lights
-# up the corresponding check rather than masking behind a shared
-# artefact handoff.
-#
-# Why no `gh release create --dry-run`: the `gh` CLI does not expose a
-# `--dry-run` flag on `release create` (verified against `gh release
-# create --help` on the runner image). Calling `gh release create`
-# without `--dry-run` would actually publish a release and create a
-# tag on the repository — unacceptable from PR CI. The simulation
-# below instead validates the upload-path preconditions (asset files
-# exist and are non-empty under the same globs `release-bot.yml`'s
-# `publish-assets` step uses, the synthesized tag matches the
-# `vX.Y.Z` shape `release-bot.yml`'s `tag-and-release` step accepts)
-# and confirms the `gh release create` / `gh release upload` CLI
-# subcommands are reachable on the runner, without ever calling them
-# in a publishing mode. A regression in the upload glob, the tag
-# format, or the gh CLI install will surface here; the actual remote
-# publish remains exclusive to the tag-push path on `release-bot.yml`.
+# Why no `gh release create --dry-run`: the `gh` CLI doesn't expose
+# a `--dry-run` flag on `release create`, and calling it without
+# would actually publish. Instead the steps below validate upload
+# preconditions (asset files exist + non-empty under the same globs
+# `release-bot.yml`'s `publish-assets` uses, synthesised tag
+# matches the `vX.Y.Z` shape) and confirm the CLI subcommands are
+# reachable, without ever invoking them in publishing mode.
 on:
   workflow_call:
 
@@ -53,7 +25,6 @@ permissions:
 
 jobs:
   check-release:
-    name: check-release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

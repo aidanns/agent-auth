@@ -2838,3 +2838,39 @@ if [[ ${#yaml_files[@]} -ne 0 ]]; then
 fi
 
 echo "verify-standards: every committed YAML file uses the .yml extension."
+
+# ---------------------------------------------------------------------------
+# Workflow `name:` = filename minus `.yml`; action `name:` = directory.
+# ---------------------------------------------------------------------------
+# ADR 0046 collapses three orthographies (kebab-case filenames, Title Case
+# `name:` fields, kebab-case job IDs) onto one mechanical rule: a workflow's
+# / composite action's `name:` is its own filename / directory. No
+# per-acronym judgement calls; no coordinated-rename work when a file moves.
+naming_drift=0
+if [[ -d .github/workflows ]]; then
+  for wf in .github/workflows/*.yml; do
+    [[ -f "${wf}" ]] || continue
+    expected="$(basename "${wf}" .yml)"
+    actual="$(yq -r '.name // ""' "${wf}")"
+    if [[ "${actual}" != "${expected}" ]]; then
+      echo "verify-standards: ${wf} has name='${actual}', expected '${expected}' (= filename minus .yml)." >&2
+      naming_drift=1
+    fi
+  done
+fi
+if [[ -d .github/actions ]]; then
+  for af in .github/actions/*/action.yml; do
+    [[ -f "${af}" ]] || continue
+    expected="$(basename "$(dirname "${af}")")"
+    actual="$(yq -r '.name // ""' "${af}")"
+    if [[ "${actual}" != "${expected}" ]]; then
+      echo "verify-standards: ${af} has name='${actual}', expected '${expected}' (= directory name)." >&2
+      naming_drift=1
+    fi
+  done
+fi
+if [[ ${naming_drift} -ne 0 ]]; then
+  echo "  See ADR 0046 and .claude/instructions/tooling-and-ci.md § Naming conventions." >&2
+  exit 1
+fi
+echo "verify-standards: every workflow / composite-action 'name:' matches its filename / directory."

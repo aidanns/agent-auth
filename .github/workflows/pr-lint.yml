@@ -2,35 +2,17 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: PR Lint
+name: pr-lint
 
-# Residual top-level workflow for the two `pr-lint`-adjacent self-tests
-# that stayed put after the validator migration in #463 and the
-# release-impact-comment migration in #466:
+# Residual top-level workflow for two meta self-tests that don't belong
+# under `ci.yml` (they're checks on workflow YAML / lint constants, not
+# per-PR validators):
 #
-#   * `pr-title-types-self-test` — asserts the `types: |` allowlist in
-#     `check-pull-request.yml` (`title-prefix` job) stays in lockstep
-#     with `scripts/lint/commit_taxonomy.py::ALLOWED_TYPES`. Runs here
-#     rather than as a child of `ci.yml` because it's a meta-check on
-#     the workflow YAML itself, not a per-PR title/body validator.
-#   * `predict-release-impact-self-test` — exercises the predict
-#     script's bump matrix on every run; lives here rather than under
-#     a parent `ci.yml` chain for the same meta-check reason.
-#
-# The original PR-title and ==COMMIT_MSG== validation jobs (plus their
-# self-tests) were ported into `check-pull-request.yml` in #463 so the
-# parent `Required checks passed` aggregator covers them. The validator
-# package's own pytest suite at `packages/pr-lint-validator/tests/`
-# exercises `run_self_test`, so the `validator-self-test`,
-# `pr-title-self-test`, and `pr-body-warning-self-test` jobs that lived
-# here became redundant and were deleted in the same migration. The
-# `release-impact-comment` job moved to `changelog-bot.yml` in #466 so
-# the predicted-bump surface lives next to the YAML-authoring surface
-# that drives it.
-#
-# This workflow runs on `pull_request` (read-only) — the surviving
-# self-tests do not need the elevated `pull_request_target` token that
-# `release-impact-comment` once relied on for fork-PR write access.
+# - `pr-title-types-self-test` — asserts the `types: |` allowlist in
+#   `check-pull-request.yml`'s `title-prefix` job stays in lockstep
+#   with `scripts/lint/commit_taxonomy.py::ALLOWED_TYPES`.
+# - `predict-release-impact-self-test` — exercises the predict
+#   script's bump matrix on every run.
 
 on:
   pull_request:
@@ -42,7 +24,6 @@ permissions:
 
 jobs:
   pr-title-types-self-test:
-    name: PR title types match commit_taxonomy
     runs-on: ubuntu-latest
     # Asserts the explicit `types:` allowlist on the
     # `amannn/action-semantic-pull-request` step in
@@ -69,7 +50,6 @@ jobs:
           python3 scripts/lint/commit_taxonomy.py check-pr-lint-yaml
 
   predict-release-impact-self-test:
-    name: predict_release_impact unit tests
     runs-on: ubuntu-latest
     # Exercise the predict script's bump matrix on every run so a
     # regression in the prediction surface (e.g. the bump enum

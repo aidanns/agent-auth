@@ -83,8 +83,8 @@ documents the retention rationale.
 
 The three parent orchestrators today:
 
-- **`ci.yml`** (`name: CI`) — every PR-time check. Top of the file is
-  a `plan` job that emits gating booleans (label-driven outputs like
+- **`ci.yml`** — every PR-time check. Top of the file is a `plan`
+  job that emits gating booleans (label-driven outputs like
   `label_no_changelog` and `label_automerge`; changed-files outputs
   like `python_changed`, `bash_changed`, `docs_changed`; event-kind
   booleans like `event_is_pull_request`, `event_from_external_repo`).
@@ -93,9 +93,9 @@ The three parent orchestrators today:
   `check-publish`, `check-release`, `check-pull-request`,
   `check-standards`, `check-docs`, `test-unit`, `test-integration`,
   `test-smoke`, `test-system`, `build`).
-- **`nightly.yml`** (`name: Nightly`) — daily-cadence checks
-  (`mutation` today). Cron at 04:00 UTC.
-- **`weekly.yml`** (`name: Weekly`) — weekly-cadence checks (`bench`,
+- **`nightly.yml`** — daily-cadence checks (`mutation` today). Cron
+  at 04:00 UTC.
+- **`weekly.yml`** — weekly-cadence checks (`bench`,
   `open-ssf-scorecard`). Cron at 05:00 UTC Sunday (offset from
   `nightly.yml` so the runner queue is not doubled-up).
 
@@ -104,14 +104,19 @@ Bot workflows (`merge-bot.yml`, `changelog-bot.yml`,
 orchestrators — they have no children and consume PR / `push` /
 `workflow_run` events directly. The `### Bot listener trigger surface` section below documents what each one listens to.
 
-### Single `Required checks passed` aggregator
+### Single repo-wide `required-checks-passed` aggregator
 
-Each orchestrator ends with a `required-checks-passed` job named
-`Required checks passed` whose `needs:` lists every child. Branch
-protection on `main` references **only** that one status check. When
-a new child is added to an orchestrator, the migration step is two
-lines in the same file (a new job block + appending to `needs:`);
-branch protection never has to be touched.
+`ci.yml` ends with a `required-checks-passed` job whose `needs:`
+lists every child. Branch protection on `main` references **only**
+`ci / required-checks-passed`. Adding a new child is a one-line
+edit to that `needs:` list — branch protection never has to be
+touched. ADR 0046 documents this as the single repo-wide aggregator.
+Per-workflow aggregators inside intermediate orchestrators
+(`check-fmt.yml`, `check-lint.yml`, `check-security.yml`,
+`check-pull-request.yml`, `nightly.yml`, `weekly.yml`) are NOT
+allowed: GitHub already collapses a `workflow_call` child's overall
+result into `needs.<child>.result` for the calling workflow, so an
+intermediate aggregator only adds a redundant runner-startup tax.
 
 The aggregator's logic is intentionally strict: per issue 441, any
 `needs.*.result` other than `success` is treated as a failure —
@@ -131,21 +136,11 @@ metadata-dependent children (`check-changelog`, `check-pull-request`)
 keep the strict contract because their inputs (PR labels, PR
 metadata) can change without the head SHA changing.
 
-### Per-child aggregators
-
-A child workflow that has **2 or more sibling jobs** of its own
-(e.g. `check-fmt.yml` with `spdx-license-headers`, `treefmt`,
-`ruff-format`; `check-lint.yml` with `python` and
-`systems-engineering`) ends with its own `Required checks passed`
-aggregator job using the same
-`jq -e 'all(.value.result == "success")'` pattern. The parent's
-`needs.<child>.result` collapses the entire child workflow to a
-single boolean, so the parent does not have to enumerate the child's
-internal jobs. With a single sibling the per-child aggregator is
-overhead without payoff (`needs.<child>.result` already collapses to
-a single boolean); skip it.
-
 ### Naming conventions
+
+ADR 0046 collapses three orthographies onto one mechanical rule:
+the artefact's `name:` is its own filename / directory. No per-
+acronym judgement calls; no coordinated rename when a file moves.
 
 - **Workflow filenames** — kebab-case, `.yml` extension. When ≥2
   workflows share a domain (`check-*`, `test-*`, `release-*`,
@@ -157,15 +152,15 @@ a single boolean); skip it.
   `-adaptor` for ones that wrap an external system to fit our
   conventions (`dependabot-adaptor-bot.yml`); no suffix otherwise.
 
-- **Workflow `name:` field** — Title Case for words; preserve
-  canonical capitalization for acronyms (`CI`, `DCO`, `PR`,
-  `CodeQL`, `OpenSSF Scorecard`, `SPDX License Headers`). The display
-  name is the human-readable form of the filename, not a
-  re-invention. Parent orchestrators read `CI`, `Nightly`, `Weekly`,
-  `Merge Bot`. Children read `Check Fmt`, `Test Unit`, `Build`, etc.
-  The `merge-bot.yml` `workflow_run` listener references parent names
-  exactly (case-sensitive) — renaming a parent's `name:` field
-  requires a matching update to every listener that names it.
+- **Workflow `name:` field** — kebab-case, equal to the filename
+  minus `.yml`. `merge-bot.yml` reads `name: merge-bot`; `ci.yml`
+  reads `name: ci`. `scripts/verify-standards.sh` enforces this.
+
+- **Composite-action `name:` field** — kebab-case, equal to the
+  directory name under `.github/actions/`.
+  `.github/actions/setup-toolchain/action.yml` reads
+  `name: setup-toolchain`. `scripts/verify-standards.sh` enforces
+  this.
 
 - **Job IDs** — kebab-case, matching what shows up as the
   required-status-check display name when a job is wired into branch
@@ -177,18 +172,19 @@ a single boolean); skip it.
   preserves a stable parent name across variants so a CI dashboard
   can fold all variants under one row.
 
-- **Step `name:` fields** — sentence case, no trailing period,
-  imperative verb that matches the action being taken ("Build
-  snapshot", "Run treefmt --ci", "Verify all required checks
-  passed"). Not "Snapshot building" or "treefmt".
+- **Job `name:` field** — drop it for non-matrix jobs. GitHub falls
+  back to the job ID, which is already the kebab-case identifier
+  branch protection sees. Matrix jobs keep a parens-template
+  `name:` (e.g. `unit-tests (${{ matrix.package }})`) so each row
+  publishes a stable, distinct check-run name.
 
-- **Composite actions** — kebab-case directory under
-  `.github/actions/`, kebab-case action name, named after what they
-  install / set up or what they read: `setup-toolchain`,
-  `install-pr-lint-validator`, `build-integration-test-image`,
-  `read-required-contexts`. The action's own `name:` field uses
-  sentence case ("Setup toolchain", "Install pr-lint-validator",
-  "Read required-check contexts from branch protection").
+- **Step `name:` fields** — Title Case prose, no trailing period;
+  acronyms, tool names, and proper nouns retain their natural form
+  ("Run treefmt --ci", "Install uv", "Build Release Artefacts").
+  The existing tree mostly uses Sentence-case imperatives — those
+  are not retroactively rewritten in the ADR 0046 cutover; the rule
+  applies forward, and `verify-standards.sh` does not enforce step
+  casing.
 
 ### Where a new check goes
 
@@ -215,8 +211,9 @@ Pick the orchestrator by cadence and trigger surface:
     `test-system.yml`.
 
   If no existing parent is the right home, add a new direct child of
-  `ci.yml` (named `<verb>-<noun>.yml`, `name:` Title Case) and append
-  it to `ci.yml`'s `Required checks passed` `needs:` list.
+  `ci.yml` (filename `<verb>-<noun>.yml`; `name:` field equals the
+  filename minus `.yml` per ADR 0046) and append its job ID to
+  `ci.yml`'s `required-checks-passed.needs:` list.
 
 - **Daily-cadence check** — child of `nightly.yml`. Append the new
   `<child>.yml` alongside `mutation`, add it to the aggregator's
@@ -229,28 +226,28 @@ Pick the orchestrator by cadence and trigger surface:
 - **Cross-cutting bot logic** that consumes other workflows'
   completions — standalone workflow with a `workflow_run:` listener.
   `merge-bot.yml` is the canonical example: its listener is scoped to
-  `workflows: [CI]` (issue 467) so a green CI run is the single
-  signal that every gate passed. Do not add a parallel listener for a
-  child orchestrator; the parent's `Required checks passed` already
+  `workflows: [ci]` (issue 467) so a green `ci` run is the single
+  signal that every gate passed. Do not add a parallel listener for
+  a child orchestrator; `ci.yml`'s `required-checks-passed` already
   reflects every child's outcome.
 
 ### Branch protection
 
-A single ruleset entry on `main` requires `Required checks passed`.
-That string is the parent orchestrator's aggregator job name. Adding
-a new PR-time child requires zero ruleset changes — the child is
-already covered transitively through the aggregator.
+A single ruleset entry on `main` requires
+`ci / required-checks-passed`. Adding a new PR-time child requires
+zero ruleset changes — the child is already covered transitively
+through the aggregator.
 
 ### Bot listener trigger surface
 
 - `merge-bot.yml` listens on `pull_request: types: [labeled]`
   (primary, for `automerge` label application),
-  `workflow_run: workflows: [CI]` (sticky retry once CI completes),
+  `workflow_run: workflows: [ci]` (sticky retry once `ci` completes),
   `pull_request_review`, `push: branches: [main]` (sweep open
   `automerge` PRs when `main` advances), and `workflow_dispatch`
   (maintainer break-glass / sweep fan-out). The `workflow_run`
   listener is intentionally scoped to the single parent orchestrator
-  name `CI`; the previous broader listener was collapsed in issue 467
+  `ci`; the previous broader listener was collapsed in issue 467
   once the aggregator became the single required check.
 - `changelog-bot.yml` listens on
   `pull_request: types: [opened, edited, synchronize, unlabeled]`
@@ -272,13 +269,11 @@ child, or moving jobs between children, the safe sequence is:
 3. **Flip the ruleset** — only after the new aggregator (or new
    required check) has demonstrated green runs against PRs the old
    one also approved, switch branch protection to point at the new
-   `Required checks passed`.
+   `<workflow> / <aggregator-job-id>` check.
 4. **Delete the old** — remove the legacy workflow file and any
    references to its check names in the same PR that flips the
    ruleset (or in the immediate follow-up). Do not leave the legacy
-   file in the tree as a "just in case" — Strategy C of the 440
-   migration explicitly retired every superseded workflow once its
-   replacement was wired in.
+   file in the tree as a "just in case".
 
 ### Tooling rules
 

@@ -2,22 +2,12 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: CodeQL Analyse
+name: codeql-analyse
 
-# `workflow_call` child of `check-security.yml`, itself a child of
-# `ci.yml` (parent issue #440). Carries the CodeQL `analyze (python)`
-# and `analyze (actions)` matrix jobs that previously lived in the
-# standalone `codeql.yml`. Per the Strategy C migration plan agreed
-# on the parent issue, this workflow runs alongside the original
-# `codeql.yml` until Phase 5 cuts branch protection over to the
-# `Required checks passed` aggregator and the original is deleted.
-# Both produce a check context named `analyze (python)` /
-# `analyze (actions)`; GitHub disambiguates them by `workflowName`,
-# so existing branch-protection rules on the originals continue to
-# fire identically while the new chain runs in parallel.
-#
-# The daily 07:00 UTC cron stays on `codeql.yml` for the duration
-# of the migration; this child only runs on `workflow_call`.
+# CodeQL `analyze (python)` / `analyze (actions)` matrix child of
+# `check-security.yml`. Workflow_call only — daily-cron coverage
+# lives in `nightly.yml` if/when added.
+
 on:
   workflow_call:
 

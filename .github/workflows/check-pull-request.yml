@@ -2,60 +2,24 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Check Pull Request
+name: check-pull-request
 
-# PR-metadata child workflow for the uv-style nested `workflow_call` CI
-# structure (parent issue #440). Houses jobs that validate the
-# pull-request envelope itself — Developer Certificate of Origin
-# sign-off, plus the pr-lint validators (title prefix, title prose
-# style, ==COMMIT_MSG== block) — rather than the working tree's
-# contents.
+# PR-metadata child of `ci.yml`. Validates the pull-request envelope
+# itself: DCO sign-off, pr-title prefix, pr-title prose, and
+# `==COMMIT_MSG==` block. PR title / body strings are routed through
+# `env:` so shell expansion can't hit untrusted input. The
+# `install-pr-lint-validator` composite installs the validator from
+# a pinned GitHub Release wheel (immune to fork-PR tampering).
 #
-# The aggregator in `ci.yml` treats `skipped` as a failure alongside
-# `failure` / `cancelled` / `timed_out`, so every job under here must
-# actually run and report `success`. Do not gate any job behind an
-# `if:` that could resolve to `skipped`.
-#
-# Strategy C (issue #450): the original top-level `dco.yml` workflow is
-# kept in place and runs in parallel with this new chain until the
-# branch-protection ruleset switches to the `Required checks passed`
-# aggregator (tracked under #5.2). Both surfaces must stay green; the
-# DCO logic here is a byte-for-byte port of `dco.yml`.
-#
-# pr-lint migration (issue #463): the three pr-lint validation jobs
-# (`title-prefix`, `title-prose-style`, `commit-message`) are ported
-# from the standalone `pr-lint.yml` workflow into this child so the
-# parent `Required checks passed` aggregator covers them too. Unlike
-# the DCO migration, these job names were not in the branch-protection
-# ruleset at the time of the cutover, so the parallel-run rationale of
-# Strategy C does not apply here — `pr-lint.yml`'s copies were deleted
-# in the same PR. The validator binary comes from a pinned
-# `pr-lint-validator` GitHub Release wheel via the
-# `install-pr-lint-validator` composite, which is immune to fork-PR
-# tampering by construction; PR title and body strings are routed
-# through `env:` to keep shell expansion off untrusted input.
+# The pr-lint jobs short-circuit to `success` on non-PR events
+# (`push (main)` / `merge_group` / `workflow_dispatch`) rather than
+# skipping (`ci`'s aggregator rejects `skipped` per #441).
+
 on:
   workflow_call:
     inputs:
-      # Centralised event-kind gate from `ci.yml`'s `plan` job
-      # (issue #530). The pr-lint validators (`title-prefix`,
-      # `title-prose-style`, `commit-message`) all require PR context
-      # — `amannn/action-semantic-pull-request` refuses to run outside
-      # a `pull_request` event, and the prose / commit-message jobs
-      # read `github.event.pull_request.*`. They short-circuit on
-      # non-PR events (`push (main)` / `merge_group` /
-      # `workflow_dispatch`) so the parent's `Required checks passed`
-      # aggregator sees `success` rather than `failure` (#544).
-      #
-      # The DCO job is implicitly PR-scoped via its
-      # `${{ github.event.pull_request.head.sha }}` ref and is left
-      # ungated here — the checkout falls through to the workflow's
-      # default ref on non-PR events, and the trailer check is a
-      # no-op when `BASE_SHA` and `HEAD_SHA` are empty.
       event_is_pull_request:
-        description: >-
-          True iff the originating event is a pull_request (the
-          pr-lint validators need PR context).
+        description: True iff the originating event is a pull_request.
         required: true
         type: boolean
 
@@ -77,7 +41,6 @@ jobs:
     # Bot-authored commits (Dependabot, Release Please, ...) are skipped
     # — their service account's submission implicitly carries the
     # upstream project's consent to the licence.
-    name: developer-certificate-of-origin
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -142,7 +105,6 @@ jobs:
     # exercised by `changelog-lint.yml`); the YAML structure here
     # matches what `assert_pr_lint_yaml_in_sync` expects (a `types: |`
     # literal block bracketed by the alphabetisation markers below).
-    name: title-prefix
     runs-on: ubuntu-latest
     # Job runs unconditionally — the aggregator treats `skipped` as a
     # failure (per #441), so non-PR events are handled at step level
@@ -204,7 +166,6 @@ jobs:
     # concern doesn't apply here. The composite still pins to a
     # GitHub Release wheel so the validator binary itself is immune
     # to fork-PR tampering by construction.
-    name: title-prose-style
     runs-on: ubuntu-latest
     # Job runs unconditionally — the aggregator treats `skipped` as a
     # failure (per #441), so non-PR events are handled at step level
@@ -282,7 +243,6 @@ jobs:
     # contiguous trailer block, leading non-blank, no leading subject
     # line. Per #478 the block carries body + trailers only; the
     # squash subject comes from the PR title (covered above).
-    name: commit-message
     runs-on: ubuntu-latest
     # Job runs unconditionally — the aggregator treats `skipped` as a
     # failure (per #441), so non-PR events are handled at step level
@@ -325,35 +285,3 @@ jobs:
           # shell would let backticks / $(...) in the PR body execute.
           printf '%s' "${PR_BODY:-}" > "${tmp}"
           pr-lint-validator commit-msg "${tmp}"
-
-  required-checks-passed:
-    # Per-child aggregator: collapses every sibling job in this
-    # workflow into a single `success` / `failure` outcome the parent
-    # `ci.yml` aggregator can consume. Mirrors the parent's policy —
-    # `skipped` is treated as a failure alongside `failure`,
-    # `cancelled`, and `timed_out` (issue #441) — so a sibling job that
-    # legitimately opts out via `if:` must surface a `success` result
-    # rather than skipping.
-    name: Required checks passed
-    needs:
-      - developer-certificate-of-origin
-      - title-prefix
-      - title-prose-style
-      - commit-message
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify all required checks passed
-        # Pass `needs` through `env:` so the JSON survives shell
-        # quoting verbatim — child job names that contain colons or
-        # quotes would otherwise break the inline expansion. `jq -e`
-        # exits non-zero on a `false` boolean, so the step fails
-        # whenever any upstream `needs.*.result` is anything other
-        # than `success`.
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: |
-          set -euo pipefail
-          echo "${NEEDS}" \
-            | jq -e 'to_entries | all(.value.result == "success")' \
-            > /dev/null

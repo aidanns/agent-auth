@@ -2,22 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Systems Engineering
+name: systems-engineering
 
-# `workflow_call` child of `check-lint.yml` carrying the systems
-# engineering traceability checks (design + function-tests). Migrated
-# from the standalone `verify-design.yml` and `verify-function-tests.yml`
-# workflows under the uv-style nested CI structure (parent issue #440,
-# Phase 2 issue #454). Per the strategy-C decision locked in
-# 2026-05-01, the original `verify-design.yml` and
-# `verify-function-tests.yml` continue to run alongside this child until
-# the Phase 5 sweep deletes them; do not remove them from here.
-#
-# Each job mirrors its standalone counterpart byte-for-byte (same job
-# name, same `task` invocation, same action SHAs) so the migration is
-# transparent at the job level. Splitting them as siblings preserves
-# the existing parallelism rather than collapsing them into a single
-# serialised job.
+# Systems-engineering traceability child of `check-lint.yml`. Two
+# parallel siblings: `verify-design` (every function is allocated)
+# and `verify-function-tests` (every function has test coverage).
 
 on:
   workflow_call:

@@ -2,22 +2,14 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Check Docs
+name: check-docs
 
-# Placeholder docs-build child workflow for the uv-style nested
-# `workflow_call` CI structure (parent issue #440). agent-auth has no
-# docs site today, but the slot is reserved in `ci.yml`'s aggregator so
-# the structure stays uniform across migration issues — when a docs
-# site is introduced this workflow will run the real build, and no
-# wiring change in `ci.yml` will be needed.
+# Placeholder docs-build child of `ci.yml`. agent-auth has no docs
+# site today; the slot is reserved so adding one is a single-file
+# change here.
 #
-# The aggregator in `ci.yml` treats `skipped` as a failure alongside
-# `failure` / `cancelled` / `timed_out`, so this job must actually run
-# and report `success`. Do not gate it behind any `if:` that could
-# resolve to a `skipped` outcome.
-#
-# TODO(aidanns): replace this no-op with a real docs build (e.g.
-# `mkdocs build --strict`) once agent-auth gains a docs site.
+# TODO(aidanns): replace with `mkdocs build --strict` (or similar)
+# once agent-auth gains a docs site.
 on:
   workflow_call:
 
@@ -26,7 +18,6 @@ permissions:
 
 jobs:
   check-docs:
-    name: check-docs
     runs-on: ubuntu-latest
     steps:
       - name: Placeholder docs build

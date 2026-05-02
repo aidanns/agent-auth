@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Merge Bot
+name: merge-bot
 
 # Pastes the PR's `==COMMIT_MSG==` block as the squash-merge commit
 # body — the body and trailers only, per #478 — when the contributor
@@ -16,18 +16,16 @@ name: Merge Bot
 #
 # Triggers:
 #   - pull_request: labeled — proceed when the new label == `automerge`.
-#   - workflow_run: completed — sticky-label retry once `CI`
-#     completes AFTER the label was set. The listener is scoped to
-#     `CI` only because its `Required checks passed` aggregator is
-#     the single branch-protection-required check, so a green CI
-#     run means every gate passed (issue #467). `workflow_run` is
-#     used here (not `check_suite`) because
-#     `check_suite` events are suppressed by GitHub's anti-recursion
-#     rule when the upstream workflow runs under the default
-#     `GITHUB_TOKEN` — every CI workflow in this repo does, so
-#     `check_suite: completed` never delivered. `workflow_run` is the
-#     documented escape hatch and fires regardless of the upstream
-#     authenticating token. Origin: issue #348.
+#   - workflow_run: completed — sticky-label retry once `ci`
+#     completes AFTER the label was set. Scoped to `ci` only because
+#     its `required-checks-passed` aggregator is the single branch-
+#     protection-required check (issue #467). `workflow_run` is
+#     used here (not `check_suite`) because `check_suite` events
+#     are suppressed by GitHub's anti-recursion rule when the
+#     upstream workflow runs under the default `GITHUB_TOKEN` —
+#     every workflow in this repo does, so `check_suite: completed`
+#     never delivered. `workflow_run` fires regardless of the
+#     upstream authenticating token. Origin: issue #348.
 #   - pull_request_review: submitted | dismissed — re-fire merge-bot
 #     when a review state changes. Covers the gap where `automerge`
 #     was applied before the final approval landed: the bot exits
@@ -128,17 +126,15 @@ name: Merge Bot
 on:
   pull_request:
     types: [labeled]
-  # Listen on `CI` only — that workflow's `Required checks passed`
+  # Listen on `ci` only — that workflow's `required-checks-passed`
   # aggregator is the single branch-protection-required check, so a
-  # green CI completion is the one signal that means "every gate
-  # passed and the bot should re-evaluate" (issue #467). The
-  # previous per-workflow enumeration was redundant once the
-  # aggregator landed, and `CI` itself is naturally excluded from
-  # an anti-recursion list because Merge Bot does not author
-  # commits — there is no recursion to break.
+  # green ci completion is the one signal that means "every gate
+  # passed; re-evaluate" (issue #467). `merge-bot` itself doesn't
+  # author commits, so `ci`'s name does not need anti-recursion
+  # exclusion.
   workflow_run:
     workflows:
-      - CI
+      - ci
     types: [completed]
   pull_request_review:
     types: [submitted, dismissed]
@@ -176,7 +172,6 @@ permissions:
 
 jobs:
   merge:
-    name: Merge ==COMMIT_MSG== block as squash body
     runs-on: ubuntu-latest
     # Per-PR concurrency so two triggers (label + workflow_run +
     # pull_request_review + sweep-dispatched workflow_dispatch)
@@ -932,7 +927,6 @@ jobs:
   # PR resolution by head-SHA mirrors the `merge` job's
   # `Resolve target PR` step.
   label-needs-fix:
-    name: Apply / remove "needs fix" label on workflow_run completion
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_run'
     # Per-PR concurrency on the label management so a burst of
@@ -1182,7 +1176,6 @@ jobs:
   # require an `actions: write` grant on the App installation
   # that is not currently provisioned. Issue #388.
   sweep:
-    name: Sweep open automerge PRs after main advances
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     # `cancel-in-progress: true` so a burst of merges to `main`

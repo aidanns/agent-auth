@@ -2,22 +2,10 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Test System
+name: test-system
 
-# `workflow_call` child of `ci.yml` (parent issue #440, this slot
-# #461). Carries the macOS-only Darwin-gated AppleScript system test
-# from the original top-level `test.yml`'s `macos-applescript` job
-# (one job today; future system-level tests will land alongside).
-#
-# Strategy C (#440 phase plan, agreed 2026-05-01): the original
-# `test.yml` stays in place for the duration of the migration, so
-# its existing `macos-applescript` job continues to run in parallel
-# with this child. Phase 5 retires the original.
-#
-# The aggregator in `ci.yml` treats `skipped` as a failure alongside
-# `failure` / `cancelled` / `timed_out`, so this job must actually
-# run and report `success`. Do not gate it behind any `if:` that
-# could resolve to a `skipped` outcome.
+# macOS-only system-test child of `ci.yml`. One job today
+# (`macos-applescript`); future system-level tests land alongside.
 on:
   workflow_call:
 

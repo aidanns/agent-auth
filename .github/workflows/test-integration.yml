@@ -2,30 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Test Integration
+name: test-integration
 
-# `workflow_call` child of `ci.yml` (parent issue #440, this slot
-# #461). Carries the Docker-backed per-package integration test
-# surface from the original top-level `test.yml`'s
-# `integration-<package>` jobs, reshaped into a matrix that emits one
-# `integration-tests (<package>)` check context per package whose
-# `tests/integration/` slice exists.
-#
-# Per #414's parens-variant naming convention (job IDs use the
-# parens style for matrix variants), the matrix `name:` is
-# `integration-tests (<package>)` rather than the legacy flat-suffix
-# `integration-<package>` form.
-#
-# Strategy C (#440 phase plan, agreed 2026-05-01): the original
-# `test.yml` stays in place for the duration of the migration, so
-# its existing `integration-<package>` jobs continue to run in
-# parallel with the new matrix here. Both old and new workflows fire
-# on every PR until Phase 5 retires the original.
-#
-# The aggregator in `ci.yml` treats `skipped` as a failure alongside
-# `failure` / `cancelled` / `timed_out`, so every matrix shard must
-# actually run and report `success`. Do not gate any shard behind an
-# `if:` that could resolve to a `skipped` outcome.
+# Docker-backed per-package integration-test child of `ci.yml`.
+# Matrix emits one `integration-tests (<package>)` check per package
+# whose `tests/integration/` slice exists.
 
 on:
   workflow_call:

@@ -320,19 +320,32 @@ def test_helper_script_outputs_all_expected_check_run_names() -> None:
     test-unit / test-integration / test-smoke surfaces here.
     """
     expected_leaves = {
-        # check-fmt / check-security / check-lint each have an internal
-        # "Required checks passed" aggregator that consolidates the
-        # workflow_call's matrix children.
-        "Check Fmt / Required checks passed",
-        "Check Security / Required checks passed",
-        "check-lint / Required checks passed",
-        # Single-job children publish one check-run each.
+        # Single-job direct children publish one check-run each.
         "check-docs / check-docs",
         "check-publish / check-publish",
         "check-release / check-release",
         "check-standards / verify-standards",
         "build / build",
         "test-system / macos-applescript",
+        # check-fmt expands into the leaf jobs of its workflow_call.
+        # The intermediate `required-checks-passed` aggregator was
+        # dropped (issue #556 / ADR 0046); the helper enumerates each
+        # leaf directly from the workflow's `jobs:` keys.
+        "check-fmt / treefmt",
+        "check-fmt / ruff-format",
+        "check-fmt / spdx-license-headers / reuse",
+        # check-lint leaves (workflow_call → workflow_call → job).
+        "check-lint / python / ruff",
+        "check-lint / python / mypy",
+        "check-lint / python / pyright",
+        "check-lint / systems-engineering / verify-design",
+        "check-lint / systems-engineering / verify-function-tests",
+        # check-security leaves.
+        "check-security / codeql-analyse / analyze (python)",
+        "check-security / codeql-analyse / analyze (actions)",
+        "check-security / ripsecrets / ripsecrets",
+        "check-security / check-dependency-review / dependency-review",
+        "check-security / check-dependency-submission / submit",
         # test-unit matrix.
         "test-unit / unit-tests (agent-auth)",
         "test-unit / unit-tests (agent-auth-common)",
@@ -419,19 +432,18 @@ def test_helper_script_excludes_metadata_dependent_set() -> None:
         check=True,
     )
     output = result.stdout
-    # Match the prefix `<jid> /` so we catch any leaf rooted under a
-    # metadata-dependent ci.yml job — even ones we didn't anticipate
-    # (e.g. a future internal aggregator named "Required checks passed").
+    # Match the prefix `<jid> /` to catch any leaf rooted under a
+    # metadata-dependent ci.yml job. After ADR 0046 every workflow /
+    # action name is kebab-case (= filename / directory), so a single
+    # prefix form suffices.
     for jid in METADATA_DEPENDENT_JOB_IDS:
-        prefix_capital = f"{jid.replace('-', ' ').title()} /"
-        prefix_lower = f"{jid} /"
-        for prefix in (prefix_capital, prefix_lower):
-            assert prefix not in output, (
-                f"diff-dependent-jobs.sh emitted a leaf rooted under "
-                f"metadata-dependent job {jid!r} (matched prefix "
-                f"{prefix!r}). Metadata-dependent children must NOT "
-                f"be probed — see issue #527."
-            )
+        prefix = f"{jid} /"
+        assert prefix not in output, (
+            f"diff-dependent-jobs.sh emitted a leaf rooted under "
+            f"metadata-dependent job {jid!r} (matched prefix "
+            f"{prefix!r}). Metadata-dependent children must NOT "
+            f"be probed — see issue #527."
+        )
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
@@ -459,17 +471,16 @@ def test_helper_script_covers_required_checks_passed_needs_minus_metadata() -> N
     output = result.stdout
 
     # Every derived job ID must appear as the prefix of at least one
-    # leaf — capitalisation differs per ci.yml's `name:` field, so
-    # check both common casings.
+    # leaf. Since ADR 0046, workflow `name:` = filename — so the leaf
+    # always starts `<jid> /` (kebab-case, no capitalisation drift).
     for jid in derived:
-        prefix_lower = f"{jid} /"
-        prefix_capital = f"{jid.replace('-', ' ').title()} /"
-        assert prefix_lower in output or prefix_capital in output, (
+        prefix = f"{jid} /"
+        assert prefix in output, (
             f"diff-dependent-jobs.sh produced no leaf for derived job "
-            f"ID {jid!r} (looked for prefixes {prefix_lower!r} or "
-            f"{prefix_capital!r}). A new entry was added to "
-            f"required-checks-passed.needs without extending the "
-            f"helper's emit_leaves()."
+            f"ID {jid!r} (looked for prefix {prefix!r}). A new entry "
+            f"was added to required-checks-passed.needs without "
+            f"extending the helper, or a child workflow's `jobs:` "
+            f"keys do not match the expected kebab-case names."
         )
 
     # Derived set must equal DIFF_DEPENDENT_JOB_IDS — keeps the test's

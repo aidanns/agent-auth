@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Build integration test images
+name: build-integration-test-image
 description: |
   Build every ``docker/Dockerfile.<service>.test`` image under a shared
   session tag so the integration jobs can reuse them via

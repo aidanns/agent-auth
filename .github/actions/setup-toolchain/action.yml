@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Setup Toolchain
+name: setup-toolchain
 description: Install all CI tooling and verify dependencies
 
 inputs:

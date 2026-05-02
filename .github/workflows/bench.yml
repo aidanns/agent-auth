@@ -2,17 +2,12 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Bench
+name: bench
 
-# Reusable benchmark child workflow under the uv-style nested
-# workflow_call CI structure (parent issue #440). Cadence (Sunday
-# 05:00 UTC) and workflow_dispatch live on the parent `weekly.yml`;
-# this file carries only the benchmark logic so the parent owns the
-# trigger surface.
-#
-# Benchmarks are too noisy on shared GitHub runners to gate every PR
-# (see ADR 0029 and packages/agent-auth/benchmarks/README.md for the
-# threshold rationale).
+# Benchmark child of `weekly.yml`. Benchmarks are too noisy on
+# shared GitHub runners to gate every PR — see ADR 0029 and
+# `packages/agent-auth/benchmarks/README.md` for the threshold
+# rationale.
 on:
   workflow_call:
 

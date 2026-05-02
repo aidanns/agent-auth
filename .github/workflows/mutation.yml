@@ -2,16 +2,12 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Mutation
+name: mutation
 
-# Daily-cadence mutation testing, invoked as a `workflow_call` child
-# of `nightly.yml` (issue #440). Runtime is O(mutants × focused-test-run)
-# and too expensive for every PR; the parent `nightly.yml` cron and
-# its `workflow_dispatch` trigger surface this job on a nightly schedule
-# and on-demand for reviewers touching a security-critical module.
-#
-# ADR 0021 documents the rationale; .claude/instructions/testing-standards.md
-# "Mutation testing on security-critical paths" is the originating standard.
+# Mutation-testing child of `nightly.yml`. Runtime is
+# O(mutants × focused-test-run) and too expensive for every PR;
+# `nightly.yml`'s cron + `workflow_dispatch` surface it nightly /
+# on-demand. ADR 0021 documents the rationale.
 on:
   workflow_call:
 

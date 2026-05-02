@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Changelog Bot
+name: changelog-bot
 
 # Bot-mediated authoring for `changelog/@unreleased/*.yml` entries.
 # See `scripts/changelog/bot.py` for the decision tree, ADR 0039 for
@@ -31,7 +31,6 @@ permissions:
 
 jobs:
   changelog-bot:
-    name: changelog-bot
     runs-on: ubuntu-latest
     # Loop guard #1: skip when the PR was opened by the bot itself.
     # GitHub assigns the App-bot user `<slug>[bot]` as the actor for
@@ -142,7 +141,6 @@ jobs:
             --repo-root "${GITHUB_WORKSPACE}"
 
   release-impact-comment:
-    name: Release impact comment
     runs-on: ubuntu-latest
     # Surface the predicted release-impact bump on every PR that
     # touches `changelog/@unreleased/*.yml`, so a reviewer can catch a
