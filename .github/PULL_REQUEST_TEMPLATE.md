@@ -12,21 +12,25 @@ PR title (what this issue's `pr-title` lint enforces) must use one of:
 Optional `(scope)` is allowed (e.g. `feature(ci): add pr-lint workflow`).
 The PR title becomes the squash-merge commit subject.
 
-The `==COMMIT_MSG==` block below becomes the squash-merge commit body.
+The `==COMMIT_MSG==` block below becomes the squash-merge commit body —
+the body and trailers only, NOT a leading subject line. GitHub renders
+the squash commit by joining `commit_title + blank + commit_message`,
+and the merge bot sets `commit_title` from the PR title; a subject in
+both places renders twice on `main` (issue #478). The validator rejects
+a first non-blank line that looks like a Conventional-Commit subject
+(e.g. `improvement(ci): wire the foo`).
+
 The `## Review notes` section is for the reviewer only — it does NOT
 enter git history. See CONTRIBUTING.md → "Writing PRs" for a worked
 example. The split is enforced by .github/workflows/pr-lint.yml.
-
-While the merge bot (#291) is still pending, the maintainer must paste
-the contents of the ==COMMIT_MSG== block (everything between the two
-markers, exclusive) into the squash-merge dialog at merge time. See
-docs/release/rollout-pr-template.md.
 -->
 
 <!--
 Author the squash-merge commit body inside the ==COMMIT_MSG== block
 below. Rules (enforced by .github/workflows/pr-lint.yml):
 
+- Body and trailers only — NO leading subject line. The PR title is
+  the source of the squash commit's subject.
 - Lines wrap at <= 72 chars.
 - No markdown headings (#), task checkboxes (- [ ] / - [x]), or
   image embeds (![alt](url)) inside this block. Plain - / * bullets

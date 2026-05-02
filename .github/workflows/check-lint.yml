@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: Check Lint
+
+# `workflow_call` parent shell for lint-and-static-analysis children
+# under the uv-style nested CI structure (parent issue #440, Phase 2
+# issue #453). Children today: `python` (mypy + pyright) and
+# `systems-engineering` (verify-design + verify-function-tests).
+# Follow-up issues attach more children here:
+#   - #459: extends `python.yml` with ruff lint, or adds a sibling
+#
+# The aggregator below mirrors the pattern in `ci.yml`'s
+# `required-checks-passed`: a single status job that fails if any
+# child reports anything other than `success`. `if: always()` keeps
+# the aggregator running even when an upstream job fails, so the
+# failure surfaces as a single red status check rather than the
+# aggregator being skipped along with its needs.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: python
+    uses: ./.github/workflows/python.yml
+    secrets: inherit
+
+  systems-engineering:
+    name: systems-engineering
+    uses: ./.github/workflows/systems-engineering.yml
+    secrets: inherit
+
+  required-checks-passed:
+    name: Required checks passed
+    needs: [python, systems-engineering]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all required checks passed
+        # See the matching step in `ci.yml` for the rationale behind
+        # routing `needs` through `env:` and using `jq -e` to fail on
+        # any non-`success` result. `skipped` is treated as a failure
+        # alongside `failure`, `cancelled`, and `timed_out` — a child
+        # that legitimately opts out via `if:` must surface a
+        # `success` result rather than skipping outright.
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "${NEEDS}" \
+            | jq -e 'to_entries | all(.value.result == "success")' \
+            > /dev/null

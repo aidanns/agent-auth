@@ -11,8 +11,6 @@ comments.
 Author the squash-merge commit body here.
 -->
 
-Wire the foo into the bar.
-
 The foo previously bypassed the bar because of a typo in
 config.py; this fix routes every foo through the bar so the
 metrics counter actually increments.

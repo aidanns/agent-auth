@@ -1,6 +1,4 @@
 ==COMMIT_MSG==
-Add a thing.
-
 The body has a blank line between `Closes #N` and the
 `Co-Authored-By:` trailer (mixed-case spelling).
 `git interpret-trailers --parse` would treat the blank as the

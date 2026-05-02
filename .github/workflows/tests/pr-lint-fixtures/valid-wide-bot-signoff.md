@@ -14,8 +14,6 @@ but whose trailer is over 72 chars must validate. Pairs with
 -->
 
 ==COMMIT_MSG==
-Wire the foo into the bar.
-
 The foo previously bypassed the bar because of a typo in
 config.py; this fix routes every foo through the bar so the
 metrics counter actually increments.

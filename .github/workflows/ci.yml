@@ -128,6 +128,67 @@ jobs:
               - '.github/workflows/**'
               - '.github/actions/**'
 
+  check-lint:
+    # First `workflow_call` child landed under the parent issue #440
+    # migration (Phase 2, issue #453). The `check-lint.yml` parent
+    # shell currently fans out to `python.yml` (mypy + pyright);
+    # follow-up issues attach more children (systems-engineering in
+    # #454, ruff in #459). Per Strategy C, the original `typecheck.yml`
+    # continues to run alongside this chain until the Phase 5 sweep.
+    name: check-lint
+    needs: [plan]
+    uses: ./.github/workflows/check-lint.yml
+    secrets: inherit
+  check-docs:
+    # Placeholder docs-build slot (issue #464). The slot is reserved
+    # so the migration structure stays uniform; the child workflow is
+    # always-passing until agent-auth gains a docs site. See
+    # `.github/workflows/check-docs.yml` for the TODO marker.
+    name: check-docs
+    needs: [plan]
+    uses: ./.github/workflows/check-docs.yml
+
+  check-standards:
+    # Project-standards slot (issue #455). Runs `task verify-standards`
+    # via `scripts/verify-standards.sh`. Until Phase 5 of #440 retires
+    # the original top-level workflow, the legacy `verify-standards.yml`
+    # continues to run in parallel; this PR does not delete it and does
+    # not modify the branch-protection ruleset (strategy C).
+    name: check-standards
+    needs: [plan]
+    uses: ./.github/workflows/check-standards.yml
+  check-pull-request:
+    # PR-metadata child workflow (issue #450). Houses jobs that
+    # validate the pull-request envelope itself — DCO sign-off today;
+    # pr-lint validators (title, body, commit-message block) follow
+    # under #4.18 — rather than the working tree's contents. Strategy
+    # C: the original top-level `dco.yml` workflow stays in place and
+    # runs in parallel with this chain until the branch-protection
+    # ruleset switches to this aggregator (#5.2).
+    name: check-pull-request
+    needs: [plan]
+    uses: ./.github/workflows/check-pull-request.yml
+  check-publish:
+    # Publish-readiness slot (issue #462). Builds the release-asset
+    # set with `scripts/build-release-artifacts.sh` and runs
+    # `uv publish --dry-run` (against TestPyPI) plus `twine check`
+    # against the built wheels and sdists. Net-new check — there is
+    # no original top-level workflow for Strategy C (#440 Phase 5)
+    # to retire later. The branch-protection ruleset is untouched
+    # in this PR.
+    name: check-publish
+    needs: [plan]
+    uses: ./.github/workflows/check-publish.yml
+  check-changelog:
+    # Changelog gating slot (issue #451). Splits the legacy
+    # `changelog-lint.yml` into two named jobs (`exists`, `format`) so
+    # entry presence and schema validity surface as separate signals.
+    # The legacy workflow continues to run alongside this child until
+    # the Strategy-C cutover (#440 Phase 5).
+    name: check-changelog
+    needs: [plan]
+    uses: ./.github/workflows/check-changelog.yml
+
   required-checks-passed:
     # Repo-wide aggregator (#440 "Decisions (locked in)"): a single
     # `Required checks passed` status check sits at the top of `ci.yml`
@@ -136,7 +197,7 @@ jobs:
     # branch-protection ruleset switch from per-workflow required
     # checks to this one aggregator is tracked under #5.2.
     name: Required checks passed
-    needs: [plan]
+    needs: [plan, check-docs, check-standards, check-changelog, check-publish, check-pull-request, check-lint]
     if: always()
     runs-on: ubuntu-latest
     steps:

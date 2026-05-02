@@ -166,7 +166,7 @@ immediately. Rationale in
 (`parse_token`, `sign_token`, `verify_token`, `create_token_pair`)
 and the SQLite store (`get_family` for a family with 200 scopes,
 `get_token`, `create_token`). The suite is scheduled weekly via
-`.github/workflows/benchmark.yml` — too noisy on shared runners to
+`.github/workflows/bench.yml` (called from `.github/workflows/weekly.yml`) — too noisy on shared runners to
 gate every PR. Rationale and baseline-refresh procedure in
 [`packages/agent-auth/benchmarks/README.md`](packages/agent-auth/benchmarks/README.md)
 and [ADR 0029](design/decisions/0029-benchmark-suite.md).
@@ -788,14 +788,18 @@ The PR description is the authoring surface for **two distinct
 audiences**:
 
 - The `==COMMIT_MSG==` block becomes the squash-merge commit body —
-  it enters `git log` and the GitHub release notes. Treat it like a
-  commit message: prose paragraphs, ≤ 72 char wrap, trailers at
-  the end. Three markdown shapes are banned because they reliably
-  signal reviewer-surface content has leaked in: markdown headings
-  (`#` … `######`), task checkboxes (`- [ ]` / `- [x]`), and image
-  embeds (`![alt](url)`). Plain `-` / `*` bullets and `1.` numbered
-  lists are fine — the kernel/cbea.ms enumerated-changes form often
-  reads better in `git log` than a run-on prose paragraph.
+  it enters `git log` and the GitHub release notes. The block is
+  **body and trailers only** (issue #478): the squash subject comes
+  from the PR title via the merge API's `commit_title` field, so a
+  leading subject line in the block would render twice on `main`.
+  Treat the contents like a commit body: prose paragraphs, ≤ 72
+  char wrap, trailers at the end. Three markdown shapes are banned
+  because they reliably signal reviewer-surface content has leaked
+  in: markdown headings (`#` … `######`), task checkboxes
+  (`- [ ]` / `- [x]`), and image embeds (`![alt](url)`). Plain `-`
+  / `*` bullets and `1.` numbered lists are fine — the
+  kernel/cbea.ms enumerated-changes form often reads better in
+  `git log` than a run-on prose paragraph.
 - The `## Review notes` section is for the reviewer — test plan,
   screenshots, deploy notes, gotchas. It does **not** enter git
   history. Use whatever markdown you like.
@@ -806,7 +810,7 @@ the `pr-title` job validates the PR-title prefix, the
 (length cap, no trailing period, no past-tense opener), the
 `pr-body-commit-msg` job validates the `==COMMIT_MSG==` block, and
 the `validator-self-test` / `pr-title-self-test` /
-`pr-body-title-aware-self-test` jobs exercise both validators against
+`pr-body-warning-self-test` jobs exercise both validators against
 fixtures and inline cases so a regression in either validator can
 never silently approve PRs.
 
@@ -1021,12 +1025,18 @@ with the other trailers.
 
 #### Worked examples
 
+The block is **body and trailers only** (issue #478) — the squash
+commit's subject comes from the PR title via the merge API's
+`commit_title` field. A leading subject line inside the block would
+render twice on `main` (once as the rendered subject, once as the
+first body line), so the validator rejects a first non-blank line
+that matches a `feature|improvement|fix|...:` Conventional-Commit
+prefix.
+
 A PR that adds a feature and references a tracking issue:
 
 ```markdown
 ==COMMIT_MSG==
-Wire the gpg-bridge probe into agent-auth health.
-
 The /agent-auth/health response now embeds the latest probe status
 from gpg-bridge so a single GET surfaces both services. The probe
 runs every 30s and is cached; stale entries fail-open with status
@@ -1058,8 +1068,6 @@ line a future searcher would paste into `git log --grep`) and the
 
 ```markdown
 ==COMMIT_MSG==
-Constant-time the HMAC comparison in parse_token.
-
 The previous implementation used `==` to compare the candidate HMAC
 against the stored one, exposing a timing oracle that leaks bytes of
 the signing key under repeated probing. Switch to `hmac.compare_digest`
