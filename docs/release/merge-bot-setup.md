@@ -24,8 +24,17 @@ workflow:
 1. Fetches the PR body, extracts the contents between
    `==COMMIT_MSG==` markers via
    [`scripts/extract-commit-msg-block.py`](../../scripts/extract-commit-msg-block.py).
-2. Verifies every required check is green and the block carries a
-   `Signed-off-by:` trailer.
+2. Reads the active branch-protection ruleset(s) on the PR's base
+   branch (with a fallback to the legacy
+   `branches/{branch}/protection` API for repos that pre-date
+   rulesets) to derive the set of required-check contexts the bot
+   gates on. Verifies every context in that set is green and the
+   `==COMMIT_MSG==` block carries a `Signed-off-by:` trailer. A
+   check that is failing in the rollup but is NOT in the required-
+   contexts set does not block the merge — branch protection is the
+   single authoritative source of "what must be SUCCESS for a merge
+   to land," and the bot honours it without exception. See issue
+   #528.
 3. If the PR head sits behind `main` (`mergeStateStatus = BEHIND`),
    calls `PUT /repos/aidanns/agent-auth/pulls/{n}/update-branch`
    to fast-forward the PR head onto `main`, and exits 0. The new
@@ -59,7 +68,7 @@ workflow:
    (`closes` / `fixes` / `resolves` and their inflections, case-
    insensitive) and closes each same-repo issue with a
    `Closed by merge of PR #<P> (squash commit <sha>).` comment.
-   GitHub's UI auto-close-on-`Closes #N` does not fire for App-
+   GitHub's UI auto-close-on-`Closes: #N` does not fire for App-
    token-mediated merges; this step compensates. Cross-repo
    references (`other-org/other-repo#N`) are logged via
    `::notice::` and skipped — the App's installation token is
@@ -90,13 +99,21 @@ trailer at PR-author time.
        merge commit that fast-forwards the PR head onto the latest
        `main`, which counts as a write to repo contents. Read-only
        was sufficient before that path existed).
+     - *Administration*: **Read-only** (call
+       `GET /repos/.../rulesets` and
+       `GET /repos/.../branches/{branch}/protection` to derive the
+       required-check contexts the bot gates on. The bot reads
+       branch protection at runtime rather than encoding a static
+       failure list — adding / removing required checks is a
+       branch-protection edit, not a bot-workflow edit. See issue
+       #528).
      - *Metadata*: **Read-only** (mandatory when any other repo
        permission is granted).
      - *Issues*: **Read & write** (call
        `PATCH /repos/.../issues/{N}` to close issues referenced via
-       `Closes #N` / `Fixes #N` / `Resolves #N` in the squash commit
+       `Closes: #N` / `Fixes: #N` / `Resolves: #N` in the squash commit
        body, and post the closing-comment audit-trail line.
-       GitHub's UI auto-close-on-`Closes #N` does not fire for App-
+       GitHub's UI auto-close-on-`Closes: #N` does not fire for App-
        token-mediated `PUT /pulls/{n}/merge` calls — issue #429 — so
        the bot does the closure itself).
      - *Pull requests*: **Read & write** (call `PUT /pulls/{n}/merge`,
@@ -299,7 +316,7 @@ should produce:
   signal of record.)
 - The `dco` workflow staying green on `main` because the
   `Signed-off-by:` trailer round-trips into the squash commit.
-- The `Closes #N` trailer in the block closing the linked issue
+- The `Closes: #N` trailer in the block closing the linked issue
   on merge, with a
   `Closed by merge of PR #<P> (squash commit <sha>).` comment
   posted by the `agent-auth-merge-bot` App identity. (Until the
@@ -372,7 +389,7 @@ Operational notes:
 
 ## Closing linked issues
 
-GitHub's UI auto-close-on-`Closes #N` does not fire for App-token-
+GitHub's UI auto-close-on-`Closes: #N` does not fire for App-token-
 mediated `PUT /pulls/{n}/merge` calls. Confirmed deterministic
 across PRs #350 / #354 / #423 (issue #429). Without compensation,
 linked issues stay OPEN after a bot-mediated merge unless an
@@ -414,22 +431,22 @@ The parser mirrors GitHub UI auto-closer behaviour exactly, which
 implies two nuances PR authors should know about:
 
 - **Comma-separated multi-issue forms close only the first.**
-  `Closes #1, #2, and #3` closes #1 only — the matcher requires a
+  `Closes: #1, #2, and #3` closes #1 only — the matcher requires a
   keyword before each `#N`, and #2 / #3 in that body look like bare
   issue references. To close several issues from one PR, repeat the
-  keyword (`Closes #1`, then `Closes #2`, then `Closes #3` on
+  keyword (`Closes: #1`, then `Closes: #2`, then `Closes: #3` on
   separate lines). This matches what GitHub's UI auto-closer would
   do for the same body.
-- **Any `Closes #N` mention closes the issue, regardless of context.**
+- **Any `Closes: #N` mention closes the issue, regardless of context.**
   `Will close #100 once we ship`, `If we close #100`, and
   `did not close #100` all close #100 on merge. GitHub's UI behaves
   the same way. Avoid putting future-work or hypothetical
-  `Closes #N` mentions inside the `==COMMIT_MSG==` block — move
+  `Closes: #N` mentions inside the `==COMMIT_MSG==` block — move
   them to `## Review notes` (which never enters git history) if you
   need to reference an issue without closing it.
 
 Failure handling for this step is best-effort: a 404 (typo'd
-`Closes #99999`), 5xx, or any other API error on a per-issue close
+`Closes: #99999`), 5xx, or any other API error on a per-issue close
 call surfaces as a `::warning::` and the loop continues. The merge
 has already landed; failing the workflow at this point would
 generate a red merge-bot run on a PR that merged successfully —
@@ -459,11 +476,21 @@ in the `claude-skills` repo).
 Each `::error::` line in the bot's workflow run log (since #503
 the bot does not post PR comments) maps to one of:
 
-- **Required check failed**: a check listed in the `main` ruleset
-  is `FAILURE` / `TIMED_OUT` / `CANCELLED`. The failing check
-  itself surfaces in the PR UI as a red status — that is the
-  primary signal. Fix the check, push, and the
-  `workflow_run.completed` retrigger will run the bot again.
+- **Required check failed**: a context listed in the `main`
+  ruleset's `required_status_checks` is `FAILURE` / `TIMED_OUT` /
+  `CANCELLED` / `STARTUP_FAILURE` / `ACTION_REQUIRED` / `ERROR`.
+  The failing check itself surfaces in the PR UI as a red status —
+  that is the primary signal. Fix the check, push, and the
+  `workflow_run.completed` retrigger will run the bot again. A
+  check that is failing in the rollup but is NOT a required
+  context does not block the merge — the bot only gates on the
+  required-contexts set derived from branch protection.
+- **Could not read required-check contexts from branch
+  protection**: both the modern rulesets API and the legacy
+  `branches/{branch}/protection` API returned empty. Most commonly
+  the App installation is missing `Administration: read`. Update
+  the App permissions per [Step 1](#step-1--register-the-agent-auth-merge-bot-github-app)
+  and re-authorize the install.
 - **`==COMMIT_MSG==` block extraction failed**: the PR body has
   zero or two-or-more `==COMMIT_MSG==` markers. Edit the PR body
   to leave exactly one block.

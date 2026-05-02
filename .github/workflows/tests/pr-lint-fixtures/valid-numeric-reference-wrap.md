@@ -2,7 +2,7 @@
 Honouring the contract from ADR
 0011. Subsequent prose follows.
 
-Closes #358
+Closes: #358
 Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>
 ==COMMIT_MSG==
 

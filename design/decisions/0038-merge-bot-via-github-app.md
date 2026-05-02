@@ -153,6 +153,24 @@ Three orthogonal questions fall out of that:
    until CI returns to green, which keeps the sweep eligibility
    filter (#498) from re-dispatching the bot on a known-stuck PR.
 
+   Amended 2026-05-02 (issue #528). The set of "required checks"
+   the bot gates on is now derived at runtime from the active
+   branch-protection ruleset(s) on the PR's base branch, with a
+   fallback to the legacy `branches/{branch}/protection` API. The
+   prior implementation encoded a static "any failure in the
+   rollup blocks merge" rule which was stricter than branch
+   protection itself — a check that was failing for an unrelated
+   reason (flaky test, parallel-PR regression) blocked the bot
+   even when `gh pr merge --squash` would have been allowed by
+   branch protection. Branch protection is now the single
+   authoritative source of "what must be SUCCESS for a merge to
+   land." Override is intentionally NOT a bot-controllable
+   surface; manual `gh pr merge --squash --admin` is the only
+   escape hatch. The bot fails-closed when both APIs return empty
+   so an unreachable branch-protection config doesn't silently
+   bypass verification. Requires the App installation to have
+   `Administration: read`.
+
 4. **DCO trailer is a hard validator failure.** The bot authors no
    commits — the squash commit's `Signed-off-by:` trailer must
    already be present in the extracted body. The validator
@@ -170,7 +188,7 @@ Three orthogonal questions fall out of that:
    doesn't apply it in code.
 
 6. **Close linked issues after a successful merge.** Amended
-   2026-04-28 (issue #429). GitHub's UI auto-close-on-`Closes #N`
+   2026-04-28 (issue #429). GitHub's UI auto-close-on-`Closes: #N`
    does not fire for App-token-mediated `PUT /pulls/{n}/merge`
    calls — confirmed deterministically across PRs #350 / #354 /
    #423 — so the bot does the closure itself: it parses the
@@ -208,6 +226,21 @@ Three orthogonal questions fall out of that:
    Hard cutover — no dual-shape support — because the open-PR set
    is small and the validator's error message tells the author
    exactly what to do.
+
+8. **Canonical issue-close trailer is `Closes: #N` (colon form).**
+   Amended 2026-05-02 (issue #486). The pre-amendment recommendation
+   was `Closes #N` (no colon) because GitHub's UI auto-closer rejects
+   the colon form; with item 6 above the bot does the closure itself
+   via `PATCH /repos/.../issues/{N}` so GitHub's UI parser is no
+   longer in the loop, and the colon form matches the shape of every
+   other trailer in the block (`Signed-off-by:`, `Co-authored-by:`,
+   `Fixes: <sha>`). Stay-lenient cutover — the parser
+   (`scripts/parse-close-keywords.py`) and the validator
+   (`scripts/validate-commit-msg-block.py` /
+   `pr-lint-validator commit-msg`) both continue to accept the bare
+   form so historical CHANGELOG entries and any in-flight PRs keep
+   matching; only the documented recommendation and the canonical
+   `valid-*.md` PR-lint fixtures move to the colon form.
 
 ## Consequences
 

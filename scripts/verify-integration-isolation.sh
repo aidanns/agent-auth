@@ -9,7 +9,13 @@
 #    127.0.0.1 / 0.0.0.0 literals. Tests address containers via the
 #    fixture's base_url (derived from the ephemeral Docker port mapping)
 #    or via in-network service hostnames (e.g. http://agent-auth:9100)
-#    that compose interpolates.
+#    that compose interpolates. In-process integration tests that
+#    spawn a server thread on an ephemeral loopback port (no Docker
+#    fixture) opt out by carrying the marker
+#    ``# integration-isolation: in-process-server`` in the file
+#    header — those legitimately bind to 127.0.0.1 because there is no
+#    container to reach via Docker DNS. The marker is required to
+#    keep the default deny-list intact for new Docker-backed tests.
 # 2. The pytest layer must still build each per-service
 #    docker/Dockerfile.<svc>.test so the containers actually run under
 #    test. A fixture stack that lost the docker build call would
@@ -55,14 +61,29 @@ for integration_dir in "${integration_dirs[@]}"; do
   fi
   # Scan every Python file under the integration tree except
   # conftest.py files (which legitimately construct base_url from the
-  # ephemeral Docker port mapping). Helper modules — not just
-  # test_*.py — could otherwise smuggle a raw loopback literal back
-  # into the black-box boundary.
-  offenders=$(grep -nR --include='*.py' --exclude='conftest.py' \
-    -E '127\.0\.0\.1|0\.0\.0\.0' "${integration_dir}" || true)
+  # ephemeral Docker port mapping) and files explicitly marked as
+  # in-process integration tests (which spawn a server thread on an
+  # ephemeral loopback port and thus legitimately reference 127.0.0.1
+  # — there is no container to reach via Docker DNS). Helper modules —
+  # not just test_*.py — could otherwise smuggle a raw loopback
+  # literal back into the black-box boundary, so the deny-list stays
+  # the default for new Docker-backed tests.
+  offenders=""
+  while IFS= read -r -d '' candidate; do
+    [[ "$(basename "${candidate}")" == "conftest.py" ]] && continue
+    if grep -qE '^#[[:space:]]*integration-isolation:[[:space:]]*in-process-server[[:space:]]*$' "${candidate}"; then
+      continue
+    fi
+    candidate_offenders=$(grep -nE '127\.0\.0\.1|0\.0\.0\.0' "${candidate}" || true)
+    if [[ -n "${candidate_offenders}" ]]; then
+      while IFS= read -r line; do
+        offenders+="${candidate}:${line}"$'\n'
+      done <<<"${candidate_offenders}"
+    fi
+  done < <(find "${integration_dir}" -type f -name '*.py' -print0)
   if [[ -n "${offenders}" ]]; then
     echo "FAIL: integration test files must not reference 127.0.0.1 / 0.0.0.0 directly:" >&2
-    echo "${offenders}" >&2
+    printf '%s' "${offenders}" >&2
     fail=1
   fi
 done
