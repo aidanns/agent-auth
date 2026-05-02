@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
 #
 # SPDX-License-Identifier: MIT
-# integration-isolation: in-process-server
 
 """Integration tests for the gpg-bridge HTTP server."""
 
