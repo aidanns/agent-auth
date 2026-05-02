@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.17.3] - 2026-05-02
+
+### Fixes
+
+- Trigger `dependabot-adaptor-bot.yml` on `pull_request_target` so the App credentials resolve under the Dependabot secrets context. (#543)
+
 ## [0.17.2] - 2026-05-02
 
 ### Improvements
