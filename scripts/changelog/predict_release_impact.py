@@ -5,11 +5,12 @@
 """Predict the SemVer bump a PR will trigger and emit a JSON envelope.
 
 Consumed by the ``release-impact-comment`` job in
-``.github/workflows/pr-lint.yml`` (issue #406). The job posts an
-idempotent PR comment surfacing the predicted bump so a reviewer can
-catch a mislabelled YAML (e.g. a ``feature`` entry that should have
-been ``improvement``) at PR-review time, before the next release goes
-out and the version jumps unexpectedly.
+``.github/workflows/changelog-bot.yml`` (issue #406; relocated from
+``pr-lint.yml`` under #466). The job posts an idempotent PR comment
+surfacing the predicted bump so a reviewer can catch a mislabelled
+YAML (e.g. a ``feature`` entry that should have been ``improvement``)
+at PR-review time, before the next release goes out and the version
+jumps unexpectedly.
 
 The script is plumbing — it does no bump-computation of its own. It
 walks ``changelog/@unreleased/*.yml`` and delegates to
@@ -172,7 +173,8 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "Emit a JSON envelope predicting the SemVer bump implied "
             "by `changelog/@unreleased/*.yml`. Consumed by the "
-            "`release-impact-comment` job in `.github/workflows/pr-lint.yml`."
+            "`release-impact-comment` job in "
+            "`.github/workflows/changelog-bot.yml`."
         ),
     )
     parser.add_argument(
