@@ -49,10 +49,10 @@ def test_extract_block_returns_content_between_markers() -> None:
     # Expect the content between the markers, exclusive of the
     # markers themselves. The bot pastes this verbatim into
     # commit_message, so any change to whitespace or content here
-    # changes the squash commit body shape.
+    # changes the squash commit body shape. Post-#478 the block is
+    # body + trailers only; the squash subject comes from the PR
+    # title via the merge API's `commit_title` field.
     assert block == (
-        "Add a thing.\n"
-        "\n"
         "The thing is small but useful.\n"
         "\n"
         "Closes #1\n"
@@ -75,7 +75,7 @@ def test_extract_block_preserves_html_comments_inside_block() -> None:
     block = extractor.extract_block(body)
     assert "<!--" in block
     assert "Author the squash-merge commit body here." in block
-    assert "Wire the foo into the bar." in block
+    assert "The foo previously bypassed the bar" in block
 
 
 def test_extract_block_preserves_breaking_change_footer_position() -> None:

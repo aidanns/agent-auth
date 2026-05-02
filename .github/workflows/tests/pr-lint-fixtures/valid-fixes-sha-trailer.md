@@ -1,6 +1,4 @@
 ==COMMIT_MSG==
-Use constant-time HMAC comparison in parse_token.
-
 Switch to `hmac.compare_digest` so the comparison takes the same
 number of cycles regardless of which byte differs.
 
