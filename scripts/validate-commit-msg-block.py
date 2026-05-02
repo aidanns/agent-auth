@@ -76,12 +76,15 @@
 #      project would rather surface the warning than block the PR.
 #
 # The PR title (subject) has its own prose-style rules — length cap,
-# trailing period, past-tense imperative — enforced by the sibling
-# `scripts/validate-pr-title.py` script in the `pr-title-style` job
-# of `.github/workflows/pr-lint.yml`. The two scripts split because
-# the title and the body have different inputs (string vs. file) and
-# different runtime audiences (the action consumes the title via env
-# var; the body validator works against a file on disk).
+# trailing period, past-tense imperative — enforced by the
+# `pr-lint-validator title` subcommand (shipped as the
+# `pr-lint-validator` wheel from `packages/pr-lint-validator/`) in
+# the `pr-title-style` job of `.github/workflows/pr-lint.yml`. The
+# title and body validators split because they have different inputs
+# (string vs. file) and different runtime audiences (the action
+# consumes the title via env var; the body validator works against
+# a file on disk). This script will follow the wheel cutover in a
+# later PR (#477's roll-out plan).
 #
 # These rules sit alongside the prose conventions documented in
 # CONTRIBUTING.md → "Writing release-worthy commits" (#337); the

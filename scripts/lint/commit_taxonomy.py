@@ -42,9 +42,9 @@ derived from — or self-tested against — the constants here.
   ``feature(...)`` / ``improvement(...)`` / ``break(...)`` etc. would
   surface in CHANGELOG.md as user-facing churn and trigger an
   incorrect public version bump. The validator in
-  ``scripts/validate-pr-title.py`` reads this set to reject
-  ``feature(ci):`` / ``improvement(deps-dev):`` etc. at PR-open time.
-  See #401.
+  ``packages/pr-lint-validator/src/pr_lint_validator/title.py``
+  reads this set to reject ``feature(ci):`` /
+  ``improvement(deps-dev):`` etc. at PR-open time. See #401.
 
 ## Stability
 
@@ -179,11 +179,12 @@ AREA_SCOPES: tuple[str, ...] = (
 #   are different and should pick the matching user-visible type
 #   on the package scope (e.g. ``feature(agent-auth):``).
 #
-# The validator in ``scripts/validate-pr-title.py`` rejects
-# ``<release-bumping-type>(<internal-only-scope>):`` combinations
-# with a worked-example error message; ``commit_taxonomy`` is the
-# single source of truth so the matrix can't drift between the lint
-# and CONTRIBUTING.md. See #401.
+# The validator in
+# ``packages/pr-lint-validator/src/pr_lint_validator/title.py``
+# rejects ``<release-bumping-type>(<internal-only-scope>):``
+# combinations with a worked-example error message;
+# ``commit_taxonomy`` is the single source of truth so the matrix
+# can't drift between the lint and CONTRIBUTING.md. See #401.
 INTERNAL_ONLY_SCOPES: frozenset[str] = frozenset(
     {
         "ci",

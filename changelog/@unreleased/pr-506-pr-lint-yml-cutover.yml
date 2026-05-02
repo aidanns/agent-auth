@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: pr-lint.yml jobs now consume the released pr-lint-validator wheel from GitHub Releases instead of in-tree scripts.
+  links:
+    - https://github.com/aidanns/agent-auth/pull/506
+packages:
+  - pr-lint-validator
