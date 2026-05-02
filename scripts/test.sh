@@ -47,6 +47,7 @@ UNIT_TEST_PATHS=(
   packages/agent-auth/tests/
   packages/gpg-bridge/tests/
   packages/gpg-cli/tests/
+  packages/pr-lint-validator/tests/
   packages/things-bridge/tests/
   packages/things-cli/tests/
   packages/things-client-cli-applescript/tests/
