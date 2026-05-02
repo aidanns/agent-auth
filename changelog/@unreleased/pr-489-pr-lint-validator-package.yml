@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    Extract the PR-title and `==COMMIT_MSG==` block validators into a
+    new `pr-lint-validator` workspace package shipped as a wheel and
+    console script on every release.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/446
+    - https://github.com/aidanns/agent-auth/pull/489
+packages:
+  - pr-lint-validator
