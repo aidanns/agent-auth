@@ -319,7 +319,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     check_yaml = sub.add_parser(
         "check-pr-lint-yaml",
-        help=("Assert check-pull-request.yml's `types:` list matches " "ALLOWED_TYPES."),
+        help="Assert check-pull-request.yml's `types:` list matches ALLOWED_TYPES.",
     )
     check_yaml.add_argument(
         "--yaml-path",
@@ -338,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
         except AssertionError as err:
             print(str(err), file=sys.stderr)
             return 1
-        print("commit_taxonomy: check-pull-request.yml `types:` matches " "ALLOWED_TYPES")
+        print("commit_taxonomy: check-pull-request.yml `types:` matches ALLOWED_TYPES")
         return 0
 
     # Default: list-types.
