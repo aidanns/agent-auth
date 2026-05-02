@@ -355,6 +355,7 @@ module = [
     "test_things_applescript_failure",
     "test_things_bridge_cli",
     "test_things_bridge_client",
+    "test_things_bridge_error_taxonomy",
     "test_things_bridge_server",
     "test_things_bridge_shutdown",
     "test_things_bridge_tls",
