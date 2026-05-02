@@ -7,8 +7,9 @@ name: Check Security
 # `workflow_call` parent shell for security-cadence checks under the
 # uv-style nested workflow_call CI structure (parent issue #440).
 # Currently carries the CodeQL analyse child (`codeql-analyse.yml`,
-# issue #447); subsequent migration issues add `dependency-review`
-# (#448), `dependency-submission` (#449), and `ripsecrets` (#459)
+# issue #447) and the Dependency Review child
+# (`check-dependency-review.yml`, issue #448); subsequent migration
+# issues add `dependency-submission` (#449) and `ripsecrets` (#459)
 # under here as further `workflow_call` children, each one extending
 # the aggregator's `needs:` list.
 on:
@@ -26,6 +27,13 @@ jobs:
       contents: read
       security-events: write
 
+  check-dependency-review:
+    name: Check Dependency Review
+    uses: ./.github/workflows/check-dependency-review.yml
+    permissions:
+      contents: read
+      pull-requests: write
+
   required-checks-passed:
     # Per-parent aggregator (#440 "Decisions (locked in)"): each
     # parent orchestrator carries its own `Required checks passed`
@@ -34,7 +42,7 @@ jobs:
     # one in turn. Subsequent migration issues add each new child
     # workflow's job name to `needs:` here.
     name: Required checks passed
-    needs: [codeql-analyse]
+    needs: [codeql-analyse, check-dependency-review]
     if: always()
     runs-on: ubuntu-latest
     steps:
