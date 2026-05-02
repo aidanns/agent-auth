@@ -72,10 +72,16 @@ The repository uses a uv-style nested `workflow_call` structure (issue
 440). Each cadence has a single **parent orchestrator** that calls
 **child workflows** via `uses: ./.github/workflows/<child>.yml`.
 Children live alongside the orchestrators in `.github/workflows/`;
-their `on:` block declares only `workflow_call` (no `pull_request` or
-`push` of their own — only the parent has those).
+their `on:` block declares `workflow_call` only — the parent owns
+the `pull_request` / `push` trigger surface for the cadence. The
+exception is `pr-lint.yml`: it stayed top-level after the validator
+migration in #463 because its two residual jobs
+(`pr-title-types-self-test`, `predict-release-impact-self-test`) are
+meta self-tests on workflow YAML / lint constants, not per-PR
+checks. It triggers on `pull_request` directly; its file header
+documents the retention rationale.
 
-The four orchestrators today:
+The three parent orchestrators today:
 
 - **`ci.yml`** (`name: CI`) — every PR-time check. Top of the file is
   a `plan` job that emits gating booleans (label-driven outputs like
@@ -92,11 +98,11 @@ The four orchestrators today:
 - **`weekly.yml`** (`name: Weekly`) — weekly-cadence checks (`bench`,
   `open-ssf-scorecard`). Cron at 05:00 UTC Sunday (offset from
   `nightly.yml` so the runner queue is not doubled-up).
-- **Bot workflows** — standalone, not children of any orchestrator.
-  `merge-bot.yml`, `changelog-bot.yml`, `release-bot.yml`,
-  `dependabot-adaptor-bot.yml`. They consume other workflows'
-  completions or PR / push events directly and own their own
-  trigger surface.
+
+Bot workflows (`merge-bot.yml`, `changelog-bot.yml`,
+`release-bot.yml`, `dependabot-adaptor-bot.yml`) are NOT
+orchestrators — they have no children and consume PR / `push` /
+`workflow_run` events directly. The `### Bot listener trigger surface` section below documents what each one listens to.
 
 ### Single `Required checks passed` aggregator
 
@@ -127,15 +133,17 @@ metadata) can change without the head SHA changing.
 
 ### Per-child aggregators
 
-A child workflow that has **≥3 sibling jobs** of its own (e.g.
-`check-fmt.yml` with `spdx-license-headers`, `treefmt`, `ruff-format`)
-ends with its own `Required checks passed` aggregator job using the
-same `jq -e 'all(.value.result == "success")'` pattern. The parent's
+A child workflow that has **2 or more sibling jobs** of its own
+(e.g. `check-fmt.yml` with `spdx-license-headers`, `treefmt`,
+`ruff-format`; `check-lint.yml` with `python` and
+`systems-engineering`) ends with its own `Required checks passed`
+aggregator job using the same
+`jq -e 'all(.value.result == "success")'` pattern. The parent's
 `needs.<child>.result` collapses the entire child workflow to a
 single boolean, so the parent does not have to enumerate the child's
-internal jobs. With \<3 siblings the per-child aggregator is overhead
-without payoff (`needs.<child>.result` already collapses to a single
-boolean); skip it.
+internal jobs. With a single sibling the per-child aggregator is
+overhead without payoff (`needs.<child>.result` already collapses to
+a single boolean); skip it.
 
 ### Naming conventions
 
@@ -176,9 +184,11 @@ boolean); skip it.
 
 - **Composite actions** — kebab-case directory under
   `.github/actions/`, kebab-case action name, named after what they
-  install / set up: `setup-toolchain`, `install-pr-lint-validator`,
-  `build-integration-test-image`. The action's own `name:` field uses
-  sentence case ("Setup toolchain", "Install pr-lint-validator").
+  install / set up or what they read: `setup-toolchain`,
+  `install-pr-lint-validator`, `build-integration-test-image`,
+  `read-required-contexts`. The action's own `name:` field uses
+  sentence case ("Setup toolchain", "Install pr-lint-validator",
+  "Read required-check contexts from branch protection").
 
 ### Where a new check goes
 
