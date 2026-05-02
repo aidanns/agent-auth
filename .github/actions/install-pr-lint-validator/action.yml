@@ -35,10 +35,10 @@ inputs:
     default: "0.17.1"
   github-token:
     description: >
-      GitHub token used to download the wheel asset. Defaults to the
-      workflow's GITHUB_TOKEN, which has `contents: read` and is
-      sufficient for downloading release assets from the same
-      private repository.
+      GitHub token used to download the wheel asset. Callers
+      typically pass the workflow's `${{ github.token }}`, which
+      has `contents: read` and is sufficient for downloading
+      release assets from the same private repository.
     required: true
 
 runs:
