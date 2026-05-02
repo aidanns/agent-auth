@@ -24,8 +24,17 @@ workflow:
 1. Fetches the PR body, extracts the contents between
    `==COMMIT_MSG==` markers via
    [`scripts/extract-commit-msg-block.py`](../../scripts/extract-commit-msg-block.py).
-2. Verifies every required check is green and the block carries a
-   `Signed-off-by:` trailer.
+2. Reads the active branch-protection ruleset(s) on the PR's base
+   branch (with a fallback to the legacy
+   `branches/{branch}/protection` API for repos that pre-date
+   rulesets) to derive the set of required-check contexts the bot
+   gates on. Verifies every context in that set is green and the
+   `==COMMIT_MSG==` block carries a `Signed-off-by:` trailer. A
+   check that is failing in the rollup but is NOT in the required-
+   contexts set does not block the merge — branch protection is the
+   single authoritative source of "what must be SUCCESS for a merge
+   to land," and the bot honours it without exception. See issue
+   #528.
 3. If the PR head sits behind `main` (`mergeStateStatus = BEHIND`),
    calls `PUT /repos/aidanns/agent-auth/pulls/{n}/update-branch`
    to fast-forward the PR head onto `main`, comments
@@ -87,6 +96,14 @@ trailer at PR-author time.
        merge commit that fast-forwards the PR head onto the latest
        `main`, which counts as a write to repo contents. Read-only
        was sufficient before that path existed).
+     - *Administration*: **Read-only** (call
+       `GET /repos/.../rulesets` and
+       `GET /repos/.../branches/{branch}/protection` to derive the
+       required-check contexts the bot gates on. The bot reads
+       branch protection at runtime rather than encoding a static
+       failure list — adding / removing required checks is a
+       branch-protection edit, not a bot-workflow edit. See issue
+       #528).
      - *Metadata*: **Read-only** (mandatory when any other repo
        permission is granted).
      - *Issues*: **Read & write** (call
@@ -445,10 +462,20 @@ in the `claude-skills` repo).
 Each `Claude: Cannot merge — <reason>` comment on a PR maps to one
 of:
 
-- **Required check failed**: a check listed in the `main` ruleset
-  is `FAILURE` / `TIMED_OUT` / `CANCELLED`. Fix the check, push,
-  and the `workflow_run.completed` retrigger will run the bot
-  again.
+- **Required check failed**: a context listed in the `main`
+  ruleset's `required_status_checks` is `FAILURE` / `TIMED_OUT` /
+  `CANCELLED` / `STARTUP_FAILURE` / `ACTION_REQUIRED` / `ERROR`.
+  Fix the check, push, and the `workflow_run.completed` retrigger
+  will run the bot again. A check that is failing in the rollup
+  but is NOT a required context does not produce this comment —
+  the bot only gates on the required-contexts set derived from
+  branch protection.
+- **Could not read required-check contexts from branch
+  protection**: both the modern rulesets API and the legacy
+  `branches/{branch}/protection` API returned empty. Most commonly
+  the App installation is missing `Administration: read`. Update
+  the App permissions per [Step 1](#step-1--register-the-agent-auth-merge-bot-github-app)
+  and re-authorize the install.
 - **`==COMMIT_MSG==` block extraction failed**: the PR body has
   zero or two-or-more `==COMMIT_MSG==` markers. Edit the PR body
   to leave exactly one block.
