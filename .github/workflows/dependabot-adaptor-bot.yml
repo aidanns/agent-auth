@@ -18,11 +18,19 @@ name: Dependabot Adaptor Bot
 #      Dependabot `Signed-off-by:` trailer that mirrors the trailer
 #      Dependabot already puts on its own commits, so the squash-
 #      merge body lands on `main` with valid DCO).
-#   2. Applies the `no changelog` label — Dependabot upgrades are
-#      `chore(deps)` and don't warrant a CHANGELOG entry, and
-#      `scripts/changelog/lint.py` already supports the label as a
-#      bypass.
-#   3. Applies the `automerge` label — hands the PR to merge-bot
+#   2. Inserts a `==NO_CHANGELOG==` marker line after the block so
+#      `scripts/changelog/bot.py`'s decision tree takes Arm 1 on
+#      its next wake-up — Dependabot upgrades are `chore(deps)`
+#      and don't warrant a CHANGELOG entry, and the bot uses the
+#      marker (not the label) as the source of truth. Without the
+#      marker, the bot's Arm 2 strips the label as soon as it
+#      sees a body that lacks the marker but carries the label
+#      (issue #551).
+#   3. Applies the `no changelog` label so `scripts/changelog/lint.py`
+#      bypasses the changelog-file requirement on the same PR run
+#      that triggered this workflow (the marker drives the bot on
+#      future events, but the label is what the lint reads).
+#   4. Applies the `automerge` label — hands the PR to merge-bot
 #      (.github/workflows/merge-bot.yml, ADR 0038) once every
 #      required check is green.
 #
@@ -79,19 +87,25 @@ name: Dependabot Adaptor Bot
 # context constraint by duplicating the App credentials into the
 # Dependabot secrets store.
 #
-# Idempotent: re-running on the same PR is a no-op (the body edit
-# is skipped when a `==COMMIT_MSG==` marker is already present; `gh
-# pr edit --add-label` is a no-op for labels already applied).
+# Idempotent: re-running on a fully-adapted PR is a no-op (the body
+# edit is skipped when both markers are already present; `gh pr edit
+# --add-label` is a no-op for labels already applied). A PR adapted
+# by an earlier version of this workflow that lacks the
+# `==NO_CHANGELOG==` marker (issue #551) is healed in-place by
+# prepending only the missing marker — the existing `==COMMIT_MSG==`
+# block is left untouched so the squash commit body does not change.
 
 on:
   pull_request_target:
     # `synchronize` is included so the adaptor picks up Dependabot
     # PRs that were opened before the workflow shipped (their next
-    # rebase / `@dependabot recreate` push fires `synchronize`).
-    # Idempotency is enforced by the body-block check below — if a
-    # `==COMMIT_MSG==` marker is already in the body, the whole step
-    # is a no-op, which means a maintainer who removes the
-    # `automerge` label mid-flight is not fought by the adaptor.
+    # rebase / `@dependabot recreate` push fires `synchronize`),
+    # and so PRs adapted by an earlier version of this workflow can
+    # be healed in-place when the marker contract changes (#551).
+    # Idempotency is enforced by the per-marker check below — when
+    # both markers are already in the body, the body edit is a
+    # no-op, which means a maintainer who removes the `automerge`
+    # label mid-flight is not fought by the adaptor.
     types: [opened, reopened, synchronize]
 
 permissions:
@@ -137,7 +151,7 @@ jobs:
           app-id: ${{ secrets.CHANGELOG_BOT_APP_ID }}
           private-key: ${{ secrets.CHANGELOG_BOT_PRIVATE_KEY }}
 
-      - name: Inject ==COMMIT_MSG== block and apply labels
+      - name: Inject ==COMMIT_MSG== / ==NO_CHANGELOG== markers and apply labels
         if: steps.secrets-check.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -149,33 +163,67 @@ jobs:
           existing_body=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" \
             --json body --jq .body)
 
+          # Per-marker checks rather than a single short-circuit so
+          # PRs adapted by an earlier version of this workflow (which
+          # injected only `==COMMIT_MSG==`) can be healed in-place
+          # by prepending the missing `==NO_CHANGELOG==` marker
+          # without disturbing their existing block (issue #551).
+          has_commit_msg=false
+          has_no_changelog=false
           if printf '%s' "${existing_body}" | grep -Fq '==COMMIT_MSG=='; then
-            echo "::notice::PR #${PR_NUMBER} already has a ==COMMIT_MSG== block; adaptor is a no-op."
-            exit 0
+            has_commit_msg=true
+          fi
+          if printf '%s' "${existing_body}" | grep -Fxq '==NO_CHANGELOG=='; then
+            has_no_changelog=true
           fi
 
-          # Build the new body with printf rather than a heredoc:
-          # the validator (scripts/validate-commit-msg-block.py)
-          # matches the `==COMMIT_MSG==` markers as a full line
-          # after stripping, so leading whitespace on the marker
-          # line would defeat extract_block. printf keeps every
-          # line flush-left regardless of YAML script indentation.
+          # The `==NO_CHANGELOG==` marker sits OUTSIDE the
+          # `==COMMIT_MSG==` block so the squash commit body
+          # (extracted between the two `==COMMIT_MSG==` lines) does
+          # not carry it, while
+          # `scripts/changelog/bot.py:has_no_changelog_marker`
+          # still finds it as a flush-left line in the active body.
+          # printf (rather than a heredoc) keeps every line
+          # flush-left regardless of YAML script indentation —
+          # leading whitespace on a marker line would defeat
+          # `scripts/validate-commit-msg-block.py:extract_block`.
           tmp=$(mktemp)
-          # Body + trailers only per #478 — the squash subject comes
-          # from the PR title via the merge API's `commit_title`
-          # field, so the block must NOT carry its own subject line.
-          printf '%s\n' \
-            '==COMMIT_MSG==' \
-            'See the PR description for upstream release notes.' \
-            '' \
-            'Signed-off-by: dependabot[bot] <support@github.com>' \
-            '==COMMIT_MSG==' \
-            '' \
-            > "${tmp}"
-          printf '%s' "${existing_body}" >> "${tmp}"
-          gh pr edit "${PR_NUMBER}" --repo "${REPO}" --body-file "${tmp}"
-          echo "::notice::Prepended ==COMMIT_MSG== block to PR #${PR_NUMBER} body."
+          # `"${var}"` here is a boolean-as-command: the variable
+          # holds the literal string `true` or `false`, both of
+          # which are shell built-ins that exit 0 / 1 respectively.
+          if "${has_commit_msg}" && "${has_no_changelog}"; then
+            echo "::notice::PR #${PR_NUMBER} already has both markers; body is unchanged."
+          elif "${has_commit_msg}"; then
+            # Legacy adapted PR — block is already in place.
+            # Prepend only the missing `==NO_CHANGELOG==` marker so
+            # the squash commit body extracted between the two
+            # `==COMMIT_MSG==` lines does not change.
+            printf '%s\n' '==NO_CHANGELOG==' '' > "${tmp}"
+            printf '%s' "${existing_body}" >> "${tmp}"
+            gh pr edit "${PR_NUMBER}" --repo "${REPO}" --body-file "${tmp}"
+            echo "::notice::Prepended ==NO_CHANGELOG== marker to PR #${PR_NUMBER} body (block already present)."
+          else
+            # Fresh PR — neither marker is in place. Body + trailers
+            # only per #478 — the squash subject comes from the PR
+            # title via the merge API's `commit_title` field, so the
+            # block must NOT carry its own subject line.
+            printf '%s\n' \
+              '==COMMIT_MSG==' \
+              'See the PR description for upstream release notes.' \
+              '' \
+              'Signed-off-by: dependabot[bot] <support@github.com>' \
+              '==COMMIT_MSG==' \
+              '' \
+              '==NO_CHANGELOG==' \
+              '' \
+              > "${tmp}"
+            printf '%s' "${existing_body}" >> "${tmp}"
+            gh pr edit "${PR_NUMBER}" --repo "${REPO}" --body-file "${tmp}"
+            echo "::notice::Prepended ==COMMIT_MSG== block and ==NO_CHANGELOG== marker to PR #${PR_NUMBER} body."
+          fi
 
+          # Labels are idempotent — `gh pr edit --add-label` is a
+          # no-op for labels already applied.
           gh pr edit "${PR_NUMBER}" --repo "${REPO}" \
             --add-label "no changelog" \
             --add-label "automerge"
