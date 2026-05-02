@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Read required-check contexts from branch protection
+name: read-required-contexts
 description: |
   Read the required-check contexts from the active branch-protection
   ruleset(s) for a PR's base branch, with a fallback to the legacy
@@ -149,8 +149,7 @@ runs:
         else
           # `${contexts}` is a newline-separated list; indent each
           # line for log readability. Avoids word-splitting on
-          # whitespace because context names can contain spaces
-          # (e.g. "Required checks passed").
+          # whitespace because context names can contain spaces.
           printf '%s\n' "${contexts}" | awk 'NF { print "  " $0 }'
         fi
 

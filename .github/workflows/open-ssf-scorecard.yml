@@ -2,36 +2,19 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: OpenSSF Scorecard
+name: open-ssf-scorecard
 
-# Reusable child workflow for the weekly orchestrator (parent
-# `weekly.yml`, issue #458 under #440). Carries the OpenSSF Scorecard
-# logic from the standalone `scorecard.yml` byte-for-byte: same
-# action SHAs, same permissions, same publish + gate split. The
-# standalone `scorecard.yml` keeps running in parallel under
-# Strategy C (#440 Phase 5) until a sweep PR retires it; until then
-# this child is invoked from `weekly.yml`'s `workflow_call` slot and
-# the standalone `push: branches: [main]` + cron triggers stay
-# unchanged on the original file.
-#
-# OpenSSF Scorecard runs the project through ~20 automated supply-
-# chain checks (Branch-Protection, Pinned-Dependencies,
-# Signed-Releases, Token-Permissions, SAST, Code-Review,
-# Dangerous-Workflow, ...) and emits per-check scores plus an
-# aggregate 0–10 score. The aggregate score is gated against
-# `SCORECARD_MIN_SCORE` — a regression below the floor fails the
-# workflow so a dependency bump or workflow change that drops a
-# check can't slip onto main unnoticed. The floor is deliberately
-# set to the current observed score so future changes ratchet
-# rather than regress.
+# OpenSSF Scorecard child of `weekly.yml`. Runs ~20 automated
+# supply-chain checks and emits an aggregate 0–10 score; gated
+# against `SCORECARD_MIN_SCORE` so a regression below the floor
+# fails the workflow.
 #
 # Split into two jobs because scorecard-action's publish endpoint
-# rejects any publishing job that contains a non-`uses:` step (see
-# https://github.com/ossf/scorecard-action#workflow-restrictions).
-# `publish` holds only `uses:` steps so the signed publication to
-# api.securityscorecards.dev succeeds; `gate` re-runs scorecard-action
-# without publication so it can pair the JSON output with a `run:`
-# threshold check.
+# rejects any publishing job that contains a non-`uses:` step
+# (https://github.com/ossf/scorecard-action#workflow-restrictions).
+# `publish` holds only `uses:` steps; `gate` re-runs scorecard-
+# action without publication and pairs its JSON output with a
+# `run:` threshold check.
 #
 # See also:
 #   - design/SELF_ASSESSMENT.md → "OpenSSF Scorecard" for the target
@@ -44,7 +27,6 @@ permissions: read-all
 
 jobs:
   publish:
-    name: Scorecard analysis (publish)
     runs-on: ubuntu-latest
     permissions:
       # For uploading SARIF to the GitHub Security tab.
@@ -83,7 +65,6 @@ jobs:
           sarif_file: results.sarif
 
   gate:
-    name: Scorecard threshold gate
     needs: publish
     runs-on: ubuntu-latest
     permissions:

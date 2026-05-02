@@ -2,13 +2,10 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Nightly
+name: nightly
 
-# Orchestrator shell for daily-cadence checks under the uv-style
-# nested workflow_call CI structure (parent issue #440). Carries the
-# mutation-testing child today (ADR 0021); subsequent daily-cadence
-# checks migrate underneath this orchestrator in follow-up issues
-# and add their job names to the aggregator's `needs:` list.
+# Daily-cadence orchestrator. Carries `mutation` today.
+
 on:
   workflow_dispatch:
   schedule:
@@ -16,7 +13,6 @@ on:
 
 # Don't cancel an in-flight scheduled run when a manual dispatch arrives:
 # nightly checks are expensive and the in-flight result is still useful.
-# No PR keying needed since no PR triggers exist on this workflow.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -26,37 +22,4 @@ permissions:
 
 jobs:
   mutation:
-    name: Mutation
     uses: ./.github/workflows/mutation.yml
-
-  required-checks-passed:
-    # Repo-wide aggregator (#440 "Decisions (locked in)"): a single
-    # `Required checks passed` status check sits at the top of each
-    # parent orchestrator and gates its child workflows. Subsequent
-    # migration issues add each `workflow_call` child workflow's job
-    # name to `needs:` here.
-    name: Required checks passed
-    needs: [mutation]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify all required checks passed
-        # Pass `needs` through `env:` so the JSON survives shell
-        # quoting verbatim — child job names that contain colons or
-        # quotes would otherwise break the inline expansion. `jq -e`
-        # exits non-zero on a `false` boolean, so the step fails
-        # whenever any upstream `needs.*.result` is anything other
-        # than `success`. Per issue #441 ("fails on any
-        # failed/skipped/timed-out result"), `skipped` is treated as
-        # a failure alongside `failure`, `cancelled`, and `timed_out`
-        # — a child workflow that legitimately opts out via `if:`
-        # will need to surface a `success` result (e.g. via a
-        # short-circuit step) rather than skipping the job
-        # altogether.
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: |
-          set -euo pipefail
-          echo "${NEEDS}" \
-            | jq -e 'to_entries | all(.value.result == "success")' \
-            > /dev/null

@@ -44,7 +44,7 @@
 # re-declares its own write surface. Concurrency groups are per-job
 # so the three trigger paths don't fight one another.
 
-name: Release Bot
+name: release-bot
 
 on:
   push:

@@ -2,36 +2,18 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Build
+name: build
 
-# Production-artifact build child workflow for the uv-style nested
-# `workflow_call` CI structure (parent issue #440). Runs
-# `scripts/build-release-artifacts.sh` — the same script
-# `release-bot.yml` invokes on tag push — into a temp `dist/` dir, then
-# asserts the expected per-package artefact set is present. No signing,
-# no SBOM generation, no upload. The job exists to catch the
-# workspace-split-style regression where the build silently breaks but
-# the release pipeline keeps tagging + writing CHANGELOG entries (the
-# release "looks" successful from the outside).
+# Production-artifact build child of `ci.yml`. Runs
+# `scripts/build-release-artifacts.sh` (same script `release-bot.yml`
+# invokes on tag push) into a temp `dist/`, then asserts the
+# per-package artefact set is present. Catches build regressions
+# the release pipeline would otherwise tag through silently (#324,
+# #325).
 #
-# The aggregator in `ci.yml` treats `skipped` as a failure alongside
-# `failure` / `cancelled` / `timed_out`, so this job must actually run
-# and report `success`. Do not gate it behind any `if:` that could
-# resolve to a `skipped` outcome.
-#
-# Strategy C (issue #460): the original top-level `release-dryrun.yml`
-# workflow is kept in place and runs in parallel with this new chain
-# until the branch-protection ruleset switches to the
-# `Required checks passed` aggregator (tracked under #5.2). Both
-# surfaces must stay green; the build logic here is a byte-for-byte
-# port of `release-dryrun.yml`'s `build-dryrun` job.
-#
-# Independent build (issue #460): this workflow does NOT upload its
-# `dist/` for downstream consumption. The sibling `check-release.yml`
-# workflow performs its own build run; the two paths exercise the same
-# script independently so a regression in either lane lights up the
-# corresponding check rather than masking behind a shared artefact
-# handoff.
+# Independent build: this workflow does NOT upload `dist/` for the
+# sibling `check-release.yml` to consume — both paths build
+# separately so a regression in either lights up its own check.
 on:
   workflow_call:
 
@@ -40,7 +22,6 @@ permissions:
 
 jobs:
   build:
-    name: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

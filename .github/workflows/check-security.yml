@@ -2,37 +2,27 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Check Security
+name: check-security
 
-# `workflow_call` parent shell for security-cadence checks under the
-# uv-style nested workflow_call CI structure (parent issue #440).
-# Currently carries the CodeQL analyse child (`codeql-analyse.yml`,
-# issue #447) and the Dependency Review child
-# (`check-dependency-review.yml`, issue #448); subsequent migration
-# issues add `dependency-submission` (#449) and `ripsecrets` (#459)
-# under here as further `workflow_call` children, each one extending
-# the aggregator's `needs:` list.
+# Security-cadence child of `ci.yml`. Carries CodeQL, ripsecrets, and
+# the dependency-review / dependency-submission pair.
+
 on:
   workflow_call:
     inputs:
-      # Centralised event-kind gating from `ci.yml`'s `plan` job
-      # (issue #530). Forwarded to leaf children whose actions
-      # require a base/head diff (`check-dependency-review`) or whose
-      # write-token POSTs would 403 on fork PRs
-      # (`check-dependency-submission`).
       event_has_diff_base_head:
-        description: >-
-          True for events that carry a base/head diff
-          (`pull_request`, `pull_request_target`, `merge_group`) — the
-          set the GitHub `actions/dependency-review-action` supports.
+        # `actions/dependency-review-action` only supports events that
+        # carry a base/head diff (`pull_request`, `pull_request_target`,
+        # `merge_group`). Plumbed in from `ci.yml`'s `plan` job so the
+        # leaf child can short-circuit elsewhere.
+        description: True for events that carry a base/head diff.
         required: true
         type: boolean
       event_from_external_repo:
-        description: >-
-          True for `pull_request` events whose head repo differs from
-          the workflow repo (i.e. fork PRs). Fork PRs receive a
-          read-only `GITHUB_TOKEN`, so any check that POSTs to
-          `/repos/.../dependency-graph/snapshots` etc. must short-circuit.
+        # Fork PRs receive a read-only `GITHUB_TOKEN`; the dependency-
+        # submission POST would 403. Plumbed in so that leaf can
+        # short-circuit on fork PRs.
+        description: True for `pull_request` events from a fork.
         required: true
         type: boolean
 
@@ -41,7 +31,6 @@ permissions:
 
 jobs:
   codeql-analyse:
-    name: CodeQL Analyse
     uses: ./.github/workflows/codeql-analyse.yml
     permissions:
       actions: read
@@ -49,10 +38,17 @@ jobs:
       security-events: write
 
   ripsecrets:
-    name: ripsecrets
     uses: ./.github/workflows/ripsecrets.yml
+
   check-dependency-review:
-    name: Check Dependency Review
+    # Wait for `check-dependency-submission`'s POST so the review
+    # action sees a head-SHA snapshot in the Dependency Graph
+    # (otherwise it emits a sticky "no snapshots found" PR comment).
+    # `ci.yml`'s aggregator depends on `check-security`, which fails
+    # if either child fails (per #441), so a `submit` failure that
+    # GitHub propagates as `skipped` here is correctly rejected —
+    # the review verdict against a missing snapshot would be
+    # meaningless.
     needs: [check-dependency-submission]
     uses: ./.github/workflows/check-dependency-review.yml
     with:
@@ -60,43 +56,10 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+
   check-dependency-submission:
-    name: Check Dependency Submission
     uses: ./.github/workflows/check-dependency-submission.yml
     with:
       event_from_external_repo: ${{ inputs.event_from_external_repo }}
     permissions:
       contents: write
-
-  required-checks-passed:
-    # Per-parent aggregator (#440 "Decisions (locked in)"): each
-    # parent orchestrator carries its own `Required checks passed`
-    # job that consolidates the results of its `workflow_call`
-    # children, and `ci.yml`'s repo-wide aggregator depends on this
-    # one in turn. Subsequent migration issues add each new child
-    # workflow's job name to `needs:` here.
-    name: Required checks passed
-    needs: [codeql-analyse, ripsecrets, check-dependency-submission, check-dependency-review]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify all required checks passed
-        # Pass `needs` through `env:` so the JSON survives shell
-        # quoting verbatim — child job names that contain colons or
-        # quotes would otherwise break the inline expansion. `jq -e`
-        # exits non-zero on a `false` boolean, so the step fails
-        # whenever any upstream `needs.*.result` is anything other
-        # than `success`. Per issue #441 ("fails on any
-        # failed/skipped/timed-out result"), `skipped` is treated as
-        # a failure alongside `failure`, `cancelled`, and `timed_out`
-        # — a child workflow that legitimately opts out via `if:`
-        # will need to surface a `success` result (e.g. via a
-        # short-circuit step) rather than skipping the job
-        # altogether.
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: |
-          set -euo pipefail
-          echo "${NEEDS}" \
-            | jq -e 'to_entries | all(.value.result == "success")' \
-            > /dev/null

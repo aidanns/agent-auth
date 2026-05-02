@@ -2,54 +2,31 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Check Changelog
+name: check-changelog
 
-# `workflow_call` child of `ci.yml` (parent issue #440) that owns the
-# changelog/@unreleased/*.yml gating surface. Splits the original
-# `.github/workflows/changelog-lint.yml` into two named jobs so the
-# parent's `Required checks passed` aggregator can surface
-# entry-presence and schema-validity as separate signals:
+# Changelog gating child of `ci.yml`. Two surfaces:
 #
-# - `exists` — verifies a `changelog/@unreleased/pr-<N>-*.yml` entry was
-#   *added* in this PR's diff, OR the PR carries the `no changelog`
-#   bypass label. Mirrors `scripts/changelog/lint.py`'s "Check 1" so
-#   contributors see the same error message whether the legacy or new
-#   workflow flagged the gap.
-# - `format` — runs the full schema validator
-#   (`scripts/changelog/lint.py`) plus the `version_logic` + lint unit
-#   tests (`scripts/changelog/test.sh`). Catches naming, schema,
-#   release-as, and description-style violations even when the bypass
-#   label is set, mirroring the legacy workflow's behaviour.
+# - `exists` — verifies a `changelog/@unreleased/pr-<N>-*.yml` entry
+#   was added in this PR's diff, OR the PR carries the
+#   `no changelog` bypass label. Mirrors `scripts/changelog/lint.py`
+#   "Check 1".
+# - `format` — full schema validator
+#   (`scripts/changelog/lint.py`) + lint unit tests
+#   (`scripts/changelog/test.sh`). Runs even when `no changelog` is
+#   set so naming, schema, release-as, and description-style
+#   violations still surface.
 #
-# Behaviour parity with the legacy workflow is byte-for-byte for the
-# checks themselves; the difference is only the surfacing into two job
-# names rather than one. The legacy `changelog-lint.yml` continues to
-# run alongside this child workflow until the Strategy-C cutover (#440
-# Phase 5).
-#
-# Release-PR skip and non-PR events: the legacy workflow skipped the
-# whole job when the PR's head ref started with `release/` (release PRs
-# delete every `@unreleased/*.yml`, renaming them under `<X.Y.Z>/`,
-# and would otherwise fail the file-presence rule). The new aggregator
-# treats `skipped` as a failure (per #441), so both jobs here run
-# unconditionally and short-circuit at step level — emitting a
-# `skip=true` output that gates the remaining steps. The same
-# short-circuit covers `push (main)` / `merge_group` /
-# `workflow_dispatch` runs of `ci.yml` where there is no PR diff to
-# inspect.
+# Both jobs run unconditionally and short-circuit at step level
+# (the aggregator rejects `skipped` per #441) for non-PR events and
+# release PRs (release PRs DELETE every `@unreleased/*.yml`,
+# renaming them under `<X.Y.Z>/`, so the presence rule would
+# otherwise fail).
+
 on:
   workflow_call:
     inputs:
-      # Centralised event-kind gate from `ci.yml`'s `plan` job
-      # (issue #530). The `exists` and `format` jobs both need PR
-      # context (the diff and labels) and short-circuit on non-PR
-      # events. The release-PR head-ref skip below is retained
-      # alongside this gate — it's a content-specific changelog rule
-      # rather than event-kind policy and stays local.
       event_is_pull_request:
-        description: >-
-          True iff the originating event is a pull_request (the
-          changelog checks need PR diff + labels).
+        description: True iff the originating event is a pull_request.
         required: true
         type: boolean
 
@@ -58,14 +35,10 @@ permissions:
 
 jobs:
   exists:
-    name: exists
     runs-on: ubuntu-latest
-    # Job runs unconditionally — the aggregator treats `skipped` as a
-    # failure (per #441), so the release-PR / non-PR-event cases are
-    # handled at step level by short-circuiting to `success` rather
-    # than skipping the job. The legacy workflow skipped the whole job
-    # on release PRs because it didn't feed a `Required checks passed`
-    # aggregator; the new shape needs an explicit success.
+    # Job runs unconditionally — the aggregator rejects `skipped`
+    # (#441), so the release-PR / non-PR-event cases short-circuit
+    # at step level to `success` rather than skipping the job.
     steps:
       - name: Short-circuit when no presence check is needed
         # Skip the lint and surface `success` when:
@@ -132,7 +105,6 @@ jobs:
           printf 'changelog entry present: %s\n' "${added[@]}"
 
   format:
-    name: format
     runs-on: ubuntu-latest
     # Job runs unconditionally for the same reason as `exists` above —
     # the aggregator treats `skipped` as a failure.

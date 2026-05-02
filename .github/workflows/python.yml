@@ -2,29 +2,16 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Python
+name: python
 
-# `workflow_call` child of `check-lint.yml` carrying the Python lint +
-# static analysis jobs (ruff + mypy + pyright). Migrated from the
-# standalone `typecheck.yml` workflow under the uv-style nested CI
-# structure (parent issue #440, Phase 2 issue #453; ruff added under
-# issue #459). Per the strategy-C decision locked in 2026-05-01, the
-# originals (`typecheck.yml`, `check.yml`) continue to run alongside
-# this child until the Phase 5 sweep deletes them; do not remove them
-# from here.
-#
-# The original `typecheck.yml` ran a single `typecheck` job that
-# invoked `task typecheck` (which calls `scripts/typecheck.sh` →
-# `mypy` then `pyright` sequentially). This file splits the two
-# checkers into separate sibling jobs so they parallelise across CI
-# runners; the `ruff` sibling added in #459 follows the same per-tool
-# pattern. mypy and pyright source `scripts/_bootstrap_venv.sh` (the
-# same helper `scripts/typecheck.sh` uses) so the per-OS/arch venv is
-# created and `UV_PROJECT_ENVIRONMENT` is exported, then `exec` their
-# tool through `uv run --no-sync`; going through `task typecheck`
-# would re-couple the two checkers serially. `ruff` runs the
-# `setup-toolchain`-installed system binary directly — no project
-# venv required, matching how `scripts/lint.sh` invokes it locally.
+# Python lint + static analysis child of `check-lint.yml`. Three
+# parallel jobs: `ruff` (lint), `mypy`, `pyright`. mypy / pyright
+# both source `scripts/_bootstrap_venv.sh` (the per-OS/arch venv
+# helper `scripts/typecheck.sh` uses) and `exec uv run --no-sync`
+# their tool — splitting the two so they parallelise across runners
+# rather than running serially through `task typecheck`. `ruff`
+# uses the `setup-toolchain`-installed system binary directly,
+# matching `scripts/lint.sh`.
 
 on:
   workflow_call:
@@ -34,7 +21,6 @@ permissions:
 
 jobs:
   ruff:
-    name: ruff
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -62,7 +48,6 @@ jobs:
           ruff check "${python_files[@]}"
 
   mypy:
-    name: mypy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -79,7 +64,6 @@ jobs:
           exec uv run --no-sync mypy
 
   pyright:
-    name: pyright
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

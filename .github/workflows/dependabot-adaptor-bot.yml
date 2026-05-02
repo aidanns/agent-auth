@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Dependabot Adaptor Bot
+name: dependabot-adaptor-bot
 
 # Adapt Dependabot PRs to the project's PR conventions so they pass
 # the required `pr-lint` and `changelog-lint` checks without manual
@@ -117,7 +117,6 @@ permissions:
 
 jobs:
   adapt:
-    name: dependabot-adaptor-bot
     runs-on: ubuntu-latest
     # `dependabot[bot]` is the GitHub-assigned login for the
     # Dependabot App; a fork PR's `user.login` is always the fork

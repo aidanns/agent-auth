@@ -2,44 +2,20 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Check Dependency Review
+name: check-dependency-review
 
-# `workflow_call` child of `check-security.yml`, itself a child of
-# `ci.yml` (parent issue #440). Carries the GitHub Dependency Review
-# action that previously lived in the standalone
-# `dependency-review.yml`. Per the Strategy C migration plan agreed on
-# the parent issue, this workflow runs alongside the original
-# `dependency-review.yml` until Phase 5 cuts branch protection over to
-# the `Required checks passed` aggregator and the original is deleted.
-# Both produce a check context named `dependency-review`; GitHub
-# disambiguates them by `workflowName`, so the existing branch-
-# protection rule on the original continues to fire identically while
-# the new chain runs in parallel.
-#
-# The filename is `check-dependency-review.yml` (not
-# `dependency-review.yml`) so the new workflow_call child can coexist
-# on disk with the original `dependency-review.yml` for the duration
-# of the parallel-run migration.
-#
-# Action SHA, permissions, and inputs (`fail-on-severity: high`,
-# `comment-summary-in-pr: always`) are carried over byte-for-byte
-# from the original — see `dependency-review.yml` for the rationale on
-# each.
+# GitHub Dependency Review child of `check-security.yml`.
+# `fail-on-severity: high`, `comment-summary-in-pr: always`.
+
 on:
   workflow_call:
     inputs:
-      # Centralised event-kind gate from `ci.yml`'s `plan` job
-      # (issue #530). `actions/dependency-review-action` only supports
-      # `pull_request`, `pull_request_target`, and `merge_group` — on
-      # `push` / `workflow_dispatch` it has no base/head pair to scan
-      # and exits non-zero. Gate the steps (not the whole job) so the
-      # job's result stays `success` and `check-security.yml`'s
-      # `Required checks passed` aggregator (which rejects `skipped`)
-      # stays green.
+      # `actions/dependency-review-action` only supports events that
+      # carry a base/head diff. Gate the steps (not the whole job)
+      # so the job stays `success` rather than `skipped` (which
+      # ci.yml's aggregator rejects per #441).
       event_has_diff_base_head:
-        description: >-
-          True iff the originating event carries a base/head diff
-          (`pull_request`, `pull_request_target`, `merge_group`).
+        description: True for events that carry a base/head diff.
         required: true
         type: boolean
 

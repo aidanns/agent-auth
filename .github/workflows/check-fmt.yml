@@ -2,22 +2,10 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Check Fmt
+name: check-fmt
 
-# Intermediate orchestrator under `ci.yml` for formatting / lint checks
-# (issue #440 nested workflow_call structure). Children today:
-# `spdx-license-headers` (issue #452, the REUSE lint migration), plus
-# inline `treefmt` and `ruff-format` jobs (issue #459, splitting
-# `check.yml`). Subsequent migration issues add additional children
-# as siblings under the same `required-checks-passed` aggregator
-# below; the aggregator pattern matches `ci.yml` so the same
-# forwarding contract holds at every level.
-#
-# Until every formatting workflow migrates underneath here, this shell
-# runs alongside (not in place of) the existing top-level workflows
-# (e.g. `reuse.yml`, `check.yml`). The Phase 5 sweep deletes the
-# originals once `Required checks passed` becomes the sole required
-# status check on `main`.
+# Formatting / lint child of `ci.yml`. Carries `spdx-license-headers`
+# (REUSE lint), `treefmt`, and `ruff-format`.
 
 on:
   workflow_call:
@@ -27,11 +15,9 @@ permissions:
 
 jobs:
   spdx-license-headers:
-    name: spdx-license-headers
     uses: ./.github/workflows/spdx-license-headers.yml
 
   treefmt:
-    name: treefmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -50,7 +36,6 @@ jobs:
         run: treefmt --ci
 
   ruff-format:
-    name: ruff-format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -76,30 +61,3 @@ jobs:
           fi
           mapfile -t python_files <<<"${python_files_raw}"
           ruff format --check "${python_files[@]}"
-
-  required-checks-passed:
-    # Aggregator at this level mirrors `ci.yml`'s pattern so the
-    # parent's `needs.check-fmt.result` collapses to a single
-    # `success` / `failure` for the top-level `Required checks
-    # passed` gate. Future issues add `needs:` entries (treefmt,
-    # ruff format) without touching `ci.yml`.
-    name: Required checks passed
-    needs: [spdx-license-headers, treefmt, ruff-format]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify all required checks passed
-        # Same JSON-via-env pattern as `ci.yml`'s aggregator: passes
-        # `needs` through `env:` so the JSON survives shell quoting
-        # verbatim. `jq -e` exits non-zero on a `false` boolean, so
-        # the step fails whenever any upstream `needs.*.result` is
-        # anything other than `success` (per #441, `skipped` is
-        # treated as a failure alongside `failure`, `cancelled`, and
-        # `timed_out`).
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: |
-          set -euo pipefail
-          echo "${NEEDS}" \
-            | jq -e 'to_entries | all(.value.result == "success")' \
-            > /dev/null

@@ -2,27 +2,13 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Test Smoke
+name: test-smoke
 
-# `workflow_call` child of `ci.yml` (parent issue #440, this slot
-# #461). Carries the install-from-wheels smoke matrix from the
-# original top-level `test.yml`'s `install-from-wheels` job, which
-# end-to-end-exercises the per-package install path that
-# `release-publish.yml` ships (ADR 0044). The matrix shape is
-# preserved byte-for-byte from the original — both matrix entries
-# still produce a `install-from-wheels (<service.name>, <service.entrypoint>)`
-# parens-variant check context, which already conforms to the #414
-# naming convention.
-#
-# Strategy C (#440 phase plan, agreed 2026-05-01): the original
-# `test.yml` stays in place for the duration of the migration, so
-# its existing `install-from-wheels` matrix continues to run in
-# parallel with this child. Phase 5 retires the original.
-#
-# The aggregator in `ci.yml` treats `skipped` as a failure alongside
-# `failure` / `cancelled` / `timed_out`, so every matrix shard must
-# actually run and report `success`. Do not gate any shard behind an
-# `if:` that could resolve to a `skipped` outcome.
+# Install-from-wheels smoke child of `ci.yml`. End-to-end exercises
+# the per-package install path that `release-publish.yml` ships
+# (ADR 0044). Matrix emits
+# `install-from-wheels (<service.name>, <service.entrypoint>)` per
+# row.
 on:
   workflow_call:
 
@@ -48,6 +34,12 @@ jobs:
   # installs uv on PATH — the install scripts must work without uv
   # (uv is the build-time dependency, not an install-time one).
   install-from-wheels:
+    # Explicit kebab-case parens template per ADR 0046 § Naming
+    # conventions — sibling matrix jobs (`unit-tests`,
+    # `integration-tests`, `analyze`) all declare their template
+    # too. GitHub's default object-matrix rendering happens to
+    # match this string today; pinning it here is forward-defence.
+    name: install-from-wheels (${{ matrix.service.name }}, ${{ matrix.service.entrypoint }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

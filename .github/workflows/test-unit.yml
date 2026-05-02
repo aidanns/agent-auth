@@ -2,34 +2,14 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Test Unit
+name: test-unit
 
-# `workflow_call` child of `ci.yml` (parent issue #440, this slot
-# #461). Carries the per-package unit-test surface from the original
-# top-level `test.yml` `unit` job, reshaped into a matrix that emits
-# one `unit-tests (<package>)` check context per workspace member.
-#
-# Per #414's parens-variant naming convention (job IDs use the parens
-# style for matrix variants), the matrix `name:` is
-# `unit-tests (<package>)` rather than the legacy flat-suffix
-# `unit-<package>` form.
-#
-# Strategy C (#440 phase plan, agreed 2026-05-01): the original
-# `test.yml` stays in place for the duration of the migration, so its
-# existing `unit` and `tests` aggregator jobs continue to run in
-# parallel with the new per-package matrix here. test.yml's `unit`
-# job is the authoritative gate for workspace-wide coverage
-# (`check-package-coverage.sh`) and the workspace-only checks that
-# live under the root `tests/` tree (release-semver, openapi-spec,
-# pip-audit-to-sarif, scan-failure); this matrix deliberately scopes
-# to per-package `tests/` trees only and runs without coverage so
-# the per-shard runtime stays bounded. Phase 5 of #440 will retire
-# the original workflow and re-home the workspace gate then.
-#
-# The aggregator in `ci.yml` treats `skipped` as a failure alongside
-# `failure` / `cancelled` / `timed_out`, so every matrix shard must
-# actually run and report `success`. Do not gate any shard behind an
-# `if:` that could resolve to a `skipped` outcome.
+# Per-package unit-test child of `ci.yml`. Matrix emits one
+# `unit-tests (<package>)` check per workspace member. Scoped to
+# per-package `tests/` trees and runs without coverage so the
+# per-shard runtime stays bounded; workspace-wide coverage and the
+# root `tests/` tree (release-semver, openapi-spec, pip-audit-to-
+# sarif, scan-failure) live elsewhere in this orchestrator.
 on:
   workflow_call:
 

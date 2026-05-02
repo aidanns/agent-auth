@@ -2,25 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: Check Standards
+name: check-standards
 
-# Project-standards check for the uv-style nested `workflow_call` CI
-# structure (parent issue #440, this slot #455). Runs the cross-project
-# standards verifier (`task verify-standards` -> `scripts/verify-standards.sh`):
-# Taskfile coverage, Dependabot ecosystem coverage, bash CI gating, and
-# `uv.lock` sync. The slot has no nested `check-*` parent shell — there
-# is only ever one logical check here, so this workflow is a direct
-# child of `ci.yml`, sibling of `check-docs` / `check-lint` / etc.
-#
-# The aggregator in `ci.yml` treats `skipped` as a failure alongside
-# `failure` / `cancelled` / `timed_out`, so this job must actually run
-# and report `success`. Do not gate it behind any `if:` that could
-# resolve to a `skipped` outcome.
-#
-# Per the migration plan (issue #455 strategy C), the original
-# top-level `verify-standards.yml` workflow stays in place and runs in
-# parallel with this child until Phase 5 of #440 retires it. The
-# branch-protection ruleset is untouched in this PR.
+# Project-standards child of `ci.yml`. Runs `task verify-standards`
+# (-> `scripts/verify-standards.sh`): Taskfile coverage, Dependabot
+# ecosystem coverage, bash CI gating, `uv.lock` sync.
 on:
   workflow_call:
 
@@ -29,7 +15,6 @@ permissions:
 
 jobs:
   verify-standards:
-    name: verify-standards
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

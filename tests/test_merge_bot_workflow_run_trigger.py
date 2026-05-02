@@ -46,34 +46,14 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "merge-bot.yml"
 
-# Every workflow name expected to feed merge-bot via workflow_run. The
-# list MUST stay in sync with merge-bot.yml. Drift in either direction
-# (workflow renamed, new required workflow added without updating the
-# merge-bot list) breaks the bot's refire-on-CI-green path silently —
-# pinning the exact set here surfaces the drift at test time. See
-# issue #348 for the rationale; the list excludes Merge Bot itself
-# (anti-recursion), release / publish / scorecard / dependency-
-# submission / mutation / benchmark workflows that don't run on PRs,
-# and Release Tag (only fires on PR `closed`, well after merge).
-EXPECTED_WORKFLOWS: frozenset[str] = frozenset(
-    {
-        "Test",
-        "Check",
-        "Typecheck",
-        "CodeQL",
-        "PR Lint",
-        "DCO",
-        "Changelog Lint",
-        "REUSE",
-        "Dependency Review",
-        "Verify Design",
-        "Verify Function Tests",
-        "Verify Standards",
-        "Verify Token CLI / HTTP Parity",
-        "Changelog Bot",
-        "Release Dryrun",
-    }
-)
+# Workflows expected to feed merge-bot via workflow_run. After issue
+# #467 collapsed the per-workflow listener onto a single `ci`
+# orchestrator, only one entry is required — its
+# `required-checks-passed` aggregator is the sole branch-protection
+# check, so a green `ci` run is the one signal that every gate
+# passed. ADR 0046 lower-cased the workflow `name:` (= filename
+# minus `.yml`).
+EXPECTED_WORKFLOWS: frozenset[str] = frozenset({"ci"})
 
 
 def _load_workflow() -> dict[Any, Any]:
