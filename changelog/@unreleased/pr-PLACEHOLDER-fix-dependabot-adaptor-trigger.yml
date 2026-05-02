@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: fix
+fix:
+  description: |
+    `dependabot-adaptor-bot.yml` now triggers on `pull_request_target`
+    so the App credentials resolve. Workflows triggered by
+    `dependabot[bot]`-authored PRs run in the Dependabot secrets
+    context (not the Actions secrets context), so the previous
+    `pull_request` trigger short-circuited every Dependabot run at
+    the secrets-check guard and skipped the `==COMMIT_MSG==`
+    body-edit and `automerge` / `no changelog` label adds. The new
+    trigger runs in the base-repo context where the Actions secrets
+    are visible.
+  links:
+    - https://github.com/aidanns/agent-auth/issues/537
