@@ -8,4 +8,4 @@ improvement:
     `test-system-macos-tart.yml` reusable workflow lands ahead of its
     `ci.yml` wiring (split per ADR 0048) so GitHub registers it.
   links:
-    - https://github.com/aidanns/agent-auth/pull/PRNUM
+    - https://github.com/aidanns/agent-auth/pull/597
