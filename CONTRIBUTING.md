@@ -962,7 +962,8 @@ A subset of the rules below is **CI-enforced**; the rest are
 
   **CUT** —
 
-  1. Diff-recap (renamed files, adjusted regexes, new gates — `git show` has them).
+  1. Diff-recap (renamed files, adjusted regexes, new gates —
+     `git show` has them).
   2. Narrative connectives that add no information ("Additionally,",
      "It is worth noting that,", "As a follow-up,").
   3. Success-path confirmations ("the tests pass", "behaviour at
