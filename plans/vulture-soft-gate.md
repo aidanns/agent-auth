@@ -54,11 +54,12 @@ workspace-wide whitelist module.
    `F841` to apply only to unused-locals, not parameters, and would
    otherwise flag every suppression site as an "unused noqa").
 3. **`scripts/check-dead-code.sh`** — new per-package helper that
-   iterates `packages/*/`, invokes `uv run --no-sync vulture --config <pkg>/pyproject.toml <pkg>/src` per package, and emits
-   findings to stdout grouped by package. Exits 0 always (advisory):
-   non-zero vulture exit codes are translated to a banner ("found N
-   results — advisory only"), so the gate cannot fail merge by
-   accident.
+   iterates `packages/*/`, invokes `uv run --no-sync vulture --min-confidence 80 <pkg>/src` per package, and emits findings
+   to stdout grouped by package. Exits 0 always (advisory): non-zero
+   vulture exit codes are translated to a banner ("found N results
+   — advisory only"), so the gate cannot fail merge by accident. The
+   threshold lives on the script's command line — there is no
+   per-package `[tool.vulture]` block (see deliverable #2).
 4. **`task dead-code`** — workspace-level Taskfile entry that runs
    `scripts/check-dead-code.sh` so the gate is locally reproducible.
 5. **`.github/workflows/check-lint.yml`** — add a new `dead-code`
@@ -90,9 +91,13 @@ workspace-wide whitelist module.
    `aidanns/agent-auth` for promoting the gate from soft to hard
    (required) once the noise floor stabilises. Link from the ADR
    and from the PR body.
-9. **`changelog/@unreleased/pr-<N>-vulture-soft-gate.yml`** — author
-   the changelog entry by hand (changelog-bot does not auto-author).
-   Type is `feature`.
+9. **No changelog entry.** The PR ships under the `chore(ci):`
+   prefix because CONTRIBUTING.md "Allowed scopes" makes `(ci)`
+   internal-only — the pr-lint validator rejects `feature(ci):`,
+   so `chore(ci):` is the only valid prefix here. `chore:` carries
+   no release-notes contribution, so no `changelog/@unreleased/*.yml`
+   is added; the PR carries the `no changelog` bypass label instead
+   (per CONTRIBUTING.md "Manual changelog entries").
 
 ## Verification before push
 
@@ -131,6 +136,8 @@ workspace-wide whitelist module.
   entry needed because vulture installs from PyPI through the venv.
 - **`testing-standards.md`** — N/A (no new tests; the gate itself
   IS a test of the source tree).
-- **`release-and-hygiene.md`** — changelog entry is required because
-  the prefix is `feature(ci):` (release-entry-bearing). Hand-authored
-  per project convention.
+- **`release-and-hygiene.md`** — no changelog entry is required.
+  CONTRIBUTING.md "Allowed scopes" reserves `(ci)` for internal-only
+  changes, so the PR ships as `chore(ci):` and carries the
+  `no changelog` bypass label (`chore:` produces no release-notes
+  contribution).
