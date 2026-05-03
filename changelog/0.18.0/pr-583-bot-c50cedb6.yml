@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    `merge-bot` now responds to `@agent-auth-merge-bot update` PR
+    comments by calling `update-branch` on the PR, with no merge
+    attempt.
+  links:
+    - https://github.com/aidanns/agent-auth/pull/583
