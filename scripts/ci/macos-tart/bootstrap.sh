@@ -11,7 +11,7 @@
 # -> `com.culturedcode.ThingsMac` directly into TCC.db (SIP off in
 # the cirruslabs base image makes this possible), bootstraps `uv`,
 # and seeds a `ci-smoke-todo` to-do that the smoke test reads back
-# through the AppleScript CLI. See ADR 0048 for the design rationale
+# through the AppleScript CLI. See ADR 0049 for the design rationale
 # and `docs/operations/macos-tart-ci.md` for failure-mode debugging.
 
 set -euo pipefail

@@ -31,7 +31,7 @@ name: test-system-macos-tart
 # The smoke test is plumbing only — full agent-auth -> things-bridge
 # -> CLI -> Things 3 e2e is tracked separately as #567. A pre-baked
 # Tart image with Things 3 + TCC seed is tracked as #568. See
-# ADR 0048.
+# ADR 0049.
 
 on:
   workflow_call:
@@ -190,7 +190,7 @@ jobs:
         run: |
           set -euo pipefail
           # No `actions/cache` here: the base image is ~30 GB which
-          # exceeds GitHub's 10 GB per-repo cache cap (ADR 0048
+          # exceeds GitHub's 10 GB per-repo cache cap (ADR 0049
           # "Consequences").
           tart pull "${IMAGE}"
           tart clone "${IMAGE}" "${VM}"

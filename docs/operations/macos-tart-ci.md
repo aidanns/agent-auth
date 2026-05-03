@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 # macOS-Tart-VM CI lane: operator's guide
 
-Companion to ADR 0048 and
+Companion to ADR 0049 and
 `.github/workflows/test-system-macos-tart.yml`. This guide is for
 the operator triaging a failure of the macOS-Tart-VM smoke lane, or
 bumping the digest-pinned base image / Tart CLI version.

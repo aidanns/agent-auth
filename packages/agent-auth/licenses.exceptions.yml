@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+# License-allowlist exceptions for the ``agent-auth`` workspace
+# member. Read by ``scripts/ci/check_license_allowlist.py`` (#575).
+#
+# Every entry MUST set ``name``, ``version``, ``license``, ``reason``,
+# and ``expires`` (ISO-8601 date). Expired entries fail the gate.
+# See ``CONTRIBUTING.md`` § "Dependency license policy" for the
+# exception process — prefer removing the dep over adding an entry
+# here whenever the dep can be replaced.
+
+entries:
+  # keep-sorted start block=yes
+  - name: python-debian
+    version: 1.1.0
+    license: GPL-2.0-or-later
+    reason: |
+      Transitive of ``reuse``. Dev-only static-analysis tool, never
+      enters the runtime closure of any shipped artefact. Removed
+      automatically once ``reuse`` is replaced or drops the
+      ``python-debian`` dep.
+    expires: 2027-05-03
+  - name: reuse
+    version: 6.2.0
+    license: Apache-2.0 AND CC0-1.0 AND CC-BY-SA-4.0 AND GPL-3.0-or-later
+    reason: |
+      SPDX-header verification tool used by
+      ``.github/workflows/spdx-license-headers.yml``. Dev-only,
+      never linked into a shipped artefact. The conjunction
+      includes GPL-3.0-or-later for tooling-side helpers we don't
+      ship; the components we use are Apache-2.0 + CC0-1.0.
+    expires: 2027-05-03
+  # keep-sorted end

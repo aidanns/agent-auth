@@ -66,6 +66,7 @@ DIFF_DEPENDENT_JOB_IDS: frozenset[str] = frozenset(
         "build",
         "check-docs",
         "check-fmt",
+        "check-license-allowlist",
         "check-lint",
         "check-publish",
         "check-release",
@@ -349,6 +350,20 @@ def test_helper_script_outputs_all_expected_check_run_names() -> None:
         "check-security / ripsecrets / ripsecrets",
         "check-security / check-dependency-review / dependency-review",
         "check-security / check-dependency-submission / submit",
+        # check-license-allowlist matrix (issue #575 / ADR 0048) —
+        # one job per workspace member, including `pr-lint-validator`
+        # (which `test-unit.yml` excludes because it has no shipped
+        # runtime tests; the license gate covers it because a
+        # copyleft transitive in its closure is still a compliance
+        # signal worth flagging at PR time).
+        "check-license-allowlist / check-license-allowlist (agent-auth)",
+        "check-license-allowlist / check-license-allowlist (agent-auth-common)",
+        "check-license-allowlist / check-license-allowlist (gpg-bridge)",
+        "check-license-allowlist / check-license-allowlist (gpg-cli)",
+        "check-license-allowlist / check-license-allowlist (pr-lint-validator)",
+        "check-license-allowlist / check-license-allowlist (things-bridge)",
+        "check-license-allowlist / check-license-allowlist (things-cli)",
+        "check-license-allowlist / check-license-allowlist (things-client-cli-applescript)",
         # test-unit matrix.
         "test-unit / unit-tests (agent-auth)",
         "test-unit / unit-tests (agent-auth-common)",

@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
 SPDX-License-Identifier: MIT
 -->
 
-# ADR 0048 — macOS Tart-VM CI lane with sqlite3-direct TCC seed
+# ADR 0049 — macOS Tart-VM CI lane with sqlite3-direct TCC seed
 
 ## Status
 

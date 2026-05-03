@@ -204,6 +204,54 @@ Adding a migration:
    against an ephemeral DB on every PR — a stale catalogue or a
    non-reversible entry fails CI.
 
+## Dependency license policy
+
+Every dependency in the resolved closure (runtime + dev) is gated
+by a per-package license allowlist (issue #575, ADR 0048). The
+`check-license-allowlist.yml` workflow runs one matrix job per
+workspace member; each job reads PEP 639 `License-Expression`,
+legacy `License`, and the `License ::` classifier list per
+installed dist and fails the PR when any dep declares a license
+outside the allowlist without a matching non-expired exception.
+
+**Allowlist.** `MIT`, `Apache-2.0`, `BSD-2-Clause`,
+`BSD-3-Clause`, `ISC`, `Python-2.0`, `MPL-2.0`. **Rejected:**
+`GPL-*`, `LGPL-*`, `AGPL-*`, `SSPL-*`, `BUSL-*`, anything custom
+or unrecognised. Dev and runtime get the **same** gate — a
+GPL-licensed dev-only static-analysis tool is treated identically
+to a GPL-licensed runtime dep.
+
+**Multi-licensed packages.** SPDX disjunction (`A OR B`) passes if
+any alternative is on the allowlist. SPDX conjunction
+(`A AND B`) requires every component to be on the allowlist (you
+must comply with all of them).
+
+**Exception process.** When a dep is unavoidable but its license
+is outside the allowlist (typical case: a dev-only tool we don't
+ship), add an entry to the package's
+`packages/<svc>/licenses.exceptions.yml` with **all five** fields:
+
+```yaml
+- name: <pep-503-normalised-package-name>
+  version: <exact-version>
+  license: <SPDX-expression-as-reported-by-the-gate>
+  reason: |
+    Why the dep is unavoidable AND why its license is acceptable
+    in context (typical: dev-only, never enters runtime closure).
+  expires: YYYY-MM-DD
+```
+
+The `reason` and `expires` fields are mandatory — entries
+missing either, or with an `expires` date in the past, **fail**
+the gate. The expiry forcing-function exists so the maintainer
+periodically re-evaluates whether the dep can be replaced.
+**Prefer removing the dep over adding an exception** whenever
+the dep is replaceable.
+
+Run the gate locally with `task check-license-allowlist`, or
+against a single package with
+`task check-license-allowlist -- agent-auth`.
+
 ## Commit conventions
 
 PR titles use a Palantir-style prefix set (see
