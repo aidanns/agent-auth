@@ -834,32 +834,39 @@ The rules sit alongside
 rather than superseding it: ADR 0037 defines the prefix allowlist and
 the block structure, this section defines the prose inside.
 
+The terse, machine-applied form of the rules below lives in
+[`.claude/instructions/commit-messages.md`](.claude/instructions/commit-messages.md)
+so every Claude session loads them automatically. This section is the
+human-facing rationale layer — terse rule plus *why* plus
+anti-pattern, the form a reviewer cites when pushing back on a draft.
+
 A subset of the rules below is **CI-enforced**; the rest are
 **convention only** (caught at human review). The split is:
 
-| Rule                                                                             | Enforced by                                                                                                                       |
-| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Title prefix in the Palantir allowlist                                           | CI (`pr-title` job, `amannn/action-semantic-pull-request`)                                                                        |
-| Title ≤ 72 chars (after `merge-bot.yml` appends ` (#<n>)`)                       | CI (`pr-title-style` job, `pr-lint-validator title --pr-number`)                                                                  |
-| Title has no trailing period                                                     | CI (`pr-title-style` job)                                                                                                         |
-| Title does not open with a past-tense / participle verb in the closed list       | CI (`pr-title-style` job — list: `Added` / `Fixed` / `Updated` / `Changed` / `Removed` / `Refactored` / `Implemented` / `Bumped`) |
-| Title summary ≤ 50 chars (soft target on the post-prefix summary)                | Convention only                                                                                                                   |
-| Title summary capitalisation (project lowercases post-prefix)                    | Convention only                                                                                                                   |
-| Imperative mood beyond the past-tense closed list                                | Convention only (no clean regex without false positives)                                                                          |
-| Body wraps at ≤ 72 chars                                                         | CI (`pr-body-commit-msg` job, `pr-lint-validator commit-msg`)                                                                     |
-| Body length (soft cap, warning only)                                             | CI (`pr-body-commit-msg` job; warning surfaced in workflow log, does not fail the job)                                            |
-| Body has no markdown headings / task checkboxes / image embeds                   | CI (`pr-body-commit-msg` job — plain `-` / `*` bullets and `1.` numbered lists are permitted)                                     |
-| Body opens non-blank (after PR-template scaffolding)                             | CI (`pr-body-commit-msg` job)                                                                                                     |
-| Body's first line does not duplicate the PR title                                | CI (`pr-body-commit-msg` job, with the title passed in via env var)                                                               |
-| `Fixes: <sha> ("subject")` follows the kernel-style shape when SHA-style is used | CI (`pr-body-commit-msg` job)                                                                                                     |
-| Trailers parse as `Token: value` and use a recognised token                      | CI (`pr-body-commit-msg` job)                                                                                                     |
-| Trailer block is contiguous (no blank lines between trailers)                    | CI (`pr-body-commit-msg` job)                                                                                                     |
-| At least one blank line sits between the body and the trailer block              | CI (`pr-body-commit-msg` job)                                                                                                     |
-| `BREAKING CHANGE:` is the last non-`Signed-off-by:` line                         | CI (`pr-body-commit-msg` job)                                                                                                     |
-| At least one `Signed-off-by:` trailer is present                                 | CI (`pr-body-commit-msg` job; also enforced post-merge by `dco.yml`)                                                              |
-| One logical change per PR                                                        | Convention only (undecidable mechanically)                                                                                        |
-| Body leads with *why*, not *how*                                                 | Convention only (undecidable mechanically)                                                                                        |
-| `fix:` PRs include observable symptoms                                           | Convention only                                                                                                                   |
+| Rule                                                                                                            | Enforced by                                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Title prefix in the Palantir allowlist                                                                          | CI (`pr-title` job, `amannn/action-semantic-pull-request`)                                                                        |
+| Title ≤ 72 chars (after `merge-bot.yml` appends ` (#<n>)`)                                                      | CI (`pr-title-style` job, `pr-lint-validator title --pr-number`)                                                                  |
+| Title has no trailing period                                                                                    | CI (`pr-title-style` job)                                                                                                         |
+| Title does not open with a past-tense / participle verb in the closed list                                      | CI (`pr-title-style` job — list: `Added` / `Fixed` / `Updated` / `Changed` / `Removed` / `Refactored` / `Implemented` / `Bumped`) |
+| Title summary ≤ 50 chars (soft target on the post-prefix summary)                                               | Convention only                                                                                                                   |
+| Title summary capitalisation (project lowercases post-prefix)                                                   | Convention only                                                                                                                   |
+| Imperative mood beyond the past-tense closed list                                                               | Convention only (no clean regex without false positives)                                                                          |
+| Body wraps at ≤ 72 chars                                                                                        | CI (`pr-body-commit-msg` job, `pr-lint-validator commit-msg`)                                                                     |
+| Body length (soft cap, warning only)                                                                            | CI (`pr-body-commit-msg` job; warning surfaced in workflow log, does not fail the job)                                            |
+| Body has no markdown headings / task checkboxes / image embeds                                                  | CI (`pr-body-commit-msg` job — plain `-` / `*` bullets and `1.` numbered lists are permitted)                                     |
+| Body opens non-blank (after PR-template scaffolding)                                                            | CI (`pr-body-commit-msg` job)                                                                                                     |
+| Body's first line does not duplicate the PR title                                                               | CI (`pr-body-commit-msg` job, with the title passed in via env var)                                                               |
+| `Fixes: <sha> ("subject")` follows the kernel-style shape when SHA-style is used                                | CI (`pr-body-commit-msg` job)                                                                                                     |
+| Trailers parse as `Token: value` and use a recognised token                                                     | CI (`pr-body-commit-msg` job)                                                                                                     |
+| Trailer block is contiguous (no blank lines between trailers)                                                   | CI (`pr-body-commit-msg` job)                                                                                                     |
+| At least one blank line sits between the body and the trailer block                                             | CI (`pr-body-commit-msg` job)                                                                                                     |
+| `BREAKING CHANGE:` is the last non-`Signed-off-by:` line                                                        | CI (`pr-body-commit-msg` job)                                                                                                     |
+| At least one `Signed-off-by:` trailer is present                                                                | CI (`pr-body-commit-msg` job; also enforced post-merge by `dco.yml`)                                                              |
+| One logical change per PR                                                                                       | Convention only (undecidable mechanically)                                                                                        |
+| Body leads with *why*, not *how*                                                                                | Convention only (undecidable mechanically)                                                                                        |
+| `fix:` PRs include observable symptoms                                                                          | Convention only                                                                                                                   |
+| Causal narrative ordering, brevity, bullets-only-for-2+-parallel-sets, arrows-vs-prose, shouty-marker rendering | Convention only (caught at human review; rationale below)                                                                         |
 
 ##### Subject (PR title)
 
@@ -923,6 +930,120 @@ A subset of the rules below is **CI-enforced**; the rest are
   was just an inconsistency tax on contributors. Closes #326."* —
   the file list is in `git show`'s rename detection, not the
   message.
+
+- **Causal narrative ordering — observable behaviour first, setup
+  folded in.** "Lead with *why*" sets the topic; this rule sets the
+  shape. Open the body with the behaviour the reader could have
+  observed (the orthography tax, the redundant aggregator, the
+  sticky comment that wouldn't go away) and fold the setup INTO the
+  mechanism rather than ahead of it. The anti-pattern is opening
+  with "X and Y share Z" before the reader knows why Z matters —
+  the reader has to hold an unexplained relationship in working
+  memory while waiting for its payoff. By the time the payoff
+  arrives the lede has been buried two paragraphs deep and the
+  bisecting reader has moved on.
+
+- **Brevity — default to cutting; explicit KEEP / CUT lists.** Most
+  drafts over-narrate. The default move is *cut*, not polish. Two
+  lists make this concrete:
+
+  **KEEP** —
+
+  1. Exact error strings, log lines, and stack-trace snippets — the
+     bisecting engineer searching `git log --grep` for the same
+     symptom needs them verbatim.
+  2. Non-obvious correctness claims (invariants the reader can't
+     re-derive from the diff in 30 seconds).
+  3. Non-obvious failure modes (timing oracles, race windows,
+     fragile heuristics — same logic as the verbose-body
+     allowlist).
+  4. Rejected alternatives, when the rejection is itself the
+     contribution (audit-trail value).
+
+  **CUT** —
+
+  1. Diff-recap (renamed files, adjusted regexes, new gates — `git show` has them).
+  2. Narrative connectives that add no information ("Additionally,",
+     "It is worth noting that,", "As a follow-up,").
+  3. Success-path confirmations ("the tests pass", "behaviour at
+     the happy path is unchanged"). The CI rollup is the success-
+     path record; the commit body is for the cases where success
+     was *non-obvious*.
+  4. "Behaviour at X is unchanged" sentences in general — silence
+     is the default; an unchanged surface doesn't need a sentence.
+
+- **Bullets only for parallel sets of two-or-more identical-shape
+  items.** Tighter than the industry 3+ convention, deliberately:
+  parallel sets read clearer as bullets even at 2 items —
+  especially file enumerations where exhaustiveness is the point
+  ("the bridge writes to A and B"). Prose for a 2-item parallel
+  reads as a missed structural cue. The flip side is the failure
+  mode: bullets used for a *non-parallel* set turn into a "while
+  we're here" laundry list, which is the surface signal the PR is
+  bundling unrelated changes — see the 8859338 counter-example
+  below. Trigger phrases that should make the author stop and
+  consider splitting the PR before reaching for the bullet
+  character: "Side effects in the same PR:", "Also:", "while
+  we're here".
+
+- **Arrows (`->`) for mechanical sub-step chains; prose with
+  explicit connectives for the primary causal claim.** Arrows
+  compress mechanism: "query before POST -> no snapshot -> sticky
+  comment that won't refresh" is a three-hop chain the reader can
+  walk in one breath. Prose with "so" / "because" / "which" carries
+  the *primary* causal claim — the load-bearing sentence that
+  justifies the change. Mixing them inverts the cue: an arrow
+  chain in the lede reads as decorative, and a prose-walked
+  mechanism in a side-note reads as over-narrated. Pick one per
+  sentence.
+
+- **Backticks (and shouty markers) in body prose.** Backticks in
+  body prose carry visual weight; spend them only where the reader
+  would otherwise read the token as English. Self-identifying
+  tokens stay bare: filenames with extensions
+  (`pr-lint.yml`-style), dotted paths, underscored identifiers,
+  kebab-case identifiers in identifier-shaped contexts. Reword
+  ambiguous bare words ("case statement" not bare `case`).
+  Double-quote literals with spaces or that read as English ("no
+  changelog", "skipped"). **Shouty-cased markers strip wrapper
+  syntax**: write NO_CHANGELOG, not `==NO_CHANGELOG==`. The fenced
+  form is reserved for code blocks (where the marker really is
+  syntax); inside prose the wrapper renders as visual noise and
+  the all-caps token already carries the reader's eye.
+
+- **Worked counter-example —
+  [`8859338`](https://github.com/aidanns/agent-auth/commit/8859338)
+  (the workflow-naming + aggregator-flattening PR).** A useful
+  example of a *partial* failure mode: the opening two paragraphs
+  are well-shaped — they lead with the observable orthography tax
+  (three case conventions for the same artefact, coordinated
+  edits at every consumer) and the redundant aggregator tax
+  (intermediate `required-checks-passed` aggregators that
+  duplicated the workflow_call result GitHub already collapses).
+  Both paragraphs follow "lead with why" and "causal narrative
+  ordering" cleanly.
+
+  The third section ("Side effects in the same PR:" with seven
+  bullets) is the failure mode. Most bullets are diff-recap —
+  the `name:` stripping across non-matrix jobs, `merge-bot.yml`'s
+  `EXPECTED_WORKFLOWS` constant collapse, the doc rewrite of the
+  naming and aggregator sections of `tooling-and-ci.md`, the new
+  workflow-name canary in `verify-standards.sh`. Each is reachable
+  from `git show`. The seven-bullet list is also a "while we're
+  here" laundry list — the surface signal that the PR is bundling
+  several logical changes (naming standardisation, aggregator
+  flattening, helper-script rewrite, comment trim, ADR addition,
+  test golden-file update). The right fix is upstream of the
+  message: split the PR. Once split, each successor's body needs
+  no "Side effects" section — there are no side effects, just the
+  one change.
+
+  The keep-worthy form of 8859338 is the first two paragraphs
+  unchanged, the third section deleted, and the seven bundled
+  changes shipped as separate PRs. The "Coordinated branch-
+  protection rename" footer stays — it carries operational
+  hand-off value (orchestrator-owned action at merge time) that
+  isn't reachable from the diff.
 
 - **When a long body *is* warranted.** Three cases legitimately
   need more than three short paragraphs and explicitly do not trip
