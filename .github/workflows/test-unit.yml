@@ -8,8 +8,12 @@ name: test-unit
 # `unit-tests (<package>)` check per workspace member. Scoped to
 # per-package `tests/` trees and runs without coverage so the
 # per-shard runtime stays bounded; workspace-wide coverage and the
-# root `tests/` tree (release-semver, openapi-spec, pip-audit-to-
-# sarif, scan-failure) live elsewhere in this orchestrator.
+# root `tests/` tree (release-semver, scan-failure, openapi-spec,
+# devcontainer-signing, workspace-deps, merge-bot-rollup-dedupe, ...)
+# are gated by the sibling `test-workspace.yml` child, which runs the
+# canonical `task test -- --unit` invocation against a single pytest
+# session and chains `scripts/check-package-coverage.sh` against the
+# unified `.coverage` DB it produces (issues #581, #273).
 on:
   workflow_call:
 
