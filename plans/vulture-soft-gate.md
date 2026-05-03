@@ -43,20 +43,16 @@ workspace-wide whitelist module.
 
 1. **`pyproject.toml`** — add `vulture>=2.16` to the workspace `dev`
    optional-dependencies group so it lands in the per-OS/arch venv.
-2. **Per-package `pyproject.toml`** — add a small `[tool.vulture]`
-   block that scopes each package's invocation:
-   - `paths = ["packages/<svc>/src"]`
-   - `min_confidence = 80`
-   - `ignore_decorators` for the structural false-positive categories
-     observed in this codebase (BaseHTTPRequestHandler-derived
-     handler classes don't have decorators, but argparse handlers
-     and any future Flask/FastAPI surfaces do).
-   - `ignore_names` for `format` (the `log_message(self, format, *args)`
-     parameter inherited from `BaseHTTPRequestHandler`) and `size`
-     (the `log_request(self, code, size)` parameter inherited from
-     the same base) — both are 100%-confidence false positives that
-     cannot be renamed because they come from the stdlib base class
-     signature.
+2. **No per-package `[tool.vulture]` block** — the script invokes
+   vulture with `--min-confidence 80 packages/<svc>/src` directly, so
+   threshold and path live in one place (the script). Per-package
+   config files are explicitly permitted by the brief but unnecessary
+   here, and a single source for the threshold is easier to review.
+   Every false positive is suppressed at its call site via
+   `# noqa: F841,RUF100` — vulture honours `F841` for unused
+   parameters per its README; `RUF100` silences ruff (which considers
+   `F841` to apply only to unused-locals, not parameters, and would
+   otherwise flag every suppression site as an "unused noqa").
 3. **`scripts/check-dead-code.sh`** — new per-package helper that
    iterates `packages/*/`, invokes `uv run --no-sync vulture --config <pkg>/pyproject.toml <pkg>/src` per package, and emits
    findings to stdout grouped by package. Exits 0 always (advisory):
@@ -75,20 +71,17 @@ workspace-wide whitelist module.
      on the PR's Checks tab,
    - surfaces a `success` conclusion regardless of finding count
      (advisory contract).
-6. **Pre-flight false-positive suppression** —
-   - Add `# noqa: F841` on the `format`/`size` parameter lines in the
-     four affected `BaseHTTPRequestHandler` subclasses
-     (`agent_auth/server.py`, `agent_auth_notifier/terminal_server.py`,
+6. **Pre-flight false-positive suppression** — add
+   `# noqa: F841,RUF100` at each false-positive site:
+   - `format` parameter on `log_message` overrides in every
+     `BaseHTTPRequestHandler` subclass (six call sites today across
+     `agent_auth/server.py`, `agent_auth_notifier/terminal_server.py`,
      `gpg_bridge/server.py`, `things_bridge/server.py`,
-     `tests_support/notifier/server.py`,
-     `tests_support/notifier_fake.py`). `--ignore-names` in the
-     per-package config already covers these, but the inline
-     annotation is documented as the canonical mechanism in
-     vulture's README and is the more reviewable signal at the
-     call site for future readers.
-   - Verify the Protocol-method `list_id` parameter false positive
-     in `things_models/client.py` is suppressed by the same
-     `--ignore-names` route.
+     `tests_support/notifier/server.py`, `tests_support/notifier_fake.py`).
+   - `size` parameter on `log_request` overrides in
+     `gpg_bridge/server.py` and `things_bridge/server.py`.
+   - `list_id` parameter on the `ThingsClient.list_todos` Protocol
+     method in `things_models/client.py` (one site only).
 7. **`design/decisions/0047-vulture-soft-dead-code-gate.md`** — new
    ADR recording the soft-gate decision, the
    `--min-confidence 80` choice, the annotation-only suppression

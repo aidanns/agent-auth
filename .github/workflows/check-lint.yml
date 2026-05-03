@@ -5,8 +5,8 @@
 name: check-lint
 
 # Lint / static-analysis child of `ci.yml`. Carries `python` (mypy +
-# pyright) and `systems-engineering` (verify-design +
-# verify-function-tests).
+# pyright), `systems-engineering` (verify-design +
+# verify-function-tests), and `dead-code` (vulture, advisory).
 
 on:
   workflow_call:
@@ -22,3 +22,41 @@ jobs:
   systems-engineering:
     uses: ./.github/workflows/systems-engineering.yml
     secrets: inherit
+
+  dead-code:
+    # Vulture-based unused-code sweep (ADR 0047 / issue #578). The
+    # script is advisory — it always exits 0 — and findings are
+    # surfaced via the workflow summary on the PR's Checks tab. The
+    # job's overall conclusion stays `success` so a finding never
+    # blocks merge; promotion to a required check is tracked
+    # separately.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run vulture per package
+        run: |
+          set -euo pipefail
+          # shellcheck source=scripts/_bootstrap_venv.sh
+          source scripts/_bootstrap_venv.sh
+          # Capture the script's combined stdout+stderr so the same
+          # body lands in both the runner log (visible in the raw
+          # job output) and the workflow summary (visible on the
+          # PR's Checks tab without expanding the log).
+          findings_log=$(mktemp)
+          scripts/check-dead-code.sh | tee "${findings_log}"
+          {
+            echo "## Dead-code findings (advisory)"
+            echo
+            echo "Confidence threshold: \`--min-confidence 80\`. This"
+            echo "check is advisory — findings do not block merge."
+            echo "See ADR 0047."
+            echo
+            echo '```'
+            cat "${findings_log}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"

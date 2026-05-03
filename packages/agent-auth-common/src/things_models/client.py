@@ -19,7 +19,12 @@ class ThingsClient(Protocol):
     def list_todos(
         self,
         *,
-        list_id: str | None = None,
+        # ``list_id`` is unique to this Protocol method so vulture
+        # cannot match it against an implementation reference; the
+        # other filter parameters resolve via the AppleScript backend.
+        # F841 silences vulture; RUF100 silences ruff (which considers
+        # F841 only for unused-locals, not parameters).
+        list_id: str | None = None,  # noqa: F841,RUF100
         project_id: ProjectId | None = None,
         area_id: AreaId | None = None,
         tag: str | None = None,

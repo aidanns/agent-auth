@@ -115,6 +115,11 @@ tasks:
       - scripts/mutation-test.sh {{.CLI_ARGS}}
       - scripts/check-mutation-score.sh
 
+  dead-code:
+    desc: "Run vulture per workspace package at --min-confidence 80 and report findings. Soft (advisory) gate — exits 0 regardless of findings. See ADR 0047."
+    cmds:
+      - scripts/check-dead-code.sh
+
   reuse-lint:
     desc: Verify every tracked file carries SPDX licensing metadata (REUSE spec).
     cmds:
