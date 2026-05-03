@@ -71,9 +71,14 @@ permissions:
 # silently change the runner OS under us. Bump procedure documented
 # in `docs/operations/macos-tart-ci.md`.
 env:
+  # TODO(aidanns): tighten the three pins below in #485 follow-up once
+  # the first CI run validates the boot-prep end-to-end. Until then a
+  # `git grep '0000000000000000000000000000000000000000000000000000000000000000'`
+  # or `git grep ':latest'` against this file will land a future
+  # bisector on the deferred-pin trail.
   TART_VERSION: "2.36.0"
-  TART_TARBALL_SHA256: "0000000000000000000000000000000000000000000000000000000000000000"
-  TART_BASE_IMAGE: "ghcr.io/cirruslabs/macos-sequoia-base:latest"
+  TART_TARBALL_SHA256: "0000000000000000000000000000000000000000000000000000000000000000"  # TODO(aidanns): pin in #485 follow-up
+  TART_BASE_IMAGE: "ghcr.io/cirruslabs/macos-sequoia-base:latest"  # TODO(aidanns): pin to GHCR digest in #485 follow-up
   TART_VM_NAME: "agent-auth-smoke-${{ github.run_id }}-${{ github.run_attempt }}"
   ARTEFACT_DIR: "${{ github.workspace }}/macos-tart-artefacts"
 
@@ -137,9 +142,21 @@ jobs:
           echo "${SHA256}  ${tarball}" | shasum -a 256 -c -
           mkdir -p tart-extracted
           tar -xzf "${tarball}" -C tart-extracted
-          # Tart ships as `tart.app/Contents/MacOS/tart` — symlink the
-          # binary onto PATH so subsequent steps invoke it as `tart`.
-          sudo ln -sf "${PWD}/tart-extracted/tart.app/Contents/MacOS/tart" /usr/local/bin/tart
+          # Discover the `tart` executable under the extracted tree
+          # rather than hard-coding a layout path: upstream
+          # `cirruslabs/tart` has historically shipped as both a bare
+          # `tart` binary AND a `tart.app/Contents/MacOS/tart` bundle
+          # in different release variants, and the layout has shifted
+          # across versions. `find -perm -u+x` matches either, dies
+          # loud if neither is present, and survives a future upstream
+          # layout tweak without a workflow edit.
+          tart_bin=$(find tart-extracted -type f -name tart -perm -u+x -print -quit)
+          if [[ -z "${tart_bin}" ]]; then
+            echo "::error::tart executable not found under tart-extracted/ (tarball layout changed?)"
+            ls -lR tart-extracted
+            exit 1
+          fi
+          sudo ln -sf "${PWD}/${tart_bin}" /usr/local/bin/tart
           tart --version
 
       - name: Pull and Clone Base Image

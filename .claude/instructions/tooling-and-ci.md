@@ -350,6 +350,23 @@ child, or moving jobs between children, the safe sequence is:
   `verify-standards.sh` asserts the absence of unverified pipes in
   `setup-toolchain/action.yml`.
 
+  **Throwaway-VM escape hatch.** The pipe form is acceptable when
+  *all three* hold: (a) the script runs inside a per-job ephemeral
+  VM or container that holds no long-lived secrets and is destroyed
+  at job teardown (e.g. a one-shot Tart guest cloned from a base
+  image, or a `services:` container with no mounted credentials);
+  (b) the worst-case compromise leaks only ephemeral CI compute, not
+  signing keys, deploy tokens, or the runner's OIDC token; (c)
+  pinning is materially impractical because the upstream installer's
+  purpose is to chain into per-host downloads (e.g. Homebrew's
+  installer fetches per-architecture cask binaries; pinning the
+  wrapper does not pin the per-cask payload). Each invocation under
+  the escape hatch must carry an inline comment naming the three
+  conditions and the issue tracking the long-term move (e.g. baking
+  the tool into the base image). `verify-standards.sh` does not
+  extend to throwaway-VM bootstrap scripts — the rule lives here,
+  not in CI.
+
 - **Pin release-affecting GitHub Actions to commit SHAs** — third-party
   `uses:` references in any workflow that holds `id-token: write`,
   `contents: write`, or otherwise sits on the release path must be pinned

@@ -32,14 +32,19 @@ system_profiler SPSoftwareDataType >"${ARTEFACT_DIR}/system_profiler.txt"
 
 step "1. install homebrew if missing"
 if ! command -v brew >/dev/null 2>&1; then
-  # The Homebrew install script body is unverified by us — there is
-  # no published checksum that travels independently of the script
-  # itself. Acceptable here because (a) this runs inside a throwaway
-  # VM that holds no secrets, (b) the alternative (bootstrapping a
-  # static brew tarball) is materially more brittle for cask
-  # installs, and (c) per ADR 0047 the Tart base image is intended
-  # to evolve toward Option A (#568) which would bake brew + Things 3
-  # into the image and remove this surface entirely.
+  # Throwaway-VM escape hatch per `.claude/instructions/tooling-and-ci.md`
+  # -> "Pin sha256 for tool binary downloads" -> "Throwaway-VM escape
+  # hatch":
+  #   (a) one-shot Tart guest cloned from `cirruslabs/macos-sequoia-base`,
+  #       deleted at job teardown; holds no long-lived secrets.
+  #   (b) worst-case compromise leaks only ephemeral CI compute -- no
+  #       signing keys, deploy tokens, or runner OIDC token are present
+  #       inside the guest.
+  #   (c) pinning the Homebrew installer wrapper does not pin the
+  #       per-cask download (`brew install --cask things` chains into
+  #       Cultured Code's CDN), so a wrapper pin gives false comfort.
+  # Long-term plan: bake brew + Things 3 into a pre-warmed base image
+  # (#568), removing this surface entirely.
   NONINTERACTIVE=1 /bin/bash -c \
     "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   # Apple Silicon installs land at /opt/homebrew; ensure brew is on
@@ -140,8 +145,12 @@ probe_output=$(osascript -e 'tell application "Things3" to count to dos' \
 echo "TCC probe -> count to dos = ${probe_output}"
 
 step "5. install uv and sync the workspace venv"
-# uv's official install script. Same caveat as the Homebrew install
-# above: throwaway VM, no secrets at risk.
+# Throwaway-VM escape hatch per `.claude/instructions/tooling-and-ci.md`
+# -> "Pin sha256 for tool binary downloads" -> "Throwaway-VM escape
+# hatch": same three-way analysis as the Homebrew install above. The
+# uv installer chains into per-architecture wheel downloads, so
+# pinning the installer wrapper does not pin the payload. Long-term
+# plan: bake uv into the pre-warmed base image (#568).
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="${HOME}/.local/bin:${PATH}"
 export UV_PROJECT_ENVIRONMENT=".venv-Darwin-arm64"
