@@ -4,7 +4,9 @@
 
 type: improvement
 improvement:
-  description: The `==COMMIT_MSG==` block validator now rejects the bare `Closes #N` (no colon) form; only the canonical `Closes: #N` is accepted in the trailer block, matching every other trailer.
+  description: |
+    `==COMMIT_MSG==` validator now rejects the bare `Closes #N`
+    form; only the canonical `Closes: #N` is accepted.
   links:
     - https://github.com/aidanns/agent-auth/pull/588
 packages:
