@@ -1158,6 +1158,13 @@ lost on `main` unless the trailer rides into the squash body via this
 block. Position: between `Closes:` and `Signed-off-by:` inside the
 contiguous trailer block.
 
+The session-loaded form of this rule (paired with the canonical
+`Closes:` colon form so they're stated together where every Claude
+session reads them) lives in
+[`.claude/instructions/commit-messages.md`](.claude/instructions/commit-messages.md)
+under "Trailers". Cite that section when pushing back on a draft
+that omits either trailer.
+
 Format:
 
 ```
