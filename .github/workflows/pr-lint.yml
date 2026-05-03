@@ -4,15 +4,22 @@
 
 name: pr-lint
 
-# Residual top-level workflow for two meta self-tests that don't belong
-# under `ci.yml` (they're checks on workflow YAML / lint constants, not
-# per-PR validators):
+# Residual top-level workflow for three meta self-tests that don't
+# belong under `ci.yml` (they're checks on workflow YAML / lint
+# constants, not per-PR validators):
 #
 # - `pr-title-types-self-test` — asserts the `types: |` allowlist in
 #   `check-pull-request.yml`'s `title-prefix` job stays in lockstep
 #   with `scripts/lint/commit_taxonomy.py::ALLOWED_TYPES`.
 # - `predict-release-impact-self-test` — exercises the predict
 #   script's bump matrix on every run.
+# - `pr-lint-yaml-loadable-self-test` — parses pr-lint.yml + the
+#   `install-pr-lint-validator` composite against the **head ref**
+#   so a load-time syntax error in either fails CI on the same PR
+#   that introduces it (issue #511; reproduces the PR #506 escape
+#   path where a `${{ github.token }}` expression in a composite
+#   `description:` field went unnoticed because the workflow ran on
+#   `pull_request_target` and exercised the BASE-ref copy).
 
 on:
   pull_request:
@@ -83,3 +90,49 @@ jobs:
           # `pytest-cov`; the job exercises one script in isolation,
           # not the workspace's full coverage matrix.
           python3 -m pytest -o addopts= scripts/changelog/tests/test_predict_release_impact.py -v
+
+  pr-lint-yaml-loadable-self-test:
+    runs-on: ubuntu-latest
+    # Head-ref guard for the pr-lint surface (issue #511). PR #506 cut
+    # the pr-lint jobs over to a new `install-pr-lint-validator`
+    # composite that contained a load-time syntax error
+    # (`${{ github.token }}` in a `description:` field — invalid
+    # because action.yml metadata only has the `inputs` context in
+    # scope at parse time). The bug escaped #506's CI because pr-lint
+    # was triggered on `pull_request_target` and checked out the BASE
+    # ref's copy of the workflow + composite — so the new (broken)
+    # version was never exercised on its own PR. The bug fired on
+    # every PR opened against main thereafter.
+    #
+    # Unlike the two sibling self-tests above (which check out the
+    # base ref to compare against frozen invariants), this job MUST
+    # check out the **head** ref so a load-time syntax error in the
+    # PR-under-test's copy of pr-lint.yml or the composite fails CI
+    # on the same PR. Default checkout (no `ref:`) on a `pull_request`
+    # event resolves to the synthetic merge commit, which carries the
+    # head ref's copy of every changed file — sufficient for this
+    # static guard.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install runtime deps (PyYAML, pytest)
+        run: pip install --no-cache-dir 'pyyaml>=6' 'pytest>=8'
+
+      - name: Run pr-lint YAML-loadable self-test
+        run: |
+          set -euo pipefail
+          # `-o addopts=` overrides the workspace `pyproject.toml`'s
+          # `[tool.pytest.ini_options].addopts` (which injects
+          # `--cov=packages` plus the integration-fixture plugin) so
+          # this isolated job runs without `pytest-cov` or the
+          # integration plugin installed — same rationale as the
+          # `predict-release-impact-self-test` job above. The test
+          # file lives under `ci/test-repo/` (whole-repo invariants
+          # that don't belong to any single workspace package's
+          # `tests/` tree); see `ci/test-repo/README.md`.
+          python3 -m pytest -o addopts= ci/test-repo/test_pr_lint_action_yml_loadable.py -v
