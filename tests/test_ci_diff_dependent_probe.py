@@ -74,6 +74,7 @@ DIFF_DEPENDENT_JOB_IDS: frozenset[str] = frozenset(
         "test-integration",
         "test-smoke",
         "test-system",
+        "test-system-macos-tart",
         "test-unit",
         "test-workspace",
     }
@@ -328,6 +329,12 @@ def test_helper_script_outputs_all_expected_check_run_names() -> None:
         "check-standards / verify-standards",
         "build / build",
         "test-system / macos-applescript",
+        # test-system-macos-tart leaves both `decide` (ubuntu OR-er)
+        # and `macos-tart-smoke` (the macOS-15 Tart VM job). Both
+        # publish discrete check-runs that the verified-prior-success
+        # probe must see on a label-only re-run.
+        "test-system-macos-tart / decide",
+        "test-system-macos-tart / macos-tart-smoke",
         # check-fmt expands into the leaf jobs of its workflow_call.
         # The intermediate `required-checks-passed` aggregator was
         # dropped (issue #556 / ADR 0046); the helper enumerates each

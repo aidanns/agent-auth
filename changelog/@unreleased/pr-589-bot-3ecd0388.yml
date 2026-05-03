@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: |
+    Per-PR macOS-Tart-VM smoke lane that round-trips
+    `things-client-cli-applescript` against a real Things 3 install.
+  links:
+    - https://github.com/aidanns/agent-auth/pull/589

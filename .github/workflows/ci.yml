@@ -51,6 +51,9 @@ jobs:
       docs_changed: ${{ steps.filter.outputs.docs }}
       design_changed: ${{ steps.filter.outputs.design }}
       workflows_changed: ${{ steps.filter.outputs.workflows }}
+      things_client_cli_applescript_updated: ${{ steps.filter.outputs.things_client_cli_applescript_updated }}
+      agent_auth_common_updated: ${{ steps.filter.outputs.agent_auth_common_updated }}
+      macos_tart_plumbing_updated: ${{ steps.filter.outputs.macos_tart_plumbing_updated }}
       event_is_pull_request: ${{ steps.event.outputs.event_is_pull_request }}
       event_has_diff_base_head: ${{ steps.event.outputs.event_has_diff_base_head }}
       event_from_external_repo: ${{ steps.event.outputs.event_from_external_repo }}
@@ -143,6 +146,21 @@ jobs:
           emit_label no_changelog "no changelog"
           # keep-sorted end
 
+      # Convention for adding a new path-filter to gate a child
+      # workflow:
+      #
+      # New path-filter entries use per-area semantic names
+      # (e.g. `things_client_cli_applescript_updated`). The `ci.yml`
+      # call site passes each input through to its child workflow with
+      # no composition. Composition (typically OR-ing the relevant
+      # inputs in a leading `decide` job) lives in the child workflow
+      # rather than `ci.yml`, keeping per-workflow gating logic close
+      # to the workflow that owns it.
+      #
+      # The legacy broad scopes (`code`, `python`, `bash`, `docs`,
+      # `design`, `workflows`) predate this convention and stay as-is
+      # so the legacy children that consume them keep working — new
+      # filters layer on top rather than replacing them.
       - name: Compute changed-files gating booleans
         id: filter
         # `dorny/paths-filter` produces one `<filter-name>` output per
@@ -174,6 +192,13 @@ jobs:
             workflows:
               - '.github/workflows/**'
               - '.github/actions/**'
+            things_client_cli_applescript_updated:
+              - 'packages/things-client-cli-applescript/**'
+            agent_auth_common_updated:
+              - 'packages/agent-auth-common/**'
+            macos_tart_plumbing_updated:
+              - '.github/workflows/test-system-macos-tart.yml'
+              - 'scripts/ci/macos-tart/**'
 
       - name: Probe prior run state on this head SHA
         id: prior
@@ -313,6 +338,15 @@ jobs:
     if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/test-system.yml
 
+  test-system-macos-tart:
+    needs: [plan]
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
+    uses: ./.github/workflows/test-system-macos-tart.yml
+    with:
+      things_client_cli_applescript_updated: ${{ needs.plan.outputs.things_client_cli_applescript_updated == 'true' }}
+      agent_auth_common_updated: ${{ needs.plan.outputs.agent_auth_common_updated == 'true' }}
+      macos_tart_plumbing_updated: ${{ needs.plan.outputs.macos_tart_plumbing_updated == 'true' }}
+
   build:
     needs: [plan]
     if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
@@ -351,7 +385,7 @@ jobs:
     # Repo-wide aggregator. Branch protection on `main` requires only
     # `ci / required-checks-passed`; adding a new child workflow is a
     # one-line edit to `needs:` here.
-    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release, check-security, check-fmt, test-unit, test-workspace, test-integration, test-smoke, test-system]
+    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release, check-security, check-fmt, test-unit, test-workspace, test-integration, test-smoke, test-system, test-system-macos-tart]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -387,6 +421,7 @@ jobs:
             test-integration
             test-smoke
             test-system
+            test-system-macos-tart
         run: |
           set -euo pipefail
           # Build a jq-side set of the diff-dependent job IDs from

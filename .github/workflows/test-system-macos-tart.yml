@@ -1,0 +1,282 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: test-system-macos-tart
+
+# macOS-Tart-VM smoke child of `ci.yml`. Boots a clean macOS guest
+# under Apple's Virtualization.framework via the Tart CLI, installs
+# Things 3, seeds an `kTCCServiceAppleEvents` Automation grant for
+# `osascript` -> `com.culturedcode.ThingsMac` directly into TCC.db,
+# seeds a `ci-smoke-todo` to-do, and proves that
+# `things-client-cli-applescript todos list --status open` reads it
+# back through real osascript.
+#
+# Two-job structure:
+#
+#   - `decide` (`ubuntu-latest`): cheap OR over the three input
+#     booleans. ORing the inputs lives here rather than in `ci.yml`'s
+#     job-level `if:` so the per-workflow gating logic stays close
+#     to the workflow that owns it (see `ci.yml`'s `plan` job
+#     convention-doc comment).
+#   - `macos-tart-smoke` (`macos-15`, `needs: [decide]`): the macOS
+#     work itself. `if: needs.decide.outputs.should_run == 'true'`
+#     keeps the `macos-15` runner cost off PRs that don't touch any
+#     of the three watched paths. `timeout-minutes: 25` covers the
+#     ~5-min cold Tart pull + boot + brew install + smoke test with
+#     headroom (Tart is not in `actions/cache` because the
+#     `cirruslabs/macos-sequoia-base` image is ~30 GB which exceeds
+#     GitHub's 10 GB per-repo cache cap).
+#
+# The smoke test is plumbing only — full agent-auth -> things-bridge
+# -> CLI -> Things 3 e2e is tracked separately as #567. A pre-baked
+# Tart image with Things 3 + TCC seed is tracked as #568. See
+# ADR 0047.
+
+on:
+  workflow_call:
+    inputs:
+      things_client_cli_applescript_updated:
+        description: True iff `packages/things-client-cli-applescript/**` changed.
+        required: true
+        type: boolean
+      agent_auth_common_updated:
+        description: True iff `packages/agent-auth-common/**` changed.
+        required: true
+        type: boolean
+      macos_tart_plumbing_updated:
+        description: True iff this workflow or `scripts/ci/macos-tart/**` changed.
+        required: true
+        type: boolean
+
+# Matches `ci.yml`'s posture: cancel only on `pull_request` runs so a
+# fresh push obsoletes the in-flight macOS run, but `push (main)` /
+# `merge_group` / `workflow_dispatch` stays recorded against its ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+# Tart CLI release pin. Bump together: the version literal here and
+# the sha256 of the matching darwin-arm64 release tarball asset on the
+# cirruslabs/tart GitHub releases page. Verifying the sha256 before
+# extracting matches `.claude/instructions/tooling-and-ci.md` ->
+# "Pin sha256 for tool binary downloads".
+#
+# Base image digest: pin to the GHCR digest of
+# `ghcr.io/cirruslabs/macos-sequoia-base:latest` at the time of the
+# bump rather than the floating tag, so a new upstream rev cannot
+# silently change the runner OS under us. Bump procedure documented
+# in `docs/operations/macos-tart-ci.md`.
+env:
+  # Pinned per the procedure in `docs/operations/macos-tart-ci.md`.
+  # `TART_TARBALL_SHA256` is verified against the upstream
+  # `tart_<ver>_checksums.txt` released alongside the tarball;
+  # `TART_BASE_IMAGE` is the GHCR `docker-content-digest` of the
+  # `:latest` tag at the time of the bump.
+  TART_VERSION: "2.32.1"
+  TART_TARBALL_SHA256: "8554ab4f7fc12afe52f9b7e3093a935673cbac737a83973d2db7a0683c814529"
+  TART_BASE_IMAGE: "ghcr.io/cirruslabs/macos-sequoia-base@sha256:cae088989568978bcc9e5caf8eeabd02e68bf3317e765aafd5491a9db8924663"
+  TART_VM_NAME: "agent-auth-smoke-${{ github.run_id }}-${{ github.run_attempt }}"
+  ARTEFACT_DIR: "${{ github.workspace }}/macos-tart-artefacts"
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.compute.outputs.should_run }}
+    steps:
+      - name: OR the three changed-files inputs
+        id: compute
+        # Composition lives here, not in `ci.yml`'s call site — keeps
+        # the per-workflow gating logic close to the workflow that
+        # owns it (see ci.yml's `plan` job convention-doc comment).
+        # Inputs route through env vars rather than inlined `${{ ... }}`
+        # expressions inside `run:` so a future change to the input
+        # values cannot inject shell syntax (matching the convention
+        # `ci.yml`'s `plan` job uses for label-driven gating).
+        env:
+          THINGS_CLIENT_CLI_APPLESCRIPT_UPDATED: ${{ inputs.things_client_cli_applescript_updated }}
+          AGENT_AUTH_COMMON_UPDATED: ${{ inputs.agent_auth_common_updated }}
+          MACOS_TART_PLUMBING_UPDATED: ${{ inputs.macos_tart_plumbing_updated }}
+        run: |
+          set -euo pipefail
+          if [[ "${THINGS_CLIENT_CLI_APPLESCRIPT_UPDATED}" == "true" \
+              || "${AGENT_AUTH_COMMON_UPDATED}" == "true" \
+              || "${MACOS_TART_PLUMBING_UPDATED}" == "true" ]]; then
+            should_run=true
+          else
+            should_run=false
+          fi
+          echo "should_run=${should_run}" >> "${GITHUB_OUTPUT}"
+          echo "macOS-Tart smoke gate: should_run=${should_run}"
+
+  macos-tart-smoke:
+    needs: [decide]
+    if: needs.decide.outputs.should_run == 'true'
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Prepare Artefact Directory
+        # Created up front so `if: always()` artefact-collection steps
+        # below can write into it even if the bootstrap fails before
+        # the SSH-mounted VM mkdir runs.
+        run: mkdir -p "${ARTEFACT_DIR}"
+
+      - name: Install Tart CLI
+        # SHA-pinned tarball download verified against the in-tree
+        # constant before extraction. Matches the curl-bash hardening
+        # rule in `.claude/instructions/tooling-and-ci.md`.
+        env:
+          VERSION: ${{ env.TART_VERSION }}
+          SHA256: ${{ env.TART_TARBALL_SHA256 }}
+        run: |
+          set -euo pipefail
+          # cirruslabs/tart releases publish a single `tart.tar.gz`
+          # asset (with a sibling `tart_<ver>_checksums.txt`), not a
+          # per-arch tarball.
+          tarball="tart.tar.gz"
+          url="https://github.com/cirruslabs/tart/releases/download/${VERSION}/${tarball}"
+          curl -fsSL "${url}" -o "${tarball}"
+          echo "${SHA256}  ${tarball}" | shasum -a 256 -c -
+          mkdir -p tart-extracted
+          tar -xzf "${tarball}" -C tart-extracted
+          # Discover the `tart` executable under the extracted tree
+          # rather than hard-coding a layout path: upstream
+          # `cirruslabs/tart` has historically shipped as both a bare
+          # `tart` binary AND a `tart.app/Contents/MacOS/tart` bundle
+          # in different release variants, and the layout has shifted
+          # across versions. `find -perm -u+x` matches either, dies
+          # loud if neither is present, and survives a future upstream
+          # layout tweak without a workflow edit.
+          tart_bin=$(find tart-extracted -type f -name tart -perm -u+x -print -quit)
+          if [[ -z "${tart_bin}" ]]; then
+            echo "::error::tart executable not found under tart-extracted/ (tarball layout changed?)"
+            ls -lR tart-extracted
+            exit 1
+          fi
+          sudo ln -sf "${PWD}/${tart_bin}" /usr/local/bin/tart
+          tart --version
+
+      - name: Pull and Clone Base Image
+        env:
+          IMAGE: ${{ env.TART_BASE_IMAGE }}
+          VM: ${{ env.TART_VM_NAME }}
+        run: |
+          set -euo pipefail
+          # No `actions/cache` here: the base image is ~30 GB which
+          # exceeds GitHub's 10 GB per-repo cache cap (ADR 0047
+          # "Consequences").
+          tart pull "${IMAGE}"
+          tart clone "${IMAGE}" "${VM}"
+
+      - name: Boot VM Headless and Wait for SSH
+        env:
+          VM: ${{ env.TART_VM_NAME }}
+        # Run Tart in the background so the workflow can keep
+        # going. Loop on `tart ip` (which returns the guest's
+        # DHCP-assigned IP once the boot reaches the network stack)
+        # plus an SSH probe. Cap at 180s to keep failures quick.
+        run: |
+          set -euo pipefail
+          tart run --no-graphics "${VM}" >"${ARTEFACT_DIR}/tart-run.log" 2>&1 &
+          echo "$!" >tart.pid
+          deadline=$((SECONDS + 180))
+          ip=""
+          while (( SECONDS < deadline )); do
+            ip=$(tart ip "${VM}" 2>/dev/null || true)
+            if [[ -n "${ip}" ]]; then
+              if sshpass -p admin ssh -o StrictHostKeyChecking=no \
+                  -o ConnectTimeout=5 -o BatchMode=no \
+                  admin@"${ip}" 'true' 2>/dev/null; then
+                echo "vm_ip=${ip}" >> "${GITHUB_ENV}"
+                echo "VM ${VM} ready at ${ip}"
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          echo "::error::VM ${VM} did not reach SSH-ready within 180s (last IP: '${ip}')"
+          exit 1
+
+      - name: Rsync Workspace into VM
+        env:
+          VM: ${{ env.TART_VM_NAME }}
+        run: |
+          set -euo pipefail
+          # The default `cirruslabs/macos-sequoia-base` user is `admin`
+          # with password `admin` and a writable `~admin` home.
+          sshpass -p admin rsync -a -e "ssh -o StrictHostKeyChecking=no" \
+            --exclude '.venv-*' --exclude '__pycache__' --exclude '.git' \
+            ./ admin@"${vm_ip}":agent-auth/
+
+      - name: Run Boot-Prep over SSH
+        env:
+          VM: ${{ env.TART_VM_NAME }}
+        run: |
+          set -euo pipefail
+          sshpass -p admin ssh -o StrictHostKeyChecking=no \
+            admin@"${vm_ip}" \
+            'cd ~/agent-auth && bash scripts/ci/macos-tart/bootstrap.sh' \
+            2>&1 | tee "${ARTEFACT_DIR}/bootstrap.log"
+
+      - name: Run Smoke Test
+        env:
+          VM: ${{ env.TART_VM_NAME }}
+        run: |
+          set -euo pipefail
+          sshpass -p admin ssh -o StrictHostKeyChecking=no \
+            admin@"${vm_ip}" \
+            'cd ~/agent-auth \
+              && AGENT_AUTH_REAL_THINGS3=1 \
+                 UV_PROJECT_ENVIRONMENT=.venv-Darwin-arm64 \
+                 ~/.local/bin/uv run --no-sync pytest \
+                   packages/things-client-cli-applescript/tests/system/test_macos_tart_smoke.py \
+                   --no-cov -v --tb=long --color=no' \
+            2>&1 | tee "${ARTEFACT_DIR}/pytest.log"
+
+      - name: Collect Failure Artefacts from VM
+        if: always()
+        env:
+          VM: ${{ env.TART_VM_NAME }}
+        # Pull the in-VM artefact directory back to the runner so the
+        # upload step has a single tree to ship. `|| true` on rsync
+        # so a VM that died before SSH came up doesn't mask the
+        # original failure.
+        run: |
+          set -uo pipefail
+          if [[ -n "${vm_ip:-}" ]]; then
+            sshpass -p admin rsync -a -e "ssh -o StrictHostKeyChecking=no" \
+              admin@"${vm_ip}":/tmp/macos-tart-artefacts/ \
+              "${ARTEFACT_DIR}/in-vm/" \
+              2>&1 | tee "${ARTEFACT_DIR}/artefact-rsync.log" \
+              || echo "rsync from VM failed; in-VM artefacts may be incomplete"
+          else
+            echo "no vm_ip captured; skipping in-VM artefact rsync"
+          fi
+
+      - name: Upload Failure Artefact Bundle
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-tart-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.ARTEFACT_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Tear Down VM
+        if: always()
+        env:
+          VM: ${{ env.TART_VM_NAME }}
+        # `tart stop` first to release the lock the background `tart
+        # run` is holding, then `tart delete` to free the cloned
+        # image. Both `|| true` because either may legitimately error
+        # if the VM never booted.
+        run: |
+          set -uo pipefail
+          tart stop "${VM}" 2>/dev/null || true
+          tart delete "${VM}" 2>/dev/null || true
