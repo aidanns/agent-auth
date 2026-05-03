@@ -13,6 +13,6 @@ improvement(ci): wire the foo into the bar
 
 The body explaining why the change exists.
 
-Closes #478
+Closes: #478
 Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>
 ==COMMIT_MSG==

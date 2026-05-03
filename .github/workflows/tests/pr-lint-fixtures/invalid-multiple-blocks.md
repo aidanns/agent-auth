@@ -1,7 +1,7 @@
 ==COMMIT_MSG==
 The thing is small but useful.
 
-Closes #5
+Closes: #5
 ==COMMIT_MSG==
 
 Some prose.

@@ -83,10 +83,9 @@ When Claude authors the PR, the COMMIT_MSG block must include, in
 this order, immediately above the Signed-off-by: trailer:
 
 - A Closes: trailer linking the issue, in the canonical colon form
-  `Closes: #N`. Never the bare `Closes #N`. The merge bot accepts
-  the colon-less form too, but the canonical form keeps the trailer
-  block uniform and survives the validator tightening tracked
-  separately from this rule.
+  `Closes: #N`. Never the bare `Closes #N` — the validator rejects
+  it (since #566). The colon form keeps the trailer block uniform
+  and is the only shape any agent-authored PR should ever produce.
 - A Co-Authored-By: trailer in the form
   `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`,
   with the model+context string set to whatever the authoring agent

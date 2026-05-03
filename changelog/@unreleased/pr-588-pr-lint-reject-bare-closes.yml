@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: The `==COMMIT_MSG==` block validator now rejects the bare `Closes #N` (no colon) form; only the canonical `Closes: #N` is accepted in the trailer block, matching every other trailer.
+  links:
+    - https://github.com/aidanns/agent-auth/pull/588
+packages:
+  - pr-lint-validator

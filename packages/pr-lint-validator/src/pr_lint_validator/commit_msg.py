@@ -50,9 +50,17 @@ VERBOSE_BODY_MAX_WORDS = 250
 
 TRAILER_RE = re.compile(r"^([A-Za-z0-9-]+):[ \t]+\S.*$")
 
-GITHUB_KEYWORD_RE = re.compile(
-    r"^(Closes|Fixes|Resolves)\s+(#\d+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)\.?$"
-)
+# The bare `Closes #N` form (no colon) was historically accepted by a
+# dedicated `GITHUB_KEYWORD_RE` here, but issue #566 dropped it from
+# the trailer-detection paths so the canonical `Closes: #N` (with
+# colon) is mechanically enforced on every PR. The bare form now
+# falls out of the trailer set, the body ends at that line, and
+# `check_blank_line_before_trailers` / `check_signoff_present` fail
+# with a clear message. The merge-bot's own auto-close parser
+# (`scripts/parse-close-keywords.py`) keeps reading the bare form
+# from already-merged commit bodies because GitHub's UI auto-closer
+# accepts it — distinct contract, distinct file. See #565 for the
+# paired documentation half.
 
 FIXES_SHA_TRAILER_LINE_RE = re.compile(r"^Fixes:[ \t]+[0-9a-fA-F]{7,40}\b")
 
@@ -198,13 +206,16 @@ def is_trailer_token(token: str) -> bool:
 
 
 def _is_trailer_shape_line(line: str) -> bool:
-    """Return True when ``line`` looks like a trailer-block line."""
+    """Return True when ``line`` looks like a trailer-block line.
+
+    Only matches colon-form trailers (``Token: value``); the bare
+    ``Closes #N`` form was dropped in #566 so the canonical colon
+    form is mechanically enforced on every PR.
+    """
     trailer_match = TRAILER_RE.match(line)
     if trailer_match is not None and is_trailer_token(trailer_match.group(1)):
         if trailer_match.group(1).lower() == "fixes":
             return FIXES_SHA_TRAILER_LINE_RE.match(line) is not None
-        return True
-    if GITHUB_KEYWORD_RE.match(line) is not None:
         return True
     return line.startswith("BREAKING CHANGE:")
 
@@ -224,7 +235,14 @@ def _trailer_block_start_index(lines: list[str]) -> int | None:
 
 
 def parse_trailer_block(lines: list[str]) -> list[tuple[int, str, str]]:
-    """Identify the contiguous trailer block at the tail of ``lines``."""
+    """Identify the contiguous trailer block at the tail of ``lines``.
+
+    Only matches colon-form trailers (``Token: value``); the bare
+    ``Closes #N`` form was dropped in #566 so the canonical colon
+    form is mechanically enforced. A bare ``Closes #N`` therefore
+    falls out of the trailer set, the body extends down to that line,
+    and the layout / signoff checks fail with a clear message.
+    """
     trailers: list[tuple[int, str, str]] = []
     for idx in range(len(lines), 0, -1):
         line = lines[idx - 1]
@@ -234,12 +252,6 @@ def parse_trailer_block(lines: list[str]) -> list[tuple[int, str, str]]:
         if match:
             token = match.group(1)
             value = line.split(":", 1)[1].lstrip()
-            trailers.append((idx, token, value))
-            continue
-        keyword_match = GITHUB_KEYWORD_RE.match(line)
-        if keyword_match:
-            token = keyword_match.group(1)
-            value = keyword_match.group(2)
             trailers.append((idx, token, value))
             continue
         break
@@ -552,7 +564,7 @@ _LEADING_SUBJECT_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         "==COMMIT_MSG==\n"
         "Wire the foo into the bar.\n\n"
         "More rationale.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         True,
@@ -562,7 +574,7 @@ _LEADING_SUBJECT_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         "==COMMIT_MSG==\n"
         "feature: wire the foo into the bar\n\n"
         "More rationale.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         False,
@@ -572,7 +584,7 @@ _LEADING_SUBJECT_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         "==COMMIT_MSG==\n"
         "improvement(ci): tighten the validator\n\n"
         "More rationale.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         False,
@@ -582,7 +594,7 @@ _LEADING_SUBJECT_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         "==COMMIT_MSG==\n"
         "The wheel was extracted before rule 8 landed in the script.\n\n"
         "More rationale.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         True,
@@ -612,7 +624,7 @@ def _build_verbose_body(word_count: int, words_per_line: int = 20) -> str:
     return (
         "==COMMIT_MSG==\n"
         f"{body_block}\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -630,7 +642,7 @@ _VERBOSE_BODY_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         "==COMMIT_MSG==\n"
         "One paragraph of why this change exists. Two short lines is\n"
         "all the body needs because the diff is self-evident.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         False,

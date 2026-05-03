@@ -89,7 +89,7 @@ def test_validate_rejects_missing_signoff() -> None:
         "==COMMIT_MSG==\n"
         "Subject summary.\n\n"
         "Some rationale.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "==COMMIT_MSG==\n"
     )
     with pytest.raises(commit_msg.ValidationError, match="Signed-off-by"):
@@ -108,7 +108,7 @@ def test_validate_rejects_blank_between_trailers() -> None:
         "==COMMIT_MSG==\n"
         "Subject summary.\n\n"
         "Body paragraph.\n\n"
-        "Closes #1\n\n"
+        "Closes: #1\n\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -135,7 +135,7 @@ def test_validate_rejects_overlong_body_line() -> None:
         "==COMMIT_MSG==\n"
         "Subject summary.\n\n"
         f"{long_line}\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -175,7 +175,7 @@ def test_validate_rejects_markdown_heading() -> None:
         "Subject summary.\n\n"
         "## Review notes\n"
         "Body.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -233,7 +233,7 @@ def test_validate_rejects_leading_blank_in_block() -> None:
         "\n"
         "Subject summary.\n\n"
         "Body.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -247,7 +247,7 @@ def test_validate_rejects_no_blank_before_trailers() -> None:
         "==COMMIT_MSG==\n"
         "Subject summary.\n\n"
         "Body paragraph that runs straight into the trailers.\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -260,6 +260,52 @@ def test_validate_rejects_empty_block_after_comments() -> None:
     body = "==COMMIT_MSG==\n" "<!-- placeholder from the template -->\n" "==COMMIT_MSG==\n"
     with pytest.raises(commit_msg.ValidationError, match="empty"):
         commit_msg.validate(body)
+
+
+def test_validate_rejects_bare_closes_form() -> None:
+    """The bare ``Closes #N`` (no colon) form is rejected (#566).
+
+    Pre-#566 the validator accepted both ``Closes: #N`` (canonical
+    git-trailer shape) and the bare ``Closes #N`` (GitHub
+    auto-close keyword shape). Two PRs landed in the same week
+    using the two different forms, demonstrating the
+    two-form-acceptance was an inconsistency tax. With
+    ``GITHUB_KEYWORD_RE`` removed from the trailer-detection paths,
+    a bare ``Closes #N`` falls out of the trailer set, the body
+    extends down to that line, and the trailer-block layout check
+    fires because no blank separates the would-be-body
+    ``Closes #N`` line from the ``Signed-off-by:`` trailer.
+    """
+    body = (
+        "==COMMIT_MSG==\n"
+        "Subject summary.\n\n"
+        "Body paragraph.\n\n"
+        "Closes #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n"
+    )
+    with pytest.raises(commit_msg.ValidationError) as exc_info:
+        commit_msg.validate(body)
+    # The error message must point at the offending line so the
+    # author can find the bare ``Closes #N`` quickly.
+    assert "blank line" in str(exc_info.value)
+
+
+def test_validate_accepts_canonical_closes_form() -> None:
+    """The canonical ``Closes: #N`` (with colon) form passes (#566).
+
+    Pin the positive-path contract alongside the bare-form rejection
+    so a future regression that broke either side surfaces here.
+    """
+    body = (
+        "==COMMIT_MSG==\n"
+        "Subject summary.\n\n"
+        "Body paragraph.\n\n"
+        "Closes: #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n"
+    )
+    commit_msg.validate(body)
 
 
 def test_validate_rejects_empty_trailer_value() -> None:
