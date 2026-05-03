@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.2] - 2026-05-03
+
+### Improvements
+
+- `test-system-macos-tart.yml` reusable workflow lands ahead of its
+  `ci.yml` wiring (split per ADR 0048) so GitHub registers it. (#597)
+
 ## [0.18.1] - 2026-05-03
 
 ### Improvements
