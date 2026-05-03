@@ -77,6 +77,27 @@ CONTRIBUTING.md and ADR 0037; this file covers the prose inside.
   rather than a mechanical one. Arrows hide the reasoning; prose
   exposes it.
 
+## Trailers
+
+When Claude authors the PR, the COMMIT_MSG block must include, in
+this order, immediately above the Signed-off-by: trailer:
+
+- A Closes: trailer linking the issue, in the canonical colon form
+  `Closes: #N`. Never the bare `Closes #N`. The merge bot accepts
+  the colon-less form too, but the canonical form keeps the trailer
+  block uniform and survives the validator tightening tracked
+  separately from this rule.
+- A Co-Authored-By: trailer in the form
+  `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`,
+  with the model+context string set to whatever the authoring agent
+  is actually running as. The literal noreply@anthropic.com email
+  renders the Claude icon next to the co-author chip on GitHub.
+
+The two trailers stack contiguously with Signed-off-by: — no blank
+lines between them — or `git interpret-trailers --parse` drops them
+out of the trailer set and the merge bot loses the issue link and
+the co-author attribution.
+
 ______________________________________________________________________
 
 See CONTRIBUTING.md -> "Writing release-worthy commits" for the
