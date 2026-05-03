@@ -54,13 +54,28 @@ TRAILER_RE = re.compile(r"^([A-Za-z0-9-]+):[ \t]+\S.*$")
 # dedicated `GITHUB_KEYWORD_RE` here, but issue #566 dropped it from
 # the trailer-detection paths so the canonical `Closes: #N` (with
 # colon) is mechanically enforced on every PR. The bare form now
-# falls out of the trailer set, the body ends at that line, and
-# `check_blank_line_before_trailers` / `check_signoff_present` fail
-# with a clear message. The merge-bot's own auto-close parser
-# (`scripts/parse-close-keywords.py`) keeps reading the bare form
-# from already-merged commit bodies because GitHub's UI auto-closer
-# accepts it — distinct contract, distinct file. See #565 for the
-# paired documentation half.
+# falls out of the trailer set; `check_no_bare_close_keyword` below
+# raises a targeted diagnostic naming the bare form as the cause so
+# a contributor hitting this for the first time isn't left guessing
+# why their `Closes #N` line was reclassified as body. The
+# merge-bot's own auto-close parser (`scripts/parse-close-keywords.py`)
+# keeps reading the bare form from already-merged commit bodies
+# because GitHub's UI auto-closer accepts it — distinct contract,
+# distinct file. See #565 for the paired documentation half.
+
+# Matches a *whole line* of the bare GitHub auto-close-keyword form
+# (`Closes #N`, `Fixes #N`, `Resolves #N`, with optional cross-repo
+# `owner/repo#N` and an optional trailing period). Anchored start-to-end
+# so a prose mention like `this closes #123 because foo` does NOT match
+# — the check is for lines clearly *intended* as a `Closes:` trailer
+# whose author forgot the colon. Case-sensitive on the keyword to match
+# the project's trailer-token convention; the `Closes`/`Fixes`/`Resolves`
+# capitalisation is what KNOWN_TRAILER_TOKENS already accepts.
+BARE_CLOSE_KEYWORD_LINE_RE = re.compile(
+    r"^(?P<keyword>Closes|Fixes|Resolves)\s+"
+    r"(?P<ref>(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\d+)"
+    r"\.?\s*$"
+)
 
 FIXES_SHA_TRAILER_LINE_RE = re.compile(r"^Fixes:[ \t]+[0-9a-fA-F]{7,40}\b")
 
@@ -307,6 +322,40 @@ def check_trailer_block_contiguity(lines: list[str]) -> None:
     )
 
 
+def check_no_bare_close_keyword(lines: list[str]) -> None:
+    """Reject the bare ``Closes #N`` (no colon) form with a diagnostic.
+
+    Issue #566 dropped the bare GitHub-auto-close-keyword form from the
+    trailer-detection paths so the canonical ``Closes: #N`` (with colon)
+    is mechanically enforced on every PR. Without this targeted check,
+    a bare ``Closes #N`` would just fall out of the trailer set and the
+    downstream layout / signoff checks would fire with a generic "no
+    blank line between body and trailer block" message that doesn't
+    name the actual cause — confusing for a contributor hitting the
+    rule for the first time.
+
+    The check fires on a whole-line match against
+    :data:`BARE_CLOSE_KEYWORD_LINE_RE` so prose mentions like
+    ``this closes #123 because foo`` don't false-positive — only lines
+    clearly *intended* as a ``Closes:`` trailer whose author forgot
+    the colon are flagged. Pairs with the colon-form positive coverage
+    in the trailer-block tests.
+    """
+    for idx, line in enumerate(lines, start=1):
+        match = BARE_CLOSE_KEYWORD_LINE_RE.match(line.rstrip())
+        if match is None:
+            continue
+        keyword = match.group("keyword")
+        ref = match.group("ref")
+        raise ValidationError(
+            f"`{MARKER}` block has a bare `{keyword} {ref}` "
+            f"(no colon) trailer on line {idx}: `{line.strip()}`. "
+            f"The bare form was dropped in #566 — use the canonical "
+            f"`{keyword}: {ref}` (with colon) so the trailer matches "
+            "the shape of every other git-trailer in the block."
+        )
+
+
 def check_blank_line_before_trailers(lines: list[str]) -> None:
     """Require at least one blank line between body and the trailer block."""
     first_trailer_idx = _trailer_block_start_index(lines)
@@ -540,6 +589,15 @@ def validate(body: str) -> None:
     # the layout checks would emit if the typo line failed
     # ``_is_trailer_shape_line``'s known-token gate.
     check_trailers(lines)
+    # ``check_no_bare_close_keyword`` runs before the contiguity /
+    # blank-line-before checks so a bare ``Closes #N`` surfaces the
+    # targeted "use `Closes: #N` instead" diagnostic (issue #566)
+    # rather than the generic "no blank line between body and trailer
+    # block" message the layout checks would emit downstream — the
+    # bare line falls out of the trailer set, the body extends down
+    # to it, and `check_blank_line_before_trailers` would otherwise
+    # fire without naming the actual cause.
+    check_no_bare_close_keyword(lines)
     check_trailer_block_contiguity(lines)
     check_blank_line_before_trailers(lines)
     check_signoff_present(lines)
