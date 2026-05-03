@@ -199,7 +199,7 @@ self-modifying-merge-bot-PR risk (per the auto-memory note,
 needs to be exact for the merge-bot run that lands this PR not to
 crater on a missing composite action). A future cleanup PR can
 factor the three call-sites once the third one has merged on `main`
-and the duplication is observable.
+and the duplication is observable; tracked as #584.
 
 The new `command` job DOES need its own `actions/checkout@... with: ref: main` before any `uses: ./.github/actions/...` call —
 unlikely to hit one in this PR (the `update` verb is pure

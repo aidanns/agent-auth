@@ -1436,6 +1436,7 @@ jobs:
       # `mint-merge-bot-app-token` composite action once the third
       # call-site has merged on `main` (deferring the factor-out
       # avoids the self-modifying-merge-bot-PR risk on this PR).
+      # See #584.
       - name: Check secrets are configured
         id: secrets-check
         env:
