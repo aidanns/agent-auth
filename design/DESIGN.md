@@ -845,6 +845,24 @@ Run modes:
   Docker.
 - `scripts/test.sh --all` — both layers.
 
+### macOS-Tart-VM system tests
+
+`packages/things-client-cli-applescript/tests/system/test_macos_tart_smoke.py`
+is the third tier — a per-PR smoke test that runs inside a clean macOS
+guest booted under Apple's Virtualization.framework via the Tart CLI.
+The `.github/workflows/test-system-macos-tart.yml` workflow installs
+Things 3 in the guest, seeds an `kTCCServiceAppleEvents` Automation
+grant for `osascript -> com.culturedcode.ThingsMac` directly into
+TCC.db, seeds a single to-do via raw `osascript`, then exercises
+`things-client-cli-applescript todos list` against the live Things 3
+instance. Path-filter gating in `ci.yml` keeps the `macos-15` runner
+cost off PRs that don't touch
+`packages/things-client-cli-applescript/`,
+`packages/agent-auth-common/`, or `scripts/ci/macos-tart/` / the
+workflow itself. The lane is plumbing for the full e2e tracked as
+#567; design rationale and the pre-baked-image alternative live in
+`design/decisions/0047-macos-tart-ci-tcc-seed.md`.
+
 ## Performance budget
 
 `.claude/instructions/testing-standards.md` § Performance requires a

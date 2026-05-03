@@ -112,6 +112,7 @@ pythonpath = [
 markers = [
     "covers_function(*names): declare which functional-decomposition leaf functions a test exercises (read by `systems-engineering function verify`)",
     "perf_budget: asserts a latency budget documented in design/DESIGN.md § Performance budget. Discoverable as a group via `pytest -m perf_budget`.",
+    "requires_real_things3: macOS-Tart-VM-only system test that drives a live Things 3 instance over real osascript. Skips unless AGENT_AUTH_REAL_THINGS3=1 on Darwin (only set inside the boot-prepped Tart VM). See ADR 0047.",
 ]
 # Coverage is gated per-package: each ``packages/<svc>/pyproject.toml``
 # carries its own ``[tool.pytest.ini_options].addopts`` with
