@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.0] - 2026-05-03
+
+### Features
+
+- `merge-bot` now responds to `@agent-auth-merge-bot update` PR
+  comments by calling `update-branch` on the PR, with no merge
+  attempt. (#583)
+
 ## [0.17.4] - 2026-05-02
 
 ### Fixes
