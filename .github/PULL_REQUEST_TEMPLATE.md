@@ -39,9 +39,8 @@ below. Rules (enforced by .github/workflows/pr-lint.yml):
   non-`Signed-off-by:` line.
 - Trailers (`Closes`, `Co-authored-by`, `Signed-off-by`) follow the
   git-trailer format `Token: value`. The bare `Closes #N` (no colon)
-  is also accepted for compatibility with the existing CHANGELOG
-  style, but new PRs should prefer `Closes: #N` so it matches the
-  shape of every other trailer.
+  is rejected since #566 — use the canonical `Closes: #N` so it
+  matches the shape of every other trailer.
 - The trailer block is contiguous: stack `Closes: #N` and
   `Signed-off-by:` with no blank line between them. One blank line
   goes ABOVE the trailer block (between body and trailers), not

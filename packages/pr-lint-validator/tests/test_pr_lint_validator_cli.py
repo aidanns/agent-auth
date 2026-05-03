@@ -72,7 +72,7 @@ def test_commit_msg_subcommand_validates_passing_body(
         "==COMMIT_MSG==\n"
         "Wire the foo into the bar.\n\n"
         "Some why-this-change rationale.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         encoding="utf-8",
@@ -99,7 +99,7 @@ def test_commit_msg_subcommand_rejects_leading_subject_line(
         "==COMMIT_MSG==\n"
         "improvement(ci): wire the foo into the bar\n\n"
         "Body paragraph.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         encoding="utf-8",
@@ -118,7 +118,7 @@ def test_commit_msg_subcommand_rejects_missing_signoff(
         "==COMMIT_MSG==\n"
         "Subject only.\n\n"
         "Body paragraph.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "==COMMIT_MSG==\n",
         encoding="utf-8",
     )

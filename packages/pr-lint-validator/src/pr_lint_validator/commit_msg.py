@@ -50,8 +50,31 @@ VERBOSE_BODY_MAX_WORDS = 250
 
 TRAILER_RE = re.compile(r"^([A-Za-z0-9-]+):[ \t]+\S.*$")
 
-GITHUB_KEYWORD_RE = re.compile(
-    r"^(Closes|Fixes|Resolves)\s+(#\d+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)\.?$"
+# The bare `Closes #N` form (no colon) was historically accepted by a
+# dedicated `GITHUB_KEYWORD_RE` here, but issue #566 dropped it from
+# the trailer-detection paths so the canonical `Closes: #N` (with
+# colon) is mechanically enforced on every PR. The bare form now
+# falls out of the trailer set; `check_no_bare_close_keyword` below
+# raises a targeted diagnostic naming the bare form as the cause so
+# a contributor hitting this for the first time isn't left guessing
+# why their `Closes #N` line was reclassified as body. The
+# merge-bot's own auto-close parser (`scripts/parse-close-keywords.py`)
+# keeps reading the bare form from already-merged commit bodies
+# because GitHub's UI auto-closer accepts it — distinct contract,
+# distinct file. See #565 for the paired documentation half.
+
+# Matches a *whole line* of the bare GitHub auto-close-keyword form
+# (`Closes #N`, `Fixes #N`, `Resolves #N`, with optional cross-repo
+# `owner/repo#N` and an optional trailing period). Anchored start-to-end
+# so a prose mention like `this closes #123 because foo` does NOT match
+# — the check is for lines clearly *intended* as a `Closes:` trailer
+# whose author forgot the colon. Case-sensitive on the keyword to match
+# the project's trailer-token convention; the `Closes`/`Fixes`/`Resolves`
+# capitalisation is what KNOWN_TRAILER_TOKENS already accepts.
+BARE_CLOSE_KEYWORD_LINE_RE = re.compile(
+    r"^(?P<keyword>Closes|Fixes|Resolves)\s+"
+    r"(?P<ref>(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\d+)"
+    r"\.?\s*$"
 )
 
 FIXES_SHA_TRAILER_LINE_RE = re.compile(r"^Fixes:[ \t]+[0-9a-fA-F]{7,40}\b")
@@ -198,13 +221,16 @@ def is_trailer_token(token: str) -> bool:
 
 
 def _is_trailer_shape_line(line: str) -> bool:
-    """Return True when ``line`` looks like a trailer-block line."""
+    """Return True when ``line`` looks like a trailer-block line.
+
+    Only matches colon-form trailers (``Token: value``); the bare
+    ``Closes #N`` form was dropped in #566 so the canonical colon
+    form is mechanically enforced on every PR.
+    """
     trailer_match = TRAILER_RE.match(line)
     if trailer_match is not None and is_trailer_token(trailer_match.group(1)):
         if trailer_match.group(1).lower() == "fixes":
             return FIXES_SHA_TRAILER_LINE_RE.match(line) is not None
-        return True
-    if GITHUB_KEYWORD_RE.match(line) is not None:
         return True
     return line.startswith("BREAKING CHANGE:")
 
@@ -224,7 +250,14 @@ def _trailer_block_start_index(lines: list[str]) -> int | None:
 
 
 def parse_trailer_block(lines: list[str]) -> list[tuple[int, str, str]]:
-    """Identify the contiguous trailer block at the tail of ``lines``."""
+    """Identify the contiguous trailer block at the tail of ``lines``.
+
+    Only matches colon-form trailers (``Token: value``); the bare
+    ``Closes #N`` form was dropped in #566 so the canonical colon
+    form is mechanically enforced. A bare ``Closes #N`` therefore
+    falls out of the trailer set, the body extends down to that line,
+    and the layout / signoff checks fail with a clear message.
+    """
     trailers: list[tuple[int, str, str]] = []
     for idx in range(len(lines), 0, -1):
         line = lines[idx - 1]
@@ -234,12 +267,6 @@ def parse_trailer_block(lines: list[str]) -> list[tuple[int, str, str]]:
         if match:
             token = match.group(1)
             value = line.split(":", 1)[1].lstrip()
-            trailers.append((idx, token, value))
-            continue
-        keyword_match = GITHUB_KEYWORD_RE.match(line)
-        if keyword_match:
-            token = keyword_match.group(1)
-            value = keyword_match.group(2)
             trailers.append((idx, token, value))
             continue
         break
@@ -293,6 +320,40 @@ def check_trailer_block_contiguity(lines: list[str]) -> None:
         "silently loses the reference. Stack the trailers with no "
         "blanks between them."
     )
+
+
+def check_no_bare_close_keyword(lines: list[str]) -> None:
+    """Reject the bare ``Closes #N`` (no colon) form with a diagnostic.
+
+    Issue #566 dropped the bare GitHub-auto-close-keyword form from the
+    trailer-detection paths so the canonical ``Closes: #N`` (with colon)
+    is mechanically enforced on every PR. Without this targeted check,
+    a bare ``Closes #N`` would just fall out of the trailer set and the
+    downstream layout / signoff checks would fire with a generic "no
+    blank line between body and trailer block" message that doesn't
+    name the actual cause — confusing for a contributor hitting the
+    rule for the first time.
+
+    The check fires on a whole-line match against
+    :data:`BARE_CLOSE_KEYWORD_LINE_RE` so prose mentions like
+    ``this closes #123 because foo`` don't false-positive — only lines
+    clearly *intended* as a ``Closes:`` trailer whose author forgot
+    the colon are flagged. Pairs with the colon-form positive coverage
+    in the trailer-block tests.
+    """
+    for idx, line in enumerate(lines, start=1):
+        match = BARE_CLOSE_KEYWORD_LINE_RE.match(line.rstrip())
+        if match is None:
+            continue
+        keyword = match.group("keyword")
+        ref = match.group("ref")
+        raise ValidationError(
+            f"`{MARKER}` block has a bare `{keyword} {ref}` "
+            f"(no colon) trailer on line {idx}: `{line.strip()}`. "
+            f"The bare form was dropped in #566 — use the canonical "
+            f"`{keyword}: {ref}` (with colon) so the trailer matches "
+            "the shape of every other git-trailer in the block."
+        )
 
 
 def check_blank_line_before_trailers(lines: list[str]) -> None:
@@ -528,6 +589,15 @@ def validate(body: str) -> None:
     # the layout checks would emit if the typo line failed
     # ``_is_trailer_shape_line``'s known-token gate.
     check_trailers(lines)
+    # ``check_no_bare_close_keyword`` runs before the contiguity /
+    # blank-line-before checks so a bare ``Closes #N`` surfaces the
+    # targeted "use `Closes: #N` instead" diagnostic (issue #566)
+    # rather than the generic "no blank line between body and trailer
+    # block" message the layout checks would emit downstream — the
+    # bare line falls out of the trailer set, the body extends down
+    # to it, and `check_blank_line_before_trailers` would otherwise
+    # fire without naming the actual cause.
+    check_no_bare_close_keyword(lines)
     check_trailer_block_contiguity(lines)
     check_blank_line_before_trailers(lines)
     check_signoff_present(lines)
@@ -552,7 +622,7 @@ _LEADING_SUBJECT_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         "==COMMIT_MSG==\n"
         "Wire the foo into the bar.\n\n"
         "More rationale.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         True,
@@ -562,7 +632,7 @@ _LEADING_SUBJECT_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         "==COMMIT_MSG==\n"
         "feature: wire the foo into the bar\n\n"
         "More rationale.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         False,
@@ -572,7 +642,7 @@ _LEADING_SUBJECT_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         "==COMMIT_MSG==\n"
         "improvement(ci): tighten the validator\n\n"
         "More rationale.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         False,
@@ -582,7 +652,7 @@ _LEADING_SUBJECT_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         "==COMMIT_MSG==\n"
         "The wheel was extracted before rule 8 landed in the script.\n\n"
         "More rationale.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         True,
@@ -612,7 +682,7 @@ def _build_verbose_body(word_count: int, words_per_line: int = 20) -> str:
     return (
         "==COMMIT_MSG==\n"
         f"{body_block}\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -630,7 +700,7 @@ _VERBOSE_BODY_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         "==COMMIT_MSG==\n"
         "One paragraph of why this change exists. Two short lines is\n"
         "all the body needs because the diff is self-evident.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         False,

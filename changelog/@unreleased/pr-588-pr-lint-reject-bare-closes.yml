@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: improvement
+improvement:
+  description: |
+    `==COMMIT_MSG==` validator now rejects the bare `Closes #N`
+    form; only the canonical `Closes: #N` is accepted.
+  links:
+    - https://github.com/aidanns/agent-auth/pull/588
+packages:
+  - pr-lint-validator
