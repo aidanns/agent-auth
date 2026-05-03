@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: test-workspace
+
+# Workspace-wide unit-test child of `ci.yml`. Runs the workspace
+# pytest invocation (`task test -- --unit`) which exercises both the
+# root `tests/` tree (release-semver, scan-failure, devcontainer-
+# signing, workspace-deps, merge-bot-rollup-dedupe, openapi-spec, ...)
+# AND every per-package `tests/` tree in a single session, producing a
+# unified `.coverage` database. `scripts/check-package-coverage.sh`
+# then enforces each package's `--cov-fail-under` floor against the
+# unified DB (per #273).
+#
+# Complements `test-unit.yml` (per-package matrix, no coverage, fast
+# per-package signal): the matrix gives PRs fast localisation on
+# regression, this workflow gives them workspace-wide root-tree
+# coverage and floor enforcement. The matrix's wall-clock is
+# unaffected.
+#
+# Restores both gates that the Phase 5 CI cutover (#516, commit
+# c9bb1f6) stranded — see issue #581.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test-workspace:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 makes the workspace's git tags reachable so
+      # setuptools-scm can derive a real PEP 440 version when the
+      # release-wheel-version regression test
+      # (tests/test_release_wheel_version.py) builds a wheel. The
+      # default shallow clone (fetch-depth: 1, no tags) makes
+      # setuptools-scm fall back to a "0.0.1.dev1+unknown.gsha"
+      # placeholder that the test correctly rejects.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # `task test -- --unit` runs `scripts/test.sh --unit`, which:
+      #   1. Bootstraps the project virtualenv via _bootstrap_venv.sh
+      #      (so the workspace pytest invocation runs against the same
+      #      env as a local `task test` — including the `--cov=packages`
+      #      addopt from the root `pyproject.toml` that produces the
+      #      unified `.coverage` DB).
+      #   2. Invokes pytest against UNIT_TEST_PATHS (every package's
+      #      `tests/` tree plus the root `tests/` tree, with each
+      #      package's `tests/integration/` slice ignored — those run
+      #      under `test-integration.yml`).
+      #   3. Chains `scripts/check-package-coverage.sh` on success,
+      #      which queries the unified `.coverage` DB and asserts each
+      #      package's `--cov-fail-under` floor.
+      #
+      # Going through `task test -- --unit` rather than re-implementing
+      # the chain inline keeps the local and CI invocations identical;
+      # a future change to UNIT_TEST_PATHS or the floor-check protocol
+      # auto-flows here without a workflow edit.
+      - name: Run workspace tests + per-package coverage gate
+        run: task test -- --unit

@@ -75,6 +75,7 @@ DIFF_DEPENDENT_JOB_IDS: frozenset[str] = frozenset(
         "test-smoke",
         "test-system",
         "test-unit",
+        "test-workspace",
     }
 )
 
@@ -354,6 +355,8 @@ def test_helper_script_outputs_all_expected_check_run_names() -> None:
         "test-unit / unit-tests (things-bridge)",
         "test-unit / unit-tests (things-cli)",
         "test-unit / unit-tests (things-client-cli-applescript)",
+        # test-workspace single-job child publishes one check-run.
+        "test-workspace / test-workspace",
         # test-integration matrix.
         "test-integration / integration-tests (agent-auth)",
         "test-integration / integration-tests (gpg-bridge)",
