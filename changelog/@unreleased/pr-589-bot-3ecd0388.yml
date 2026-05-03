@@ -5,6 +5,7 @@
 type: improvement
 improvement:
   description: |
-    Per-PR macOS-Tart-VM smoke lane that boots a clean Sequoia guest, installs Things 3, seeds a TCC Automation grant for `osascript` -> `com.culturedcode.ThingsMac`, and round-trips a `things-client-cli-applescript todos list` against the live app. Path-filter-gated so the `macos-15` runner cost only lands on PRs that touch `packages/things-client-cli-applescript/`, `packages/agent-auth-common/`, or `scripts/ci/macos-tart/`. Plumbing only -- the full agent-auth -> things-bridge -> CLI -> Things 3 e2e is tracked as #567.
+    Per-PR macOS-Tart-VM smoke lane that round-trips
+    `things-client-cli-applescript` against a real Things 3 install.
   links:
     - https://github.com/aidanns/agent-auth/pull/589

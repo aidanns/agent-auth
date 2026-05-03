@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
 # Boot-prep for the macOS-Tart-VM smoke lane. Runs inside a clean
 # `cirruslabs/macos-sequoia-base` guest under
 # `.github/workflows/test-system-macos-tart.yml`. Installs Things 3,
