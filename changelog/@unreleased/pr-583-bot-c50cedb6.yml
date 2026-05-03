@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+type: feature
+feature:
+  description: |
+    `merge-bot` now responds to `@agent-auth-merge-bot <verb>` PR
+    comments. Today's only verb is `update`, which calls
+    `PUT /pulls/{n}/update-branch` (no merge attempt) so a contributor
+    can refresh a stuck `BEHIND` branch without applying `automerge`
+    or waiting for the sweep cron. Authorization gates the verb to
+    `admin / maintain / write` collaborators; the bot acknowledges
+    with reactions (eyes -> thumbs-up / thumbs-down) and only
+    posts a follow-up `Claude: Cannot ...` comment on structured
+    failures.
+  links:
+    - https://github.com/aidanns/agent-auth/pull/583
