@@ -54,6 +54,17 @@ name: merge-bot
 #   - workflow_dispatch — maintainer break-glass against a specific
 #     PR number. Also the sweep job's fan-out target — see the
 #     `push:main` trigger above.
+#   - issue_comment: created — comment-driven dispatch surface for
+#     `@agent-auth-merge-bot <verb>` mentions on PRs (issue #504).
+#     Today's only verb is `update` (call `update-branch` without a
+#     merge attempt). The cheap pre-filter on the new `command` job
+#     rejects non-PR comments, comments without the `@-mention`
+#     prefix, and Bot-authored comments before any runner starts.
+#     The `command` job is otherwise self-contained: it does not
+#     interact with the `merge` / `label-needs-fix` / `sweep` jobs
+#     above. Verb dispatch is a small `case` table so follow-up
+#     verbs (`merge`, `cancel`, `rebase`, …) can be added without
+#     revisiting the trigger plumbing.
 #
 # The bot authors no commits — it only calls `PUT /pulls/{n}/merge`.
 # The squash commit's `commit_title` is `<PR title> (#<n>)` and the
@@ -148,6 +159,16 @@ on:
         description: PR number to merge (break-glass)
         required: true
         type: number
+  # Comment-command dispatch surface (issue #504). The `command` job
+  # below scopes itself to PR comments via
+  # `event.issue.pull_request != null`, to the `@agent-auth-merge-bot `
+  # prefix, and to non-Bot authors — so a `created` event on an
+  # ordinary issue comment, or a PR comment without the prefix, is
+  # rejected by the `if:` predicate before any runner starts. Only
+  # `created` is wired (not `edited`) so a contributor cannot smuggle
+  # a command into an old comment by editing it after-the-fact.
+  issue_comment:
+    types: [created]
 
 # `pull-requests: write` is needed by the `label-needs-fix` job
 # to apply / remove the `needs fix` label, and (via the App token)
@@ -1343,3 +1364,438 @@ jobs:
               --ref main \
               -f pr_number="${pr}"
           done
+
+  # `@-mention` comment-command dispatch (issue #504). A contributor
+  # (or any user with `write` permission on the repo) posts
+  # `@agent-auth-merge-bot <verb>` on a PR comment; this job
+  # acknowledges with a 👀 reaction, runs the verb, and reacts 👍 on
+  # success or 👎 on rejection. A follow-up `Claude: Cannot ...` PR
+  # comment is posted only on structured failures (unknown verb,
+  # `update-branch` API error other than `expected_head_sha`); the
+  # bare reaction lifecycle covers the success / wrong-permission
+  # paths.
+  #
+  # Today's only verb is `update`: poll `mergeStateStatus` to confirm
+  # the PR is BEHIND, then call `PUT /pulls/{n}/update-branch` with
+  # `expected_head_sha` pinned. Same shape as the `merge` job's
+  # `Detect BEHIND and auto-update branch` step, but in isolation —
+  # no merge attempt follows. The verb-dispatch table is a `case`
+  # statement so follow-up verbs (`merge`, `cancel`, `rebase`, …)
+  # can be added by appending a new arm without revisiting the
+  # trigger plumbing or the authorization gate.
+  #
+  # Authorization: `GET /repos/.../collaborators/{user}/permission`
+  # must return `admin / maintain / write`; anything below reacts 👎
+  # only and exits with a `::notice::` log line. The collaborator-
+  # permission endpoint on a user-owned repo is covered by the App's
+  # existing `Metadata: Read-only` grant; no new App permission
+  # needed (see docs/release/merge-bot-setup.md Step 1).
+  #
+  # Self-mention guard: two layers, defence-in-depth. The job-level
+  # `if:` rejects `event.comment.user.type == 'Bot'` so any future
+  # command-output comment that mentions the bot cannot loop, and an
+  # explicit login check inside the job rejects the bot's own login
+  # (`agent-auth-merge-bot[bot]`) for the unlikely case that GitHub
+  # changes the `user.type` value for App-authored comments.
+  #
+  # Future port to the hosted webhook handler (#428): the verb-
+  # dispatch shape, authorization model, and reaction protocol all
+  # port unchanged — only the trigger plumbing
+  # (`on: issue_comment` → HTTP webhook) is replaced.
+  command:
+    runs-on: ubuntu-latest
+    # Cheap pre-filter so we don't burn a runner on every issue-
+    # comment event. `event.issue.pull_request != null` rejects
+    # comments on non-PR issues; `startsWith` rejects unrelated PR
+    # comments without an API call; `user.type != 'Bot'` is the
+    # self-mention guard at the trigger level. The trailing space in
+    # the prefix string is intentional — it forces the verb to be a
+    # separate token (`@agent-auth-merge-bot update` matches;
+    # `@agent-auth-merge-bot-extension update` does not).
+    if: |
+      github.event_name == 'issue_comment'
+      && github.event.action == 'created'
+      && github.event.issue.pull_request != null
+      && startsWith(github.event.comment.body, '@agent-auth-merge-bot ')
+      && github.event.comment.user.type != 'Bot'
+    # Per-comment concurrency so two near-simultaneous comments on
+    # different PRs run in parallel. `cancel-in-progress: false`
+    # because cancelling a mid-`update-branch` call would leave the
+    # user without a 👍 / 👎 reaction (and the `expected_head_sha`
+    # pin on the API call already protects against the only race
+    # that matters — a new push during the update).
+    concurrency:
+      group: merge-bot-command-${{ github.event.comment.id }}
+      cancel-in-progress: false
+    steps:
+      # Same secrets-check shape as the `merge` and `label-needs-fix`
+      # jobs above — first-time setup / partial-config detection.
+      # The full rationale lives in the `merge` job's comment block;
+      # not duplicated here. Three call-sites of this pair now live
+      # in this file; a future cleanup PR can factor them into a
+      # `mint-merge-bot-app-token` composite action once the third
+      # call-site has merged on `main` (deferring the factor-out
+      # avoids the self-modifying-merge-bot-PR risk on this PR).
+      - name: Check secrets are configured
+        id: secrets-check
+        env:
+          APP_ID: ${{ secrets.MERGE_BOT_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APP_ID:-}" && -z "${PRIVATE_KEY:-}" ]]; then
+            echo "::notice::MERGE_BOT_APP_ID / MERGE_BOT_PRIVATE_KEY secrets are not set; skipping merge-bot command run."
+            echo "::notice::See docs/release/merge-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+          elif [[ -n "${APP_ID:-}" && -n "${PRIVATE_KEY:-}" ]]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          else
+            if [[ -z "${APP_ID:-}" ]]; then
+              missing="MERGE_BOT_APP_ID"
+            else
+              missing="MERGE_BOT_PRIVATE_KEY"
+            fi
+            echo "::error::${missing} secret is not set but the other merge-bot secret is; this is a partial / broken configuration."
+            echo "::error::See docs/release/merge-bot-setup.md for setup instructions."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            exit 1
+          fi
+
+      - name: Mint merge-bot App token
+        id: app-token
+        if: steps.secrets-check.outputs.configured == 'true'
+        # Pinned by SHA per .claude/instructions/tooling-and-ci.md —
+        # same pin policy as the `merge` and `label-needs-fix` jobs.
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.MERGE_BOT_APP_ID }}
+          private-key: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
+
+      # Defence-in-depth self-mention guard. The job-level `if:`
+      # rejects `user.type == 'Bot'` already, but we re-check the
+      # commenter's login against the App's bot login here so a
+      # future GitHub schema change that puts the App's comments on
+      # a different `user.type` value cannot trigger an output-loop.
+      # The `[bot]` suffix is appended automatically by GitHub for
+      # App-authored comments.
+      - name: Reject self-mention (defence in depth)
+        if: |
+          steps.secrets-check.outputs.configured == 'true'
+          && github.event.comment.user.login == 'agent-auth-merge-bot[bot]'
+        env:
+          ACTOR: ${{ github.event.comment.user.login }}
+        run: |
+          echo "merge-bot command: ignoring comment by ${ACTOR} (App's own login); exiting cleanly."
+          exit 0
+
+      # Parse the verb (and any args) out of the comment body. The
+      # body is bound through `env:` rather than inlined via `${{ }}`
+      # so backticks / `$(...)` / shell metacharacters in the body
+      # cannot be evaluated — the same defensive shape every other
+      # `run:` block in this file uses for tainted inputs. This is
+      # critical here because the comment body is a fully-external
+      # input (any contributor can author one).
+      #
+      # The parser is simple by design: take the first line, strip
+      # the `@agent-auth-merge-bot ` prefix, and take the first
+      # whitespace-delimited token as the verb. Anything past the
+      # verb is captured into ARGS for future multi-arg verbs, but
+      # the only verb shipped today (`update`) ignores it.
+      - name: Parse comment for verb
+        id: parse
+        if: |
+          steps.secrets-check.outputs.configured == 'true'
+          && github.event.comment.user.login != 'agent-auth-merge-bot[bot]'
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          # First line only — multi-line bodies are accepted but the
+          # command itself must sit on the first line so a follow-on
+          # paragraph (e.g. context for human readers) cannot
+          # accidentally introduce a second verb.
+          first_line="$(printf '%s' "${COMMENT_BODY}" | head -n 1)"
+          # Strip the `@agent-auth-merge-bot ` prefix the `if:`
+          # already verified is present. Use parameter expansion
+          # rather than `sed` — no regex, no shell-meta surface.
+          rest="${first_line#@agent-auth-merge-bot }"
+          # Verb = first whitespace-delimited token. `awk '{print $1}'`
+          # handles both space and tab separators uniformly. Lower-
+          # cased so `Update` / `UPDATE` map to `update` (humans
+          # capitalise inconsistently; the dispatch table is the
+          # source of truth for the canonical form).
+          verb="$(printf '%s\n' "${rest}" | awk '{print tolower($1)}')"
+          # Args = everything past the verb, preserved as-is for
+          # future multi-arg verbs. Today's `update` ignores it.
+          args="$(printf '%s\n' "${rest}" | awk '{$1=""; sub(/^ +/, ""); print}')"
+          echo "verb=${verb}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "args<<MERGE_BOT_COMMAND_EOF"
+            echo "${args}"
+            echo "MERGE_BOT_COMMAND_EOF"
+          } >> "${GITHUB_OUTPUT}"
+          echo "merge-bot command: parsed verb=${verb} args=${args}"
+
+      # Authorization gate. `GET /repos/.../collaborators/{user}/permission`
+      # returns one of `admin / maintain / write / triage / read /
+      # none`; we accept the top three (the same gating GitHub's own
+      # UI uses for write-tier actions). Anything below reacts 👎 and
+      # exits with a `::notice::` line — no follow-up PR comment
+      # (would invite drive-by command spam, since unauthorized
+      # users by definition aren't trusted to make signal-from-noise
+      # judgements about their own attempts).
+      #
+      # The collaborator-permission endpoint on a user-owned repo
+      # is covered by the App's existing `Metadata: Read-only` grant
+      # — no new permission needed.
+      - name: Authorize commenter
+        id: authz
+        if: |
+          steps.secrets-check.outputs.configured == 'true'
+          && github.event.comment.user.login != 'agent-auth-merge-bot[bot]'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ACTOR: ${{ github.event.comment.user.login }}
+        run: |
+          set -euo pipefail
+          permission="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/collaborators/${ACTOR}/permission" \
+            --jq '.permission' \
+            2>/dev/null || echo "")"
+          case "${permission}" in
+            admin|maintain|write)
+              echo "merge-bot command: ${ACTOR} has '${permission}' permission; authorized."
+              echo "authorized=true" >> "${GITHUB_OUTPUT}"
+              ;;
+            *)
+              echo "::notice::merge-bot command: ${ACTOR} has permission='${permission:-<none>}'; rejecting."
+              echo "authorized=false" >> "${GITHUB_OUTPUT}"
+              ;;
+          esac
+
+      # Authorization-failed path: 👎 reaction only, no PR comment.
+      # Best-effort — a failed reaction post emits a `::warning::`
+      # and the workflow exits 0 anyway (the rejection has already
+      # been recorded in the `::notice::` line above).
+      - name: React 👎 (unauthorized)
+        if: |
+          steps.secrets-check.outputs.configured == 'true'
+          && github.event.comment.user.login != 'agent-auth-merge-bot[bot]'
+          && steps.authz.outputs.authorized == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          set -euo pipefail
+          if ! gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content="-1" \
+            > /dev/null 2> "${RUNNER_TEMP}/react.err"; then
+            err="$(cat "${RUNNER_TEMP}/react.err")"
+            echo "::warning::Failed to post 👎 reaction on comment ${COMMENT_ID}: ${err}"
+          fi
+
+      # Stop here on unauthorized — don't run the verb. Exits 0 so
+      # the workflow run is green (rejection is a normal outcome,
+      # not a failure of the bot).
+      - name: Exit on unauthorized
+        if: |
+          steps.secrets-check.outputs.configured == 'true'
+          && github.event.comment.user.login != 'agent-auth-merge-bot[bot]'
+          && steps.authz.outputs.authorized == 'false'
+        run: exit 0
+
+      # 👀 reaction — acknowledges the request before the API work
+      # starts. Only fires after the authorization gate passes so
+      # the timeline distinguishes "rejected because you can't run
+      # it" (👎 only) from "attempted-and-failed" (👀 then 👎).
+      # Best-effort like the other reaction calls.
+      - name: React 👀 (acknowledged)
+        if: |
+          steps.secrets-check.outputs.configured == 'true'
+          && github.event.comment.user.login != 'agent-auth-merge-bot[bot]'
+          && steps.authz.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          set -euo pipefail
+          if ! gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content="eyes" \
+            > /dev/null 2> "${RUNNER_TEMP}/react.err"; then
+            err="$(cat "${RUNNER_TEMP}/react.err")"
+            echo "::warning::Failed to post 👀 reaction on comment ${COMMENT_ID}: ${err}"
+          fi
+
+      # Verb dispatch. Today's only verb is `update`. The `case`
+      # table is the dispatch surface — adding a new verb is a new
+      # arm here plus its own helper step(s) above; the trigger,
+      # authorization, and reaction lifecycle don't need revisiting.
+      #
+      # Each arm sets two outputs:
+      #   - `outcome` = success | failure (drives the final 👍 / 👎)
+      #   - `message` = optional follow-up `Claude: ...` PR comment
+      #     body. Empty string means "no follow-up comment".
+      - name: Dispatch verb
+        id: dispatch
+        if: |
+          steps.secrets-check.outputs.configured == 'true'
+          && github.event.comment.user.login != 'agent-auth-merge-bot[bot]'
+          && steps.authz.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          VERB: ${{ steps.parse.outputs.verb }}
+        run: |
+          set -euo pipefail
+          outcome="failure"
+          message=""
+          case "${VERB}" in
+            update)
+              # Re-fetch mergeStateStatus + headRefOid so the BEHIND
+              # decision is based on current state, not on whatever
+              # the issue_comment payload would have carried.
+              # mergeStateStatus may come back UNKNOWN while GitHub
+              # is still computing it; poll for ~30s before giving
+              # up. Same shape as the `merge` job's
+              # `Detect BEHIND and auto-update branch` step.
+              merge_state=""
+              head_sha=""
+              for attempt in 1 2 3 4 5 6 7 8 9 10; do
+                state_payload="$(gh pr view "${PR_NUMBER}" \
+                  --repo "${GITHUB_REPOSITORY}" \
+                  --json mergeStateStatus,headRefOid)"
+                merge_state="$(jq -r '.mergeStateStatus' <<<"${state_payload}")"
+                head_sha="$(jq -r '.headRefOid' <<<"${state_payload}")"
+                if [[ "${merge_state}" != "UNKNOWN" ]]; then
+                  break
+                fi
+                echo "merge-bot command: mergeStateStatus=UNKNOWN on attempt ${attempt}; sleeping 3s before retry."
+                sleep 3
+              done
+              if [[ "${merge_state}" == "UNKNOWN" ]]; then
+                # State never resolved — surface as a structured
+                # failure so the user knows to retry. Distinct from
+                # the merge-job behaviour (which exits cleanly and
+                # waits for `workflow_run.completed` to retrigger);
+                # there is no equivalent retrigger for an
+                # `issue_comment`-driven run, so the user has to
+                # ask again.
+                message="Claude: Cannot update — \`mergeStateStatus\` stayed UNKNOWN after polling. Re-post \`@agent-auth-merge-bot update\` to retry."
+                outcome="failure"
+              elif [[ "${merge_state}" != "BEHIND" ]]; then
+                # Idempotent no-op per the issue-acceptance contract:
+                # "if the PR is already up to date with main, no-op
+                # cleanly". 👍 with no follow-up comment.
+                echo "merge-bot command: PR #${PR_NUMBER} mergeStateStatus=${merge_state}; not BEHIND, nothing to do."
+                outcome="success"
+              else
+                # Pin `expected_head_sha` so a contributor push that
+                # races us produces a documented 422 rather than us
+                # silently fast-forwarding past their commit. Treat
+                # 422 as a 👍 success — the contributor's push is the
+                # new head and the user gets the same end state
+                # (update happened, just not by our hand).
+                if gh api --method PUT \
+                  "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/update-branch" \
+                  -f expected_head_sha="${head_sha}" \
+                  > "${RUNNER_TEMP}/update.out" 2> "${RUNNER_TEMP}/update.err"; then
+                  echo "merge-bot command: branch updated for PR #${PR_NUMBER}."
+                  outcome="success"
+                else
+                  err="$(cat "${RUNNER_TEMP}/update.err")"
+                  if grep -qi "expected_head_sha" <<<"${err}"; then
+                    echo "::notice::merge-bot command: PR #${PR_NUMBER} head SHA advanced under us (contributor push); treating as success."
+                    outcome="success"
+                  else
+                    echo "::error::PR #${PR_NUMBER}: update-branch API call failed: ${err}"
+                    # Quote the API error inside backticks so the
+                    # rendered comment treats it as code, not Markdown.
+                    message="Claude: Cannot update — \`update-branch\` API call failed: \`${err}\`"
+                    outcome="failure"
+                  fi
+                fi
+              fi
+              ;;
+            *)
+              # Unknown verb. The known-verbs list here must be kept
+              # in sync with the `case` arms above; today there is
+              # only one.
+              echo "::notice::merge-bot command: PR #${PR_NUMBER} unknown verb '${VERB}'."
+              message="Claude: Unknown verb \`${VERB}\`. Known verbs: \`update\`."
+              outcome="failure"
+              ;;
+          esac
+          echo "outcome=${outcome}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "message<<MERGE_BOT_COMMAND_EOF"
+            echo "${message}"
+            echo "MERGE_BOT_COMMAND_EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      # Final 👍 / 👎 reaction. Best-effort like the other reaction
+      # calls — a failed reaction post emits a `::warning::` and the
+      # workflow continues to the structured-failure-comment step.
+      - name: React with outcome
+        if: |
+          steps.secrets-check.outputs.configured == 'true'
+          && github.event.comment.user.login != 'agent-auth-merge-bot[bot]'
+          && steps.authz.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          OUTCOME: ${{ steps.dispatch.outputs.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "${OUTCOME}" == "success" ]]; then
+            content="+1"
+          else
+            content="-1"
+          fi
+          if ! gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content="${content}" \
+            > /dev/null 2> "${RUNNER_TEMP}/react.err"; then
+            err="$(cat "${RUNNER_TEMP}/react.err")"
+            echo "::warning::Failed to post ${content} reaction on comment ${COMMENT_ID}: ${err}"
+          fi
+
+      # Structured-failure follow-up comment. Posted only when the
+      # dispatch step set a non-empty `message` — i.e. unknown verb
+      # or `update-branch` API error. Authorization rejections do
+      # NOT pass through here (`outcome` is never reached on the
+      # unauthorized branch); that is intentional, see the
+      # "React 👎 (unauthorized)" step's comment.
+      - name: Post structured-failure comment
+        if: |
+          steps.secrets-check.outputs.configured == 'true'
+          && github.event.comment.user.login != 'agent-auth-merge-bot[bot]'
+          && steps.authz.outputs.authorized == 'true'
+          && steps.dispatch.outputs.message != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          MESSAGE: ${{ steps.dispatch.outputs.message }}
+        run: |
+          set -euo pipefail
+          if ! gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            -f body="${MESSAGE}" \
+            > /dev/null 2> "${RUNNER_TEMP}/comment.err"; then
+            err="$(cat "${RUNNER_TEMP}/comment.err")"
+            echo "::warning::Failed to post structured-failure comment on PR #${PR_NUMBER}: ${err}"
+          fi
+
+      # Mirror the dispatch outcome into the workflow run's exit
+      # status so a failed verb produces a red Actions run for
+      # operator visibility (the reaction surface is for the
+      # commenter; this is for the maintainer scanning Actions).
+      # Authorization-rejected runs already exited 0 above.
+      - name: Mirror dispatch outcome
+        if: |
+          steps.secrets-check.outputs.configured == 'true'
+          && github.event.comment.user.login != 'agent-auth-merge-bot[bot]'
+          && steps.authz.outputs.authorized == 'true'
+          && steps.dispatch.outputs.outcome == 'failure'
+        run: exit 1
