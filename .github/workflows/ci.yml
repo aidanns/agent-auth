@@ -318,6 +318,11 @@ jobs:
     if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
     uses: ./.github/workflows/test-unit.yml
 
+  test-workspace:
+    needs: [plan]
+    if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
+    uses: ./.github/workflows/test-workspace.yml
+
   test-integration:
     needs: [plan]
     if: needs.plan.outputs.diff_dependent_jobs_already_passed != 'true'
@@ -380,7 +385,7 @@ jobs:
     # Repo-wide aggregator. Branch protection on `main` requires only
     # `ci / required-checks-passed`; adding a new child workflow is a
     # one-line edit to `needs:` here.
-    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release, check-security, check-fmt, test-unit, test-integration, test-smoke, test-system, test-system-macos-tart]
+    needs: [plan, check-docs, check-changelog, check-publish, check-pull-request, check-lint, check-standards, build, check-release, check-security, check-fmt, test-unit, test-workspace, test-integration, test-smoke, test-system, test-system-macos-tart]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -412,6 +417,7 @@ jobs:
             check-standards
             build
             test-unit
+            test-workspace
             test-integration
             test-smoke
             test-system

@@ -121,11 +121,11 @@ def test_keyword_match_is_case_insensitive(variant: str) -> None:
 def test_keyword_with_trailing_colon_matches() -> None:
     """The git-trailer form (`Closes:`) must also match.
 
-    The validator's `GITHUB_KEYWORD_RE` rejects the colon form (project
-    convention is the no-colon form), but a contributor who writes
-    `Closes: #N` shouldn't have their issue stay open just because
-    they used the kernel-style trailer punctuation. GitHub's UI
-    accepts both.
+    The validator now requires the canonical colon form for PR
+    bodies (issue #566), but the auto-close parser is the post-merge
+    consumer that runs against the squash commit body — it must
+    match both `Closes #N` and `Closes: #N` because both have shipped
+    in `main`'s history. GitHub's UI accepts both shapes too.
     """
     body = "Closes: #5"
     assert parser.find_same_repo_issue_numbers(body) == [5]

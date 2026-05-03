@@ -89,7 +89,7 @@ def test_validate_rejects_missing_signoff() -> None:
         "==COMMIT_MSG==\n"
         "Subject summary.\n\n"
         "Some rationale.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "==COMMIT_MSG==\n"
     )
     with pytest.raises(commit_msg.ValidationError, match="Signed-off-by"):
@@ -108,7 +108,7 @@ def test_validate_rejects_blank_between_trailers() -> None:
         "==COMMIT_MSG==\n"
         "Subject summary.\n\n"
         "Body paragraph.\n\n"
-        "Closes #1\n\n"
+        "Closes: #1\n\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -135,7 +135,7 @@ def test_validate_rejects_overlong_body_line() -> None:
         "==COMMIT_MSG==\n"
         "Subject summary.\n\n"
         f"{long_line}\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -175,7 +175,7 @@ def test_validate_rejects_markdown_heading() -> None:
         "Subject summary.\n\n"
         "## Review notes\n"
         "Body.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -233,7 +233,7 @@ def test_validate_rejects_leading_blank_in_block() -> None:
         "\n"
         "Subject summary.\n\n"
         "Body.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -247,7 +247,7 @@ def test_validate_rejects_no_blank_before_trailers() -> None:
         "==COMMIT_MSG==\n"
         "Subject summary.\n\n"
         "Body paragraph that runs straight into the trailers.\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -260,6 +260,116 @@ def test_validate_rejects_empty_block_after_comments() -> None:
     body = "==COMMIT_MSG==\n" "<!-- placeholder from the template -->\n" "==COMMIT_MSG==\n"
     with pytest.raises(commit_msg.ValidationError, match="empty"):
         commit_msg.validate(body)
+
+
+def test_validate_rejects_bare_closes_form() -> None:
+    """The bare ``Closes #N`` (no colon) form is rejected (#566).
+
+    Pre-#566 the validator accepted both ``Closes: #N`` (canonical
+    git-trailer shape) and the bare ``Closes #N`` (GitHub
+    auto-close keyword shape). Two PRs landed in the same week
+    using the two different forms, demonstrating the
+    two-form-acceptance was an inconsistency tax.
+
+    The ``check_no_bare_close_keyword`` check raises a *targeted*
+    diagnostic naming the bare form as the cause and pointing at the
+    1-based line number so a contributor hitting this for the first
+    time can see immediately that their forgotten colon is the
+    problem. Without the targeted check the generic "no blank line
+    between body and trailer block" message would fire — technically
+    correct (the bare line falls out of the trailer set so the body
+    extends down to it) but unhelpful for diagnosing the actual cause.
+    The assertions below pin the diagnostic prose to that contract so
+    a regression that swapped the targeted message for the generic
+    layout error would surface here.
+    """
+    body = (
+        "==COMMIT_MSG==\n"
+        "Subject summary.\n\n"
+        "Body paragraph.\n\n"
+        "Closes #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n"
+    )
+    with pytest.raises(commit_msg.ValidationError) as exc_info:
+        commit_msg.validate(body)
+    message = str(exc_info.value)
+    # Diagnostic must name the bare form as the cause, echo the
+    # specific reference the author used (so the line is unambiguous
+    # in a body that mentions multiple issues), and direct them at
+    # the canonical colon form with the same reference filled in.
+    assert "bare `Closes #1`" in message
+    assert "no colon" in message
+    assert "`Closes: #1` (with colon)" in message
+    # Diagnostic must point at the offending line number so the
+    # author can find the bare ``Closes #N`` quickly. The bare line
+    # sits at line 5 of the post-strip block (1: Subject summary,
+    # 2: blank, 3: Body paragraph, 4: blank, 5: Closes #1).
+    assert "line 5" in message
+
+
+def test_validate_rejects_bare_fixes_and_resolves_forms() -> None:
+    """The bare-form rejection also covers ``Fixes #N`` and ``Resolves #N``.
+
+    GitHub's auto-close keyword set covers ``close``, ``fix``, and
+    ``resolve`` (with their inflections) so the trailer-side enforcement
+    must do the same — otherwise an author dropping a bare ``Fixes #N``
+    or ``Resolves #N`` would skate past the diagnostic that fires for
+    bare ``Closes #N``. Pin the contract for both alternatives so a
+    regression that narrowed the regex to ``Closes`` only surfaces here.
+    """
+    for keyword in ("Fixes", "Resolves"):
+        body = (
+            "==COMMIT_MSG==\n"
+            "Subject summary.\n\n"
+            "Body paragraph.\n\n"
+            f"{keyword} #1\n"
+            "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+            "==COMMIT_MSG==\n"
+        )
+        with pytest.raises(commit_msg.ValidationError) as exc_info:
+            commit_msg.validate(body)
+        message = str(exc_info.value)
+        assert f"bare `{keyword} #1`" in message
+        assert f"`{keyword}: #1` (with colon)" in message
+
+
+def test_validate_does_not_false_positive_on_prose_close_mentions() -> None:
+    """Prose mentions like ``this closes #123 because foo`` must NOT trip.
+
+    The targeted bare-form check anchors the regex start-to-end so only
+    lines clearly *intended* as a ``Closes:`` trailer (whole line is the
+    keyword + ``#N``) are flagged. A body paragraph that mentions an
+    issue in prose ("this closes #123 because foo") is legitimate
+    commit-body content and must pass — otherwise the validator would
+    drive contributors away from referencing related issues in prose.
+    """
+    body = (
+        "==COMMIT_MSG==\n"
+        "Subject summary.\n\n"
+        "Body paragraph that closes #123 in passing prose.\n\n"
+        "Closes: #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n"
+    )
+    commit_msg.validate(body)
+
+
+def test_validate_accepts_canonical_closes_form() -> None:
+    """The canonical ``Closes: #N`` (with colon) form passes (#566).
+
+    Pin the positive-path contract alongside the bare-form rejection
+    so a future regression that broke either side surfaces here.
+    """
+    body = (
+        "==COMMIT_MSG==\n"
+        "Subject summary.\n\n"
+        "Body paragraph.\n\n"
+        "Closes: #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n"
+    )
+    commit_msg.validate(body)
 
 
 def test_validate_rejects_empty_trailer_value() -> None:

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1] - 2026-05-03
+
+### Improvements
+
+- `==COMMIT_MSG==` validator now rejects the bare `Closes #N`
+  form; only the canonical `Closes: #N` is accepted. (#588)
+
 ## [0.18.0] - 2026-05-03
 
 ### Features

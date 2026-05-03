@@ -141,13 +141,33 @@ VERBOSE_BODY_MAX_WORDS = 250
 # letters, digits, hyphens (no whitespace).
 TRAILER_RE = re.compile(r"^([A-Za-z0-9-]+):[ \t]+\S.*$")
 
-# GitHub-keyword closes/fixes lines (e.g. `Closes #123`) are accepted in
-# the trailer block in addition to true `Token: value` trailers, because
-# project convention has historically used the no-colon form (see the
-# `Closes #N` examples in CHANGELOG.md). Token must be one of the
-# recognised closing keywords; the value is the issue/PR reference.
-GITHUB_KEYWORD_RE = re.compile(
-    r"^(Closes|Fixes|Resolves)\s+(#\d+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)\.?$"
+# Issue #566 dropped the bare `Closes #N` (no colon) form from the
+# trailer-detection paths so the canonical `Closes: #N` (with colon)
+# is mechanically enforced on every PR. This keeps parity with the
+# released `pr-lint-validator` package — the legacy script still ships
+# because the merge-bot's `extract-commit-msg-block.py` and the
+# changelog-bot import this module's `extract_block`, but the trailer
+# rules are kept in sync to avoid surprise drift. ``check_no_bare_close_keyword``
+# raises a targeted diagnostic naming the bare form as the cause so a
+# contributor hitting this for the first time isn't left guessing why
+# their `Closes #N` line was reclassified as body. The merge-bot's own
+# auto-close parser (`scripts/parse-close-keywords.py`) keeps reading
+# the bare form from already-merged commit bodies because GitHub's UI
+# auto-closer accepts it — distinct contract, distinct file. See #565
+# for the paired documentation half.
+
+# Matches a *whole line* of the bare GitHub auto-close-keyword form
+# (`Closes #N`, `Fixes #N`, `Resolves #N`, with optional cross-repo
+# `owner/repo#N` and an optional trailing period). Anchored start-to-end
+# so a prose mention like `this closes #123 because foo` does NOT match
+# — the check is for lines clearly *intended* as a `Closes:` trailer
+# whose author forgot the colon. Case-sensitive on the keyword to match
+# the project's trailer-token convention; the `Closes`/`Fixes`/`Resolves`
+# capitalisation is what `KNOWN_TRAILER_TOKENS` already accepts.
+BARE_CLOSE_KEYWORD_LINE_RE = re.compile(
+    r"^(?P<keyword>Closes|Fixes|Resolves)\s+"
+    r"(?P<ref>(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\d+)"
+    r"\.?\s*$"
 )
 
 # Kernel-style `Fixes: <sha> ...` trailer line — the FULL line including
@@ -372,7 +392,7 @@ def is_trailer_token(token: str) -> bool:
 def _is_trailer_shape_line(line: str) -> bool:
     """Return True when ``line`` looks like a trailer-block line.
 
-    Three shapes count as trailer-shape:
+    Two shapes count as trailer-shape:
 
     * A ``Token: value`` line whose token is in
       ``KNOWN_TRAILER_TOKENS`` — kernel/RFC-5322 form
@@ -382,14 +402,14 @@ def _is_trailer_shape_line(line: str) -> bool:
       extending the trailer-block region across a body/trailer
       blank, which would otherwise produce a misleading
       "blank between trailers" error.
-    * ``GITHUB_KEYWORD_RE`` — the no-colon form (``Closes #N``,
-      ``Fixes owner/repo#N``) project convention has historically
-      accepted alongside true trailers.
     * ``BREAKING CHANGE:`` (with a space, not a hyphen). The footer is
       conventionally a trailer-block resident even though it doesn't
       match ``TRAILER_RE``'s no-whitespace token; see
       ``check_breaking_change_position`` which already treats it as a
       trailer-area line.
+
+    Issue #566 dropped the bare ``Closes #N`` (no-colon) form so the
+    canonical colon shape is mechanically enforced.
 
     Used by ``check_trailer_block_contiguity`` and
     ``check_blank_line_before_trailers`` to identify the trailer-block
@@ -404,12 +424,9 @@ def _is_trailer_shape_line(line: str) -> bool:
         # `build_release.render_commit_msg_block`); treating it as a
         # trailer would absorb the body paragraph into the trailer-block
         # region and trigger false-positive contiguity / blank-before
-        # failures. The `Fixes #N` GitHub-keyword form is unaffected —
-        # it falls through to the `GITHUB_KEYWORD_RE` branch below.
+        # failures.
         if trailer_match.group(1).lower() == "fixes":
             return FIXES_SHA_TRAILER_LINE_RE.match(line) is not None
-        return True
-    if GITHUB_KEYWORD_RE.match(line) is not None:
         return True
     return line.startswith("BREAKING CHANGE:")
 
@@ -452,9 +469,11 @@ def parse_trailer_block(lines: list[str]) -> list[tuple[int, str, str]]:
 
     Returns a list of (1-based-line-index, token, value) tuples. A
     trailer block is the longest tail run of lines where every line
-    matches either TRAILER_RE (true `Token: value` trailers) or
-    GITHUB_KEYWORD_RE (`Closes #N`-style links — accepted because
-    project convention uses the no-colon form).
+    matches TRAILER_RE (true `Token: value` trailers). Issue #566
+    dropped the bare `Closes #N` (no-colon) form, so a bare GitHub
+    keyword line is no longer counted as a trailer here — it falls
+    out of the trailer set, the body extends down to that line, and
+    the layout / signoff checks fire with a clear message.
     """
     trailers: list[tuple[int, str, str]] = []
     for idx in range(len(lines), 0, -1):
@@ -466,12 +485,6 @@ def parse_trailer_block(lines: list[str]) -> list[tuple[int, str, str]]:
         if match:
             token = match.group(1)
             value = line.split(":", 1)[1].lstrip()
-            trailers.append((idx, token, value))
-            continue
-        keyword_match = GITHUB_KEYWORD_RE.match(line)
-        if keyword_match:
-            token = keyword_match.group(1)
-            value = keyword_match.group(2)
             trailers.append((idx, token, value))
             continue
         break
@@ -542,6 +555,40 @@ def check_trailer_block_contiguity(lines: list[str]) -> None:
         "silently loses the reference. Stack the trailers with no "
         "blanks between them."
     )
+
+
+def check_no_bare_close_keyword(lines: list[str]) -> None:
+    """Reject the bare ``Closes #N`` (no colon) form with a diagnostic.
+
+    Issue #566 dropped the bare GitHub-auto-close-keyword form from the
+    trailer-detection paths so the canonical ``Closes: #N`` (with colon)
+    is mechanically enforced on every PR. Without this targeted check,
+    a bare ``Closes #N`` would just fall out of the trailer set and the
+    downstream layout / signoff checks would fire with a generic "no
+    blank line between body and trailer block" message that doesn't
+    name the actual cause — confusing for a contributor hitting the
+    rule for the first time.
+
+    The check fires on a whole-line match against
+    ``BARE_CLOSE_KEYWORD_LINE_RE`` so prose mentions like
+    ``this closes #123 because foo`` don't false-positive — only lines
+    clearly *intended* as a ``Closes:`` trailer whose author forgot
+    the colon are flagged. Pairs with the colon-form positive coverage
+    in the trailer-block tests.
+    """
+    for idx, line in enumerate(lines, start=1):
+        match = BARE_CLOSE_KEYWORD_LINE_RE.match(line.rstrip())
+        if match is None:
+            continue
+        keyword = match.group("keyword")
+        ref = match.group("ref")
+        raise ValidationError(
+            f"`{MARKER}` block has a bare `{keyword} {ref}` "
+            f"(no colon) trailer on line {idx}: `{line.strip()}`. "
+            f"The bare form was dropped in #566 — use the canonical "
+            f"`{keyword}: {ref}` (with colon) so the trailer matches "
+            "the shape of every other git-trailer in the block."
+        )
 
 
 def check_blank_line_before_trailers(lines: list[str]) -> None:
@@ -743,25 +790,24 @@ def check_no_leading_subject_line(lines: list[str]) -> None:
 def check_fixes_trailer_shape(lines: list[str]) -> None:
     """Validate `Fixes: <sha> ("subject")` shape when SHA-style is used.
 
-    `Fixes #N` and `Fixes owner/repo#N` (the GitHub-keyword form) are
-    accepted as-is — they're handled by the closing-keyword path in
-    ``parse_trailer_block`` and have nothing to validate beyond the
-    issue ref. The kernel-style `Fixes: <sha> ("subject")` form is
-    structurally distinct and easy to get wrong; the regex insists on
-    a ≥ 7-char hex SHA and a parenthesised double-quoted subject so
-    typos like `Fixes: 9c4f1` (too short) or `Fixes: 9c4f1a2 broken`
-    (no quoted subject) fail loudly.
+    `Fixes: #N` and `Fixes: owner/repo#N` (the colon-form GitHub
+    issue/PR reference) are accepted as-is — they're handled by
+    ``parse_trailer_block``'s ``TRAILER_RE`` branch and have nothing
+    to validate beyond the issue ref. The kernel-style
+    `Fixes: <sha> ("subject")` form is structurally distinct and easy
+    to get wrong; the regex insists on a ≥ 7-char hex SHA and a
+    parenthesised double-quoted subject so typos like `Fixes: 9c4f1`
+    (too short) or `Fixes: 9c4f1a2 broken` (no quoted subject) fail
+    loudly.
     """
     trailers = parse_trailer_block(lines)
     for idx, token, value in trailers:
         if token.lower() != "fixes":
             continue
-        # Skip the GitHub-keyword form (`Fixes #N` /
-        # `Fixes owner/repo#N`); both the no-colon form (matched by
-        # GITHUB_KEYWORD_RE in parse_trailer_block) and the
-        # `Fixes: #N` colon variant produce a value starting with `#`
-        # or containing `<owner>/<repo>#`. parse_trailer_block already
-        # validated those shapes.
+        # Skip the GitHub issue-ref form (`Fixes: #N` /
+        # `Fixes: owner/repo#N`) — value starts with `#` or contains
+        # `<owner>/<repo>#`. The bare no-colon form was dropped in
+        # #566 so only the colon shape reaches here.
         if _is_github_issue_ref(value):
             continue
         if FIXES_SHA_TRAILER_RE.match(value) is None:
@@ -858,6 +904,15 @@ def validate(body: str) -> None:
     # the layout checks would emit if the typo line failed
     # ``_is_trailer_shape_line``'s known-token gate.
     check_trailers(lines)
+    # `check_no_bare_close_keyword` runs before the contiguity /
+    # blank-line-before checks so a bare `Closes #N` surfaces the
+    # targeted "use `Closes: #N` instead" diagnostic (issue #566)
+    # rather than the generic "no blank line between body and trailer
+    # block" message the layout checks would emit downstream — the
+    # bare line falls out of the trailer set, the body extends down
+    # to it, and `check_blank_line_before_trailers` would otherwise
+    # fire without naming the actual cause.
+    check_no_bare_close_keyword(lines)
     check_trailer_block_contiguity(lines)
     check_blank_line_before_trailers(lines)
     check_signoff_present(lines)
@@ -901,7 +956,7 @@ def _build_verbose_body(word_count: int, words_per_line: int = 20) -> str:
     return (
         "==COMMIT_MSG==\n"
         f"{body_block}\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n"
     )
@@ -929,7 +984,7 @@ _VERBOSE_BODY_SELF_TEST_CASES: tuple[tuple[str, bool, str], ...] = (
         "==COMMIT_MSG==\n"
         "One paragraph of why this change exists. Two short lines is\n"
         "all the body needs because the diff is self-evident.\n\n"
-        "Closes #1\n"
+        "Closes: #1\n"
         "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
         "==COMMIT_MSG==\n",
         False,

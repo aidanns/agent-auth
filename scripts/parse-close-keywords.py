@@ -90,10 +90,12 @@ AUTO_CLOSE_KEYWORDS: frozenset[str] = frozenset(
 # followed by a `:` (git-trailer form), a run of whitespace, then either
 # `#N` (same-repo) or `owner/repo#N` (cross-repo). The keyword must sit
 # at a word boundary so prose like "the fixes are landing" doesn't
-# match without a `#N`. Trailing punctuation on the reference (`#N.` —
-# common in the validator's GITHUB_KEYWORD_RE shape) is consumed by the
-# `[.,!?;:]?` non-capturing tail; the issue number itself is what we
-# capture.
+# match without a `#N`. Trailing punctuation on the reference (`#N.`)
+# is consumed by the `[.,!?;:]?` non-capturing tail; the issue number
+# itself is what we capture. The auto-close parser deliberately
+# accepts both the colon form (the only shape the PR-lint validator
+# now accepts since #566) and the bare form (still found in
+# pre-#566 squash commits on `main`).
 #
 # Group `repo` captures `owner/repo` for cross-repo references; absent
 # for same-repo. Group `n` captures the integer issue number.
