@@ -71,14 +71,14 @@ permissions:
 # silently change the runner OS under us. Bump procedure documented
 # in `docs/operations/macos-tart-ci.md`.
 env:
-  # TODO(aidanns): tighten the three pins below in #485 follow-up once
-  # the first CI run validates the boot-prep end-to-end. Until then a
-  # `git grep '0000000000000000000000000000000000000000000000000000000000000000'`
-  # or `git grep ':latest'` against this file will land a future
-  # bisector on the deferred-pin trail.
-  TART_VERSION: "2.36.0"
-  TART_TARBALL_SHA256: "0000000000000000000000000000000000000000000000000000000000000000"  # TODO(aidanns): pin in #485 follow-up
-  TART_BASE_IMAGE: "ghcr.io/cirruslabs/macos-sequoia-base:latest"  # TODO(aidanns): pin to GHCR digest in #485 follow-up
+  # Pinned per the procedure in `docs/operations/macos-tart-ci.md`.
+  # `TART_TARBALL_SHA256` is verified against the upstream
+  # `tart_<ver>_checksums.txt` released alongside the tarball;
+  # `TART_BASE_IMAGE` is the GHCR `docker-content-digest` of the
+  # `:latest` tag at the time of the bump.
+  TART_VERSION: "2.32.1"
+  TART_TARBALL_SHA256: "8554ab4f7fc12afe52f9b7e3093a935673cbac737a83973d2db7a0683c814529"
+  TART_BASE_IMAGE: "ghcr.io/cirruslabs/macos-sequoia-base@sha256:cae088989568978bcc9e5caf8eeabd02e68bf3317e765aafd5491a9db8924663"
   TART_VM_NAME: "agent-auth-smoke-${{ github.run_id }}-${{ github.run_attempt }}"
   ARTEFACT_DIR: "${{ github.workspace }}/macos-tart-artefacts"
 
@@ -136,7 +136,10 @@ jobs:
           SHA256: ${{ env.TART_TARBALL_SHA256 }}
         run: |
           set -euo pipefail
-          tarball="tart-${VERSION}-arm64.tar.gz"
+          # cirruslabs/tart releases publish a single `tart.tar.gz`
+          # asset (with a sibling `tart_<ver>_checksums.txt`), not a
+          # per-arch tarball.
+          tarball="tart.tar.gz"
           url="https://github.com/cirruslabs/tart/releases/download/${VERSION}/${tarball}"
           curl -fsSL "${url}" -o "${tarball}"
           echo "${SHA256}  ${tarball}" | shasum -a 256 -c -
