@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 Aidan Nagorcka-Smith
+#
+# SPDX-License-Identifier: MIT
+
+name: check-license-allowlist
+
+# Per-package dependency-license allowlist child of `ci.yml`. Matrix
+# emits one `check-license-allowlist (<package>)` check per workspace
+# member (issue #575 / ADR 0048). Each job materialises the workspace
+# venv, dispatches `scripts/check-license-allowlist.sh <package>`,
+# and fails when a dep's license falls outside the permissive
+# allowlist without a matching non-expired exception entry under
+# `packages/<package>/licenses.exceptions.yml`. The triage Agent
+# Brief locks the per-package shape — see ADR 0048 for the
+# disjunction / dev+runtime parity / exception-format decisions.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check-license-allowlist:
+    name: check-license-allowlist (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The eight uv workspace members declared in the root
+        # `pyproject.toml` `[tool.uv.workspace]` table. Includes
+        # `pr-lint-validator` (a build-time validator that
+        # `test-unit.yml` excludes because the package itself has
+        # no shipped runtime tests) — the brief locks "per-package"
+        # to mean every workspace member regardless of whether it
+        # ships, because a copyleft transitive in any member's
+        # closure is still a compliance signal worth flagging at
+        # PR time.
+        package:
+          # keep-sorted start
+          - agent-auth
+          - agent-auth-common
+          - gpg-bridge
+          - gpg-cli
+          - pr-lint-validator
+          - things-bridge
+          - things-cli
+          - things-client-cli-applescript
+          # keep-sorted end
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # `setup-toolchain` installs `uv` but doesn't sync the project
+      # virtualenv. The license helper reads installed-dist metadata
+      # (PEP 639 `License-Expression`, legacy `License`, `License ::`
+      # classifiers) directly via `importlib.metadata`, so the venv
+      # must already carry every workspace dep before the script
+      # runs. Mirrors the inline sync `test-unit.yml` does for the
+      # same reason.
+      - name: Sync project venv with dev extras
+        run: uv sync --extra dev
+
+      - name: Run license-allowlist gate for ${{ matrix.package }}
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: scripts/check-license-allowlist.sh "${PACKAGE}"

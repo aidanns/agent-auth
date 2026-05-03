@@ -125,6 +125,11 @@ tasks:
     cmds:
       - scripts/reuse-lint.sh
 
+  check-license-allowlist:
+    desc: "Per-package dependency-license allowlist gate. Iterates packages/*/, enumerates each package's resolved closure (runtime + workspace dev), and fails if any dep's license is outside the allowlist without a matching non-expired exception under packages/<svc>/licenses.exceptions.yml. See ADR 0048."
+    cmds:
+      - scripts/check-license-allowlist.sh {{.CLI_ARGS}}
+
   verify-standards:
     desc: Verify Project Standards
     cmds:
