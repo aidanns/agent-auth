@@ -155,10 +155,12 @@ class ThingsBridgeHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:  # noqa: F841,RUF100
         # Suppress the default access log — request paths can reveal
         # Things ids and our bearer tokens appear in headers. Errors
         # still surface via the default ``log_error`` implementation.
+        # ``size`` matches the inherited stdlib signature. F841 silences
+        # vulture; RUF100 silences ruff.
         pass
 
     def _extract_bearer(self) -> str | None:

@@ -48,7 +48,10 @@ class NotifierFake:
         fake = self  # closure capture
 
         class _Handler(BaseHTTPRequestHandler):
-            def log_message(self, format: str, *args: Any) -> None:
+            def log_message(self, format: str, *args: Any) -> None:  # noqa: F841,RUF100
+                # ``format`` matches the inherited stdlib signature; vulture
+                # flags the discarded parameter at confidence 100. F841
+                # silences vulture; RUF100 silences ruff.
                 pass
 
             def do_POST(self) -> None:

@@ -335,12 +335,14 @@ def test_helper_script_outputs_all_expected_check_run_names() -> None:
         "check-fmt / treefmt",
         "check-fmt / ruff-format",
         "check-fmt / spdx-license-headers / reuse",
-        # check-lint leaves (workflow_call → workflow_call → job).
+        # check-lint leaves (workflow_call → workflow_call → job, plus
+        # the direct `dead-code` job that lives in check-lint.yml itself).
         "check-lint / python / ruff",
         "check-lint / python / mypy",
         "check-lint / python / pyright",
         "check-lint / systems-engineering / verify-design",
         "check-lint / systems-engineering / verify-function-tests",
+        "check-lint / dead-code",
         # check-security leaves.
         "check-security / codeql-analyse / analyze (python)",
         "check-security / codeql-analyse / analyze (actions)",

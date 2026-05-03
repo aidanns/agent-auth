@@ -18,7 +18,11 @@ def _make_handler(decision: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
     """Build a handler class that returns ``decision`` on every POST."""
 
     class _FixedHandler(BaseHTTPRequestHandler):
-        def log_message(self, format: str, *args: Any) -> None:
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: F841,RUF100
+            # ``format`` matches the inherited stdlib signature; vulture's
+            # ``--min-confidence 80`` flags it because the override discards
+            # the parameter. F841 silences vulture; RUF100 silences ruff
+            # (which considers F841 only for unused-locals, not parameters).
             pass
 
         def do_POST(self) -> None:

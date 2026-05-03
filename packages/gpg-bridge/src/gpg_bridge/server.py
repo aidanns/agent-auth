@@ -117,9 +117,11 @@ class GpgBridgeHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:  # noqa: F841,RUF100
         # Request paths can appear in bearer-token-carrying headers; suppress
-        # default access log the same way things-bridge does.
+        # default access log the same way things-bridge does. ``size`` matches
+        # the inherited stdlib signature and is intentionally discarded.
+        # F841 silences vulture; RUF100 silences ruff.
         pass
 
     def send_response(self, code: int, message: str | None = None) -> None:

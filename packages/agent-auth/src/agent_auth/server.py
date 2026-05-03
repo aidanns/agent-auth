@@ -137,7 +137,11 @@ class AgentAuthHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
         return False
 
-    def log_message(self, format: str, *args: Any) -> None:
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: F841,RUF100
+        # ``format`` matches the inherited stdlib signature; the override
+        # silences the default access log to keep bearer-token-bearing
+        # paths out of stderr. F841 silences vulture; RUF100 silences
+        # ruff.
         pass
 
     # Route tables. Agent-auth paths have no path parameters, so the

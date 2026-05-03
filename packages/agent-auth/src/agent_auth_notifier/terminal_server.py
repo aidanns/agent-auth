@@ -27,7 +27,10 @@ class _TerminalApprovalHandler(BaseHTTPRequestHandler):
     # over the same stdin stream.
     _prompt_lock: threading.Lock = threading.Lock()
 
-    def log_message(self, format: str, *args: Any) -> None:
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: F841,RUF100
+        # ``format`` matches the inherited stdlib signature; vulture's
+        # ``--min-confidence 80`` flags it because the override discards
+        # the parameter. F841 silences vulture; RUF100 silences ruff.
         pass
 
     def _send_json(self, status: int, body: dict[str, Any]) -> None:
