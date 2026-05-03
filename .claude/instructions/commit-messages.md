@@ -6,9 +6,9 @@ SPDX-License-Identifier: MIT
 
 # Commit-message Authoring Rules
 
-Prose conventions for PR titles and ==COMMIT_MSG== bodies. They
-apply to every PR — chore commits enter git log too. The structural
-rules (prefix allowlist, block shape, trailer parsing) live in
+Prose conventions for PR titles and COMMIT_MSG bodies. They apply
+to every PR — chore commits enter git log too. The structural rules
+(prefix allowlist, block shape, trailer parsing) live in
 CONTRIBUTING.md and ADR 0037; this file covers the prose inside.
 
 ## Bullets
@@ -69,8 +69,9 @@ CONTRIBUTING.md and ADR 0037; this file covers the prose inside.
 
 ## Arrows vs prose
 
-- **Arrows (`->`) for mechanical sub-steps.** A short pipeline
-  reads cleanly as `query before POST -> no snapshot -> sticky comment`: each hop is a deterministic consequence of the prior.
+- **Arrows (`->`) for mechanical sub-steps.** A short pipeline reads
+  cleanly as `query before POST -> no snapshot -> sticky comment`:
+  each hop is a deterministic consequence of the prior.
 - **Prose with explicit connectives for the primary causal claim.**
   Use "so", "because", "which" when the link is a *reasoning* step
   rather than a mechanical one. Arrows hide the reasoning; prose

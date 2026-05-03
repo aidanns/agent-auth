@@ -150,7 +150,7 @@ topic is relevant:
   include (design verification and post-implementation standards review).
 - `coding-standards.md` — naming, types, and safety rules.
 - `commit-messages.md` — bullets, backticks, brevity, causal ordering, and
-  arrows-vs-prose rules for PR titles and `==COMMIT_MSG==` bodies.
+  arrows-vs-prose rules for PR titles and COMMIT_MSG bodies.
 - `service-design.md` — configuration, file paths, plugin surfaces, HTTP
   services, security, and resilience standards.
 - `design.md` — design directory structure, ADRs, functional decomposition,
