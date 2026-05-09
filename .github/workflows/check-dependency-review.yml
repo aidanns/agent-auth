@@ -38,7 +38,7 @@ jobs:
 
       - name: dependency-check
         if: ${{ inputs.event_has_diff_base_head }}
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           # HIGH/CRITICAL is the industry-standard gating bar and matches
           # what Dependabot alerts prioritise for notification. Dropping to
