@@ -129,7 +129,7 @@ issue against the package.
 ### VM never reaches SSH-ready
 
 **Signature**: workflow step "Boot VM Headless and Wait for SSH"
-fails with `VM <name> did not reach SSH-ready within 180s`.
+fails with `VM <name> did not reach SSH-ready within 600s`.
 `tart-run.log` may contain Tart's own diagnosis.
 
 **Fix**: usually the base image got rotated upstream and the
