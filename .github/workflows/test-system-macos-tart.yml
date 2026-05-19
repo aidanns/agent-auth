@@ -201,12 +201,17 @@ jobs:
         # Run Tart in the background so the workflow can keep
         # going. Loop on `tart ip` (which returns the guest's
         # DHCP-assigned IP once the boot reaches the network stack)
-        # plus an SSH probe. Cap at 180s to keep failures quick.
+        # plus an SSH probe. Cap at 600s — first cold boot of the
+        # `cirruslabs/macos-sequoia-base` image on a hosted macos-15
+        # runner reliably takes 2–5 min (DHCP-lease + launchd warmup),
+        # and the previous 180s ceiling timed out before the guest
+        # ever advertised an IP (verified against workflow_dispatch
+        # run 25375494433 on `main`).
         run: |
           set -euo pipefail
           tart run --no-graphics "${VM}" >"${ARTEFACT_DIR}/tart-run.log" 2>&1 &
           echo "$!" >tart.pid
-          deadline=$((SECONDS + 180))
+          deadline=$((SECONDS + 600))
           ip=""
           while (( SECONDS < deadline )); do
             ip=$(tart ip "${VM}" 2>/dev/null || true)
