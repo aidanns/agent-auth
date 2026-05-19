@@ -8,4 +8,4 @@ fix:
     Bump macOS Tart SSH-ready deadline 180s → 600s; cold first boot
     on hosted macos-15 reliably takes 2–5 min.
   links:
-    - https://github.com/aidanns/agent-auth/pull/PRNUM
+    - https://github.com/aidanns/agent-auth/pull/602
