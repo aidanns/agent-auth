@@ -275,7 +275,7 @@ jobs:
         # this workflow merges the squash commit that becomes a
         # release-bumping commit on `main`, so it is release-path-
         # adjacent. Same pin policy as release.yml.
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.MERGE_BOT_APP_ID }}
           private-key: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
@@ -1001,7 +1001,7 @@ jobs:
         if: steps.secrets-check.outputs.configured == 'true'
         # Pinned by SHA per .claude/instructions/tooling-and-ci.md
         # — same pin policy as the `merge` job above.
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.MERGE_BOT_APP_ID }}
           private-key: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
@@ -1467,7 +1467,7 @@ jobs:
         if: steps.secrets-check.outputs.configured == 'true'
         # Pinned by SHA per .claude/instructions/tooling-and-ci.md —
         # same pin policy as the `merge` and `label-needs-fix` jobs.
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.MERGE_BOT_APP_ID }}
           private-key: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
