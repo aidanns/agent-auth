@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.3] - 2026-05-19
+
+### Fixes
+
+- Bump macOS Tart SSH-ready deadline 180s → 600s; cold first boot
+  on hosted macos-15 reliably takes 2–5 min. (#602)
+
 ## [0.18.2] - 2026-05-03
 
 ### Improvements
