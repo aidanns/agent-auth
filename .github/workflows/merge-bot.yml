@@ -339,7 +339,7 @@ jobs:
           echo "merge-bot: no PR to act on; exiting cleanly."
           exit 0
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != ''
         with:
           # Always pin the extractor to `main` so a contributor cannot
@@ -432,7 +432,7 @@ jobs:
       # malicious composite action in the same PR they want
       # merged because the merge job loads the action from `main`,
       # not the PR head.
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != '' && steps.meta.outputs.state == 'OPEN' && steps.meta.outputs.has_automerge_label == 'true'
         with:
           ref: main
@@ -1045,7 +1045,7 @@ jobs:
       # the same PR they want labeled — the head ref carries
       # contributor changes; checking out the head would make the
       # action self-mutable).
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         if: steps.secrets-check.outputs.configured == 'true' && steps.pr.outputs.pr != ''
         with:
           ref: main

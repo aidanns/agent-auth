@@ -43,7 +43,7 @@ jobs:
     # upstream project's consent to the licence.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           # Need full PR history so `git rev-list base..head` resolves.
           fetch-depth: 0
@@ -187,7 +187,7 @@ jobs:
           fi
           echo "skip=false" >> "${GITHUB_OUTPUT}"
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         if: ${{ steps.skip.outputs.skip != 'true' }}
 
       - name: Install pr-lint-validator from release
@@ -264,7 +264,7 @@ jobs:
           fi
           echo "skip=false" >> "${GITHUB_OUTPUT}"
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         if: ${{ steps.skip.outputs.skip != 'true' }}
 
       - name: Install pr-lint-validator from release
