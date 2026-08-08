@@ -153,7 +153,7 @@ jobs:
         # workflow is read-only today, but the pin matches the repo
         # convention (every other `uses:` in `.github/workflows/` is
         # SHA-pinned) and keeps Dependabot's bump channel reviewable.
-        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           filters: |
             code:
