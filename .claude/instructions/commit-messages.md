@@ -41,6 +41,12 @@ CONTRIBUTING.md and ADR 0037; this file covers the prose inside.
 - **Shouty-cased markers strip wrapper syntax.** Write NO_CHANGELOG,
   not ==NO_CHANGELOG==; the wrapper is implementation detail and
   the SHOUTY case already signals "literal token".
+- **Never backslash-escape backticks in a single-quoted heredoc.**
+  A body passed as `--body "$(cat <<'EOF' ... EOF)"` to gh pr create
+  (or `-m` to git commit) is literal, so a habitual `` \` `` from
+  double-quoted contexts lands verbatim in the PR body and the
+  merge-bot squash commit. Write bare backticks. See 10b27c9
+  (escaped) vs c87e711 (bare).
 
 ## Brevity
 
