@@ -69,5 +69,5 @@ systems-engineering:
   install_sha256: "f83a266a0b5f1bb754cf67e7b5d0bb9f0d5610907c06e9cd6a81ff4acecefb9a"
 
 d2:
-  version: "0.7.1"
-  sha256_linux_x86_64: "eb172adf59f38d1e5a70ab177591356754ffaf9bebb84e0ca8b767dfb421dad7"
+  version: "0.9.0"
+  sha256_linux_x86_64: "5669ddc46b99e942cc96078f4a4e36d5e62103348f4c05179ede27802fdd87a9"
