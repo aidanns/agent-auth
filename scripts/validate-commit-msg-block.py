@@ -74,6 +74,9 @@
 #      failure modes, supply-chain or release-pipeline changes
 #      with audit-trail value) are legitimately long and the
 #      project would rather surface the warning than block the PR.
+#  13. No backslash-escaped backticks. A single-quoted heredoc
+#      (`cat <<'EOF'`) does no escape processing, so a habitual
+#      escape lands verbatim in the squash commit (see 10b27c9).
 #
 # The PR title (subject) has its own prose-style rules — length cap,
 # trailing period, past-tense imperative — enforced by the
@@ -372,6 +375,33 @@ def check_no_markdown(lines: Iterable[str]) -> None:
             "reviewer-surface and belong in `## Review notes`. "
             "Plain `-` / `*` bullets and `1.` numbered lists are "
             "fine in the commit body."
+        )
+
+
+# A backslash before a backtick is never intended in a commit body.
+# It comes from authoring the PR body through a single-quoted heredoc
+# (`cat <<'EOF'`), which performs no escape processing, so a habitual
+# escape from double-quoted shell contexts lands verbatim in the
+# squash commit (see 10b27c9).
+ESCAPED_BACKTICK_RE = re.compile(r"\\`")
+
+
+def check_no_escaped_backticks(lines: Iterable[str]) -> None:
+    """Reject backslash-escaped backticks inside the block."""
+    findings = [
+        f"  line {idx}: {line!r}"
+        for idx, line in enumerate(lines, start=1)
+        if ESCAPED_BACKTICK_RE.search(line)
+    ]
+    if findings:
+        details = "\n".join(findings)
+        raise ValidationError(
+            f"`{MARKER}` block contains backslash-escaped backticks:\n"
+            f"{details}\n"
+            "A single-quoted heredoc (`cat <<'EOF'`) does no escape "
+            "processing, so the backslash lands verbatim in the squash "
+            "commit. Write bare backticks. See "
+            ".claude/instructions/commit-messages.md → Backticks."
         )
 
 
@@ -896,6 +926,7 @@ def validate(body: str) -> None:
     check_no_leading_subject_line(lines)
     check_line_width(lines)
     check_no_markdown(lines)
+    check_no_escaped_backticks(lines)
     check_breaking_change_position(lines)
     # `check_trailers` runs before the contiguity / blank-line-before
     # checks so an unknown-token typo (`Cosed: #1` for `Closes: #1`)

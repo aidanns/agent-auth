@@ -143,6 +143,30 @@ def test_validate_rejects_overlong_body_line() -> None:
         commit_msg.validate(body)
 
 
+def test_validate_rejects_escaped_backtick() -> None:
+    """A backslash-escaped backtick (single-quoted heredoc leak) is rejected."""
+    body = (
+        "==COMMIT_MSG==\n"
+        "Pass \\`--frozen\\` to uv sync.\n\n"
+        "Closes: #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n"
+    )
+    with pytest.raises(commit_msg.ValidationError, match="backslash-escaped backticks"):
+        commit_msg.validate(body)
+
+
+def test_validate_allows_bare_backticks() -> None:
+    body = (
+        "==COMMIT_MSG==\n"
+        "Pass `--frozen` to uv sync.\n\n"
+        "Closes: #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n"
+    )
+    commit_msg.validate(body)
+
+
 def test_validate_allows_long_signoff_trailer() -> None:
     """A long ``Signed-off-by:`` value is not subject to the 72-char cap.
 
