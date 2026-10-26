@@ -23,7 +23,10 @@ name: open-ssf-scorecard
 on:
   workflow_call:
 
-permissions: read-all
+# Not `read-all`: a `workflow_call` child may not request more than
+# the caller job in `weekly.yml` grants, or the run startup_fails.
+permissions:
+  contents: read
 
 jobs:
   publish:
