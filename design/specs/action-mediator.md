@@ -8,6 +8,9 @@ SPDX-License-Identifier: MIT
 
 Status: Draft — 2026-11-24.
 
+Requirements, performance targets, and operational scenarios live in
+[`action-mediator-requirements.md`](action-mediator-requirements.md).
+
 ## 1. Intent
 
 AI agents increasingly need to *change* things: edit wiki pages, send
