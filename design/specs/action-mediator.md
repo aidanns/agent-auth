@@ -77,8 +77,8 @@ Both motivations carry equal weight:
   mediated systems, the audit trail is fiction. (Deployment guidance,
   not enforceable by the service — see §13.)
 - **Silent irreversibility.** A high-stakes irreversible action (e.g.
-  external email) applied without a human ever seeing it because its
-  type author or rules author was never asked to decide (§7).
+  external email) auto-applied without the rules author having
+  knowingly chosen that (§7).
 
 ## 3. Constraints
 
@@ -125,7 +125,7 @@ Other decisions made during design, with alternatives:
 | **User** | OIDC `sub`, email, display name, groups (from IdP) | Created on first login. |
 | **Agent** | id, name, owner (User), allowed action types, labels, credentials (≥1, rotatable), status (active/disabled) | Registered by a user in the UI. |
 | **Plugin** | id, kind (`executor` / `integration`), base URL, signing secret, manifest (pinned version), status | Registered by an admin. |
-| **ActionType** | name (e.g. `wiki.page.update`), plugin, version, target schema, payload schema, `reversible` and `auto_approvable` flags, display hints | Declared by an executor plugin's manifest. |
+| **ActionType** | name (e.g. `wiki.page.update`), plugin, version, target schema, payload schema, `reversible` flag, display hints | Declared by an executor plugin's manifest. |
 | **Action** | id, type, agent, origin (`agent` / `revert` / `modify`), `parent_action_id` (for revert/modify), target, reason (free text from agent), status, current revision, approved revision, created/updated | The unit of mediation. |
 | **Revision** | action, number, payload, target, author (agent or user), created_at, content hash | Revision 1 is the agent's request; each human edit adds one. Immutable. |
 | **Decision** | action, kind (`rule` / `human`), verdict, rule id + rules-version hash, or approver user, revision number, comment | Every verdict is recorded. |
@@ -229,14 +229,13 @@ submitted ─▶ [rules] ┼─ prompt ▶ pending_review ─(edits)─▶ appro
 - Reverting an action whose target has since been changed by a later
   action surfaces as `conflict` via the inverse's preconditions; the
   UI points to the later action(s) on the same target.
-- **Irreversible types** (`reversible: false`) are auto-approvable only
-  if the action type's author says so. Each type in the plugin manifest
-  declares `auto_approvable` (default `true` for reversible types,
-  `false` for irreversible ones; the type author may override either
-  way, e.g. a low-stakes irreversible "post to team channel" type). An
-  `allow` verdict on a type with `auto_approvable: false` is coerced to
-  `prompt`, and the rules validator warns on any rule that would allow
-  one.
+- **Irreversible types** (`reversible: false`) are treated like any
+  other type: whether they are auto-approved is up to the rules author
+  (some irreversible actions are low stakes). The `reversible` flag is
+  shown to reviewers and in history, available to rules as
+  `reversible`, and the rules validator emits a non-blocking
+  notice listing any `allow` rules that cover irreversible types so the
+  author makes that choice knowingly.
 - The user who files a revert/modify is its author; self-approval
   rules (§9.3) apply to them.
 - **Who may file:** any user allowed to see the original action's
@@ -263,7 +262,7 @@ An admin registers a plugin by base URL. The service fetches
 `GET {base}/manifest`, which returns the plugin id, kind, contract
 version, and (for executors) its action types with target schema,
 payload schema (JSON Schema 2020-12), target-key fields, `reversible`
-and `auto_approvable` flags, and display hints (field labels, which fields to diff as text,
+flag, and display hints (field labels, which fields to diff as text,
 `x-sensitive` fields to mask). The manifest is pinned; schema changes
 require an admin to re-sync, and the new version applies only to
 actions submitted afterwards.
@@ -415,7 +414,8 @@ default:
 ### 9.2 Semantics
 
 - Match keys are field paths into the evaluation context: `type`,
-  `origin`, `agent.id`, `agent.owner`, `agent.labels`, `target.*`,
+  `reversible`, `origin`, `agent.id`, `agent.owner`, `agent.labels`,
+  `target.*`,
   `payload.*`. All conditions in a `match` must hold.
 - Operators (closed set, no code execution): equality, `in`,
   `not_in`, `prefix`, `suffix`, `contains`, `regex` (RE2-compatible,
@@ -426,8 +426,6 @@ default:
   `min_approvals`, default 1), `deny` (with `message`).
 - Before rules run, the agent's **allowed action types** are checked;
   a type outside that list is `denied` without rule evaluation.
-- `allow` on a type declared `auto_approvable: false` is coerced to
-  `prompt` (§7).
 
 ### 9.3 Approval authority
 
@@ -697,8 +695,6 @@ These were decided while writing the spec and should be checked:
 - Integration events carry no payloads.
 - New revisions reset approvals by default; re-evaluation after an edit
   takes the stricter requirement (§6.1).
-- `auto_approvable` defaults (true for reversible, false for
-  irreversible) when a type author doesn't declare it (§7).
 - Pending actions keep their original decision when rules change;
   plugins accept every manifest version they still list (§6.2).
 - Any user entitled to see a payload may file a revert/modify;
