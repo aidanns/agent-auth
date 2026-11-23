@@ -76,8 +76,9 @@ Both motivations carry equal weight:
 - **Bypassable.** If agents still hold direct write credentials to
   mediated systems, the audit trail is fiction. (Deployment guidance,
   not enforceable by the service — see §13.)
-- **Silent irreversibility.** An irreversible action (e.g. sent email)
-  applied without a human ever seeing it.
+- **Silent irreversibility.** A high-stakes irreversible action (e.g.
+  external email) applied without a human ever seeing it because its
+  type author or rules author was never asked to decide (§7).
 
 ## 3. Constraints
 
@@ -124,7 +125,7 @@ Other decisions made during design, with alternatives:
 | **User** | OIDC `sub`, email, display name, groups (from IdP) | Created on first login. |
 | **Agent** | id, name, owner (User), allowed action types, labels, credentials (≥1, rotatable), status (active/disabled) | Registered by a user in the UI. |
 | **Plugin** | id, kind (`executor` / `integration`), base URL, signing secret, manifest (pinned version), status | Registered by an admin. |
-| **ActionType** | name (e.g. `wiki.page.update`), plugin, version, target schema, payload schema, `reversible` flag, display hints | Declared by an executor plugin's manifest. |
+| **ActionType** | name (e.g. `wiki.page.update`), plugin, version, target schema, payload schema, `reversible` and `auto_approvable` flags, display hints | Declared by an executor plugin's manifest. |
 | **Action** | id, type, agent, origin (`agent` / `revert` / `modify`), `parent_action_id` (for revert/modify), target, reason (free text from agent), status, current revision, approved revision, created/updated | The unit of mediation. |
 | **Revision** | action, number, payload, target, author (agent or user), created_at, content hash | Revision 1 is the agent's request; each human edit adds one. Immutable. |
 | **Decision** | action, kind (`rule` / `human`), verdict, rule id + rules-version hash, or approver user, revision number, comment | Every verdict is recorded. |
@@ -181,8 +182,9 @@ submitted ─▶ [rules] ┼─ prompt ▶ pending_review ─(edits)─▶ appro
 
 - **A new revision resets approvals.** Approvals already recorded
   against an earlier revision no longer count toward `min_approvals`.
-- **Editors cannot approve.** A user who authored any human revision of
-  an action cannot approve it (extends §9.3).
+- **Editors cannot approve** by default: a user who authored any human
+  revision of an action cannot approve it. This is part of the
+  configurable approval policy (§9.3).
 - **Re-evaluation picks the stricter requirement.** If re-evaluation
   after an edit matches a different `prompt` rule, the action must
   satisfy *both* the original and the new rule's approver group and
@@ -194,8 +196,12 @@ submitted ─▶ [rules] ┼─ prompt ▶ pending_review ─(edits)─▶ appro
 - A decision is made once, under the RuleSet version active at
   submission (and re-evaluation on edit uses the version active at
   edit time). Activating a new RuleSet does not touch pending actions;
-  admins can explicitly run "re-evaluate pending actions", which can
-  only make requirements stricter or deny (never auto-approve).
+  admins can explicitly run "re-evaluate pending actions" against the
+  active RuleSet, after a dry-run preview showing each pending action's
+  current and new outcome. The admin chooses which actions to
+  re-evaluate; the new outcome applies in full (it may auto-approve,
+  deny, or change approval requirements). Each re-evaluation is
+  audited.
 - Each action records the ActionType manifest version it was validated
   against, and the apply webhook carries it as `type_version`. Plugins
   must accept every version still listed in their manifest; a plugin
@@ -223,9 +229,14 @@ submitted ─▶ [rules] ┼─ prompt ▶ pending_review ─(edits)─▶ appro
 - Reverting an action whose target has since been changed by a later
   action surfaces as `conflict` via the inverse's preconditions; the
   UI points to the later action(s) on the same target.
-- **Irreversible types** (`reversible: false`) can never be
-  auto-approved: an `allow` verdict is coerced to `prompt` at runtime,
-  and the rules validator warns on any rule that would allow one.
+- **Irreversible types** (`reversible: false`) are auto-approvable only
+  if the action type's author says so. Each type in the plugin manifest
+  declares `auto_approvable` (default `true` for reversible types,
+  `false` for irreversible ones; the type author may override either
+  way, e.g. a low-stakes irreversible "post to team channel" type). An
+  `allow` verdict on a type with `auto_approvable: false` is coerced to
+  `prompt`, and the rules validator warns on any rule that would allow
+  one.
 - The user who files a revert/modify is its author; self-approval
   rules (§9.3) apply to them.
 - **Who may file:** any user allowed to see the original action's
@@ -252,7 +263,7 @@ An admin registers a plugin by base URL. The service fetches
 `GET {base}/manifest`, which returns the plugin id, kind, contract
 version, and (for executors) its action types with target schema,
 payload schema (JSON Schema 2020-12), target-key fields, `reversible`
-flag, and display hints (field labels, which fields to diff as text,
+and `auto_approvable` flags, and display hints (field labels, which fields to diff as text,
 `x-sensitive` fields to mask). The manifest is pinned; schema changes
 require an admin to re-sync, and the new version applies only to
 actions submitted afterwards.
@@ -340,15 +351,19 @@ Integration plugins subscribe to events: `action.submitted`,
 `action.applied`, `action.conflict`, `action.failed`,
 `action.expired`. Events carry ids, type, agent, target, reason,
 rule decision, and a deep link to the web UI — not full payloads
-(sensitive data stays in the service; integrations show a summary and
-link out). Delivery uses the same outbox and signing.
+(sensitive data stays in the service). An integration that needs the
+payload fetches it through the API as the mapped user (below), so
+normal visibility rules (§10.3) apply. Delivery uses the same outbox
+and signing.
 
-An integration may call `approve` / `reject` using its integration
-credential **plus a user identity** mapped from the external system
-(e.g. Slack user id → OIDC user, mapping established once by the user
-through the web UI). The service applies all normal authorisation
-checks to the mapped user. **Integrations cannot edit payloads**;
-editing happens in the web UI.
+An integration may read, **edit**, approve, and reject actions using
+its integration credential **plus a user identity** mapped from the
+external system (e.g. Slack user id → OIDC user, mapping established
+once by the user through the web UI). The service applies all normal
+authorisation checks to the mapped user, and edits follow the same
+rules as UI edits: optimistic concurrency on revision number, schema
+validation, rule re-evaluation, and the approval policy (§6.1, §9.3).
+Each revision and decision records which integration it came through.
 
 ## 9. Business rules
 
@@ -359,6 +374,9 @@ Example:
 
 ```yaml
 version: 1
+approval_policy:            # global defaults (§9.3); all true if omitted
+  block_owner_approval: true
+  block_editor_approval: true
 rules:
   - id: scratch-space-edits
     match:
@@ -379,6 +397,7 @@ rules:
       payload.to: { any_not_suffix: "@example.com" }
     verdict: prompt
     approvers: { group: comms, min_approvals: 1 }
+    approval_policy: { block_owner_approval: true }   # per-rule override
     review_ttl: 2d
 
   - id: no-prod-config
@@ -407,14 +426,29 @@ default:
   `min_approvals`, default 1), `deny` (with `message`).
 - Before rules run, the agent's **allowed action types** are checked;
   a type outside that list is `denied` without rule evaluation.
-- `allow` on an irreversible type is coerced to `prompt` (§7).
+- `allow` on a type declared `auto_approvable: false` is coerced to
+  `prompt` (§7).
 
 ### 9.3 Approval authority
 
 - An approver must be in the rule's group (or the `admins` group).
-- **No self-approval:** a user cannot approve an action filed by an
-  agent they own, or a revert/modify they filed. With
-  `min_approvals > 1`, approvals must come from distinct users.
+- **Approval policy (restrictive by default, configurable).** Like
+  GitHub's "PR authors can't approve their own PR" and "dismiss stale
+  approvals on new pushes" settings, these restrictions are on by
+  default and can be relaxed:
+
+  | Setting | Default | Effect when `false` |
+  |---------|---------|---------------------|
+  | `block_owner_approval` | `true` | A user may approve actions from agents they own. |
+  | `block_filer_approval` | `true` | A user may approve a revert/modify they filed. |
+  | `block_editor_approval` | `true` | A user who edited an action may approve it. |
+  | `reset_approvals_on_edit` | `true` | Approvals on earlier revisions still count. |
+
+  The policy is set globally in the RuleSet (`approval_policy:`) and
+  may be overridden per rule (e.g. relax it for a low-stakes type,
+  tighten it for `email.send`). Every Decision records the effective
+  policy. With `min_approvals > 1`, approvals always come from
+  distinct users.
 - Any approver in the group may reject; one rejection is terminal.
 
 ### 9.4 Management
@@ -572,7 +606,7 @@ A full threat model is required before implementation. Key threats:
 | Approved content differs from applied | Revision-bound approval, frozen payload, `payload_sha256` in webhook, audit chain. |
 | Reviewer approves something different from what they saw (TOCTOU) | Approve names the revision; 409 on mismatch. |
 | Editing an action into a forbidden shape | Rule re-evaluation on edit; `deny` blocks approval. |
-| Self-approval / collusion | No self-approval; distinct approvers for `min_approvals > 1`. |
+| Self-approval / collusion | Restrictive approval policy by default (§9.3); relaxations are explicit, per-rule, and audited; distinct approvers for `min_approvals > 1`. |
 | XSS via agent payloads | Text-only rendering, CSP, no `dangerouslySetInnerHTML`. |
 | Forged webhooks / callbacks | Standard Webhooks HMAC both ways, timestamp tolerance, replay cache. |
 | SSRF via plugin URLs | Admin-only registration, host allowlist. |
@@ -657,21 +691,20 @@ The implementation PRs must add ADRs for:
 These were decided while writing the spec and should be checked:
 
 - Service name `action-mediator`.
-- No self-approval by an agent's owner.
 - Editing cannot change an action's type or target.
 - Rule re-evaluation on edit; `deny` blocks approval.
-- Irreversible types can never be auto-approved.
-- Integrations can approve/reject but not edit.
 - 7-day default review TTL; 15-minute agent token lifetime.
 - Integration events carry no payloads.
-- New revisions reset approvals; editors cannot approve; re-evaluation
+- New revisions reset approvals by default; re-evaluation after an edit
   takes the stricter requirement (§6.1).
+- `auto_approvable` defaults (true for reversible, false for
+  irreversible) when a type author doesn't declare it (§7).
 - Pending actions keep their original decision when rules change;
   plugins accept every manifest version they still list (§6.2).
 - Any user entitled to see a payload may file a revert/modify;
   `agent.*` resolves to the parent's agent, plus `actor.*` (§7).
-- A failed/conflicted action releases its target; manual retries
-  re-queue behind later approvals (§8.3).
+- Manual retries of failed actions rely on plugin preconditions to
+  avoid overwriting newer state (§8.3).
 - Payload visibility rules (§10.3).
 - Hourly group refresh, approvals need fresh groups, daily owner
   re-check, SCIM later (§10.4).
