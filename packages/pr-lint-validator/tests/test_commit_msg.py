@@ -156,6 +156,21 @@ def test_validate_rejects_escaped_backtick() -> None:
         commit_msg.validate(body)
 
 
+def test_validate_rejects_escaped_backtick_inside_html_comment() -> None:
+    """An escaped backtick hidden in an HTML comment still reaches the
+    squash commit, so it is rejected too."""
+    body = (
+        "==COMMIT_MSG==\n"
+        "Pass the frozen flag to uv sync.\n"
+        "<!-- see \\`--frozen\\` -->\n\n"
+        "Closes: #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n"
+    )
+    with pytest.raises(commit_msg.ValidationError, match="backslash-escaped backticks"):
+        commit_msg.validate(body)
+
+
 def test_validate_allows_bare_backticks() -> None:
     body = (
         "==COMMIT_MSG==\n"

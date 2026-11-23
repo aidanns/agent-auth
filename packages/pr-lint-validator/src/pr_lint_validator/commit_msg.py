@@ -226,7 +226,11 @@ ESCAPED_BACKTICK_RE = re.compile(r"\\`")
 
 
 def check_no_escaped_backticks(lines: Iterable[str]) -> None:
-    """Reject backslash-escaped backticks inside the block."""
+    """Reject backslash-escaped backticks anywhere in the raw block.
+
+    Callers pass the unstripped block lines: HTML comments survive
+    into the squash commit, so they must be checked too.
+    """
     findings = [
         f"  line {idx}: {line!r}"
         for idx, line in enumerate(lines, start=1)
@@ -610,7 +614,9 @@ def validate(body: str) -> None:
     check_no_leading_subject_line(lines)
     check_line_width(lines)
     check_no_markdown(lines)
-    check_no_escaped_backticks(lines)
+    # Raw block, not ``lines``: the merge extractor keeps HTML comments,
+    # so an escape hidden in a comment would still reach the commit.
+    check_no_escaped_backticks(block.splitlines())
     check_breaking_change_position(lines)
     # ``check_trailers`` runs before the contiguity / blank-line-before
     # checks so an unknown-token typo (``Cosed: #1`` for ``Closes: #1``)
