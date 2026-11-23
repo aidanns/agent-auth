@@ -415,8 +415,7 @@ default:
 
 - Match keys are field paths into the evaluation context: `type`,
   `reversible`, `origin`, `agent.id`, `agent.owner`, `agent.labels`,
-  `target.*`,
-  `payload.*`. All conditions in a `match` must hold.
+  `target.*`, `payload.*`. All conditions in a `match` must hold.
 - Operators (closed set, no code execution): equality, `in`,
   `not_in`, `prefix`, `suffix`, `contains`, `regex` (RE2-compatible,
   anchored), numeric `lt/lte/gt/gte`, `length_lt/length_gt`,
