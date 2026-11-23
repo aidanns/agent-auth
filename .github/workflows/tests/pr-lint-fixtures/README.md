@@ -6,15 +6,16 @@ SPDX-License-Identifier: MIT
 
 # pr-lint validator fixtures
 
-Inputs for the `validator-self-test` job in
-`.github/workflows/pr-lint.yml`. Each `valid-*.md` is a PR body that
-must pass `scripts/validate-commit-msg-block.py`; each `invalid-*.md`
-is a body that must fail it.
+Inputs for `tests/test_pr_lint_fixtures.py`. Each `valid-*.md` is a
+PR body that must pass the `==COMMIT_MSG==` validator; each
+`invalid-*.md` is a body that must fail it. The test runs every
+fixture through both the `pr_lint_validator` package and the legacy
+`scripts/validate-commit-msg-block.py`.
 
 A new failure mode goes here as `invalid-<slug>.md` alongside the
-extra check it exercises in the validator. The self-test job iterates
-the directory and asserts the expected outcome, so adding a fixture
-is enough to cover the new branch.
+extra check it exercises in the validator. The test iterates the
+directory and asserts the expected outcome, so adding a fixture is
+enough to cover the new branch in both validators.
 
 ## Warning-only and PR-title rules
 

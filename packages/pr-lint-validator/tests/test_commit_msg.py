@@ -143,6 +143,63 @@ def test_validate_rejects_overlong_body_line() -> None:
         commit_msg.validate(body)
 
 
+def test_validate_rejects_escaped_backtick() -> None:
+    """A backslash before a backtick would land verbatim in the squash
+    commit on main, so the block is rejected."""
+    body = (
+        "==COMMIT_MSG==\n"
+        "Pass \\`--frozen\\` to uv sync.\n\n"
+        "Closes: #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n"
+    )
+    with pytest.raises(commit_msg.ValidationError, match="backslash-escaped backticks"):
+        commit_msg.validate(body)
+
+
+def test_validate_rejects_escaped_backtick_inside_html_comment() -> None:
+    """An escaped backtick hidden in an HTML comment still reaches the
+    squash commit, so it is rejected too."""
+    body = (
+        "==COMMIT_MSG==\n"
+        "Pass the frozen flag to uv sync.\n"
+        "<!-- see \\`--frozen\\` -->\n\n"
+        "Closes: #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n"
+    )
+    with pytest.raises(commit_msg.ValidationError, match="backslash-escaped backticks"):
+        commit_msg.validate(body)
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("Pass \\`--frozen\\` to uv sync.", True),
+        ("Use `uv` then \\`sync\\`.", True),
+        ("Drop the trailing `\\` continuation.", False),
+        ("A path like `C:\\dir` stays.", False),
+        ("No backticks at all.", False),
+    ],
+)
+def test_has_escaped_backtick(line: str, expected: bool) -> None:
+    """Only escapes outside a code span would leak into the squash
+    commit; a code span whose content ends in a backslash is fine."""
+    assert commit_msg.has_escaped_backtick(line) is expected
+
+
+def test_validate_allows_bare_backticks() -> None:
+    """Plain inline-code backticks are still accepted."""
+    body = (
+        "==COMMIT_MSG==\n"
+        "Pass `--frozen` to uv sync.\n\n"
+        "Closes: #1\n"
+        "Signed-off-by: Aidan Nagorcka-Smith <aidanns@gmail.com>\n"
+        "==COMMIT_MSG==\n"
+    )
+    commit_msg.validate(body)
+
+
 def test_validate_allows_long_signoff_trailer() -> None:
     """A long ``Signed-off-by:`` value is not subject to the 72-char cap.
 
