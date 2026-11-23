@@ -172,6 +172,22 @@ def test_validate_rejects_escaped_backtick_inside_html_comment() -> None:
         commit_msg.validate(body)
 
 
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("Pass \\`--frozen\\` to uv sync.", True),
+        ("Use `uv` then \\`sync\\`.", True),
+        ("Drop the trailing `\\` continuation.", False),
+        ("A path like `C:\\dir` stays.", False),
+        ("No backticks at all.", False),
+    ],
+)
+def test_has_escaped_backtick(line: str, expected: bool) -> None:
+    """Only escapes outside a code span would leak into the squash
+    commit; a code span whose content ends in a backslash is fine."""
+    assert commit_msg.has_escaped_backtick(line) is expected
+
+
 def test_validate_allows_bare_backticks() -> None:
     """Plain inline-code backticks are still accepted."""
     body = (

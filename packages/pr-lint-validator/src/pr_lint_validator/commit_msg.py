@@ -216,8 +216,20 @@ def check_no_markdown(lines: Iterable[str]) -> None:
         )
 
 
-# A backslash before a backtick is never intended in a commit body.
-ESCAPED_BACKTICK_RE = re.compile(r"\\`")
+def has_escaped_backtick(line: str) -> bool:
+    """Return True if ``line`` has a backslash-escaped backtick outside a code span.
+
+    Inside a code span a backslash is literal (so a span ending in a
+    backslash is fine); outside one, a backslash before a backtick is
+    never intended in a commit body.
+    """
+    in_code_span = False
+    for idx, char in enumerate(line):
+        if char == "\\" and not in_code_span and line[idx + 1 : idx + 2] == "`":
+            return True
+        if char == "`":
+            in_code_span = not in_code_span
+    return False
 
 
 def check_no_escaped_backticks(lines: Iterable[str]) -> None:
@@ -225,7 +237,7 @@ def check_no_escaped_backticks(lines: Iterable[str]) -> None:
     findings = [
         f"  line {idx}: {line!r}"
         for idx, line in enumerate(lines, start=1)
-        if ESCAPED_BACKTICK_RE.search(line)
+        if has_escaped_backtick(line)
     ]
     if findings:
         details = "\n".join(findings)
