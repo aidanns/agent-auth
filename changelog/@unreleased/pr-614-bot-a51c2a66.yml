@@ -5,6 +5,9 @@
 type: improvement
 improvement:
   description: |
-    `==COMMIT_MSG==` validator now rejects backslash-escaped backticks.
+    COMMIT_MSG validator now rejects backslash-escaped backticks,
+    including inside HTML comments.
   links:
     - https://github.com/aidanns/agent-auth/pull/614
+packages:
+  - pr-lint-validator

@@ -144,7 +144,8 @@ def test_validate_rejects_overlong_body_line() -> None:
 
 
 def test_validate_rejects_escaped_backtick() -> None:
-    """A backslash-escaped backtick (single-quoted heredoc leak) is rejected."""
+    """A backslash before a backtick would land verbatim in the squash
+    commit on main, so the block is rejected."""
     body = (
         "==COMMIT_MSG==\n"
         "Pass \\`--frozen\\` to uv sync.\n\n"
@@ -172,6 +173,7 @@ def test_validate_rejects_escaped_backtick_inside_html_comment() -> None:
 
 
 def test_validate_allows_bare_backticks() -> None:
+    """Plain inline-code backticks are still accepted."""
     body = (
         "==COMMIT_MSG==\n"
         "Pass `--frozen` to uv sync.\n\n"

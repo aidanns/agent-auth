@@ -23,8 +23,7 @@ PRs" and ADR 0037:
  10. At least one blank line separates the body from the trailer
      block.
  11. (Soft, warning-only.) The body region is not unusually long.
- 12. No backslash-escaped backticks (a single-quoted heredoc leaks
-     them verbatim into the squash commit).
+ 12. No backslash-escaped backticks, including inside HTML comments.
 
 Public surface: :class:`ValidationError`, :class:`BlockMarkerError`,
 :func:`validate`, :func:`extract_block`,
@@ -218,19 +217,11 @@ def check_no_markdown(lines: Iterable[str]) -> None:
 
 
 # A backslash before a backtick is never intended in a commit body.
-# It comes from authoring the PR body through a single-quoted heredoc
-# (`cat <<'EOF'`), which performs no escape processing, so a habitual
-# escape from double-quoted shell contexts lands verbatim in the
-# squash commit (see 10b27c9).
 ESCAPED_BACKTICK_RE = re.compile(r"\\`")
 
 
 def check_no_escaped_backticks(lines: Iterable[str]) -> None:
-    """Reject backslash-escaped backticks anywhere in the raw block.
-
-    Callers pass the unstripped block lines: HTML comments survive
-    into the squash commit, so they must be checked too.
-    """
+    """Reject backslash-escaped backticks."""
     findings = [
         f"  line {idx}: {line!r}"
         for idx, line in enumerate(lines, start=1)
@@ -243,8 +234,8 @@ def check_no_escaped_backticks(lines: Iterable[str]) -> None:
             f"{details}\n"
             "A single-quoted heredoc (`cat <<'EOF'`) does no escape "
             "processing, so the backslash lands verbatim in the squash "
-            "commit. Write bare backticks. See "
-            ".claude/instructions/commit-messages.md → Backticks."
+            "commit. Write bare backticks. See CONTRIBUTING.md → "
+            '"Writing release-worthy commits".'
         )
 
 
